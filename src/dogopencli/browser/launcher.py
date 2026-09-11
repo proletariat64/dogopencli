@@ -207,6 +207,45 @@ def _acquire_control(profile: Path, control_held: bool) -> coordination.FileLock
         ) from exc
 
 
+def _endpoint_process_args(
+    port: int, proc_root: Path = Path("/proc")
+) -> list[list[str]]:
+    """Resolve local listening sockets to their owning processes, fail closed."""
+    inodes = set()
+    for table in ("tcp", "tcp6"):
+        for line in (proc_root / "net" / table).read_text().splitlines()[1:]:
+            fields = line.split()
+            if fields[3] == "0A" and int(fields[1].rsplit(":", 1)[1], 16) == port:
+                inodes.add(f"socket:[{fields[9]}]")
+    owners = []
+    for process in proc_root.iterdir():
+        if not process.name.isdigit():
+            continue
+        try:
+            if not any(os.readlink(fd) in inodes for fd in (process / "fd").iterdir()):
+                continue
+            args = process.joinpath("cmdline").read_bytes().split(b"\0")
+            owners.append([arg.decode("utf-8", "strict") for arg in args if arg])
+        except (OSError, UnicodeError):
+            continue  # Unreadable processes cannot establish ownership.
+    return owners
+
+
+def require_profile(environment: BrowserEnvironment) -> None:
+    """Prove the CDP listener belongs to the configured profile before reuse."""
+    try:
+        owners = _endpoint_process_args(cdp_port(environment.cdp_url))
+        expected = f"--user-data-dir={environment.profile}"
+        if len(owners) == 1 and expected in owners[0]:
+            return
+    except (OSError, ValueError, IndexError):
+        pass
+    raise LauncherError(
+        f"cannot verify that CDP {environment.cdp_url} belongs to dedicated "
+        f"profile {environment.profile}; refusing to reuse or alter that Chrome"
+    )
+
+
 def launch(
     environment: BrowserEnvironment, mode: str, *, control_held: bool = False
 ) -> str:
@@ -227,6 +266,7 @@ def launch(
         owner = _Owner(profile / OWNER_FILE_NAME)
         metadata = _cdp_metadata(environment.cdp_url)
         if '"webSocketDebuggerUrl"' in metadata:
+            require_profile(environment)
             running_mode = _metadata_mode(metadata)
             if running_mode == mode:
                 return (
@@ -314,6 +354,7 @@ def _spawn(environment: BrowserEnvironment, mode: str, owner: _Owner) -> str:
                 raise LauncherError(
                     f"CDP became ready in {ready_mode} mode, expected {mode}"
                 )
+            require_profile(environment)
             return note
         if not _pid_is_live(process.pid):
             owner.remove_if_matches(process.pid)

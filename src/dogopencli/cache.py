@@ -109,10 +109,21 @@ class Cache:
     def refresh_lock(self):
         lock_path = self._path.with_name(self._path.name + ".refresh.lock")
         try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            os.chmod(self._path.parent, 0o700)
+        except OSError as error:
+            raise CliError(
+                "IO_ERROR", "cannot create private cache directory"
+            ) from error
+        try:
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         except FileExistsError as error:
             raise CliError(
                 LOCKED, "another refresh holds the cache lock", retryable=True
+            ) from error
+        except OSError as error:
+            raise CliError(
+                "IO_ERROR", "cannot create private cache refresh lock"
             ) from error
         try:
             os.close(fd)

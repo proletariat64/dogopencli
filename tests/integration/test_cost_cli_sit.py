@@ -1032,3 +1032,27 @@ def test_concurrent_reads_see_complete_snapshots(cost_setup):
     assert not thread.is_alive()
     assert writer_errors == []
     assert failures == []
+
+
+def test_last_cost_page_after_deadline_preserves_cache(
+    run_cli, envelope, cost_setup, sample_cost_rows, monkeypatch
+):
+    cost_setup.state.business_handler = lambda payload, index: cost_page(
+        sample_cost_rows
+    )
+    assert run_cli(["refresh", "payment", "cost"])[0] == 0
+    clock = [0.0]
+    monkeypatch.setattr(collect_mod, "_monotonic", lambda: clock[0])
+    monkeypatch.setattr(collect_mod, "REFRESH_BUDGET_SECONDS", 1.0)
+
+    def delayed(payload, index):
+        clock[0] += 60.0
+        return cost_page([cost_row(999)])
+
+    cost_setup.state.business_handler = delayed
+    code, out, _ = run_cli(["refresh", "payment", "cost"])
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "TIMEOUT"
+    code, out, _ = run_cli(["payment", "cost", "list"])
+    assert code == 0
+    assert len(envelope(out)["data"]) == len(sample_cost_rows)

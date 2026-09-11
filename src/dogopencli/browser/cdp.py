@@ -79,7 +79,7 @@ class CdpTransport(ABC):
         """``/json/version``; raises ``CdpError`` when unreachable."""
 
     @abstractmethod
-    def new_target(self, url: str) -> dict[str, Any]:
+    def new_target(self, url: str, *, timeout: float | None = None) -> dict[str, Any]:
         """Create one dedicated page target; returns id/url/websocket keys."""
 
     @abstractmethod
@@ -87,7 +87,7 @@ class CdpTransport(ABC):
         """Close a probe-created target (best effort)."""
 
     @abstractmethod
-    def open_session(self, ws_url: str) -> CdpSession:
+    def open_session(self, ws_url: str, *, timeout: float | None = None) -> CdpSession:
         """Open the websocket session for one target."""
 
 
@@ -168,15 +168,20 @@ class HttpCdpTransport(CdpTransport):
     def version(self) -> dict[str, Any]:
         return self._get_json("/json/version")
 
-    def new_target(self, url: str) -> dict[str, Any]:
+    def new_target(self, url: str, *, timeout: float | None = None) -> dict[str, Any]:
         import urllib.error
         import urllib.parse
         import urllib.request
 
+        deadline = time.monotonic() + (
+            self._timeout if timeout is None else min(timeout, self._timeout)
+        )
         quoted = urllib.parse.quote(url, safe="")
         req = urllib.request.Request(f"{self._base}/json/new?{quoted}", method="PUT")
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            with urllib.request.urlopen(
+                req, timeout=max(0.001, deadline - time.monotonic())
+            ) as resp:
                 data = json.loads(resp.read())
         except urllib.error.HTTPError:
             # Older Chrome exposes /json/new as GET.
@@ -184,7 +189,9 @@ class HttpCdpTransport(CdpTransport):
                 f"{self._base}/json/new?{quoted}", method="GET"
             )
             try:
-                with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                with urllib.request.urlopen(
+                    req, timeout=max(0.001, deadline - time.monotonic())
+                ) as resp:
                     data = json.loads(resp.read())
             except (OSError, ValueError) as exc:
                 raise CdpError(f"cannot create target: {exc}") from exc
@@ -200,8 +207,11 @@ class HttpCdpTransport(CdpTransport):
         except CdpError:
             return None  # best effort: the target may already be gone
 
-    def open_session(self, ws_url: str) -> CdpSession:
-        return HttpCdpSession(ws_url, timeout=self._timeout)
+    def open_session(self, ws_url: str, *, timeout: float | None = None) -> CdpSession:
+        return HttpCdpSession(
+            ws_url,
+            timeout=self._timeout if timeout is None else min(timeout, self._timeout),
+        )
 
     def _get_json(self, path: str) -> Any:
         import urllib.request

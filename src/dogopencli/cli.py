@@ -212,6 +212,7 @@ def _refresh_channel_cdp(
             source_observed_to=None,
             row_count=len(rows),
         )
+        collect_mod.remaining_seconds(result.deadline)
         store.publish(snapshot, [(row["seqid"], canonical(row)) for row in rows])
     print(f"refresh: published {len(rows)} rows to {ns}", file=sys.stderr)
     stale = _stale(snapshot, config.ttl_hours, _now())
@@ -437,7 +438,10 @@ def cmd_channel_list(args: argparse.Namespace) -> int:
             CACHE_MISS,
             "no cached snapshot; run: dogopencli refresh payment channel",
         )
-    if source.dataset_id is not None and snapshot.dataset_id != source.dataset_id:
+    if (source.dataset_id is not None and snapshot.dataset_id != source.dataset_id) or (
+        source.kind == config_mod.SOURCE_SNAPSHOT
+        and snapshot.dataset_id != manifest["dataset_id"]
+    ):
         raise CliError(
             CACHE_MISS,
             "cached dataset does not match the configured source identity;"
@@ -598,6 +602,7 @@ def cmd_refresh_cost(args: argparse.Namespace) -> int:
             source_observed_to=None,
             row_count=len(records),
         )
+        collect_mod.remaining_seconds(result.deadline)
         store.publish(
             snapshot,
             [(index, canonical(record)) for index, record in enumerate(records, 1)],
@@ -750,7 +755,7 @@ def _fetch_sla_detail(
         response = None
         failure: CliError | None = None
         try:
-            response = transport.execute(request)
+            response = collect_mod.execute_before_deadline(transport, request, deadline)
         except FetchFailed as error:
             failure = CliError(
                 TIMEOUT,
@@ -861,6 +866,7 @@ def cmd_refresh_sla(args: argparse.Namespace) -> int:
             source_observed_to=None,
             row_count=len(rows),
         )
+        collect_mod.remaining_seconds(deadline)
         store.publish(
             snapshot,
             [(index, canonical(row)) for index, row in enumerate(rows, 1)],

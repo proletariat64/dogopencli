@@ -10,6 +10,7 @@ Chrome, never repairs sessions and never classifies authentication; callers
 run the bounded auth probe first and own retry/budget decisions.
 """
 
+import time
 from typing import Any
 
 from ..browser.cdp import CdpError, CdpSession, CdpTransport
@@ -99,17 +100,30 @@ class CdpQueryTransport:
         self._target: dict[str, Any] | None = None
         self._session: CdpSession | None = None
 
-    def execute(self, request: QueryRequest) -> TransportResponse:
+    def execute(
+        self, request: QueryRequest, *, timeout: float | None = None
+    ) -> TransportResponse:
         if request.capability != self._capability.name:
             raise CliError(
                 REQUEST_NOT_ALLOWED,
                 "CDP transport only serves its registered capability",
             )
         validate_request(request, self._capability.contract)
-        session = self._ensure_session()
-        expression = _fetch_expression(request, self._query_timeout)
+        deadline = time.monotonic() + (
+            self._command_budget
+            if timeout is None
+            else min(timeout, self._command_budget)
+        )
         try:
-            result = session.evaluate(expression, self._command_budget)
+            session = self._ensure_session(deadline)
+        except CdpError as error:
+            raise FetchFailed("business query session setup failed") from error
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise FetchFailed("business query budget exhausted during session setup")
+        expression = _fetch_expression(request, min(self._query_timeout, remaining))
+        try:
+            result = session.evaluate(expression, remaining)
         except CdpError as error:
             raise FetchFailed(f"business fetch failed in page: {error}") from error
         if not isinstance(result, dict):
@@ -132,13 +146,20 @@ class CdpQueryTransport:
             retry_after=retry_after if isinstance(retry_after, str) else None,
         )
 
-    def _ensure_session(self) -> CdpSession:
+    def _ensure_session(self, deadline: float) -> CdpSession:
         if self._session is None:
-            self._target = self._cdp.new_target(self._page_url)
+            self._target = self._cdp.new_target(
+                self._page_url, timeout=max(0.001, deadline - time.monotonic())
+            )
             ws_url = self._target.get("webSocketDebuggerUrl")
             if not isinstance(ws_url, str) or not ws_url:
                 raise FetchFailed("CDP target response missing webSocketDebuggerUrl")
-            self._session = self._cdp.open_session(ws_url)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise FetchFailed(
+                    "business query budget exhausted during target creation"
+                )
+            self._session = self._cdp.open_session(ws_url, timeout=remaining)
         return self._session
 
     def close(self) -> None:

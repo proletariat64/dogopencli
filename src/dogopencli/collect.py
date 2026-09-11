@@ -54,6 +54,7 @@ class CollectedScope:
     page_size: int
     pages: int
     rebuilt: bool
+    deadline: float
 
 
 def collect_scope(
@@ -109,6 +110,7 @@ def collect_scope(
         page_size=rebuilt.page_size,
         pages=rebuilt.pages,
         rebuilt=True,
+        deadline=deadline,
     )
 
 
@@ -192,6 +194,7 @@ def _attempt(
         if done_pages >= total_pages:
             break
         page_num += 1
+    remaining_seconds(deadline)
     total = expected_total if expected_total is not None else 0
     return CollectedScope(
         records=ordered,
@@ -200,6 +203,7 @@ def _attempt(
         page_size=page_size,
         pages=pages,
         rebuilt=False,
+        deadline=deadline,
     )
 
 
@@ -211,6 +215,19 @@ def _retry_after_seconds(response: TransportResponse | None) -> float | None:
     except ValueError:
         return None
     return value if math.isfinite(value) and value >= 0 else None
+
+
+def remaining_seconds(deadline: float) -> float:
+    remaining = deadline - _monotonic()
+    if remaining <= 0:
+        raise CliError(TIMEOUT, "collection budget exhausted", retryable=True)
+    return remaining
+
+
+def execute_before_deadline(transport: Any, request: QueryRequest, deadline: float):
+    response = transport.execute(request, timeout=remaining_seconds(deadline))
+    remaining_seconds(deadline)
+    return response
 
 
 def _execute_bounded(
@@ -232,7 +249,7 @@ def _execute_bounded(
         response: TransportResponse | None = None
         failure: CliError | None = None
         try:
-            response = transport.execute(request)
+            response = execute_before_deadline(transport, request, deadline)
         except FetchFailed as error:
             failure = CliError(
                 TIMEOUT,

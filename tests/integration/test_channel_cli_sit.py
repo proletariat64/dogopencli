@@ -342,3 +342,51 @@ def test_records_keep_unknown_fields_and_versions(run_cli, envelope, small_setup
     rows = envelope(out)["data"]
     assert {row["configVersion"] for row in rows} == {"v1", "v2"}
     assert all("abilityId" in row and "chargeAmount" in row for row in rows)
+
+
+def test_switch_dataset_path_requires_refresh(
+    run_cli, envelope, dataset_factory, config_factory, sample_channel_rows
+):
+    first = dataset_factory(sample_channel_rows, name="first")
+    second = dataset_factory(sample_channel_rows[:1], name="second")
+    config_factory(first)
+    assert run_cli(["refresh", "payment", "channel"])[0] == 0
+    config_factory(second)
+    code, out, _ = run_cli(["payment", "channel", "list"])
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "CACHE_MISS"
+    assert run_cli(["refresh", "payment", "channel"])[0] == 0
+    code, out, _ = run_cli(["payment", "channel", "list"])
+    assert code == 0
+    assert len(envelope(out)["data"]) == 1
+
+
+def test_first_refresh_creates_private_cache_directory(
+    run_cli, envelope, dataset_factory, config_factory, sample_channel_rows, tmp_path
+):
+    config = config_factory(dataset_factory(sample_channel_rows))
+    cache = tmp_path / "new-private" / "cache.sqlite3"
+    config.write_text(
+        config.read_text().replace(str(tmp_path / "cache.sqlite3"), str(cache))
+    )
+    code, out, _ = run_cli(["refresh", "payment", "channel"])
+    assert code == 0
+    assert envelope(out)["data"]["published"]
+    assert cache.parent.stat().st_mode & 0o777 == 0o700
+    assert cache.stat().st_mode & 0o777 == 0o600
+
+
+def test_invalid_cache_parent_returns_structured_error(
+    run_cli, envelope, dataset_factory, config_factory, sample_channel_rows, tmp_path
+):
+    config = config_factory(dataset_factory(sample_channel_rows))
+    parent = tmp_path / "not-a-directory"
+    parent.write_text("existing file")
+    config.write_text(
+        config.read_text().replace(
+            str(tmp_path / "cache.sqlite3"), str(parent / "cache.sqlite3")
+        )
+    )
+    code, out, _ = run_cli(["refresh", "payment", "channel"])
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "IO_ERROR"

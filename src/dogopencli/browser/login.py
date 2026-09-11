@@ -202,7 +202,11 @@ def _ensure_headless(environment: BrowserEnvironment) -> None:
     except CdpError:
         version = None
     if version is not None and "HeadlessChrome/" in (version.get("User-Agent") or ""):
-        return  # idempotent: healthy headless reuse, no restart
+        try:
+            launcher.require_profile(environment)
+        except launcher.LauncherError as exc:
+            raise AuthError(BROWSER_UNAVAILABLE, str(exc)) from exc
+        return  # idempotent: verified dedicated headless reuse, no restart
     _launch(environment, mode="headless")
 
 
