@@ -1,0 +1,11 @@
+# Triage Labels
+
+| Role | GitHub label | Meaning |
+| --- | --- | --- |
+| needs-triage | needs-triage | Awaiting maintainer evaluation |
+| needs-info | needs-info | Awaiting additional information |
+| ready-for-agent | ready-for-agent | Specified and ready for agent implementation |
+| ready-for-human | ready-for-human | Requires human implementation |
+| wontfix | wontfix | Will not be actioned |
+
+Use these exact label strings when a skill names a triage role.
