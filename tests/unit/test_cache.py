@@ -166,6 +166,7 @@ def test_existing_cache_schema_preserves_records(tmp_path):
     connection.execute("INSERT INTO records VALUES (?, ?, ?)", ("test", 1, "{}"))
     connection.commit()
     connection.close()
+
     store = Cache(path)
     assert store.records("test") == [(1, "{}")]
     connection = sqlite3.connect(path)
@@ -173,3 +174,62 @@ def test_existing_cache_schema_preserves_records(tmp_path):
         row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
     ]
     connection.close()
+
+
+def test_concurrent_old_schema_migration(tmp_path, monkeypatch):
+    import sqlite3
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from dogopencli.cache import SCHEMA
+
+    path = tmp_path / "cache.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.executescript(
+        SCHEMA.replace(
+            "row_count INTEGER NOT NULL,\n    source_path TEXT",
+            "row_count INTEGER NOT NULL",
+        )
+    )
+    connection.execute("INSERT INTO records VALUES (?, ?, ?)", ("test", 1, "{}"))
+    connection.commit()
+    connection.close()
+    barrier = Barrier(2, timeout=5)
+    connect = sqlite3.connect
+
+    class SynchronizedConnection(sqlite3.Connection):
+        checked = False
+
+        def execute(self, sql, *args, **kwargs):
+            result = super().execute(sql, *args, **kwargs)
+            if sql == "PRAGMA table_info(snapshots)" and not self.checked:
+                self.checked = True
+                rows = result.fetchall()
+                barrier.wait()
+                return rows
+            return result
+
+    def synchronized_connect(*args, **kwargs):
+        return connect(*args, factory=SynchronizedConnection, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", synchronized_connect)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: Cache(path).records("test"), range(2)))
+    assert results == [[(1, "{}")], [(1, "{}")]]
+
+
+def test_refresh_lock_preserves_os_error_cause(tmp_path, monkeypatch):
+    from dogopencli.errors import CliError
+
+    error = OSError("lock unavailable")
+
+    def fail_open(*args):
+        raise error
+
+    monkeypatch.setattr("dogopencli.cache.os.open", fail_open)
+    with pytest.raises(CliError) as caught:
+        with Cache(tmp_path / "cache.sqlite3").refresh_lock():
+            pytest.fail("lock must not be acquired")
+    assert caught.value.code == "IO_ERROR"
+    assert caught.value.__cause__ is error

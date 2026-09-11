@@ -135,7 +135,16 @@ class Cache:
                 row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
             }
             if "source_path" not in columns:
-                connection.execute("ALTER TABLE snapshots ADD COLUMN source_path TEXT")
+                # Another connection may have migrated since our first check.
+                connection.execute("BEGIN IMMEDIATE")
+                columns = {
+                    row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
+                }
+                if "source_path" not in columns:
+                    connection.execute(
+                        "ALTER TABLE snapshots ADD COLUMN source_path TEXT"
+                    )
+                connection.execute("COMMIT")
             return connection
         except BaseException:
             connection.close()

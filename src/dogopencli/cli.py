@@ -8,8 +8,10 @@ failure, 2 argument/config error, 130 interrupted.
 import argparse
 import hashlib
 import sys
+import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
 from . import __version__
 from . import collect as collect_mod
@@ -1258,8 +1260,20 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)
         return EXIT_INTERRUPTED
-    except Exception:
+    except Exception as error:
+        diagnostic_id = uuid4().hex
+        # Locations only: exception text, source lines and locals can contain data.
+        locations = " -> ".join(
+            f"{frame.f_code.co_name}:{line}"
+            for frame, line in traceback.walk_tb(error.__traceback__)
+        )
+        print(
+            f"INTERNAL_ERROR {diagnostic_id} {type(error).__name__}: {locations}",
+            file=sys.stderr,
+        )
         return _emit_error(
-            CliError("INTERNAL_ERROR", "unexpected command failure"),
+            CliError(
+                "INTERNAL_ERROR", f"unexpected command failure (id: {diagnostic_id})"
+            ),
             getattr(args, "format", "json"),
         )

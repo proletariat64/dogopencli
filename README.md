@@ -28,6 +28,8 @@ kind = "cdp"
 
 配置示例见被 Git 忽略的 `tmp/channel-2026-09-11/source.toml`；整理集为私有数据，不随 Git 分发。
 
+`cache.path` 仅支持具备可靠 SQLite WAL/共享内存与 POSIX `flock` 语义的本地 Linux 文件系统，推荐 WSL Linux 磁盘上的默认目录。Windows DrvFS/9p 挂载及网络文件系统不在缓存支持范围；无法启用 WAL 时明确失败，不降级为回滚日志。升级前若缓存位于这些挂载上，请改到支持的本地路径并重新刷新；旧库的来源路径列会自动迁移。
+
 ## 登录与认证
 
 认证命令移植自 DI（基线 commit `8eb163c6d140554ca167bd50349a85ca224ac342`），独立运行不依赖已安装 DI；使用专用 Chrome profile（`~/.local/share/dogopencli/chrome/`）与 CDP 端口 9222，输出 `output_version` envelope，详见 [ADR 0004](docs/adr/0004-cli-runtime-boundaries.md)：
@@ -74,7 +76,7 @@ Channel 的 live 查询还会按已验证字段进行本地精确筛选，避免
 | BROWSER_UNAVAILABLE | 专用浏览器不可达；运行 `dogopencli login` 恢复。连接的 Chrome 必须属于专用 profile；无法证明归属时拒绝复用或退出。Chrome 默认启用沙箱，不开放通配 WebSocket Origin，CLI 原生连接不发送 Origin 头；启动失败时检查 Chrome 日志，不自动关闭沙箱 |
 | LOCKED | 另一刷新、SQLite 锁竞争或浏览器生命周期操作进行中；稍后重试 |
 | CACHE_ERROR / IO_ERROR | 缓存数据库或本地文件操作失败；检查文件权限、磁盘和数据库，不按锁竞争处理 |
-| INTERNAL_ERROR | 未预期的业务命令异常；返回不含业务内容的错误信息 |
+| INTERNAL_ERROR | 未预期的业务命令异常；错误关联号同时出现在 envelope 与 stderr，stderr 附异常类型及函数/行号。排查时保留 stderr；不输出异常文本、源代码行或局部变量 |
 | SOURCE_SCOPE_UNAVAILABLE | 替代集仅覆盖 EXTERNAL；其他场景无数据，不伪造空列表 |
 | LIVE_SOURCE_UNAVAILABLE | snapshot 来源不支持 `--live`；切换到 cdp 或改用缓存 |
 | REQUEST_NOT_ALLOWED | 请求不在只读允许清单；属于防护行为，不开放任意请求入口 |
@@ -83,8 +85,11 @@ Channel 的 live 查询还会按已验证字段进行本地精确筛选，避免
 
 ## 未完成的外部验收依赖
 
+安全参数变更后已用独立空 profile、CDP 9228 的真实 Chrome 验证：启用沙箱、不添加 `--remote-allow-origins` 时，无 Origin 的原生 CDP 连接成功执行 `1+1`；携带不可信 Origin 的连接被 HTTP 403 拒绝。本地证据目录为 `tmp/chrome-secure-smoke-tiwgh41d/` 与 `tmp/chrome-origin-check-gwlhhvs6/`（不随 Git 分发）。该检查仅覆盖连接通路。
+
 - Channel 真实全量 UAT：待后端故障修复后执行（Issue #10），当前替代集明确标记 backend_complete=false，不代表生产全量。
 - 认证 UAT（login headed/headless 交接、logout 范围）与 Cost/SLA 生产只读 UAT：待用户完成一次人工 `dogopencli login` 后执行；待办命令清单与验收证据见被 Git 忽略的 `tmp/acceptance-2026-09-11.md`。
+- launcher 安全参数变更后的生产连接复验仍待完成：使用当前默认参数执行 `dogopencli login`，随后执行 `dogopencli refresh payment cost`，验证应用会话与采集；上述空 profile 检查不替代此项 UAT。
 
 ## 文档入口
 

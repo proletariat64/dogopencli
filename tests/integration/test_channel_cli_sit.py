@@ -431,3 +431,9 @@ def test_unexpected_error_uses_safe_envelope(run_cli, envelope, monkeypatch):
     assert code == 1
     assert envelope(out)["error"]["code"] == "INTERNAL_ERROR"
     assert "PRIVATE-RECORD-CONTENT" not in out + err
+    message = envelope(out)["error"]["message"]
+    diagnostic_id = message.split("id: ")[1].rstrip(")")
+    assert len(diagnostic_id) == 32
+    assert diagnostic_id in err
+    assert "ValueError" in err
+    assert "broken:" in err
