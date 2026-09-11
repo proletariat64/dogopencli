@@ -19,6 +19,7 @@ except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
 CONFIG_ENV = "DOGOPENCLI_CONFIG"
+CONFIG_DIR_ENV = "DOGOPENCLI_CONFIG_DIR"
 DEFAULT_CONFIG = Path.home() / ".config" / "dogopencli" / "config.toml"
 DEFAULT_CACHE = Path.home() / ".local" / "share" / "dogopencli" / "cache.sqlite3"
 DEFAULT_TTL_HOURS = 72.0
@@ -45,12 +46,20 @@ def _config_error(message: str) -> CliError:
     return CliError(CONFIG_ERROR, message, exit_code=EXIT_USAGE)
 
 
-def config_path() -> Path:
+def config_path(explicit_dir: str | Path | None = None) -> Path:
+    """One precedence for auth and queries: explicit dir > env dir > env file."""
+    directory = (
+        explicit_dir if explicit_dir is not None else os.environ.get(CONFIG_DIR_ENV)
+    )
+    if directory is not None:
+        if not str(directory).strip():
+            raise _config_error("configuration directory cannot be empty")
+        return Path(directory).expanduser().resolve() / DEFAULT_CONFIG.name
     override = os.environ.get(CONFIG_ENV)
     if override is not None:
         if not override.strip():
             raise _config_error(f"{CONFIG_ENV} is empty")
-        return Path(override)
+        return Path(override).expanduser().resolve()
     return DEFAULT_CONFIG
 
 
@@ -68,6 +77,11 @@ def _source(section: Any, key: str) -> SourceConfig:
     dataset_id = section.get("dataset_id")
     if dataset_id is not None and not isinstance(dataset_id, str):
         raise _config_error(f"[sources.{key}] dataset_id must be a string")
+    if kind == SOURCE_CDP and dataset_id is not None:
+        raise _config_error(
+            f"[sources.{key}] dataset_id is only valid for snapshot sources; "
+            "remove it for cdp"
+        )
     path = None
     if kind == SOURCE_SNAPSHOT:
         if not isinstance(raw_path, str) or not raw_path.strip():

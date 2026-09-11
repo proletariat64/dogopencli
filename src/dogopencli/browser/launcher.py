@@ -29,8 +29,6 @@ READY_WAIT_SECONDS = 10.0
 
 _HEADLESS_ARGS = ("--headless=new",)
 _COMMON_ARGS = (
-    "--remote-allow-origins=*",
-    "--no-sandbox",
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-background-timer-throttling",

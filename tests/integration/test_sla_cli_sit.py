@@ -804,3 +804,14 @@ def test_last_sla_detail_after_deadline_preserves_cache(
     code, out, _ = listing(run_cli)
     assert code == 0
     assert len(envelope(out)["data"]) == len(sample_sla_rows)
+
+
+def test_live_detail_quality_flags_describe_single_id(run_cli, envelope, sla_setup):
+    sla_setup.state.business_script.append(detail_outcome("101"))
+    code, out, _ = getting(
+        run_cli, "--live", "--id", "101", "--require-fresh", "--require-complete"
+    )
+    assert code == 0
+    meta = envelope(out)["meta"]
+    assert meta["complete"] is True and meta["stale"] is False
+    assert meta["query"] == {"capability": "payment.sla.baselines.get", "id": "101"}

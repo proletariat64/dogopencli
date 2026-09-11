@@ -23,6 +23,7 @@ class EndpointContract:
     # Verified larger capacity allowing one full-candidate rebuild on
     # business-success coverage gaps. None means no rebuild clause (Channel).
     rebuild_page_size: int | None = None
+    scope_field: str | None = None
 
 
 @dataclass(frozen=True)

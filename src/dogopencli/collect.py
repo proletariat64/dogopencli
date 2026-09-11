@@ -140,6 +140,12 @@ def _attempt(
         body.update(filters)
         response = _execute_bounded(capability, transport, body, deadline)
         page = capability.parse_page(response.body)
+        if contract.scope_field is not None and any(
+            record.get(contract.scope_field) != scope for record in page.records
+        ):
+            raise CliError(
+                INVALID_RESPONSE, "response rows do not match requested scope"
+            )
         empty = page.total_count == 0 and page.total_pages == 0 and not page.records
         if empty and expected_total is None:
             # Verified empty-result shape: the page-number echo is zeroed,

@@ -81,6 +81,13 @@ def read_manifest(path: Path, capability: str) -> dict[str, Any]:
     scope = manifest.get("scope")
     if not isinstance(scope, str) or not scope:
         raise _invalid_dataset("dataset scope missing")
+    dataset_id = manifest.get("dataset_id")
+    if (
+        not isinstance(dataset_id, str)
+        or len(dataset_id) != 64
+        or any(char not in "0123456789abcdef" for char in dataset_id)
+    ):
+        raise _invalid_dataset("manifest dataset_id invalid")
     return manifest
 
 

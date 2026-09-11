@@ -4,6 +4,7 @@ Drives refresh + list through dogopencli.cli.main with synthetic datasets;
 asserts stdout/stderr, exit codes and cache file state. Fully offline.
 """
 
+import json
 from decimal import Decimal
 from pathlib import Path
 
@@ -99,7 +100,7 @@ def test_refresh_rejects_missing_dataset(
     assert not (tmp_path / "cache.sqlite3").exists()
     code, out, _ = listing(run_cli)
     assert code == 1
-    assert envelope(out)["error"]["code"] == "SOURCE_DATA_MISSING"
+    assert envelope(out)["error"]["code"] == "CACHE_MISS"
 
 
 def test_refresh_rejects_missing_dataset_file(run_cli, envelope, small_setup):
@@ -390,3 +391,43 @@ def test_invalid_cache_parent_returns_structured_error(
     code, out, _ = run_cli(["refresh", "payment", "channel"])
     assert code == 1
     assert envelope(out)["error"]["code"] == "IO_ERROR"
+
+
+def test_cached_query_survives_removed_source_files(
+    run_cli, envelope, dataset_factory, config_factory, sample_channel_rows
+):
+    import shutil
+
+    dataset = dataset_factory(sample_channel_rows)
+    config_factory(dataset)
+    assert refresh(run_cli)[0] == 0
+    shutil.rmtree(dataset)
+    code, out, _ = listing(run_cli)
+    assert code == 0
+    assert len(envelope(out)["data"]) == len(sample_channel_rows)
+    assert refresh(run_cli)[0] == 1
+
+
+def test_manifest_without_identity_is_rejected_on_refresh(
+    run_cli, envelope, dataset_factory, config_factory, sample_channel_rows
+):
+    dataset = dataset_factory(sample_channel_rows)
+    path = dataset / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["dataset_id"]
+    path.write_text(json.dumps(manifest))
+    config_factory(dataset)
+    code, out, _ = refresh(run_cli)
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "SOURCE_DATA_INVALID"
+
+
+def test_unexpected_error_uses_safe_envelope(run_cli, envelope, monkeypatch):
+    def broken(*args):
+        raise ValueError("PRIVATE-RECORD-CONTENT")
+
+    monkeypatch.setattr("dogopencli.cli.cmd_channel_list", broken)
+    code, out, err = listing(run_cli)
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "INTERNAL_ERROR"
+    assert "PRIVATE-RECORD-CONTENT" not in out + err

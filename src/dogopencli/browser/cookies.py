@@ -54,6 +54,8 @@ def delete_domain_cookies(
             if isinstance(cookie, Mapping)
             and _domain_matches(cookie.get("domain"), domain_suffix)
         ]
+        if any(not isinstance(cookie.get("name"), str) for cookie in family):
+            raise CdpError("Network.getAllCookies returned a malformed cookie")
         for cookie in family:
             params: dict[str, Any] = {
                 "name": cookie["name"],

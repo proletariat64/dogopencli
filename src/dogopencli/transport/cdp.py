@@ -13,8 +13,15 @@ run the bounded auth probe first and own retry/budget decisions.
 import time
 from typing import Any
 
-from ..browser.cdp import CdpError, CdpSession, CdpTransport
-from ..errors import REQUEST_NOT_ALLOWED, CliError
+from ..browser.cdp import (
+    BrowserLoss,
+    CdpError,
+    CdpSession,
+    CdpTransport,
+    probe_final_url,
+)
+from ..browser.probe import is_login_landing
+from ..errors import AUTH_REQUIRED, INVALID_RESPONSE, REQUEST_NOT_ALLOWED, CliError
 from ..jsonutil import canonical
 from ..plugins import Capability
 from . import OriginMetadata, QueryRequest, TransportResponse, validate_request
@@ -72,6 +79,7 @@ def _fetch_expression(request: QueryRequest, timeout_seconds: float) -> str:
         f"const response = await fetch({target}, {{{options}}});"
         "const text = await response.text();"
         "return {status: response.status, body: text, "
+        "finalUrl: response.url, redirected: response.redirected, "
         'retryAfter: response.headers.get("retry-after")};'
         "} catch (error) {"
         'return {status: 0, body: "", retryAfter: null, error: String(error)};'
@@ -103,6 +111,15 @@ class CdpQueryTransport:
     def execute(
         self, request: QueryRequest, *, timeout: float | None = None
     ) -> TransportResponse:
+        try:
+            return self._execute(request, timeout=timeout)
+        except FetchFailed:
+            self.close()
+            raise
+
+    def _execute(
+        self, request: QueryRequest, *, timeout: float | None = None
+    ) -> TransportResponse:
         if request.capability != self._capability.name:
             raise CliError(
                 REQUEST_NOT_ALLOWED,
@@ -129,7 +146,33 @@ class CdpQueryTransport:
         if not isinstance(result, dict):
             raise FetchFailed("business fetch returned an unusable value")
         if result.get("error") is not None:
+            # A cross-origin login redirect may surface only as a fetch/CORS
+            # error. Re-probe within this request's remaining budget; do not
+            # infer expiration from a generic network error alone.
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                try:
+                    landing = probe_final_url(
+                        self._cdp, self._page_url, timeout=min(15.0, remaining)
+                    )
+                except (CdpError, BrowserLoss):
+                    pass
+                else:
+                    if is_login_landing(landing):
+                        raise CliError(
+                            AUTH_REQUIRED, "session expired; run dogopencli login"
+                        )
             raise FetchFailed(f"business fetch failed in page: {result['error']}")
+        final_url = result.get("finalUrl")
+        if isinstance(final_url, str) and is_login_landing(final_url):
+            raise CliError(
+                AUTH_REQUIRED, "backend redirected to login; run dogopencli login"
+            )
+        if result.get("redirected") is True:
+            raise CliError(
+                INVALID_RESPONSE,
+                "business query redirected to an unverified destination",
+            )
         status = result.get("status")
         body = result.get("body")
         retry_after = result.get("retryAfter")
@@ -163,11 +206,18 @@ class CdpQueryTransport:
         return self._session
 
     def close(self) -> None:
-        if self._session is not None:
-            self._session.close()
-            self._session = None
-        if self._target is not None:
-            target_id = self._target.get("id")
+        session, target = self._session, self._target
+        self._session = None
+        self._target = None
+        if session is not None:
+            try:
+                session.close()
+            except CdpError:
+                pass
+        if target is not None:
+            target_id = target.get("id")
             if isinstance(target_id, str) and target_id:
-                self._cdp.close_target(target_id)
-            self._target = None
+                try:
+                    self._cdp.close_target(target_id)
+                except CdpError:
+                    pass

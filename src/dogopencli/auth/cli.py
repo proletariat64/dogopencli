@@ -61,21 +61,14 @@ def resolve_command(tokens: list[str]) -> tuple[CommandSpec, list[str]]:
 
 
 def resolve_config_dir(explicit: str | None) -> Path:
-    if explicit is not None:
-        if not explicit.strip():
-            raise invalid("--config-dir cannot be empty")
-        return Path(explicit).expanduser().resolve()
-    env_dir = os.environ.get(CONFIG_DIR_ENV)
-    if env_dir and env_dir.strip():
-        return Path(env_dir).expanduser().resolve()
-    env_file = os.environ.get(config_mod.CONFIG_ENV)
-    if env_file and env_file.strip():
-        return Path(env_file).expanduser().resolve().parent
-    return config_mod.DEFAULT_CONFIG.parent
+    try:
+        return config_mod.config_path(explicit).parent
+    except config_mod.CliError as exc:
+        raise invalid(str(exc)) from exc
 
 
 def dispatch(spec: CommandSpec, args: argparse.Namespace) -> Result:
-    environment = environment_mod.resolve_environment(args.config_dir)
+    environment = environment_mod.resolve_environment(config_file=args.config_file)
     if spec.handler == "auth.check":
         return Result(check_authentication(environment))
     if spec.handler == "login":
@@ -162,7 +155,11 @@ def main(argv: list[str], command_hint: str | None = None) -> int:
             )
             return 0
         args = leaf_parser(spec).parse_args(remainder, namespace=global_args)
-        args.config_dir = resolve_config_dir(args.config_dir)
+        try:
+            args.config_file = config_mod.config_path(args.config_dir)
+        except config_mod.CliError as exc:
+            raise invalid(str(exc)) from exc
+        args.config_dir = args.config_file.parent
         if args.verbose:
             sys.stderr.write(f"dogopencli: {spec.command}; config={args.config_dir}\n")
         if args.quiet:

@@ -87,6 +87,8 @@ def prepare(inputs: list[Path], destination: Path) -> dict[str, Any]:
         if set(page_for_seqid) != set(range(1, len(rows) + 1)):
             raise ValueError("Incomplete source-row provenance")
         for index, row in enumerate(rows, 1):
+            if not isinstance(row, dict):
+                raise ValueError("Source row must be an object")
             if type(row.get("seqid")) is not int or row["seqid"] != index:
                 raise ValueError("Invalid source seqid")
             if row.get("payoutType") != "EXTERNAL":

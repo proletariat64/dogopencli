@@ -12,7 +12,7 @@ Channel 后端故障期间使用显式离线替代源推进工程；正式 CDP �
 pip install -e .
 ```
 
-配置默认位于 `~/.config/dogopencli/config.toml`（可用 `DOGOPENCLI_CONFIG` 覆盖），缓存默认 `~/.local/share/dogopencli/cache.sqlite3`（可用配置键 `cache.path`、`cache.ttl_hours` 调整，新鲜度默认 72 小时）。最小配置：
+配置默认位于 `~/.config/dogopencli/config.toml`（认证与查询共用：显式 `--config-dir`〔认证命令〕优先，其次 `DOGOPENCLI_CONFIG_DIR`、`DOGOPENCLI_CONFIG`；文件变量可指定自定义文件名），缓存默认 `~/.local/share/dogopencli/cache.sqlite3`（可用配置键 `cache.path`、`cache.ttl_hours` 调整，新鲜度默认 72 小时）。最小配置：
 
 ```toml
 [sources.payment_channel]
@@ -40,7 +40,7 @@ dogopencli logout               # 仅清理并验证专用本地认证；不撤�
 
 ## 刷新与查询
 
-普通查询只读本地 SQLite 缓存，不隐式联网、不启动浏览器；缓存缺失明确失败。显式 refresh 才访问来源并原子发布缓存；失败或不完整保留旧快照：
+普通查询只读本地 SQLite 缓存，不隐式联网、不启动浏览器；缓存缺失明确失败。显式 refresh 才访问来源并原子发布缓存；失败或不完整保留旧快照。snapshot 查询不读取源 manifest 或数据文件，导入后源文件暂时不可用也能查缓存。缓存记录导入来源路径和 dataset_id；改路径或显式身份后必须刷新，同路径文件内容的变化在显式刷新时校验。旧缓存缺少来源路径时需要刷新一次：
 
 ```bash
 dogopencli refresh payment channel    # snapshot：导入配置指向的整理集；cdp：真实采集
@@ -53,13 +53,15 @@ dogopencli payment sla baselines list
 dogopencli payment sla baselines get --id ID
 ```
 
+Channel 的 live 查询还会按已验证字段进行本地精确筛选，避免后端忽略条件时透出不匹配行；Cost/SLA 保持已验证的后端筛选语义。实时 SLA 详情的 complete 指所请求 ID 的详情，`meta.query` 标明 ID，成功获取时满足 freshness/completeness 要求。refresh 的 `meta.source=cache` 表示刚发布的本地快照。
+
 公共查询参数：`--format json|table`、`--fields`、`--limit`/`--offset`/`--all`、`--live`、`--require-fresh`、`--require-complete`。默认 JSON envelope 为 `data`/`meta`/`error`；`meta` 始终携带 source、backend、simulated、complete、dataset_complete、stale、fetched_at/loaded_at、来源观察时间等质量标记，`--fields` 只裁剪数据不删质量信息。完整参数与契约见[规格 Issue #1](https://github.com/proletariat64/dogopencli/issues/1)。
 
 ## 来源切换与恢复
 
-- Channel 后端修复后：把 `[sources.payment_channel]` 改为 `kind = "cdp"`，显式 `refresh payment channel` 验证当前全量后再使用；验证不通过则显式改回 `"snapshot"`。不会自动切换。
+- Channel 后端修复后：把 `[sources.payment_channel]` 改为 `kind = "cdp"`，显式 `refresh payment channel` 验证当前全量后再使用；验证不通过则显式改回 `"snapshot"`。切换到 cdp 时删除仅适用于 snapshot 的 `dataset_id`，否则返回配置错误。不会自动切换。
 - snapshot 与 cdp 缓存按命名空间隔离，切换来源不会读到另一来源的旧缓存；配置 `dataset_id` 与缓存不一致时明确失败并要求刷新。
-- 并发刷新冲突返回 LOCKED，稍后重试即可，读者始终只见完整旧快照或新快照。
+- 并发刷新冲突返回 LOCKED，稍后重试即可。刷新使用进程持有的文件锁，崩溃或重启后自动释放，磁盘上的锁文件可保留；不按年龄抢占活跃锁。读者始终只见完整旧快照或新快照。
 
 ## 常见错误码与处置
 
@@ -69,8 +71,10 @@ dogopencli payment sla baselines get --id ID
 | CACHE_STALE | 快照超过 TTL；刷新，或去掉 `--require-fresh` 显式使用过期数据 |
 | INCOMPLETE_RESULT | 替代集不覆盖后端全量；`--require-complete` 下不可用，去掉该标记可显式使用部分数据 |
 | AUTH_REQUIRED | 会话失效；运行 `dogopencli login` |
-| BROWSER_UNAVAILABLE | 专用浏览器不可达；运行 `dogopencli login` 恢复。若有手工启动、占用 profile/9222 端口的 Chrome（缺 `--remote-allow-origins` 时探针会握手 403），先关闭它再 login |
-| LOCKED | 另一刷新或浏览器生命周期操作进行中；稍后重试 |
+| BROWSER_UNAVAILABLE | 专用浏览器不可达；运行 `dogopencli login` 恢复。连接的 Chrome 必须属于专用 profile；无法证明归属时拒绝复用或退出。Chrome 默认启用沙箱，不开放通配 WebSocket Origin，CLI 原生连接不发送 Origin 头；启动失败时检查 Chrome 日志，不自动关闭沙箱 |
+| LOCKED | 另一刷新、SQLite 锁竞争或浏览器生命周期操作进行中；稍后重试 |
+| CACHE_ERROR / IO_ERROR | 缓存数据库或本地文件操作失败；检查文件权限、磁盘和数据库，不按锁竞争处理 |
+| INTERNAL_ERROR | 未预期的业务命令异常；返回不含业务内容的错误信息 |
 | SOURCE_SCOPE_UNAVAILABLE | 替代集仅覆盖 EXTERNAL；其他场景无数据，不伪造空列表 |
 | LIVE_SOURCE_UNAVAILABLE | snapshot 来源不支持 `--live`；切换到 cdp 或改用缓存 |
 | REQUEST_NOT_ALLOWED | 请求不在只读允许清单；属于防护行为，不开放任意请求入口 |

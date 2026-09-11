@@ -799,3 +799,58 @@ def test_decimal_precision_and_unknown_fields_preserved(run_cli, envelope, cdp_s
     row = envelope(out)["data"][0]
     assert str(row["chargeAmount"]["amount"]) == PRECISE_AMOUNT
     assert row["futureUnknownField"] == {"keep": ["as-is", 1]}
+
+
+def test_cdp_source_rejects_leftover_dataset_id(run_cli, envelope, cdp_setup):
+    cdp_setup.write_config(dataset_id="historical")
+    code, out, _ = refresh(run_cli)
+    assert code == 2
+    assert envelope(out)["error"]["code"] == "CONFIG_ERROR"
+    assert cdp_setup.state.business_requests == []
+
+
+def test_wrong_channel_scope_never_publishes(run_cli, envelope, cdp_setup):
+    cdp_setup.state.business_handler = paging_handler({1: [channel_row(1)]}, 1)
+    code, out, _ = refresh(run_cli, "--payout-type", "LIQUIDITY")
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "INVALID_RESPONSE"
+    code, out, _ = listing(run_cli, "--payout-type", "LIQUIDITY")
+    assert envelope(out)["error"]["code"] == "CACHE_MISS"
+
+
+def test_live_filters_exclude_backend_nonmatches(run_cli, envelope, cdp_setup):
+    rows = [channel_row(1, status="DISABLE"), channel_row(2)]
+    cdp_setup.state.business_handler = paging_handler({1: rows}, 2)
+    code, out, _ = listing(run_cli, "--live", "--status", "ENABLE")
+    assert code == 0
+    result = envelope(out)
+    assert [row["abilityId"] for row in result["data"]] == [2]
+    assert result["meta"]["matched_total"] == 1
+
+
+def test_mid_query_login_redirect_is_auth_required(run_cli, envelope, cdp_setup):
+    cdp_setup.state.business_script.append(
+        {
+            "status": 200,
+            "body": "<html>login</html>",
+            "redirected": True,
+            "final_url": "https://ipaybuservice.alipay.com/login.htm?secret=PRIVATE",
+        }
+    )
+    code, out, _ = refresh(run_cli)
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "AUTH_REQUIRED"
+    assert "PRIVATE" not in out
+    assert len(cdp_setup.state.business_requests) == 1
+
+
+def test_cors_hidden_login_redirect_is_verified(run_cli, envelope, cdp_setup):
+    def expired(payload, index):
+        cdp_setup.state.href = "https://ipaybuservice.alipay.com/login.htm"
+        return {"error": "TypeError: Failed to fetch"}
+
+    cdp_setup.state.business_handler = expired
+    code, out, _ = refresh(run_cli)
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "AUTH_REQUIRED"
+    assert len(cdp_setup.state.business_requests) == 1

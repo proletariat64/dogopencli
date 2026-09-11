@@ -158,6 +158,8 @@ class FakeTransport(cdp.CdpTransport):
             "status": outcome["status"],
             "body": text,
             "retryAfter": outcome.get("retry_after"),
+            "finalUrl": outcome.get("final_url"),
+            "redirected": outcome.get("redirected", False),
         }
 
 

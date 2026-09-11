@@ -158,3 +158,9 @@ def test_require_profile_fails_closed(tmp_path, monkeypatch, owners):
     monkeypatch.setattr(launcher, "_endpoint_process_args", lambda port: owners)
     with pytest.raises(launcher.LauncherError):
         launcher.require_profile(_environment(tmp_path))
+
+
+def test_chrome_keeps_sandbox_and_origin_protection(tmp_path):
+    args = launcher._chrome_args(_environment(tmp_path), "headless")
+    assert "--no-sandbox" not in args
+    assert not any(arg.startswith("--remote-allow-origins") for arg in args)

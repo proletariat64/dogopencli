@@ -67,8 +67,7 @@ def cdp_port(cdp_url: str) -> int:
     return port
 
 
-def _auth_section(config_dir: Path) -> dict[str, str]:
-    path = config_dir / config_mod.DEFAULT_CONFIG.name
+def _auth_section(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
     try:
@@ -89,9 +88,14 @@ def _auth_section(config_dir: Path) -> dict[str, str]:
     return values
 
 
-def resolve_environment(config_dir: Path) -> BrowserEnvironment:
+def resolve_environment(
+    config_dir: Path | None = None, *, config_file: Path | None = None
+) -> BrowserEnvironment:
     """Resolve the dedicated browser environment: defaults < [auth] < env."""
-    section = _auth_section(config_dir)
+    path = (
+        config_file if config_file is not None else config_mod.config_path(config_dir)
+    )
+    section = _auth_section(path)
     raw_profile = os.environ.get(PROFILE_ENV) or section.get("profile")
     profile = Path(raw_profile).expanduser() if raw_profile else default_profile()
     cdp_url = os.environ.get(CDP_URL_ENV) or section.get("cdp_url") or DEFAULT_CDP_URL

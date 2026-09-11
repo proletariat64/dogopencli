@@ -85,3 +85,91 @@ def test_refresh_lock_conflicts(tmp_path):
         assert getattr(caught.value, "code", None) == "LOCKED"
     with store.refresh_lock():
         pass
+
+
+def test_dead_process_does_not_leave_refresh_locked(tmp_path):
+    import os
+    import signal
+
+    store = Cache(tmp_path / "cache.sqlite3")
+    read_fd, write_fd = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(read_fd)
+        with store.refresh_lock():
+            os.write(write_fd, b"ready")
+            signal.pause()
+        os._exit(0)
+    os.close(write_fd)
+    try:
+        assert os.read(read_fd, 5) == b"ready"
+    finally:
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+        os.close(read_fd)
+    assert (tmp_path / "cache.sqlite3.refresh.lock").exists()
+    with store.refresh_lock():
+        pass
+
+
+def test_sqlite_lock_error_is_not_hidden_by_rollback(tmp_path, monkeypatch):
+    import sqlite3
+
+    from dogopencli.errors import CliError
+
+    path = tmp_path / "cache.sqlite3"
+    store = Cache(path)
+    store.publish(meta("test"), ROWS)
+    connect = sqlite3.connect
+    holder = connect(path, isolation_level=None)
+    holder.execute("BEGIN IMMEDIATE")
+
+    def fast_connect(*args, **kwargs):
+        kwargs["timeout"] = 0.01
+        return connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", fast_connect)
+    try:
+        with pytest.raises(CliError) as caught:
+            store.publish(meta("test", "new"), ROWS)
+        assert caught.value.code == "LOCKED"
+        assert "rollback" not in str(caught.value)
+    finally:
+        holder.rollback()
+        holder.close()
+    assert store.current("test").snapshot_id == "snap-1"
+
+
+def test_corrupt_cache_is_not_misreported_as_locked(tmp_path):
+    from dogopencli.errors import CliError
+
+    path = tmp_path / "cache.sqlite3"
+    path.write_bytes(b"not a database")
+    with pytest.raises(CliError) as caught:
+        Cache(path).read("test")
+    assert caught.value.code == "CACHE_ERROR"
+
+
+def test_existing_cache_schema_preserves_records(tmp_path):
+    import sqlite3
+
+    from dogopencli.cache import SCHEMA
+
+    path = tmp_path / "cache.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        SCHEMA.replace(
+            "row_count INTEGER NOT NULL,\n    source_path TEXT",
+            "row_count INTEGER NOT NULL",
+        )
+    )
+    connection.execute("INSERT INTO records VALUES (?, ?, ?)", ("test", 1, "{}"))
+    connection.commit()
+    connection.close()
+    store = Cache(path)
+    assert store.records("test") == [(1, "{}")]
+    connection = sqlite3.connect(path)
+    assert "source_path" in [
+        row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
+    ]
+    connection.close()

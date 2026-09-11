@@ -5,8 +5,12 @@ from decimal import Decimal
 from typing import Any
 
 
+def _reject_constant(value: str) -> None:
+    raise ValueError("Non-finite number")
+
+
 def parse(text: str | bytes) -> Any:
-    return json.loads(text, parse_float=Decimal)
+    return json.loads(text, parse_float=Decimal, parse_constant=_reject_constant)
 
 
 def canonical(value: Any) -> str:

@@ -533,3 +533,13 @@ def test_login_refuses_foreign_profile(run_cli, auth_setup, monkeypatch):
     assert code == 1
     assert value["error"]["code"] == "browser_unavailable"
     assert state.launches == before
+
+
+def test_auth_uses_custom_config_filename(run_cli, auth_setup, monkeypatch):
+    custom = auth_setup.tmp_path / "custom-name.toml"
+    custom.write_text((auth_setup.config_dir / "config.toml").read_text())
+    monkeypatch.delenv("DOGOPENCLI_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("DOGOPENCLI_CONFIG", str(custom))
+    code, value, _ = invoke(run_cli, ["auth", "check"])
+    assert code == 0
+    assert value["result"]["profile"] == str(auth_setup.profile)

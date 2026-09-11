@@ -111,6 +111,48 @@ class PrepareSnapshotTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 MODULE.prepare([], root / "out")
 
+    def test_non_object_row_main_returns_safe_error(self):
+        import contextlib
+        import io
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = self.export(root, "source", [{"payoutType": "EXTERNAL"}])
+            (source / "records.jsonl").write_text('"PRIVATE-ROW"\n')
+            output = io.StringIO()
+            with (
+                patch(
+                    "sys.argv", ["prepare", str(source), "--output", str(root / "out")]
+                ),
+                contextlib.redirect_stdout(output),
+            ):
+                code = MODULE.main()
+            self.assertEqual(code, 1)
+            self.assertEqual(
+                json.loads(output.getvalue())["error"], "SOURCE_PREPARATION_FAILED"
+            )
+            self.assertNotIn("PRIVATE-ROW", output.getvalue())
+            self.assertFalse((root / "out").exists())
+
+    def test_bad_manifest_accounting_is_rejected(self):
+        for change in ("scope", "count", "range"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                source = self.export(root, "source", [{"payoutType": "EXTERNAL"}])
+                path = source / "manifest.json"
+                manifest = json.loads(path.read_text())
+                if change == "scope":
+                    manifest["summary"]["scope"] = "LIQUIDITY"
+                elif change == "count":
+                    manifest["summary"]["exported_rows"] = 99
+                else:
+                    manifest["pages"][0]["seqid_end"] = 99
+                path.write_text(json.dumps(manifest))
+                with self.assertRaises(ValueError):
+                    MODULE.prepare([source], root / "out")
+                self.assertFalse((root / "out").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

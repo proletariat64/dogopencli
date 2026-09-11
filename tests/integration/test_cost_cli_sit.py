@@ -1056,3 +1056,20 @@ def test_last_cost_page_after_deadline_preserves_cache(
     code, out, _ = run_cli(["payment", "cost", "list"])
     assert code == 0
     assert len(envelope(out)["data"]) == len(sample_cost_rows)
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_nonfinite_response_is_structured_failure(
+    run_cli, envelope, cost_setup, constant
+):
+    cost_setup.state.business_script.append(
+        {
+            "status": 200,
+            "body": '{"success":true,"pageNo":0,"pageSize":5000,"totalCount":1,'
+            '"resultDataList":[{"itemId":"1","itemType":"FUND_OUT_CHANNEL_TRANS_FEE",'
+            '"amount":' + constant + "}]}",
+        }
+    )
+    code, out, _ = run_cli(["refresh", "payment", "cost"])
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "INVALID_RESPONSE"

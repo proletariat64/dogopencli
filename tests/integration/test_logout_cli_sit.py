@@ -365,3 +365,13 @@ def test_logout_refuses_foreign_profile(run_cli, logout_setup, monkeypatch):
     assert code == 1
     assert value["error"]["code"] == "browser_unavailable"
     assert state.cookies == before
+
+
+def test_malformed_cookie_is_reported_before_family_deletion(run_cli, logout_setup):
+    state = logout_setup.state
+    state.cookies.append({"domain": ".antglobal-inc.com", "path": "/"})
+    before = list(state.cookies)
+    code, value, _ = invoke(run_cli, [*logout_setup.argv, "logout"])
+    assert code == 1
+    assert value["error"]["code"] == "browser_unavailable"
+    assert state.cookies == before
