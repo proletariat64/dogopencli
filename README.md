@@ -57,6 +57,8 @@ dogopencli payment sla baselines get --id ID
 
 Channel 的 live 查询还会按已验证字段进行本地精确筛选，避免后端忽略条件时透出不匹配行；Cost/SLA 保持已验证的后端筛选语义。实时 SLA 详情的 complete 指所请求 ID 的详情，`meta.query` 标明 ID，成功获取时满足 freshness/completeness 要求。refresh 的 `meta.source=cache` 表示刚发布的本地快照。
 
+Channel 单轮 CDP 采集中，同 `abilityId` 不同内容会阻止发布完整缓存；live 保留各版本但标记 `complete=false`。离线整理集仍可保留跨轮版本：manifest 的 `source_pages_complete` 独立校验各轮源分页，失败页使其为 false，不影响整理集自身的 `dataset_complete`，也不把 `backend_complete` 提升为 true。
+
 公共查询参数：`--format json|table`、`--fields`、`--limit`/`--offset`/`--all`、`--live`、`--require-fresh`、`--require-complete`。默认 JSON envelope 为 `data`/`meta`/`error`；`meta` 始终携带 source、backend、simulated、complete、dataset_complete、stale、fetched_at/loaded_at、来源观察时间等质量标记，`--fields` 只裁剪数据不删质量信息。完整参数与契约见[规格 Issue #1](https://github.com/proletariat64/dogopencli/issues/1)。
 
 ## 来源切换与恢复

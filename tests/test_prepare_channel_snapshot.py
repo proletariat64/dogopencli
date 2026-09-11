@@ -76,6 +76,11 @@ class PrepareSnapshotTests(unittest.TestCase):
             self.assertEqual(result["dataset_id"], other["dataset_id"])
             self.assertEqual((result["input_rows"], result["row_count"]), (4, 2))
             self.assertFalse(result["backend_complete"])
+            self.assertTrue(result["dataset_complete"])
+            self.assertFalse(result["source_pages_complete"])
+            self.assertTrue(
+                all(not s["source_pages_complete"] for s in result["sources"])
+            )
             records = [
                 json.loads(l, parse_float=Decimal)
                 for l in (root / "out/records.jsonl").read_text().splitlines()
@@ -95,6 +100,42 @@ class PrepareSnapshotTests(unittest.TestCase):
             a = self.export(root, "a", [{"payoutType": "OTHER"}])
             with self.assertRaises(ValueError):
                 MODULE.prepare([a], root / "out")
+            self.assertFalse((root / "out").exists())
+
+    def test_source_page_accounting_is_independent_of_mock_completeness(self):
+        for case in ("complete", "failed", "missing", "short", "changed_total"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                source = self.export(root, "source", [{"payoutType": "EXTERNAL"}])
+                path = source / "manifest.json"
+                manifest = json.loads(path.read_text())
+                manifest["summary"].update(failed_pages=[], reported_totals=[1])
+                if case == "failed":
+                    manifest["summary"]["failed_pages"] = [2]
+                elif case == "missing":
+                    manifest["pages"][0]["page"] = 2
+                elif case == "short":
+                    manifest["summary"]["reported_totals"] = [2]
+                elif case == "changed_total":
+                    manifest["summary"]["reported_totals"] = [1, 2]
+                path.write_text(json.dumps(manifest))
+                result = MODULE.prepare([source], root / "out")
+                self.assertEqual(result["source_pages_complete"], case == "complete")
+                self.assertTrue(result["dataset_complete"])
+                self.assertFalse(result["backend_complete"])
+
+    def test_duplicate_page_numbers_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = self.export(root, "source", [{"payoutType": "EXTERNAL"}])
+            path = source / "manifest.json"
+            manifest = json.loads(path.read_text())
+            manifest["pages"].append(
+                {"page": 1, "outcome": "failure", "rows_observed": 0}
+            )
+            path.write_text(json.dumps(manifest))
+            with self.assertRaises(ValueError):
+                MODULE.prepare([source], root / "out")
             self.assertFalse((root / "out").exists())
 
     def test_missing_input_cannot_be_reconstructed_from_counts(self):

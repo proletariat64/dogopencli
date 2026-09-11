@@ -24,6 +24,9 @@ class EndpointContract:
     # business-success coverage gaps. None means no rebuild clause (Channel).
     rebuild_page_size: int | None = None
     scope_field: str | None = None
+    # A repeated business identifier with differing content prevents proof of
+    # completeness without making that identifier a deduplication key.
+    consistency_field: str | None = None
 
 
 @dataclass(frozen=True)

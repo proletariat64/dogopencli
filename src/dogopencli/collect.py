@@ -129,6 +129,8 @@ def _attempt(
     expected_total: int | None = None
     total_pages = 0
     seen: dict[Any, str] = {}
+    observed_content: dict[str, str] = {}
+    consistent = True
     ordered: list[dict[str, Any]] = []
     rows = 0
     pages = 0
@@ -185,6 +187,15 @@ def _attempt(
             rows += 1
             record_id = capability.identity_key(record)
             content = canonical(record)
+            if contract.consistency_field is not None:
+                business_id = record.get(contract.consistency_field)
+                if business_id is not None:
+                    business_key = canonical(business_id)
+                    previous_content = observed_content.setdefault(
+                        business_key, content
+                    )
+                    if previous_content != content:
+                        consistent = False
             previous = seen.get(record_id)
             if previous is not None:
                 if previous != content:
@@ -204,7 +215,7 @@ def _attempt(
     total = expected_total if expected_total is not None else 0
     return CollectedScope(
         records=ordered,
-        complete=rows == total == len(ordered),
+        complete=consistent and rows == total == len(ordered),
         total_count=total,
         page_size=page_size,
         pages=pages,

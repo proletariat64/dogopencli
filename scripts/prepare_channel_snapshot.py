@@ -41,6 +41,50 @@ def observed(value: str) -> datetime:
     return date.astimezone(timezone.utc)
 
 
+def source_pages_complete(manifest: dict[str, Any]) -> bool:
+    """Page accounting only; neither record uniqueness nor backend coverage."""
+    summary = manifest["summary"]
+    size = summary["page_size"]
+    totals = summary["reported_totals"]
+    failed = summary["failed_pages"]
+    if (
+        type(size) is not int
+        or size <= 0
+        or not isinstance(totals, list)
+        or any(type(n) is not int or n < 0 for n in totals)
+        or not isinstance(failed, list)
+        or any(type(n) is not int or n < 1 for n in failed)
+    ):
+        raise ValueError("Invalid source pagination summary")
+    pages = {}
+    for page in manifest["pages"]:
+        number = page["page"]
+        count = page["rows_observed"]
+        if (
+            type(number) is not int
+            or number < 1
+            or number in pages
+            or type(count) is not int
+            or count < 0
+        ):
+            raise ValueError("Invalid or duplicate source page")
+        pages[number] = page
+    if failed or len(set(totals)) != 1:
+        return False
+    total = totals[0]
+    expected_pages = (total + size - 1) // size
+    if len(pages) != expected_pages or summary["exported_rows"] != total:
+        return False
+    return all(
+        number == index
+        and page["outcome"] == "success"
+        and page["rows_observed"] == min(size, total - (number - 1) * size)
+        and page.get("total", total) == total
+        and page.get("pages", expected_pages) == expected_pages
+        for index, (number, page) in enumerate(sorted(pages.items()), 1)
+    )
+
+
 def prepare(inputs: list[Path], destination: Path) -> dict[str, Any]:
     repo = Path(__file__).resolve().parents[1]
     destination = destination.resolve()
@@ -63,6 +107,7 @@ def prepare(inputs: list[Path], destination: Path) -> dict[str, Any]:
             continue
         manifest = json.loads(manifest_bytes)
         summary = manifest["summary"]
+        pages_complete = source_pages_complete(manifest)
         if summary["scope"] != "EXTERNAL":
             raise ValueError("Only EXTERNAL exports are supported")
         timestamp = observed(summary["observed_at"])
@@ -112,6 +157,7 @@ def prepare(inputs: list[Path], destination: Path) -> dict[str, Any]:
             "page_size": summary["page_size"],
             "failed_pages": summary["failed_pages"],
             "reported_totals": summary["reported_totals"],
+            "source_pages_complete": pages_complete,
         }
     if not records:
         raise ValueError("No source records")
@@ -142,7 +188,10 @@ def prepare(inputs: list[Path], destination: Path) -> dict[str, Any]:
         "scope": "EXTERNAL",
         "origin": "production_exports",
         "simulated": True,
-        "dataset_complete": True,
+        "dataset_complete": len(data_lines) == len(records)
+        and sum(len(refs) for refs in references.values())
+        == sum(s["rows"] for s in source_list),
+        "source_pages_complete": all(s["source_pages_complete"] for s in source_list),
         "backend_complete": False,
         "source_observed_from": min(dates).isoformat(),
         "source_observed_to": max(dates).isoformat(),
@@ -191,6 +240,7 @@ def main() -> int:
                     "input_rows",
                     "removed_exact_duplicates",
                     "dataset_complete",
+                    "source_pages_complete",
                     "backend_complete",
                 )
             }
