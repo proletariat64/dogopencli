@@ -29,6 +29,8 @@ CONTRACT = EndpointContract(
     path="/payout/api/ability/search.json",
     page_size=PAGE_SIZE,
     one_based=True,
+    scope_field="payoutType",
+    consistency_field="abilityId",
     allowed_body_keys=frozenset(
         {
             "payoutType",

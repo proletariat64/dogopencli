@@ -44,6 +44,10 @@ def logout_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         f'[auth]\nprofile = "{profile}"\ncdp_url = "{CDP_URL}"\n'
     )
     state = FakeBrowser()
+    monkeypatch.setattr(
+        "dogopencli.browser.launcher._endpoint_process_args",
+        lambda port: [["chrome", f"--user-data-dir={profile}"]],
+    )
     seed_cookies(state)
     monkeypatch.setattr("dogopencli.browser.launcher.launch", state.launch)
     cdp.set_transport_factory(state.transport)
@@ -348,3 +352,26 @@ def test_logout_help_is_json_by_default(run_cli, logout_setup):
         assert global_name in names
     assert document["output"]["formats"] == ["json", "text"]
     assert "logout_unverified" in document["errors"]
+
+
+def test_logout_refuses_foreign_profile(run_cli, logout_setup, monkeypatch):
+    state = logout_setup.state
+    monkeypatch.setattr(
+        "dogopencli.browser.launcher._endpoint_process_args",
+        lambda port: [["chrome", "--user-data-dir=/unrelated-profile"]],
+    )
+    before = list(state.cookies)
+    code, value, _ = invoke(run_cli, [*logout_setup.argv, "logout"])
+    assert code == 1
+    assert value["error"]["code"] == "browser_unavailable"
+    assert state.cookies == before
+
+
+def test_malformed_cookie_is_reported_before_family_deletion(run_cli, logout_setup):
+    state = logout_setup.state
+    state.cookies.append({"domain": ".antglobal-inc.com", "path": "/"})
+    before = list(state.cookies)
+    code, value, _ = invoke(run_cli, [*logout_setup.argv, "logout"])
+    assert code == 1
+    assert value["error"]["code"] == "browser_unavailable"
+    assert state.cookies == before

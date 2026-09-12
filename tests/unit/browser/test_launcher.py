@@ -110,3 +110,57 @@ def test_control_held_pass_through_when_lock_held(
 def test_metadata_mode():
     assert launcher._metadata_mode('{"User-Agent": "HeadlessChrome/128"}') == "headless"
     assert launcher._metadata_mode('{"User-Agent": "Chrome/128"}') == "headed"
+
+
+@pytest.mark.parametrize("mode", ["headed", "headless"])
+def test_same_mode_foreign_browser_is_not_reused(tmp_path, monkeypatch, mode):
+    env = _environment(tmp_path)
+    agent = "HeadlessChrome/128" if mode == "headless" else "Chrome/128"
+    monkeypatch.setattr(
+        launcher,
+        "_cdp_metadata",
+        lambda url: (
+            '{"webSocketDebuggerUrl":"ws://local", "User-Agent":"' + agent + '"}'
+        ),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "_endpoint_process_args",
+        lambda port: [["chrome", "--user-data-dir=/foreign"]],
+    )
+    with pytest.raises(launcher.LauncherError, match="cannot verify"):
+        launcher.launch(env, mode)
+
+
+def test_endpoint_process_args_uses_actual_listener(tmp_path):
+    net = tmp_path / "net"
+    net.mkdir()
+    (net / "tcp").write_text(
+        "header\n0: 0100007F:2406 00000000:0000 0A 0 0 0 1000 0 42\n"
+    )
+    (net / "tcp6").write_text("header\n")
+    for pid, inode, profile in [(100, 42, "/dedicated"), (101, 43, "/foreign")]:
+        process = tmp_path / str(pid)
+        (process / "fd").mkdir(parents=True)
+        (process / "fd" / "1").symlink_to(f"socket:[{inode}]")
+        (process / "cmdline").write_bytes(
+            f"chrome\0--user-data-dir={profile}\0".encode()
+        )
+    assert launcher._endpoint_process_args(9222, tmp_path) == [
+        ["chrome", "--user-data-dir=/dedicated"]
+    ]
+
+
+@pytest.mark.parametrize(
+    "owners", [[], [["chrome", "--user-data-dir=/foreign"]], [["chrome"], ["chrome"]]]
+)
+def test_require_profile_fails_closed(tmp_path, monkeypatch, owners):
+    monkeypatch.setattr(launcher, "_endpoint_process_args", lambda port: owners)
+    with pytest.raises(launcher.LauncherError):
+        launcher.require_profile(_environment(tmp_path))
+
+
+def test_chrome_keeps_sandbox_and_origin_protection(tmp_path):
+    args = launcher._chrome_args(_environment(tmp_path), "headless")
+    assert "--no-sandbox" not in args
+    assert not any(arg.startswith("--remote-allow-origins") for arg in args)

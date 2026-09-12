@@ -93,7 +93,7 @@ class FakeTransport(cdp.CdpTransport):
             "webSocketDebuggerUrl": "ws://cdp/devtools",
         }
 
-    def new_target(self, url: str) -> dict:
+    def new_target(self, url: str, *, timeout: float | None = None) -> dict:
         if not self._state.running:
             raise cdp.CdpError("connection refused")
         self._next_target += 1
@@ -108,7 +108,9 @@ class FakeTransport(cdp.CdpTransport):
     def close_target(self, target_id: str) -> None:
         self.closed.append(target_id)
 
-    def open_session(self, ws_url: str) -> cdp.CdpSession:
+    def open_session(
+        self, ws_url: str, *, timeout: float | None = None
+    ) -> cdp.CdpSession:
         if not self._state.running:
             raise cdp.CdpError("connection refused")
         return FakeSession(self, ws_url)
@@ -156,6 +158,8 @@ class FakeTransport(cdp.CdpTransport):
             "status": outcome["status"],
             "body": text,
             "retryAfter": outcome.get("retry_after"),
+            "finalUrl": outcome.get("final_url"),
+            "redirected": outcome.get("redirected", False),
         }
 
 

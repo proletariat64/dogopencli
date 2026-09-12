@@ -781,3 +781,37 @@ def test_machine_output_envelope(run_cli, envelope, sla_setup, sample_sla_rows):
     assert code == 1
     assert out == ""
     assert "CACHE_STALE" in err
+
+
+def test_last_sla_detail_after_deadline_preserves_cache(
+    run_cli, envelope, sla_setup, sample_sla_rows, monkeypatch
+):
+    refreshed(run_cli, sla_setup, sample_sla_rows)
+    clock = [0.0]
+    monkeypatch.setattr(collect_mod, "_monotonic", lambda: clock[0])
+    monkeypatch.setattr(collect_mod, "REFRESH_BUDGET_SECONDS", 1.0)
+    handler = refresh_handler([sla_row(999)])
+
+    def delayed(payload, index):
+        if "slaBaselineId" in payload:
+            clock[0] += 60.0
+        return handler(payload, index)
+
+    sla_setup.state.business_handler = delayed
+    code, out, _ = refresh(run_cli)
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "TIMEOUT"
+    code, out, _ = listing(run_cli)
+    assert code == 0
+    assert len(envelope(out)["data"]) == len(sample_sla_rows)
+
+
+def test_live_detail_quality_flags_describe_single_id(run_cli, envelope, sla_setup):
+    sla_setup.state.business_script.append(detail_outcome("101"))
+    code, out, _ = getting(
+        run_cli, "--live", "--id", "101", "--require-fresh", "--require-complete"
+    )
+    assert code == 0
+    meta = envelope(out)["meta"]
+    assert meta["complete"] is True and meta["stale"] is False
+    assert meta["query"] == {"capability": "payment.sla.baselines.get", "id": "101"}

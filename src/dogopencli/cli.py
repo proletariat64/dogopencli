@@ -8,8 +8,10 @@ failure, 2 argument/config error, 130 interrupted.
 import argparse
 import hashlib
 import sys
+import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
 from . import __version__
 from . import collect as collect_mod
@@ -49,7 +51,7 @@ from .plugins.payment.sla import SLA_DETAIL, detail_body, parse_detail
 from .table import render_table
 from .transport import QueryRequest, validate_request
 from .transport.cdp import CdpQueryTransport, FetchFailed
-from .transport.snapshot import SnapshotTransport, load_dataset, read_manifest
+from .transport.snapshot import SnapshotTransport, load_dataset
 
 CHANNEL = "payment.channel.list"
 COST = "payment.cost.list"
@@ -171,7 +173,7 @@ def _refresh_channel_cdp(
     store = Cache(config.cache_path)
     ns = namespace(capability.name, args.payout_type, source.kind)
     with store.refresh_lock():
-        environment = resolve_environment(config_mod.config_path().parent)
+        environment = resolve_environment(config_file=config_mod.config_path())
         control = _browser_control(environment)
         try:
             _check_auth(environment)
@@ -212,12 +214,13 @@ def _refresh_channel_cdp(
             source_observed_to=None,
             row_count=len(rows),
         )
+        collect_mod.remaining_seconds(result.deadline)
         store.publish(snapshot, [(row["seqid"], canonical(row)) for row in rows])
     print(f"refresh: published {len(rows)} rows to {ns}", file=sys.stderr)
     stale = _stale(snapshot, config.ttl_hours, _now())
     _emit(
         {"namespace": ns, "published": True, "row_count": len(rows)},
-        _meta_dict(None, snapshot, stale, len(rows), len(rows), False),
+        _meta_dict("cache", snapshot, stale, len(rows), len(rows), False),
     )
     return EXIT_OK
 
@@ -316,6 +319,7 @@ def _refresh_channel_snapshot(
             source_observed_from=dataset.source_observed_from,
             source_observed_to=dataset.source_observed_to,
             row_count=dataset.row_count,
+            source_path=str(source.path.expanduser().resolve()),
         )
         store.publish(snapshot, keyed)
     print(
@@ -325,7 +329,9 @@ def _refresh_channel_snapshot(
     stale = _stale(snapshot, config.ttl_hours, _now())
     _emit(
         {"namespace": ns, "published": True, "row_count": dataset.row_count},
-        _meta_dict(None, snapshot, stale, dataset.row_count, dataset.row_count, False),
+        _meta_dict(
+            "cache", snapshot, stale, dataset.row_count, dataset.row_count, False
+        ),
     )
     return EXIT_OK
 
@@ -369,7 +375,7 @@ def _cmd_channel_list_live(
             body_filters[key] = values[0]
         else:
             body_filters[key] = values
-    environment = resolve_environment(config_mod.config_path().parent)
+    environment = resolve_environment(config_file=config_mod.config_path())
     control = _browser_control(environment)
     try:
         _check_auth(environment)
@@ -391,7 +397,7 @@ def _cmd_channel_list_live(
             INCOMPLETE_RESULT,
             "live collection did not cover the complete matching scope",
         )
-    rows = assign_seqids(result.records)
+    rows = capability.filter_records(assign_seqids(result.records), filters)
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
     meta = _live_meta(
@@ -418,16 +424,14 @@ def cmd_channel_list(args: argparse.Namespace) -> int:
             )
     else:
         source = _snapshot_source(config, capability.source_config_key)
+        if args.payout_type != capability.default_scope:
+            raise CliError(
+                SOURCE_SCOPE_UNAVAILABLE, "snapshot source only covers EXTERNAL"
+            )
         if args.live:
             raise CliError(
                 LIVE_SOURCE_UNAVAILABLE,
                 "snapshot source cannot serve live queries; no implicit fallback",
-            )
-        manifest = read_manifest(source.path, capability.name)
-        if args.payout_type != manifest["scope"]:
-            raise CliError(
-                SOURCE_SCOPE_UNAVAILABLE,
-                f"snapshot source only covers scope {manifest['scope']}",
             )
     store = Cache(config.cache_path)
     ns = namespace(capability.name, args.payout_type, source.kind)
@@ -437,7 +441,10 @@ def cmd_channel_list(args: argparse.Namespace) -> int:
             CACHE_MISS,
             "no cached snapshot; run: dogopencli refresh payment channel",
         )
-    if source.dataset_id is not None and snapshot.dataset_id != source.dataset_id:
+    if (source.dataset_id is not None and snapshot.dataset_id != source.dataset_id) or (
+        source.kind == config_mod.SOURCE_SNAPSHOT
+        and snapshot.source_path != str(source.path.expanduser().resolve())
+    ):
         raise CliError(
             CACHE_MISS,
             "cached dataset does not match the configured source identity;"
@@ -554,7 +561,7 @@ def cmd_refresh_cost(args: argparse.Namespace) -> int:
     store = Cache(config.cache_path)
     ns = namespace(capability.name, capability.default_scope, source.kind)
     with store.refresh_lock():
-        environment = resolve_environment(config_mod.config_path().parent)
+        environment = resolve_environment(config_file=config_mod.config_path())
         control = _browser_control(environment)
         try:
             _check_auth(environment)
@@ -598,6 +605,7 @@ def cmd_refresh_cost(args: argparse.Namespace) -> int:
             source_observed_to=None,
             row_count=len(records),
         )
+        collect_mod.remaining_seconds(result.deadline)
         store.publish(
             snapshot,
             [(index, canonical(record)) for index, record in enumerate(records, 1)],
@@ -606,7 +614,7 @@ def cmd_refresh_cost(args: argparse.Namespace) -> int:
     stale = _stale(snapshot, config.ttl_hours, _now())
     _emit(
         {"namespace": ns, "published": True, "row_count": len(records)},
-        _meta_dict(None, snapshot, stale, len(records), len(records), False),
+        _meta_dict("cache", snapshot, stale, len(records), len(records), False),
     )
     return EXIT_OK
 
@@ -639,7 +647,7 @@ def _cmd_cost_list_live(
                 f"live queries accept a single value per filter; got {values} for {key}"
             )
         scalars[key] = values[0]
-    environment = resolve_environment(config_mod.config_path().parent)
+    environment = resolve_environment(config_file=config_mod.config_path())
     control = _browser_control(environment)
     try:
         _check_auth(environment)
@@ -750,7 +758,7 @@ def _fetch_sla_detail(
         response = None
         failure: CliError | None = None
         try:
-            response = transport.execute(request)
+            response = collect_mod.execute_before_deadline(transport, request, deadline)
         except FetchFailed as error:
             failure = CliError(
                 TIMEOUT,
@@ -800,7 +808,7 @@ def cmd_refresh_sla(args: argparse.Namespace) -> int:
     store = Cache(config.cache_path)
     ns = namespace(capability.name, capability.default_scope, source.kind)
     with store.refresh_lock():
-        environment = resolve_environment(config_mod.config_path().parent)
+        environment = resolve_environment(config_file=config_mod.config_path())
         control = _browser_control(environment)
         try:
             _check_auth(environment)
@@ -861,6 +869,7 @@ def cmd_refresh_sla(args: argparse.Namespace) -> int:
             source_observed_to=None,
             row_count=len(rows),
         )
+        collect_mod.remaining_seconds(deadline)
         store.publish(
             snapshot,
             [(index, canonical(row)) for index, row in enumerate(rows, 1)],
@@ -869,7 +878,7 @@ def cmd_refresh_sla(args: argparse.Namespace) -> int:
     stale = _stale(snapshot, config.ttl_hours, _now())
     _emit(
         {"namespace": ns, "published": True, "row_count": len(rows)},
-        _meta_dict(None, snapshot, stale, len(rows), len(rows), False),
+        _meta_dict("cache", snapshot, stale, len(rows), len(rows), False),
     )
     return EXIT_OK
 
@@ -940,7 +949,7 @@ def _cmd_sla_list_live(
             " its independent filter effect is unverified",
             file=sys.stderr,
         )
-    environment = resolve_environment(config_mod.config_path().parent)
+    environment = resolve_environment(config_file=config_mod.config_path())
     control = _browser_control(environment)
     try:
         _check_auth(environment)
@@ -1055,7 +1064,7 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
     config = config_mod.load([capability.source_config_key])
     source = _cdp_source(config, capability.source_config_key)
     if args.live:
-        environment = resolve_environment(config_mod.config_path().parent)
+        environment = resolve_environment(config_file=config_mod.config_path())
         control = _browser_control(environment)
         try:
             _check_auth(environment)
@@ -1075,6 +1084,7 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
         finally:
             control.release()
         meta = _live_meta(source, capability.default_scope, True, 1, 1, 0)
+        meta["query"] = {"capability": SLA_DETAIL.name, "id": args.id}
         return _emit_object(args, capability, detail, meta, fields)
     store = Cache(config.cache_path)
     ns = namespace(capability.name, capability.default_scope, source.kind)
@@ -1250,3 +1260,20 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)
         return EXIT_INTERRUPTED
+    except Exception as error:
+        diagnostic_id = uuid4().hex
+        # Locations only: exception text, source lines and locals can contain data.
+        locations = " -> ".join(
+            f"{frame.f_code.co_name}:{line}"
+            for frame, line in traceback.walk_tb(error.__traceback__)
+        )
+        print(
+            f"INTERNAL_ERROR {diagnostic_id} {type(error).__name__}: {locations}",
+            file=sys.stderr,
+        )
+        return _emit_error(
+            CliError(
+                "INTERNAL_ERROR", f"unexpected command failure (id: {diagnostic_id})"
+            ),
+            getattr(args, "format", "json"),
+        )

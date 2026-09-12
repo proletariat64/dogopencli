@@ -28,6 +28,7 @@ CDP is available and verification passes.
 
 from typing import Any
 
+from . import launcher
 from .cdp import CdpError, make_transport
 from .cookies import delete_domain_cookies
 from .coordination import acquire_browser_control, acquire_login_lock
@@ -109,6 +110,10 @@ def _clear(environment: BrowserEnvironment, *, timeout: float) -> dict[str, Any]
             "CDP /json/version did not provide a User-Agent; browser mode is unknown",
             details={"cdp_url": environment.cdp_url},
         )
+    try:
+        launcher.require_profile(environment)
+    except launcher.LauncherError as exc:
+        raise AuthError(BROWSER_UNAVAILABLE, str(exc)) from exc
     try:
         deleted = sum(
             delete_domain_cookies(transport, suffix, timeout=timeout)

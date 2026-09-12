@@ -54,6 +54,7 @@ class CollectedScope:
     page_size: int
     pages: int
     rebuilt: bool
+    deadline: float
 
 
 def collect_scope(
@@ -109,6 +110,7 @@ def collect_scope(
         page_size=rebuilt.page_size,
         pages=rebuilt.pages,
         rebuilt=True,
+        deadline=deadline,
     )
 
 
@@ -127,6 +129,8 @@ def _attempt(
     expected_total: int | None = None
     total_pages = 0
     seen: dict[Any, str] = {}
+    observed_content: dict[str, str] = {}
+    consistent = True
     ordered: list[dict[str, Any]] = []
     rows = 0
     pages = 0
@@ -138,6 +142,12 @@ def _attempt(
         body.update(filters)
         response = _execute_bounded(capability, transport, body, deadline)
         page = capability.parse_page(response.body)
+        if contract.scope_field is not None and any(
+            record.get(contract.scope_field) != scope for record in page.records
+        ):
+            raise CliError(
+                INVALID_RESPONSE, "response rows do not match requested scope"
+            )
         empty = page.total_count == 0 and page.total_pages == 0 and not page.records
         if empty and expected_total is None:
             # Verified empty-result shape: the page-number echo is zeroed,
@@ -177,6 +187,15 @@ def _attempt(
             rows += 1
             record_id = capability.identity_key(record)
             content = canonical(record)
+            if contract.consistency_field is not None:
+                business_id = record.get(contract.consistency_field)
+                if business_id is not None:
+                    business_key = canonical(business_id)
+                    previous_content = observed_content.setdefault(
+                        business_key, content
+                    )
+                    if previous_content != content:
+                        consistent = False
             previous = seen.get(record_id)
             if previous is not None:
                 if previous != content:
@@ -192,14 +211,16 @@ def _attempt(
         if done_pages >= total_pages:
             break
         page_num += 1
+    remaining_seconds(deadline)
     total = expected_total if expected_total is not None else 0
     return CollectedScope(
         records=ordered,
-        complete=rows == total == len(ordered),
+        complete=consistent and rows == total == len(ordered),
         total_count=total,
         page_size=page_size,
         pages=pages,
         rebuilt=False,
+        deadline=deadline,
     )
 
 
@@ -211,6 +232,19 @@ def _retry_after_seconds(response: TransportResponse | None) -> float | None:
     except ValueError:
         return None
     return value if math.isfinite(value) and value >= 0 else None
+
+
+def remaining_seconds(deadline: float) -> float:
+    remaining = deadline - _monotonic()
+    if remaining <= 0:
+        raise CliError(TIMEOUT, "collection budget exhausted", retryable=True)
+    return remaining
+
+
+def execute_before_deadline(transport: Any, request: QueryRequest, deadline: float):
+    response = transport.execute(request, timeout=remaining_seconds(deadline))
+    remaining_seconds(deadline)
+    return response
 
 
 def _execute_bounded(
@@ -232,7 +266,7 @@ def _execute_bounded(
         response: TransportResponse | None = None
         failure: CliError | None = None
         try:
-            response = transport.execute(request)
+            response = execute_before_deadline(transport, request, deadline)
         except FetchFailed as error:
             failure = CliError(
                 TIMEOUT,

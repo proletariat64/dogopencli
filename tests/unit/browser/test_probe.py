@@ -60,7 +60,7 @@ class _Transport(cdp.CdpTransport):
             raise cdp.CdpError("connection refused")
         return {"Browser": "Chrome/128.0.0.0", "User-Agent": "HeadlessChrome/128"}
 
-    def new_target(self, url):
+    def new_target(self, url, *, timeout=None):
         if not self.reachable:
             raise cdp.CdpError("connection refused")
         return {"id": "t1", "webSocketDebuggerUrl": "ws://fake/t1"}
@@ -68,7 +68,7 @@ class _Transport(cdp.CdpTransport):
     def close_target(self, target_id):
         pass
 
-    def open_session(self, ws_url):
+    def open_session(self, ws_url, *, timeout=None):
         return _Session(self)
 
 
@@ -191,3 +191,43 @@ def test_navigation_error_is_browser_unavailable(environment, install_transport)
         check_authentication(environment)
     assert caught.value.code == "browser_unavailable"
     assert caught.value.details["reason"] == "navigation_error"
+
+
+def test_probe_setup_navigation_and_settle_share_deadline(monkeypatch):
+    clock = [0.0]
+    waits = []
+    monkeypatch.setattr(cdp.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        cdp.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+    )
+
+    class Session:
+        def navigate(self, url, timeout):
+            waits.append(timeout)
+            clock[0] += 0.4
+
+        def evaluate(self, expression, timeout):
+            waits.append(timeout)
+            clock[0] += timeout
+            return {"ready_state": "loading", "href": PAYMENT_URL}
+
+        def close(self):
+            pass
+
+    class Transport:
+        def new_target(self, url, *, timeout):
+            waits.append(timeout)
+            clock[0] += 0.4
+            return {"id": "1", "webSocketDebuggerUrl": "ws://fake"}
+
+        def open_session(self, url, *, timeout):
+            waits.append(timeout)
+            return Session()
+
+        def close_target(self, target_id):
+            pass
+
+    with pytest.raises(cdp.CdpError):
+        cdp.probe_final_url(Transport(), PAYMENT_URL, timeout=1.0)
+    assert clock[0] == pytest.approx(1.0)
+    assert waits == pytest.approx([1.0, 0.6, 0.6, 0.2])

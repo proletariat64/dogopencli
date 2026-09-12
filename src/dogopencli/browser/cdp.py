@@ -79,7 +79,7 @@ class CdpTransport(ABC):
         """``/json/version``; raises ``CdpError`` when unreachable."""
 
     @abstractmethod
-    def new_target(self, url: str) -> dict[str, Any]:
+    def new_target(self, url: str, *, timeout: float | None = None) -> dict[str, Any]:
         """Create one dedicated page target; returns id/url/websocket keys."""
 
     @abstractmethod
@@ -87,7 +87,7 @@ class CdpTransport(ABC):
         """Close a probe-created target (best effort)."""
 
     @abstractmethod
-    def open_session(self, ws_url: str) -> CdpSession:
+    def open_session(self, ws_url: str, *, timeout: float | None = None) -> CdpSession:
         """Open the websocket session for one target."""
 
 
@@ -98,7 +98,9 @@ class HttpCdpSession(CdpSession):
         import websocket
 
         try:
-            self._ws = websocket.create_connection(ws_url, timeout=timeout)
+            self._ws = websocket.create_connection(
+                ws_url, timeout=timeout, suppress_origin=True
+            )
         except Exception as exc:  # websocket-client raises assorted socket errors
             raise CdpError(f"cannot open target websocket: {exc}") from exc
         self._next_id = 0
@@ -168,15 +170,20 @@ class HttpCdpTransport(CdpTransport):
     def version(self) -> dict[str, Any]:
         return self._get_json("/json/version")
 
-    def new_target(self, url: str) -> dict[str, Any]:
+    def new_target(self, url: str, *, timeout: float | None = None) -> dict[str, Any]:
         import urllib.error
         import urllib.parse
         import urllib.request
 
+        deadline = time.monotonic() + (
+            self._timeout if timeout is None else min(timeout, self._timeout)
+        )
         quoted = urllib.parse.quote(url, safe="")
         req = urllib.request.Request(f"{self._base}/json/new?{quoted}", method="PUT")
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            with urllib.request.urlopen(
+                req, timeout=max(0.001, deadline - time.monotonic())
+            ) as resp:
                 data = json.loads(resp.read())
         except urllib.error.HTTPError:
             # Older Chrome exposes /json/new as GET.
@@ -184,7 +191,9 @@ class HttpCdpTransport(CdpTransport):
                 f"{self._base}/json/new?{quoted}", method="GET"
             )
             try:
-                with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                with urllib.request.urlopen(
+                    req, timeout=max(0.001, deadline - time.monotonic())
+                ) as resp:
                     data = json.loads(resp.read())
             except (OSError, ValueError) as exc:
                 raise CdpError(f"cannot create target: {exc}") from exc
@@ -200,8 +209,11 @@ class HttpCdpTransport(CdpTransport):
         except CdpError:
             return None  # best effort: the target may already be gone
 
-    def open_session(self, ws_url: str) -> CdpSession:
-        return HttpCdpSession(ws_url, timeout=self._timeout)
+    def open_session(self, ws_url: str, *, timeout: float | None = None) -> CdpSession:
+        return HttpCdpSession(
+            ws_url,
+            timeout=self._timeout if timeout is None else min(timeout, self._timeout),
+        )
 
     def _get_json(self, path: str) -> Any:
         import urllib.request
@@ -230,6 +242,13 @@ def make_transport(cdp_url: str) -> CdpTransport:
     return HttpCdpTransport(cdp_url)
 
 
+def _remaining_timeout(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise CdpError("authentication probe deadline exhausted")
+    return remaining
+
+
 def _await_target_settled(session: CdpSession, *, timeout: float = 15.0) -> str:
     """Wait for navigation to settle and return the final href (any origin).
 
@@ -244,7 +263,7 @@ def _await_target_settled(session: CdpSession, *, timeout: float = 15.0) -> str:
     last_ready_state = ""
     expression = "({ready_state: document.readyState, href: location.href})"
     while time.monotonic() < deadline:
-        remaining = max(0.1, deadline - time.monotonic())
+        remaining = _remaining_timeout(deadline)
         raw = session.evaluate(expression, min(5.0, remaining))
         if not isinstance(raw, Mapping):
             raise CdpError("target readiness probe returned an unusable value")
@@ -254,7 +273,7 @@ def _await_target_settled(session: CdpSession, *, timeout: float = 15.0) -> str:
         if href in {"", "about:blank"}:
             previous_href = None
             stable_samples = 0
-            time.sleep(0.25)
+            time.sleep(min(0.25, _remaining_timeout(deadline)))
             continue
         if href.startswith("chrome-error://"):
             raise BrowserLoss("target navigation failed", reason="navigation_error")
@@ -265,7 +284,9 @@ def _await_target_settled(session: CdpSession, *, timeout: float = 15.0) -> str:
         else:
             stable_samples = 0
         previous_href = href
-        time.sleep(0.25)
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(0.25, remaining))
     raise PageNotReady(last_ready_state)
 
 
@@ -289,15 +310,15 @@ def probe_final_url(transport: CdpTransport, url: str, *, timeout: float = 15.0)
     target: dict[str, Any] | None = None
     session: CdpSession | None = None
     try:
-        target = transport.new_target(url)
-        session = transport.open_session(_target_field(target, "webSocketDebuggerUrl"))
-        session.navigate(url, timeout)
         deadline = time.monotonic() + timeout
-        try:
-            href = _await_target_settled(session, timeout=timeout)
-        except PageNotReady:
-            # Chrome can expose a cold target before its navigation task starts.
-            href = _await_target_settled(session, timeout=timeout)
+        target = transport.new_target(url, timeout=_remaining_timeout(deadline))
+        session = transport.open_session(
+            _target_field(target, "webSocketDebuggerUrl"),
+            timeout=_remaining_timeout(deadline),
+        )
+        session.navigate(url, _remaining_timeout(deadline))
+        href = _await_target_settled(session, timeout=_remaining_timeout(deadline))
+        _remaining_timeout(deadline)
         return _confirm_entry_stability(session, url, href, deadline=deadline)
     finally:
         if session is not None:
@@ -324,7 +345,9 @@ def _confirm_entry_stability(
     window_end = min(time.monotonic() + ENTRY_STABILITY_SECONDS, deadline)
     while time.monotonic() < window_end:
         time.sleep(min(0.25, max(0.0, window_end - time.monotonic())))
-        remaining = max(0.1, deadline - time.monotonic())
+        if time.monotonic() >= window_end:
+            break
+        remaining = _remaining_timeout(deadline)
         try:
             raw = session.evaluate(expression, min(5.0, remaining))
         except CdpError:

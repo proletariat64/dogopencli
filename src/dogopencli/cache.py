@@ -6,11 +6,13 @@ complete old or the complete new snapshot. No cookies or tokens are ever
 stored here.
 """
 
+import fcntl
 import os
 import sqlite3
 from collections.abc import Iterable
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 
 from .errors import LOCKED, CliError
@@ -30,7 +32,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     loaded_at TEXT NOT NULL,
     source_observed_from TEXT,
     source_observed_to TEXT,
-    row_count INTEGER NOT NULL
+    row_count INTEGER NOT NULL,
+    source_path TEXT
 );
 CREATE TABLE IF NOT EXISTS records (
     namespace TEXT NOT NULL,
@@ -61,6 +64,7 @@ class SnapshotMeta:
     source_observed_from: str | None
     source_observed_to: str | None
     row_count: int
+    source_path: str | None = None
 
 
 def _snapshot_from_row(row: tuple) -> SnapshotMeta:
@@ -79,7 +83,35 @@ def _snapshot_from_row(row: tuple) -> SnapshotMeta:
         source_observed_from=row[11],
         source_observed_to=row[12],
         row_count=row[13],
+        source_path=row[14],
     )
+
+
+def _sqlite_errors(method):
+    @wraps(method)
+    def call(*args, **kwargs):
+        try:
+            return method(*args, **kwargs)
+        except sqlite3.Error as error:
+            code = getattr(error, "sqlite_errorcode", 0) & 0xFF
+            locked = code in (
+                getattr(sqlite3, "SQLITE_BUSY", 5),
+                getattr(sqlite3, "SQLITE_LOCKED", 6),
+            )
+            # Python 3.10 does not expose sqlite_errorcode.
+            locked = locked or str(error) in (
+                "database is locked",
+                "database table is locked",
+            )
+            raise CliError(
+                LOCKED if locked else "CACHE_ERROR",
+                "cache is busy; retry later"
+                if locked
+                else "cache database operation failed",
+                retryable=locked,
+            ) from error
+
+    return call
 
 
 class Cache:
@@ -92,34 +124,63 @@ class Cache:
         os.chmod(parent, 0o700)
         connection = sqlite3.connect(self._path, isolation_level=None, timeout=10.0)
         os.chmod(self._path, 0o600)
-        # WAL lets concurrent readers keep one consistent snapshot view
-        # while a writer publishes a replacement. The mode persists in the
-        # database header; a racing publish makes the pragma transiently
-        # busy, and an already-initialised database stays in WAL anyway.
         try:
             mode = connection.execute("PRAGMA journal_mode").fetchone()
             if mode is None or str(mode[0]).lower() != "wal":
-                connection.execute("PRAGMA journal_mode=WAL")
-        except sqlite3.OperationalError:
-            pass
-        connection.executescript(SCHEMA)
-        return connection
+                mode = connection.execute("PRAGMA journal_mode=WAL").fetchone()
+                if mode is None or str(mode[0]).lower() != "wal":
+                    raise CliError("CACHE_ERROR", "cache requires WAL journal mode")
+            connection.executescript(SCHEMA)
+            columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
+            }
+            if "source_path" not in columns:
+                # Another connection may have migrated since our first check.
+                connection.execute("BEGIN IMMEDIATE")
+                columns = {
+                    row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
+                }
+                if "source_path" not in columns:
+                    connection.execute(
+                        "ALTER TABLE snapshots ADD COLUMN source_path TEXT"
+                    )
+                connection.execute("COMMIT")
+            return connection
+        except BaseException:
+            connection.close()
+            raise
 
     @contextmanager
     def refresh_lock(self):
         lock_path = self._path.with_name(self._path.name + ".refresh.lock")
         try:
-            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError as error:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            os.chmod(self._path.parent, 0o700)
+        except OSError as error:
+            raise CliError(
+                "IO_ERROR", "cannot create private cache directory"
+            ) from error
+        fd = None
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            if fd is not None:
+                os.close(fd)
             raise CliError(
                 LOCKED, "another refresh holds the cache lock", retryable=True
             ) from error
+        except OSError as error:
+            if fd is not None:
+                os.close(fd)
+            raise CliError("IO_ERROR", "cannot acquire cache refresh lock") from error
         try:
-            os.close(fd)
             yield
         finally:
-            lock_path.unlink(missing_ok=True)
+            # Keep the inode: unlinking a flock file permits concurrent owners.
+            os.close(fd)
 
+    @_sqlite_errors
     def current(self, namespace_name: str) -> SnapshotMeta | None:
         connection = self._connect()
         try:
@@ -127,7 +188,7 @@ class Cache:
                 "SELECT namespace, capability, scope, source_kind, snapshot_id,"
                 " dataset_id, simulated, backend_complete, dataset_complete,"
                 " fetched_at, loaded_at, source_observed_from,"
-                " source_observed_to, row_count"
+                " source_observed_to, row_count, source_path"
                 " FROM snapshots WHERE namespace = ?",
                 (namespace_name,),
             ).fetchone()
@@ -137,6 +198,7 @@ class Cache:
             return None
         return _snapshot_from_row(row)
 
+    @_sqlite_errors
     def records(self, namespace_name: str) -> list[tuple[int, str]]:
         connection = self._connect()
         try:
@@ -148,6 +210,7 @@ class Cache:
             connection.close()
         return [(row[0], row[1]) for row in rows]
 
+    @_sqlite_errors
     def read(
         self, namespace_name: str
     ) -> tuple[SnapshotMeta | None, list[tuple[int, str]]]:
@@ -159,7 +222,7 @@ class Cache:
                 "SELECT namespace, capability, scope, source_kind, snapshot_id,"
                 " dataset_id, simulated, backend_complete, dataset_complete,"
                 " fetched_at, loaded_at, source_observed_from,"
-                " source_observed_to, row_count"
+                " source_observed_to, row_count, source_path"
                 " FROM snapshots WHERE namespace = ?",
                 (namespace_name,),
             ).fetchone()
@@ -173,6 +236,7 @@ class Cache:
         snapshot = _snapshot_from_row(row) if row is not None else None
         return snapshot, [(record[0], record[1]) for record in rows]
 
+    @_sqlite_errors
     def publish(self, meta: SnapshotMeta, records: Iterable[tuple[int, str]]) -> None:
         """Atomically replace the namespace snapshot; failures keep the old one."""
         connection = self._connect()
@@ -186,7 +250,7 @@ class Cache:
             )
             connection.execute(
                 "INSERT INTO snapshots VALUES"
-                " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     meta.namespace,
                     meta.capability,
@@ -202,6 +266,7 @@ class Cache:
                     meta.source_observed_from,
                     meta.source_observed_to,
                     meta.row_count,
+                    meta.source_path,
                 ),
             )
             connection.executemany(
@@ -210,7 +275,9 @@ class Cache:
             )
             connection.execute("COMMIT")
         except BaseException:
-            connection.execute("ROLLBACK")
+            if connection.in_transaction:
+                with suppress(sqlite3.Error):
+                    connection.execute("ROLLBACK")
             raise
         finally:
             connection.close()

@@ -4,6 +4,7 @@ Drives refresh + list through dogopencli.cli.main with synthetic datasets;
 asserts stdout/stderr, exit codes and cache file state. Fully offline.
 """
 
+import json
 from decimal import Decimal
 from pathlib import Path
 
@@ -99,7 +100,7 @@ def test_refresh_rejects_missing_dataset(
     assert not (tmp_path / "cache.sqlite3").exists()
     code, out, _ = listing(run_cli)
     assert code == 1
-    assert envelope(out)["error"]["code"] == "SOURCE_DATA_MISSING"
+    assert envelope(out)["error"]["code"] == "CACHE_MISS"
 
 
 def test_refresh_rejects_missing_dataset_file(run_cli, envelope, small_setup):
@@ -342,3 +343,97 @@ def test_records_keep_unknown_fields_and_versions(run_cli, envelope, small_setup
     rows = envelope(out)["data"]
     assert {row["configVersion"] for row in rows} == {"v1", "v2"}
     assert all("abilityId" in row and "chargeAmount" in row for row in rows)
+
+
+def test_switch_dataset_path_requires_refresh(
+    run_cli, envelope, dataset_factory, config_factory, sample_channel_rows
+):
+    first = dataset_factory(sample_channel_rows, name="first")
+    second = dataset_factory(sample_channel_rows[:1], name="second")
+    config_factory(first)
+    assert run_cli(["refresh", "payment", "channel"])[0] == 0
+    config_factory(second)
+    code, out, _ = run_cli(["payment", "channel", "list"])
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "CACHE_MISS"
+    assert run_cli(["refresh", "payment", "channel"])[0] == 0
+    code, out, _ = run_cli(["payment", "channel", "list"])
+    assert code == 0
+    assert len(envelope(out)["data"]) == 1
+
+
+def test_first_refresh_creates_private_cache_directory(
+    run_cli, envelope, dataset_factory, config_factory, sample_channel_rows, tmp_path
+):
+    config = config_factory(dataset_factory(sample_channel_rows))
+    cache = tmp_path / "new-private" / "cache.sqlite3"
+    config.write_text(
+        config.read_text().replace(str(tmp_path / "cache.sqlite3"), str(cache))
+    )
+    code, out, _ = run_cli(["refresh", "payment", "channel"])
+    assert code == 0
+    assert envelope(out)["data"]["published"]
+    assert cache.parent.stat().st_mode & 0o777 == 0o700
+    assert cache.stat().st_mode & 0o777 == 0o600
+
+
+def test_invalid_cache_parent_returns_structured_error(
+    run_cli, envelope, dataset_factory, config_factory, sample_channel_rows, tmp_path
+):
+    config = config_factory(dataset_factory(sample_channel_rows))
+    parent = tmp_path / "not-a-directory"
+    parent.write_text("existing file")
+    config.write_text(
+        config.read_text().replace(
+            str(tmp_path / "cache.sqlite3"), str(parent / "cache.sqlite3")
+        )
+    )
+    code, out, _ = run_cli(["refresh", "payment", "channel"])
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "IO_ERROR"
+
+
+def test_cached_query_survives_removed_source_files(
+    run_cli, envelope, dataset_factory, config_factory, sample_channel_rows
+):
+    import shutil
+
+    dataset = dataset_factory(sample_channel_rows)
+    config_factory(dataset)
+    assert refresh(run_cli)[0] == 0
+    shutil.rmtree(dataset)
+    code, out, _ = listing(run_cli)
+    assert code == 0
+    assert len(envelope(out)["data"]) == len(sample_channel_rows)
+    assert refresh(run_cli)[0] == 1
+
+
+def test_manifest_without_identity_is_rejected_on_refresh(
+    run_cli, envelope, dataset_factory, config_factory, sample_channel_rows
+):
+    dataset = dataset_factory(sample_channel_rows)
+    path = dataset / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest["dataset_id"]
+    path.write_text(json.dumps(manifest))
+    config_factory(dataset)
+    code, out, _ = refresh(run_cli)
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "SOURCE_DATA_INVALID"
+
+
+def test_unexpected_error_uses_safe_envelope(run_cli, envelope, monkeypatch):
+    def broken(*args):
+        raise ValueError("PRIVATE-RECORD-CONTENT")
+
+    monkeypatch.setattr("dogopencli.cli.cmd_channel_list", broken)
+    code, out, err = listing(run_cli)
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "INTERNAL_ERROR"
+    assert "PRIVATE-RECORD-CONTENT" not in out + err
+    message = envelope(out)["error"]["message"]
+    diagnostic_id = message.split("id: ")[1].rstrip(")")
+    assert len(diagnostic_id) == 32
+    assert diagnostic_id in err
+    assert "ValueError" in err
+    assert "broken:" in err

@@ -44,6 +44,10 @@ def auth_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         f'[auth]\nprofile = "{profile}"\ncdp_url = "{CDP_URL}"\n'
     )
     state = FakeBrowser()
+    monkeypatch.setattr(
+        "dogopencli.browser.launcher._endpoint_process_args",
+        lambda port: [["chrome", f"--user-data-dir={profile}"]],
+    )
     monkeypatch.setattr("dogopencli.browser.launcher.launch", state.launch)
     cdp.set_transport_factory(state.transport)
     yield SimpleNamespace(
@@ -516,3 +520,26 @@ def test_empty_config_dir_is_invalid(run_cli, auth_setup):
     assert code == 1
     assert value["error"]["code"] == "invalid_arguments"
     assert "cannot be empty" in value["error"]["message"]
+
+
+def test_login_refuses_foreign_profile(run_cli, auth_setup, monkeypatch):
+    state = auth_setup.state
+    monkeypatch.setattr(
+        "dogopencli.browser.launcher._endpoint_process_args",
+        lambda port: [["chrome", "--user-data-dir=/unrelated-profile"]],
+    )
+    before = list(state.launches)
+    code, value, _ = invoke(run_cli, [*auth_setup.argv, "login"])
+    assert code == 1
+    assert value["error"]["code"] == "browser_unavailable"
+    assert state.launches == before
+
+
+def test_auth_uses_custom_config_filename(run_cli, auth_setup, monkeypatch):
+    custom = auth_setup.tmp_path / "custom-name.toml"
+    custom.write_text((auth_setup.config_dir / "config.toml").read_text())
+    monkeypatch.delenv("DOGOPENCLI_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("DOGOPENCLI_CONFIG", str(custom))
+    code, value, _ = invoke(run_cli, ["auth", "check"])
+    assert code == 0
+    assert value["result"]["profile"] == str(auth_setup.profile)
