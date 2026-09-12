@@ -359,9 +359,10 @@ def test_bare_leaf_executes_query(
 
 
 def test_bare_sla_get_missing_id_is_argument_error(run_cli):
-    with pytest.raises(SystemExit) as caught:
-        run_cli(["payment", "sla", "baselines", "get"])
-    assert caught.value.code == 2
+    code, out, err = run_cli(["payment", "sla", "baselines", "get"])
+    assert code == 2
+    assert json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert err == ""
     code, out, _ = run_cli(["payment", "sla", "baselines", "get", "--help"])
     assert code == 0
     assert json.loads(out)["command"] == "dogopencli payment sla baselines get"
@@ -482,15 +483,17 @@ def test_no_abbreviations(run_cli, envelope):
     code, out, _ = run_cli(["payment", "--h"])
     assert code == 2
     assert envelope(out)["error"]["code"] == "INVALID_ARGUMENT"
-    with pytest.raises(SystemExit) as caught:
-        run_cli(["payment", "channel", "list", "--hel"])
-    assert caught.value.code == 2
+    code, out, err = run_cli(["payment", "channel", "list", "--hel"])
+    assert code == 2
+    assert json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert err == ""
 
 
 def test_double_dash_is_not_a_help_switch(run_cli, envelope):
-    with pytest.raises(SystemExit) as caught:
-        run_cli(["payment", "channel", "list", "--", "--help"])
-    assert caught.value.code == 2
+    code, out, err = run_cli(["payment", "channel", "list", "--", "--help"])
+    assert code == 2
+    assert json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert err == ""
     code, out, _ = run_cli(["help", "--", "payment"])
     assert code == 2
     assert envelope(out)["error"]["code"] == "INVALID_ARGUMENT"
@@ -505,9 +508,10 @@ def test_option_values_never_misroute(
     body = envelope(out)
     assert body["error"]["code"] == "CONFIG_ERROR"
     assert "output_version" not in body
-    with pytest.raises(SystemExit) as caught:
-        run_cli(["payment", "channel", "list", "--status", "login"])
-    assert caught.value.code == 2
+    code, out, err = run_cli(["payment", "channel", "list", "--status", "login"])
+    assert code == 2
+    assert json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert err == ""
 
 
 def test_help_with_known_leaf_options_still_shows_help(run_cli):
@@ -648,3 +652,35 @@ def test_unknown_prefix_cannot_crash_auth_route(run_cli):
     assert code in (1, 2)
     assert json.loads(out)["error"]
     assert not err
+
+
+@pytest.mark.parametrize("path", BUSINESS_LEAVES)
+def test_leaf_unknown_option_uses_business_envelope(run_cli, monkeypatch, path):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid arguments reached configuration")
+
+    monkeypatch.setattr("dogopencli.cli.config_mod.load", forbidden)
+    code, out, err = run_cli([*path, "--unknown-option"])
+    assert code == 2
+    body = json.loads(out)
+    assert body["data"] is None and body["meta"] is None
+    assert body["error"]["code"] == "INVALID_ARGUMENT"
+    assert body["error"]["retryable"] is False
+    assert err == ""
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--limit", "not-an-int"],
+        ["--limit"],
+        ["--limit", "0"],
+        ["--lim", "1"],
+        ["--format", "bogus"],
+    ],
+)
+def test_leaf_invalid_options_use_business_envelope(run_cli, options):
+    code, out, err = run_cli(["payment", "channel", "list", *options])
+    assert code == 2
+    assert json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert err == ""

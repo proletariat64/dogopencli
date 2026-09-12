@@ -884,17 +884,29 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
     return _emit_object(args, capability, detail, meta, fields)
 
 
+class _BusinessParser(argparse.ArgumentParser):
+    """Report syntax errors through the business protocol, without argparse IO."""
+
+    def error(self, message: str) -> None:
+        raise _argument_error(message)
+
+
 def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
     """Parse the resolved leaf's remaining argv and run its handler."""
-    parser = argparse.ArgumentParser(
+    parser = _BusinessParser(
         prog="dogopencli " + " ".join(node.path),
         description=node.summary,
         add_help=False,
+        allow_abbrev=False,
     )
     add_options(parser, node.options)
-    args = parser.parse_args(
-        [token for index, token in enumerate(values) if index not in word_indices]
-    )
+    try:
+        args = parser.parse_args(
+            [token for index, token in enumerate(values) if index not in word_indices]
+        )
+    except CliError as error:
+        # No successfully parsed output format exists yet; use the JSON default.
+        return _emit_error(error)
     handler = globals()[node.handler]
     try:
         return handler(args)
