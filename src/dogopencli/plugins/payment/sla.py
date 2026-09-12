@@ -20,6 +20,24 @@ from ...errors import (
     REQUEST_NOT_ALLOWED,
     CliError,
 )
+from ...helpspec import (
+    ALL,
+    CACHE_FLAGS,
+    CACHE_SEMANTICS,
+    DISPLAY_WINDOW,
+    FIELDS,
+    FILTER_OR_AND,
+    FORMAT_TABLE,
+    LIMIT,
+    LIVE,
+    LIVE_SINGLE_VALUE,
+    OFFSET,
+    QUERY_EFFECTS_VARIANTS,
+    QUERY_OUTPUT,
+    SEQID_UNSTABLE,
+    BizNode,
+    opt,
+)
 from ...jsonutil import parse
 from .. import EndpointContract, ParsedPage
 
@@ -217,3 +235,109 @@ class SlaCapability:
 
 SLA_CAPABILITY = SlaCapability()
 SLA_DETAIL = SlaDetailCapability()
+
+SLA_LIST_NODE = BizNode(
+    ("payment", "sla", "baselines", "list"),
+    "List SLA baselines from the local cache (default) or the backend with --live.",
+    options=(
+        opt("biz_category", "Filter by business category.", "append"),
+        opt("creditor_currency", "Filter by creditor currency.", "append"),
+        opt("region_code", "Filter by region code.", "append"),
+        opt("status", "Filter by baseline status.", "append"),
+        opt(
+            "biz_legal_entity",
+            "Live passthrough only: the list response does not return the"
+            " business legal entity field, so no local filter exists; its"
+            " independent filter effect is unverified.",
+            "append",
+        ),
+        LIMIT,
+        OFFSET,
+        ALL,
+        LIVE,
+        *CACHE_FLAGS,
+        FORMAT_TABLE,
+        FIELDS,
+    ),
+    constraints=(
+        FILTER_OR_AND,
+        CACHE_SEMANTICS,
+        DISPLAY_WINDOW,
+        SEQID_UNSTABLE,
+        LIVE_SINGLE_VALUE,
+        "--biz-legal-entity is passed through to the backend only with --live;"
+        " without --live it is an argument error, and its independent filter"
+        " effect is unverified.",
+    ),
+    effects_variants=QUERY_EFFECTS_VARIANTS,
+    output=QUERY_OUTPUT,
+    errors=(
+        "INVALID_ARGUMENT",
+        "CONFIG_ERROR",
+        "CACHE_MISS",
+        "CACHE_STALE",
+        "INCOMPLETE_RESULT",
+        "AUTH_REQUIRED",
+        "BROWSER_UNAVAILABLE",
+        "LOCKED",
+        "TIMEOUT",
+        "BUSINESS_QUERY_FAILED",
+        "INVALID_RESPONSE",
+    ),
+    examples=(
+        "dogopencli payment sla baselines list",
+        "dogopencli payment sla baselines list --biz-category CATEGORY01",
+        "dogopencli payment sla baselines list --live --biz-legal-entity LE01",
+    ),
+    next=(
+        "dogopencli help payment sla baselines get",
+        "dogopencli help refresh payment sla",
+    ),
+    handler="cmd_sla_list",
+)
+
+SLA_GET_NODE = BizNode(
+    ("payment", "sla", "baselines", "get"),
+    "Show one SLA baseline detail from the local cache (default) or the"
+    " backend with --live.",
+    options=(
+        opt(
+            "id",
+            "Baseline id from the list query.",
+            "str",
+            required=True,
+        ),
+        LIVE,
+        *CACHE_FLAGS,
+        FORMAT_TABLE,
+        FIELDS,
+    ),
+    constraints=(
+        CACHE_SEMANTICS,
+        SEQID_UNSTABLE,
+        "--id names a list id; a cached miss is NOT_FOUND and the detail is"
+        " never substituted by its list row.",
+    ),
+    effects_variants=QUERY_EFFECTS_VARIANTS,
+    output=QUERY_OUTPUT,
+    errors=(
+        "INVALID_ARGUMENT",
+        "CONFIG_ERROR",
+        "CACHE_MISS",
+        "CACHE_STALE",
+        "INCOMPLETE_RESULT",
+        "NOT_FOUND",
+        "AUTH_REQUIRED",
+        "BROWSER_UNAVAILABLE",
+        "LOCKED",
+        "TIMEOUT",
+        "BUSINESS_QUERY_FAILED",
+        "INVALID_RESPONSE",
+    ),
+    examples=(
+        "dogopencli payment sla baselines get --id BASELINE_ID",
+        "dogopencli payment sla baselines get --id BASELINE_ID --live",
+    ),
+    next=("dogopencli help payment sla baselines list",),
+    handler="cmd_sla_get",
+)

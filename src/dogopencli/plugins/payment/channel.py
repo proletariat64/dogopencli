@@ -15,6 +15,24 @@ from ...errors import (
     REQUEST_NOT_ALLOWED,
     CliError,
 )
+from ...helpspec import (
+    ALL,
+    CACHE_FLAGS,
+    CACHE_SEMANTICS,
+    DISPLAY_WINDOW,
+    FIELDS,
+    FILTER_OR_AND,
+    FORMAT_TABLE,
+    LIMIT,
+    LIVE,
+    LIVE_SINGLE_VALUE,
+    OFFSET,
+    QUERY_EFFECTS_VARIANTS,
+    QUERY_OUTPUT,
+    SEQID_UNSTABLE,
+    BizNode,
+    opt,
+)
 from ...jsonutil import canonical, parse
 from .. import EndpointContract, ParsedPage
 
@@ -30,6 +48,7 @@ CONTRACT = EndpointContract(
     page_size=PAGE_SIZE,
     one_based=True,
     scope_field="payoutType",
+    consistency_field="abilityId",
     allowed_body_keys=frozenset(
         {
             "payoutType",
@@ -174,3 +193,68 @@ class ChannelCapability:
 
 
 CHANNEL_CAPABILITY = ChannelCapability()
+
+CHANNEL_LIST_NODE = BizNode(
+    ("payment", "channel", "list"),
+    "List payment channels from the local cache (default) or the backend with --live.",
+    options=(
+        opt("payout_type", "Payout scope.", "str", default="EXTERNAL", choices=SCOPES),
+        opt(
+            "financial_inst_id",
+            "Filter by financial institution ID (the bank suggest value; records"
+            " expose it as financialInstCode).",
+            "append",
+        ),
+        opt(
+            "debit_inst_country_code",
+            "Filter by debit institution country code.",
+            "append",
+        ),
+        opt("status", "Filter by channel status.", "append", choices=STATUSES),
+        opt("debit_account_name", "Filter by debit account name.", "append"),
+        opt("debit_account_no", "Filter by debit account number.", "append"),
+        opt("clearing_system_name", "Filter by clearing system name.", "append"),
+        opt("debit_currency", "Filter by debit currency.", "append"),
+        opt("credit_currency", "Filter by credit currency.", "append"),
+        LIMIT,
+        OFFSET,
+        ALL,
+        LIVE,
+        *CACHE_FLAGS,
+        FORMAT_TABLE,
+        FIELDS,
+    ),
+    constraints=(
+        FILTER_OR_AND,
+        CACHE_SEMANTICS,
+        DISPLAY_WINDOW,
+        SEQID_UNSTABLE,
+        LIVE_SINGLE_VALUE,
+        "A snapshot source covers only scope EXTERNAL and cannot serve --live;"
+        " its quality is marked by the simulated and backend_complete flags.",
+    ),
+    effects_variants=QUERY_EFFECTS_VARIANTS,
+    output=QUERY_OUTPUT,
+    errors=(
+        "INVALID_ARGUMENT",
+        "CONFIG_ERROR",
+        "CACHE_MISS",
+        "CACHE_STALE",
+        "INCOMPLETE_RESULT",
+        "SOURCE_SCOPE_UNAVAILABLE",
+        "LIVE_SOURCE_UNAVAILABLE",
+        "AUTH_REQUIRED",
+        "BROWSER_UNAVAILABLE",
+        "LOCKED",
+        "TIMEOUT",
+        "BUSINESS_QUERY_FAILED",
+        "INVALID_RESPONSE",
+    ),
+    examples=(
+        "dogopencli payment channel list",
+        "dogopencli payment channel list --status ENABLE --limit 20",
+        "dogopencli payment channel list --live --financial-inst-id INST01",
+    ),
+    next=("dogopencli help refresh payment channel",),
+    handler="cmd_channel_list",
+)

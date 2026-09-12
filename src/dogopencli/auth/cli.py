@@ -148,6 +148,8 @@ def main(argv: list[str], command_hint: str | None = None) -> int:
                 if remainder[0].startswith("-"):
                     raise invalid("unrecognized arguments: " + " ".join(remainder))
                 raise invalid("Unknown command: " + " ".join(remainder))
+            if spec.handler:
+                leaf_parser(spec).parse_args(remainder, namespace=global_args)
             sys.stdout.write(
                 render_text(spec)
                 if format == "text"

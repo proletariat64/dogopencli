@@ -362,14 +362,32 @@ def test_exact_dedup_preserves_distinct_versions(run_cli, envelope, cdp_setup):
         channel_row(701, configVersion="v2", status="DISABLE"),
         channel_row(702),
     ]
-    refreshed(run_cli, cdp_setup, rows)
-    code, out, _ = listing(run_cli, "--all")
+    cdp_setup.state.business_handler = paging_handler({1: rows}, len(rows))
+    code, out, _ = listing(run_cli, "--live", "--all")
     assert code == 0
     result = envelope(out)
     assert result["meta"]["matched_total"] == 3
+    assert result["meta"]["complete"] is False
     versions = [(row["abilityId"], row["configVersion"]) for row in result["data"]]
     assert sorted(versions) == [(701, "v1"), (701, "v2"), (702, "v1")]
     assert [row["seqid"] for row in result["data"]] == [1, 2, 3]
+
+
+def test_channel_conflict_across_pages_preserves_cache(run_cli, envelope, cdp_setup):
+    refreshed(run_cli, cdp_setup, [channel_row(900)])
+    rows = [channel_row(n) for n in range(100)]
+    cdp_setup.state.business_handler = paging_handler(
+        {1: rows, 2: [channel_row(0, status="DISABLE")]}, 101
+    )
+    code, out, _ = refresh(run_cli)
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "INVALID_RESPONSE"
+    code, out, _ = listing(run_cli, "--all")
+    assert code == 0
+    assert [row["abilityId"] for row in envelope(out)["data"]] == [900]
+    code, out, _ = listing(run_cli, "--live", "--require-complete")
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
 
 
 def test_candidate_seqids_are_content_deterministic(run_cli, envelope, cdp_setup):
