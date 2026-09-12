@@ -16,6 +16,24 @@ from ...errors import (
     REQUEST_NOT_ALLOWED,
     CliError,
 )
+from ...helpspec import (
+    ALL,
+    CACHE_FLAGS,
+    CACHE_SEMANTICS,
+    DISPLAY_WINDOW,
+    FIELDS,
+    FILTER_OR_AND,
+    FORMAT_TABLE,
+    LIMIT,
+    LIVE,
+    LIVE_SINGLE_VALUE,
+    OFFSET,
+    QUERY_EFFECTS_VARIANTS,
+    QUERY_OUTPUT,
+    SEQID_UNSTABLE,
+    BizNode,
+    opt,
+)
 from ...jsonutil import parse
 from .. import EndpointContract, ParsedPage
 
@@ -165,3 +183,55 @@ class CostCapability:
 
 
 COST_CAPABILITY = CostCapability()
+
+COST_LIST_NODE = BizNode(
+    ("payment", "cost", "list"),
+    "List payment channel cost configurations from the local cache (default)"
+    " or the backend with --live.",
+    options=(
+        opt("legal_entity_code", "Filter by legal entity code.", "append"),
+        opt("financial_inst_code", "Filter by financial institution code.", "append"),
+        opt("bank_account", "Filter by bank account.", "append"),
+        opt("trans_currency_code", "Filter by transaction currency.", "append"),
+        opt("charge_bearer", "Filter by charge bearer.", "append"),
+        opt("clearing_network_name", "Filter by clearing network name.", "append"),
+        LIMIT,
+        OFFSET,
+        ALL,
+        LIVE,
+        *CACHE_FLAGS,
+        FORMAT_TABLE,
+        FIELDS,
+    ),
+    constraints=(
+        "The scope is fixed to costTypeCode=FUND_OUT_CHANNEL_TRANS_FEE; there"
+        " is no scope option.",
+        FILTER_OR_AND,
+        CACHE_SEMANTICS,
+        DISPLAY_WINDOW,
+        SEQID_UNSTABLE,
+        LIVE_SINGLE_VALUE,
+    ),
+    effects_variants=QUERY_EFFECTS_VARIANTS,
+    output=QUERY_OUTPUT,
+    errors=(
+        "INVALID_ARGUMENT",
+        "CONFIG_ERROR",
+        "CACHE_MISS",
+        "CACHE_STALE",
+        "INCOMPLETE_RESULT",
+        "AUTH_REQUIRED",
+        "BROWSER_UNAVAILABLE",
+        "LOCKED",
+        "TIMEOUT",
+        "BUSINESS_QUERY_FAILED",
+        "INVALID_RESPONSE",
+    ),
+    examples=(
+        "dogopencli payment cost list",
+        "dogopencli payment cost list --legal-entity-code LE01",
+        "dogopencli payment cost list --live",
+    ),
+    next=("dogopencli help refresh payment cost",),
+    handler=True,
+)

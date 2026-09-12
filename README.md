@@ -28,6 +28,19 @@ kind = "cdp"
 
 配置示例见被 Git 忽略的 `tmp/channel-2026-09-11/source.toml`；整理集为私有数据，不随 Git 分发。
 
+## 帮助与导航
+
+帮助为 DI 风格的渐进式导航（[规格 Issue #13](https://github.com/proletariat64/dogopencli/issues/13)），已替代旧的 argparse 文本默认帮助。无参数、`--help`/`-h`、`help` 均返回同一份 `help_version=1` JSON 文档并退出 0；每层只列直属子命令，叶子给出完整调用契约（必填项、默认值、choices、约束、操作影响、输出、错误码、示例与下一步）。帮助全程离线：不读取配置、缓存、浏览器或网络。
+
+```bash
+dogopencli                                   # Agent：根 JSON 导航（children：payment/refresh/auth/login/logout）
+dogopencli help payment channel list         # 逐层钻取到叶子契约
+dogopencli payment sla baselines get --help  # PATH --help 等价于 help PATH
+dogopencli --format text                     # 人工：同一份文档的可读文本（任意节点可加 --format text）
+```
+
+裸叶子保持执行语义：`dogopencli payment channel list` 仍执行缓存查询，`login`/`logout`/`auth check` 仍执行认证动作；只有无 handler 的命令路径才自动显示帮助。帮助 `--format` 只接受 `json|text`（业务执行格式不变，查询仍 `json|table`）。错误归属不变：根/业务导航参数错误为业务 JSON `INVALID_ARGUMENT` 退出 2，认证路径参数错误为认证 `invalid_arguments` 退出 1。
+
 `cache.path` 仅支持具备可靠 SQLite WAL/共享内存与 POSIX `flock` 语义的本地 Linux 文件系统，推荐 WSL Linux 磁盘上的默认目录。Windows DrvFS/9p 挂载及网络文件系统不在缓存支持范围；无法启用 WAL 时明确失败，不降级为回滚日志。升级前若缓存位于这些挂载上，请改到支持的本地路径并重新刷新；旧库的来源路径列会自动迁移。
 
 ## 登录与认证

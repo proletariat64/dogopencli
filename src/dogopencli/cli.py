@@ -13,7 +13,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from . import __version__
 from . import collect as collect_mod
 from . import config as config_mod
 from .browser import errors as auth_errors
@@ -44,9 +43,11 @@ from .errors import (
     TIMEOUT,
     CliError,
 )
+from .helpspec import BizNode, add_options
+from .helptree import business_entry, help_main, leading_command
 from .jsonutil import canonical, parse
 from .plugins import get_capability
-from .plugins.payment.channel import SCOPES, STATUSES, assign_seqids
+from .plugins.payment.channel import assign_seqids
 from .plugins.payment.sla import SLA_DETAIL, detail_body, parse_detail
 from .table import render_table
 from .transport import QueryRequest, validate_request
@@ -58,23 +59,6 @@ COST = "payment.cost.list"
 SLA = "payment.sla.baselines.list"
 
 AUTH_COMMANDS = {"login", "auth", "logout"}
-AUTH_VALUE_OPTIONS = {"--config-dir", "--format"}
-
-
-def _auth_command_token(argv: list[str]) -> str | None:
-    """First command-word token; auth globals may precede the command."""
-    skip_next = False
-    for token in argv:
-        if skip_next:
-            skip_next = False
-            continue
-        if token in AUTH_VALUE_OPTIONS:
-            skip_next = True
-            continue
-        if token.startswith("-"):
-            continue
-        return token
-    return None
 
 
 def _now() -> datetime:
@@ -1122,139 +1106,33 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
     return _emit_object(args, capability, detail, meta, fields)
 
 
-def build_parser() -> argparse.ArgumentParser:
+# Handler names, resolved through the module globals at call time so tests
+# can stub them with monkeypatch.
+_HANDLERS = {
+    ("payment", "channel", "list"): "cmd_channel_list",
+    ("payment", "cost", "list"): "cmd_cost_list",
+    ("payment", "sla", "baselines", "list"): "cmd_sla_list",
+    ("payment", "sla", "baselines", "get"): "cmd_sla_get",
+    ("refresh", "payment", "channel"): "cmd_refresh_channel",
+    ("refresh", "payment", "cost"): "cmd_refresh_cost",
+    ("refresh", "payment", "sla"): "cmd_refresh_sla",
+}
+
+
+def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
+    """Parse the resolved leaf's remaining argv and run its handler."""
     parser = argparse.ArgumentParser(
-        prog="dogopencli",
-        description="Inquiry-only CLI for the payment product operations platform.",
+        prog="dogopencli " + " ".join(node.path),
+        description=node.summary,
+        add_help=False,
     )
-    parser.add_argument(
-        "--version", action="version", version=f"dogopencli {__version__}"
+    add_options(parser, node.options)
+    args = parser.parse_args(
+        [token for index, token in enumerate(values) if index not in word_indices]
     )
-    groups = parser.add_subparsers(dest="group", required=True)
-
-    refresh = groups.add_parser("refresh", help="explicitly rebuild local caches")
-    refresh_domains = refresh.add_subparsers(dest="domain", required=True)
-    refresh_payment = refresh_domains.add_parser("payment")
-    refresh_targets = refresh_payment.add_subparsers(dest="target", required=True)
-    refresh_channel = refresh_targets.add_parser(
-        "channel", help="import the configured channel source into the cache"
-    )
-    refresh_channel.add_argument("--payout-type", choices=SCOPES, default="EXTERNAL")
-    refresh_targets.add_parser(
-        "cost", help="rebuild the payment cost cache through the CDP session"
-    )
-    refresh_targets.add_parser(
-        "sla", help="rebuild the payment SLA baseline cache through the CDP session"
-    )
-
-    payment = groups.add_parser("payment", help="payment product queries")
-    payment_targets = payment.add_subparsers(dest="target", required=True)
-    channel = payment_targets.add_parser("channel", help="payment channel queries")
-    channel_actions = channel.add_subparsers(dest="action", required=True)
-    listing = channel_actions.add_parser(
-        "list", help="list channels from the local cache"
-    )
-    listing.add_argument("--payout-type", choices=SCOPES, default="EXTERNAL")
-    listing.add_argument("--financial-inst-id", action="append", default=[])
-    listing.add_argument("--debit-inst-country-code", action="append", default=[])
-    listing.add_argument("--status", choices=STATUSES, action="append", default=[])
-    listing.add_argument("--debit-account-name", action="append", default=[])
-    listing.add_argument("--debit-account-no", action="append", default=[])
-    listing.add_argument("--clearing-system-name", action="append", default=[])
-    listing.add_argument("--debit-currency", action="append", default=[])
-    listing.add_argument("--credit-currency", action="append", default=[])
-    listing.add_argument("--limit", type=int, default=None)
-    listing.add_argument("--offset", type=int, default=None)
-    listing.add_argument("--all", action="store_true")
-    listing.add_argument("--live", action="store_true")
-    listing.add_argument("--require-fresh", action="store_true")
-    listing.add_argument("--require-complete", action="store_true")
-    listing.add_argument("--format", choices=("json", "table"), default="json")
-    listing.add_argument("--fields", default=None)
-
-    cost = payment_targets.add_parser("cost", help="payment cost queries")
-    cost_actions = cost.add_subparsers(dest="action", required=True)
-    cost_listing = cost_actions.add_parser(
-        "list", help="list cost configurations from the local cache or live"
-    )
-    cost_listing.add_argument("--legal-entity-code", action="append", default=[])
-    cost_listing.add_argument("--financial-inst-code", action="append", default=[])
-    cost_listing.add_argument("--bank-account", action="append", default=[])
-    cost_listing.add_argument("--trans-currency-code", action="append", default=[])
-    cost_listing.add_argument("--charge-bearer", action="append", default=[])
-    cost_listing.add_argument("--clearing-network-name", action="append", default=[])
-    cost_listing.add_argument("--limit", type=int, default=None)
-    cost_listing.add_argument("--offset", type=int, default=None)
-    cost_listing.add_argument("--all", action="store_true")
-    cost_listing.add_argument("--live", action="store_true")
-    cost_listing.add_argument("--require-fresh", action="store_true")
-    cost_listing.add_argument("--require-complete", action="store_true")
-    cost_listing.add_argument("--format", choices=("json", "table"), default="json")
-    cost_listing.add_argument("--fields", default=None)
-
-    sla = payment_targets.add_parser("sla", help="payment SLA baseline queries")
-    sla_collections = sla.add_subparsers(dest="collection", required=True)
-    baselines = sla_collections.add_parser(
-        "baselines", help="SLA baseline list and detail queries"
-    )
-    sla_actions = baselines.add_subparsers(dest="action", required=True)
-    sla_listing = sla_actions.add_parser(
-        "list", help="list SLA baselines from the local cache or live"
-    )
-    sla_listing.add_argument("--biz-category", action="append", default=[])
-    sla_listing.add_argument("--creditor-currency", action="append", default=[])
-    sla_listing.add_argument("--region-code", action="append", default=[])
-    sla_listing.add_argument("--status", action="append", default=[])
-    sla_listing.add_argument(
-        "--biz-legal-entity",
-        action="append",
-        default=[],
-        help="live passthrough only; independent filter effect unverified",
-    )
-    sla_listing.add_argument("--limit", type=int, default=None)
-    sla_listing.add_argument("--offset", type=int, default=None)
-    sla_listing.add_argument("--all", action="store_true")
-    sla_listing.add_argument("--live", action="store_true")
-    sla_listing.add_argument("--require-fresh", action="store_true")
-    sla_listing.add_argument("--require-complete", action="store_true")
-    sla_listing.add_argument("--format", choices=("json", "table"), default="json")
-    sla_listing.add_argument("--fields", default=None)
-    sla_get = sla_actions.add_parser(
-        "get", help="show one SLA baseline detail from the local cache or live"
-    )
-    sla_get.add_argument("--id", required=True)
-    sla_get.add_argument("--live", action="store_true")
-    sla_get.add_argument("--require-fresh", action="store_true")
-    sla_get.add_argument("--require-complete", action="store_true")
-    sla_get.add_argument("--format", choices=("json", "table"), default="json")
-    sla_get.add_argument("--fields", default=None)
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    values = list(sys.argv[1:] if argv is None else argv)
-    token = _auth_command_token(values)
-    if token in AUTH_COMMANDS:
-        # Authentication follows the DI-aligned envelope protocol (ADR 0004),
-        # an explicit exception to the business data/meta/error protocol.
-        from .auth.cli import main as auth_main
-
-        return auth_main(values, command_hint=token)
-    args = build_parser().parse_args(values)
+    handler = globals()[_HANDLERS[node.path]]
     try:
-        if args.group == "refresh":
-            if args.target == "cost":
-                return cmd_refresh_cost(args)
-            if args.target == "sla":
-                return cmd_refresh_sla(args)
-            return cmd_refresh_channel(args)
-        if args.target == "cost":
-            return cmd_cost_list(args)
-        if args.target == "sla":
-            if args.action == "get":
-                return cmd_sla_get(args)
-            return cmd_sla_list(args)
-        return cmd_channel_list(args)
+        return handler(args)
     except CliError as error:
         return _emit_error(error, getattr(args, "format", "json"))
     except KeyboardInterrupt:
@@ -1277,3 +1155,17 @@ def main(argv: list[str] | None = None) -> int:
             ),
             getattr(args, "format", "json"),
         )
+
+
+def main(argv: list[str] | None = None) -> int:
+    values = list(sys.argv[1:] if argv is None else argv)
+    word, index = leading_command(values)
+    if word == "help":
+        return help_main(values[index + 1 :])
+    if word in AUTH_COMMANDS:
+        # Authentication follows the DI-aligned envelope protocol (ADR 0004),
+        # an explicit exception to the business data/meta/error protocol.
+        from .auth.cli import main as auth_main
+
+        return auth_main(values, command_hint=word)
+    return business_entry(values, _execute)
