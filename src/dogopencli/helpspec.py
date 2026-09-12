@@ -10,7 +10,7 @@ Normative source: docs/research/general/2026-09-12-cli-help-acceptance-matrix.md
 """
 
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 HELP_VERSION = 1
@@ -90,7 +90,7 @@ def opt(
 
 @dataclass(frozen=True)
 class BizNode:
-    """One business command-tree node; handler=False nodes only show help."""
+    """One business command-tree node; handler=None nodes only show help."""
 
     path: tuple[str, ...]
     summary: str
@@ -103,7 +103,8 @@ class BizNode:
     errors: tuple[str, ...] = ("INVALID_ARGUMENT",)
     examples: tuple[str, ...] = ()
     next: tuple[str, ...] = ()
-    handler: bool = False
+    # Execution binding in cli.py; kept static so help needs no runtime setup.
+    handler: str | None = None
 
 
 # Shared query options (declared once, reused by every query leaf).
@@ -200,6 +201,28 @@ def add_options(
         if option.required:
             kwargs["required"] = True
         parser.add_argument(option.flag, **kwargs)
+
+
+class HelpParser(argparse.ArgumentParser):
+    """Validate help syntax without printing or exiting the public CLI."""
+
+    def error(self, message: str) -> None:
+        raise ValueError(message)
+
+
+def validate_help_options(tokens: list[str], options: tuple[OptionSpec, ...]) -> None:
+    parser = HelpParser(add_help=False, allow_abbrev=False)
+    add_options(
+        parser,
+        tuple(
+            replace(option, required=False)
+            for option in options
+            if option.name != "format"
+        ),
+    )
+    parser.add_argument("--format", choices=HELP_FORMATS)
+    parser.add_argument("--help", "-h", action="store_true")
+    parser.parse_args(tokens)
 
 
 def _describe(option: OptionSpec) -> dict[str, Any]:

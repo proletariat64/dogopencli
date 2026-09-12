@@ -233,5 +233,5 @@ COST_LIST_NODE = BizNode(
         "dogopencli payment cost list --live",
     ),
     next=("dogopencli help refresh payment cost",),
-    handler=True,
+    handler="cmd_cost_list",
 )

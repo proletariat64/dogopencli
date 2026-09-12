@@ -293,7 +293,7 @@ SLA_LIST_NODE = BizNode(
         "dogopencli help payment sla baselines get",
         "dogopencli help refresh payment sla",
     ),
-    handler=True,
+    handler="cmd_sla_list",
 )
 
 SLA_GET_NODE = BizNode(
@@ -339,5 +339,5 @@ SLA_GET_NODE = BizNode(
         "dogopencli payment sla baselines get --id BASELINE_ID --live",
     ),
     next=("dogopencli help payment sla baselines list",),
-    handler=True,
+    handler="cmd_sla_get",
 )

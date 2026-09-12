@@ -128,6 +128,8 @@ COMMANDS = (
             "destructive": False,
         },
         errors=("auth_required", "browser_unavailable", "service_failure"),
+        examples=("dogopencli auth check",),
+        next=("dogopencli help login", "dogopencli help payment"),
         handler="auth.check",
     ),
     CommandSpec(
@@ -150,6 +152,8 @@ COMMANDS = (
             "service_failure",
         ),
         handler="login",
+        examples=("dogopencli login", "dogopencli login --timeout-seconds 600"),
+        next=("dogopencli auth check", "dogopencli help refresh"),
     ),
     CommandSpec(
         ("logout",),
@@ -170,6 +174,8 @@ COMMANDS = (
             "service_failure",
         ),
         handler="logout",
+        examples=("dogopencli logout",),
+        next=("dogopencli auth check", "dogopencli help login"),
     ),
 )
 

@@ -9,6 +9,8 @@ modifying the core layers.
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from ..helpspec import BizNode
+
 
 @dataclass(frozen=True)
 class EndpointContract:
@@ -75,10 +77,16 @@ class Capability(Protocol):
 
 
 _REGISTRY: dict[str, Capability] = {}
+_COMMANDS: dict[str, tuple[BizNode, ...]] = {}
 
 
-def register(capability: Capability) -> None:
+def register(capability: Capability, *, commands: tuple[BizNode, ...] = ()) -> None:
     _REGISTRY[capability.name] = capability
+    _COMMANDS[capability.name] = commands
+
+
+def command_nodes() -> tuple[BizNode, ...]:
+    return tuple(node for commands in _COMMANDS.values() for node in commands)
 
 
 def get_capability(name: str) -> Capability:
@@ -86,13 +94,13 @@ def get_capability(name: str) -> Capability:
 
 
 def _load_builtins() -> None:
-    from .payment.channel import CHANNEL_CAPABILITY
-    from .payment.cost import COST_CAPABILITY
-    from .payment.sla import SLA_CAPABILITY
+    from .payment.channel import CHANNEL_CAPABILITY, CHANNEL_LIST_NODE
+    from .payment.cost import COST_CAPABILITY, COST_LIST_NODE
+    from .payment.sla import SLA_CAPABILITY, SLA_GET_NODE, SLA_LIST_NODE
 
-    register(CHANNEL_CAPABILITY)
-    register(COST_CAPABILITY)
-    register(SLA_CAPABILITY)
+    register(CHANNEL_CAPABILITY, commands=(CHANNEL_LIST_NODE,))
+    register(COST_CAPABILITY, commands=(COST_LIST_NODE,))
+    register(SLA_CAPABILITY, commands=(SLA_LIST_NODE, SLA_GET_NODE))
 
 
 _load_builtins()

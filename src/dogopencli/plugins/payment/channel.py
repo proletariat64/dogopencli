@@ -256,5 +256,5 @@ CHANNEL_LIST_NODE = BizNode(
         "dogopencli payment channel list --live --financial-inst-id INST01",
     ),
     next=("dogopencli help refresh payment channel",),
-    handler=True,
+    handler="cmd_channel_list",
 )

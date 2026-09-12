@@ -528,10 +528,11 @@ def environment_entry_points_fail(monkeypatch):
 
     monkeypatch.setattr("dogopencli.cli.config_mod.load", broken)
     monkeypatch.setattr("dogopencli.cli.Cache", broken)
-    monkeypatch.setattr("dogopencli.cli.resolve_environment", broken)
-    monkeypatch.setattr("dogopencli.cli.make_transport", broken)
-    monkeypatch.setattr("dogopencli.cli.acquire_browser_control", broken)
-    monkeypatch.setattr("dogopencli.cli.check_authentication", broken)
+    monkeypatch.setattr("dogopencli.cached_query.Cache", broken)
+    monkeypatch.setattr("dogopencli.inquiry.resolve_environment", broken)
+    monkeypatch.setattr("dogopencli.inquiry.make_transport", broken)
+    monkeypatch.setattr("dogopencli.inquiry.acquire_browser_control", broken)
+    monkeypatch.setattr("dogopencli.inquiry.check_authentication", broken)
     monkeypatch.setattr("dogopencli.auth.cli.dispatch", broken)
 
 
@@ -569,3 +570,81 @@ def test_help_creates_no_files(run_cli, monkeypatch, tmp_path):
     ):
         assert run_cli(argv)[0] == 0, argv
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("option", ["--format=json", "--config-dir=elsewhere"])
+@pytest.mark.parametrize("path", [["auth"], ["login"], ["logout"], ["auth", "check"]])
+def test_auth_help_accepts_equals_globals(
+    run_cli, environment_entry_points_fail, option, path
+):
+    assert help_json(run_cli, [option, *path, "--help"]) == help_json(
+        run_cli, [*path, "--help"]
+    )
+
+
+@pytest.mark.parametrize(
+    "path", [[], ["payment"], ["login"], ["payment", "channel", "list"]]
+)
+def test_help_prefix_format_is_preserved(run_cli, path):
+    expected = run_cli(["help", *path, "--format", "text"])
+    assert run_cli(["--format", "text", "help", *path]) == expected
+    assert run_cli(["--format=text", "help", *path]) == expected
+
+
+@pytest.mark.parametrize("prefix", [["help", "payment"], ["payment"], ["help", "auth"]])
+def test_trailing_text_format_applies_to_errors(run_cli, prefix):
+    code, out, err = run_cli([*prefix, "bogus", "--format", "text"])
+    assert code in (1, 2)
+    assert out == ""
+    assert "bogus" in err
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--limit"],
+        ["--limit", "bad"],
+        ["--status", "BAD"],
+        ["--status=BAD"],
+        ["--liv"],
+        ["--live=true"],
+    ],
+)
+def test_leaf_help_validates_supplied_syntax(
+    run_cli, options, environment_entry_points_fail
+):
+    code, out, err = run_cli(["payment", "channel", "list", *options, "--help"])
+    assert code == 2
+    assert json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert err == ""
+
+
+@pytest.mark.parametrize("path", [["login"], ["logout"], ["auth", "check"]])
+def test_auth_help_rejects_unknown_options_and_has_navigation(run_cli, path):
+    for args in ([*path, "--help", "--bad"], ["help", *path, "--bad"]):
+        code, out, err = run_cli(args)
+        assert code == 1
+        assert json.loads(out)["error"]["code"] == "invalid_arguments"
+        assert err == ""
+    doc = help_json(run_cli, ["help", *path])
+    assert doc["examples"]
+    assert doc["next"]
+
+
+def test_leaf_help_equals_values_do_not_become_controls(run_cli):
+    doc = help_json(
+        run_cli, ["payment", "sla", "baselines", "get", "--id=--help", "--help"]
+    )
+    assert doc["command"] == "dogopencli payment sla baselines get"
+    code, out, err = run_cli(
+        ["payment", "channel", "list", "--status=ENABLE", "--help", "--format=text"]
+    )
+    assert code == 0 and not err
+    assert out.startswith("dogopencli payment channel list\n")
+
+
+def test_unknown_prefix_cannot_crash_auth_route(run_cli):
+    code, out, err = run_cli(["--bogus", "auth", "--help"])
+    assert code in (1, 2)
+    assert json.loads(out)["error"]
+    assert not err

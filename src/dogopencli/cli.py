@@ -1,4 +1,4 @@
-"""Public CLI: command registration and business output envelope.
+"""Public CLI: domain query orchestration and business output envelope.
 
 Business commands print a JSON envelope with data/meta/error on stdout;
 diagnostics go to stderr. Exit codes (ADR 0004): 0 success, 1 runtime
@@ -9,25 +9,17 @@ import argparse
 import hashlib
 import sys
 import traceback
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
 from . import collect as collect_mod
 from . import config as config_mod
-from .browser import errors as auth_errors
-from .browser.cdp import make_transport
-from .browser.coordination import acquire_browser_control
-from .browser.environment import resolve_environment
-from .browser.errors import AuthError
-from .browser.probe import check_authentication
 from .cache import Cache, SnapshotMeta, namespace
+from .cached_query import is_stale, read_cached_query, snapshot_meta
 from .errors import (
     AUTH_REQUIRED,
-    BROWSER_UNAVAILABLE,
     BUSINESS_QUERY_FAILED,
-    CACHE_MISS,
-    CACHE_STALE,
     CONFIG_ERROR,
     EXIT_INTERRUPTED,
     EXIT_OK,
@@ -36,7 +28,6 @@ from .errors import (
     INVALID_ARGUMENT,
     INVALID_RESPONSE,
     LIVE_SOURCE_UNAVAILABLE,
-    LOCKED,
     NOT_FOUND,
     SOURCE_DATA_INVALID,
     SOURCE_SCOPE_UNAVAILABLE,
@@ -45,6 +36,7 @@ from .errors import (
 )
 from .helpspec import BizNode, add_options
 from .helptree import business_entry, help_main, leading_command
+from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
 from .plugins import get_capability
 from .plugins.payment.channel import assign_seqids
@@ -90,34 +82,6 @@ def _emit_error(error: CliError, output_format: str = "json") -> int:
     return error.exit_code
 
 
-def _meta_dict(
-    source: str | None,
-    snapshot: SnapshotMeta,
-    stale: bool,
-    matched_total: int,
-    returned_count: int,
-    has_more: bool,
-) -> dict[str, Any]:
-    return {
-        "source": source,
-        "backend": snapshot.source_kind,
-        "simulated": snapshot.simulated,
-        "scope": snapshot.scope,
-        "snapshot_id": snapshot.snapshot_id,
-        "dataset_id": snapshot.dataset_id,
-        "fetched_at": snapshot.fetched_at,
-        "loaded_at": snapshot.loaded_at,
-        "stale": stale,
-        "complete": snapshot.backend_complete,
-        "dataset_complete": snapshot.dataset_complete,
-        "source_observed_from": snapshot.source_observed_from,
-        "source_observed_to": snapshot.source_observed_to,
-        "matched_total": matched_total,
-        "returned_count": returned_count,
-        "has_more": has_more,
-    }
-
-
 def _argument_error(message: str) -> CliError:
     return CliError(INVALID_ARGUMENT, message, exit_code=EXIT_USAGE)
 
@@ -131,10 +95,6 @@ def _snapshot_source(config: config_mod.Config, source_key: str):
             exit_code=EXIT_USAGE,
         )
     return source
-
-
-def _stale(snapshot: SnapshotMeta, ttl_hours: float, now: datetime) -> bool:
-    return now > _parse_time(snapshot.fetched_at) + timedelta(hours=ttl_hours)
 
 
 def cmd_refresh_channel(args: argparse.Namespace) -> int:
@@ -157,23 +117,11 @@ def _refresh_channel_cdp(
     store = Cache(config.cache_path)
     ns = namespace(capability.name, args.payout_type, source.kind)
     with store.refresh_lock():
-        environment = resolve_environment(config_file=config_mod.config_path())
-        control = _browser_control(environment)
-        try:
-            _check_auth(environment)
-            transport = CdpQueryTransport(
-                make_transport(environment.cdp_url),
-                capability,
-                page_url=environment.startup_url,
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            transport = session.transport(capability)
+            result = collect_mod.collect_scope(
+                capability, transport, args.payout_type, progress=_progress
             )
-            try:
-                result = collect_mod.collect_scope(
-                    capability, transport, args.payout_type, progress=_progress
-                )
-            finally:
-                transport.close()
-        finally:
-            control.release()
         if not result.complete:
             raise CliError(
                 INVALID_RESPONSE,
@@ -201,10 +149,10 @@ def _refresh_channel_cdp(
         collect_mod.remaining_seconds(result.deadline)
         store.publish(snapshot, [(row["seqid"], canonical(row)) for row in rows])
     print(f"refresh: published {len(rows)} rows to {ns}", file=sys.stderr)
-    stale = _stale(snapshot, config.ttl_hours, _now())
+    stale = is_stale(snapshot, config.ttl_hours, _now())
     _emit(
         {"namespace": ns, "published": True, "row_count": len(rows)},
-        _meta_dict("cache", snapshot, stale, len(rows), len(rows), False),
+        snapshot_meta("cache", snapshot, stale, len(rows), len(rows), False),
     )
     return EXIT_OK
 
@@ -310,10 +258,10 @@ def _refresh_channel_snapshot(
         f"refresh: published {dataset.row_count} rows to {ns}",
         file=sys.stderr,
     )
-    stale = _stale(snapshot, config.ttl_hours, _now())
+    stale = is_stale(snapshot, config.ttl_hours, _now())
     _emit(
         {"namespace": ns, "published": True, "row_count": dataset.row_count},
-        _meta_dict(
+        snapshot_meta(
             "cache", snapshot, stale, dataset.row_count, dataset.row_count, False
         ),
     )
@@ -359,23 +307,11 @@ def _cmd_channel_list_live(
             body_filters[key] = values[0]
         else:
             body_filters[key] = values
-    environment = resolve_environment(config_file=config_mod.config_path())
-    control = _browser_control(environment)
-    try:
-        _check_auth(environment)
-        transport = CdpQueryTransport(
-            make_transport(environment.cdp_url),
-            capability,
-            page_url=environment.startup_url,
+    with inquiry_session(config_file=config_mod.config_path()) as session:
+        transport = session.transport(capability)
+        result = collect_mod.collect_scope(
+            capability, transport, args.payout_type, body_filters
         )
-        try:
-            result = collect_mod.collect_scope(
-                capability, transport, args.payout_type, body_filters
-            )
-        finally:
-            transport.close()
-    finally:
-        control.release()
     if args.require_complete and not result.complete:
         raise CliError(
             INCOMPLETE_RESULT,
@@ -417,48 +353,21 @@ def cmd_channel_list(args: argparse.Namespace) -> int:
                 LIVE_SOURCE_UNAVAILABLE,
                 "snapshot source cannot serve live queries; no implicit fallback",
             )
-    store = Cache(config.cache_path)
-    ns = namespace(capability.name, args.payout_type, source.kind)
-    snapshot, stored = store.read(ns)
-    if snapshot is None:
-        raise CliError(
-            CACHE_MISS,
-            "no cached snapshot; run: dogopencli refresh payment channel",
-        )
-    if (source.dataset_id is not None and snapshot.dataset_id != source.dataset_id) or (
-        source.kind == config_mod.SOURCE_SNAPSHOT
-        and snapshot.source_path != str(source.path.expanduser().resolve())
-    ):
-        raise CliError(
-            CACHE_MISS,
-            "cached dataset does not match the configured source identity;"
-            " run: dogopencli refresh payment channel",
-        )
-    now = _now()
-    stale = _stale(snapshot, config.ttl_hours, now)
-    if args.require_fresh and stale:
-        raise CliError(
-            CACHE_STALE,
-            f"cached snapshot is older than {config.ttl_hours:g} hours"
-            f" (fetched_at {snapshot.fetched_at})",
-        )
-    if args.require_complete and not snapshot.backend_complete:
-        raise CliError(
-            INCOMPLETE_RESULT,
-            "cached snapshot does not cover the complete backend scope",
-        )
-    records = [parse(body) for _, body in stored]
+    cached = read_cached_query(
+        config,
+        source,
+        capability.name,
+        args.payout_type,
+        refresh_command="refresh payment channel",
+        require_fresh=args.require_fresh,
+        require_complete=args.require_complete,
+        now=_now(),
+    )
+    records = [parse(body) for _, body in cached.stored]
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
     window = matched[offset:] if args.all else matched[offset : offset + limit]
-    meta = _meta_dict(
-        "cache",
-        snapshot,
-        stale,
-        matched_total,
-        len(window),
-        offset + len(window) < matched_total,
-    )
+    meta = cached.meta(matched_total, len(window), offset=offset)
     return _emit_window(args, capability, window, meta, fields)
 
 
@@ -512,28 +421,6 @@ def _cdp_source(config: config_mod.Config, source_key: str) -> config_mod.Source
     return source
 
 
-def _map_auth_error(error: AuthError) -> CliError:
-    if error.code == auth_errors.AUTH_REQUIRED:
-        return CliError(AUTH_REQUIRED, error.message)
-    if error.code == auth_errors.BROWSER_BUSY:
-        return CliError(LOCKED, error.message, retryable=True)
-    return CliError(BROWSER_UNAVAILABLE, error.message, retryable=True)
-
-
-def _check_auth(environment: Any) -> None:
-    try:
-        check_authentication(environment)
-    except AuthError as error:
-        raise _map_auth_error(error) from error
-
-
-def _browser_control(environment: Any):
-    try:
-        return acquire_browser_control(environment.profile, shared=True)
-    except AuthError as error:
-        raise _map_auth_error(error) from error
-
-
 def _progress(done: int, total: int) -> None:
     print(f"refresh: collected page {done}/{total}", file=sys.stderr)
 
@@ -545,26 +432,14 @@ def cmd_refresh_cost(args: argparse.Namespace) -> int:
     store = Cache(config.cache_path)
     ns = namespace(capability.name, capability.default_scope, source.kind)
     with store.refresh_lock():
-        environment = resolve_environment(config_file=config_mod.config_path())
-        control = _browser_control(environment)
-        try:
-            _check_auth(environment)
-            transport = CdpQueryTransport(
-                make_transport(environment.cdp_url),
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            transport = session.transport(capability)
+            result = collect_mod.collect_scope(
                 capability,
-                page_url=environment.startup_url,
+                transport,
+                capability.default_scope,
+                progress=_progress,
             )
-            try:
-                result = collect_mod.collect_scope(
-                    capability,
-                    transport,
-                    capability.default_scope,
-                    progress=_progress,
-                )
-            finally:
-                transport.close()
-        finally:
-            control.release()
         if not result.complete:
             raise CliError(
                 INVALID_RESPONSE,
@@ -595,10 +470,10 @@ def cmd_refresh_cost(args: argparse.Namespace) -> int:
             [(index, canonical(record)) for index, record in enumerate(records, 1)],
         )
     print(f"refresh: published {len(records)} rows to {ns}", file=sys.stderr)
-    stale = _stale(snapshot, config.ttl_hours, _now())
+    stale = is_stale(snapshot, config.ttl_hours, _now())
     _emit(
         {"namespace": ns, "published": True, "row_count": len(records)},
-        _meta_dict("cache", snapshot, stale, len(records), len(records), False),
+        snapshot_meta("cache", snapshot, stale, len(records), len(records), False),
     )
     return EXIT_OK
 
@@ -631,23 +506,11 @@ def _cmd_cost_list_live(
                 f"live queries accept a single value per filter; got {values} for {key}"
             )
         scalars[key] = values[0]
-    environment = resolve_environment(config_file=config_mod.config_path())
-    control = _browser_control(environment)
-    try:
-        _check_auth(environment)
-        transport = CdpQueryTransport(
-            make_transport(environment.cdp_url),
-            capability,
-            page_url=environment.startup_url,
+    with inquiry_session(config_file=config_mod.config_path()) as session:
+        transport = session.transport(capability)
+        result = collect_mod.collect_scope(
+            capability, transport, capability.default_scope, scalars
         )
-        try:
-            result = collect_mod.collect_scope(
-                capability, transport, capability.default_scope, scalars
-            )
-        finally:
-            transport.close()
-    finally:
-        control.release()
     if args.require_complete and not result.complete:
         raise CliError(
             INCOMPLETE_RESULT,
@@ -687,39 +550,21 @@ def cmd_cost_list(args: argparse.Namespace) -> int:
         return _cmd_cost_list_live(
             args, capability, source, filters, limit, offset, fields
         )
-    store = Cache(config.cache_path)
-    ns = namespace(capability.name, capability.default_scope, source.kind)
-    snapshot, stored = store.read(ns)
-    if snapshot is None:
-        raise CliError(
-            CACHE_MISS,
-            "no cached snapshot; run: dogopencli refresh payment cost",
-        )
-    now = _now()
-    stale = _stale(snapshot, config.ttl_hours, now)
-    if args.require_fresh and stale:
-        raise CliError(
-            CACHE_STALE,
-            f"cached snapshot is older than {config.ttl_hours:g} hours"
-            f" (fetched_at {snapshot.fetched_at})",
-        )
-    if args.require_complete and not snapshot.backend_complete:
-        raise CliError(
-            INCOMPLETE_RESULT,
-            "cached snapshot does not cover the complete backend scope",
-        )
-    records = [parse(body) for _, body in stored]
+    cached = read_cached_query(
+        config,
+        source,
+        capability.name,
+        capability.default_scope,
+        refresh_command="refresh payment cost",
+        require_fresh=args.require_fresh,
+        require_complete=args.require_complete,
+        now=_now(),
+    )
+    records = [parse(body) for _, body in cached.stored]
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
     window = matched[offset:] if args.all else matched[offset : offset + limit]
-    meta = _meta_dict(
-        "cache",
-        snapshot,
-        stale,
-        matched_total,
-        len(window),
-        offset + len(window) < matched_total,
-    )
+    meta = cached.meta(matched_total, len(window), offset=offset)
     return _emit_window(args, capability, window, meta, fields)
 
 
@@ -792,46 +637,32 @@ def cmd_refresh_sla(args: argparse.Namespace) -> int:
     store = Cache(config.cache_path)
     ns = namespace(capability.name, capability.default_scope, source.kind)
     with store.refresh_lock():
-        environment = resolve_environment(config_file=config_mod.config_path())
-        control = _browser_control(environment)
-        try:
-            _check_auth(environment)
-            cdp_transport = make_transport(environment.cdp_url)
-            transport = CdpQueryTransport(
-                cdp_transport, capability, page_url=environment.startup_url
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            transport = session.transport(capability)
+            detail_transport = session.transport(SLA_DETAIL)
+            deadline = collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS
+            result = collect_mod.collect_scope(
+                capability,
+                transport,
+                capability.default_scope,
+                progress=_progress,
             )
-            detail_transport = CdpQueryTransport(
-                cdp_transport, SLA_DETAIL, page_url=environment.startup_url
-            )
-            try:
-                deadline = collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS
-                result = collect_mod.collect_scope(
-                    capability,
-                    transport,
-                    capability.default_scope,
-                    progress=_progress,
+            if not result.complete:
+                raise CliError(
+                    INVALID_RESPONSE,
+                    "collected SLA baselines are incomplete after the bounded "
+                    "rebuild; the previous cache is retained",
                 )
-                if not result.complete:
-                    raise CliError(
-                        INVALID_RESPONSE,
-                        "collected SLA baselines are incomplete after the bounded "
-                        "rebuild; the previous cache is retained",
-                    )
-                baselines = capability.sort_records(result.records)
-                details: list[dict[str, Any]] = []
-                for index, record in enumerate(baselines, 1):
-                    details.append(
-                        _fetch_sla_detail(detail_transport, record["id"], deadline)
-                    )
-                    print(
-                        f"refresh: collected detail {index}/{len(baselines)}",
-                        file=sys.stderr,
-                    )
-            finally:
-                transport.close()
-                detail_transport.close()
-        finally:
-            control.release()
+            baselines = capability.sort_records(result.records)
+            details: list[dict[str, Any]] = []
+            for index, record in enumerate(baselines, 1):
+                details.append(
+                    _fetch_sla_detail(detail_transport, record["id"], deadline)
+                )
+                print(
+                    f"refresh: collected detail {index}/{len(baselines)}",
+                    file=sys.stderr,
+                )
         rows = [
             {"id": baseline["id"], "baseline": baseline, "detail": detail}
             for baseline, detail in zip(baselines, details, strict=True)
@@ -859,10 +690,10 @@ def cmd_refresh_sla(args: argparse.Namespace) -> int:
             [(index, canonical(row)) for index, row in enumerate(rows, 1)],
         )
     print(f"refresh: published {len(rows)} rows to {ns}", file=sys.stderr)
-    stale = _stale(snapshot, config.ttl_hours, _now())
+    stale = is_stale(snapshot, config.ttl_hours, _now())
     _emit(
         {"namespace": ns, "published": True, "row_count": len(rows)},
-        _meta_dict("cache", snapshot, stale, len(rows), len(rows), False),
+        snapshot_meta("cache", snapshot, stale, len(rows), len(rows), False),
     )
     return EXIT_OK
 
@@ -933,23 +764,11 @@ def _cmd_sla_list_live(
             " its independent filter effect is unverified",
             file=sys.stderr,
         )
-    environment = resolve_environment(config_file=config_mod.config_path())
-    control = _browser_control(environment)
-    try:
-        _check_auth(environment)
-        transport = CdpQueryTransport(
-            make_transport(environment.cdp_url),
-            capability,
-            page_url=environment.startup_url,
+    with inquiry_session(config_file=config_mod.config_path()) as session:
+        transport = session.transport(capability)
+        result = collect_mod.collect_scope(
+            capability, transport, capability.default_scope, scalars
         )
-        try:
-            result = collect_mod.collect_scope(
-                capability, transport, capability.default_scope, scalars
-            )
-        finally:
-            transport.close()
-    finally:
-        control.release()
     if args.require_complete and not result.complete:
         raise CliError(
             INCOMPLETE_RESULT,
@@ -985,39 +804,21 @@ def cmd_sla_list(args: argparse.Namespace) -> int:
         return _cmd_sla_list_live(
             args, capability, source, filters, limit, offset, fields
         )
-    store = Cache(config.cache_path)
-    ns = namespace(capability.name, capability.default_scope, source.kind)
-    snapshot, stored = store.read(ns)
-    if snapshot is None:
-        raise CliError(
-            CACHE_MISS,
-            "no cached snapshot; run: dogopencli refresh payment sla",
-        )
-    now = _now()
-    stale = _stale(snapshot, config.ttl_hours, now)
-    if args.require_fresh and stale:
-        raise CliError(
-            CACHE_STALE,
-            f"cached snapshot is older than {config.ttl_hours:g} hours"
-            f" (fetched_at {snapshot.fetched_at})",
-        )
-    if args.require_complete and not snapshot.backend_complete:
-        raise CliError(
-            INCOMPLETE_RESULT,
-            "cached snapshot does not cover the complete backend scope",
-        )
-    records = [parse(body)["baseline"] for _, body in stored]
+    cached = read_cached_query(
+        config,
+        source,
+        capability.name,
+        capability.default_scope,
+        refresh_command="refresh payment sla",
+        require_fresh=args.require_fresh,
+        require_complete=args.require_complete,
+        now=_now(),
+    )
+    records = [parse(body)["baseline"] for _, body in cached.stored]
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
     window = matched[offset:] if args.all else matched[offset : offset + limit]
-    meta = _meta_dict(
-        "cache",
-        snapshot,
-        stale,
-        matched_total,
-        len(window),
-        offset + len(window) < matched_total,
-    )
+    meta = cached.meta(matched_total, len(window), offset=offset)
     return _emit_window(args, capability, window, meta, fields)
 
 
@@ -1048,51 +849,28 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
     config = config_mod.load([capability.source_config_key])
     source = _cdp_source(config, capability.source_config_key)
     if args.live:
-        environment = resolve_environment(config_file=config_mod.config_path())
-        control = _browser_control(environment)
-        try:
-            _check_auth(environment)
-            transport = CdpQueryTransport(
-                make_transport(environment.cdp_url),
-                SLA_DETAIL,
-                page_url=environment.startup_url,
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            transport = session.transport(SLA_DETAIL)
+            detail = _fetch_sla_detail(
+                transport,
+                args.id,
+                collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS,
             )
-            try:
-                detail = _fetch_sla_detail(
-                    transport,
-                    args.id,
-                    collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS,
-                )
-            finally:
-                transport.close()
-        finally:
-            control.release()
         meta = _live_meta(source, capability.default_scope, True, 1, 1, 0)
         meta["query"] = {"capability": SLA_DETAIL.name, "id": args.id}
         return _emit_object(args, capability, detail, meta, fields)
-    store = Cache(config.cache_path)
-    ns = namespace(capability.name, capability.default_scope, source.kind)
-    snapshot, stored = store.read(ns)
-    if snapshot is None:
-        raise CliError(
-            CACHE_MISS,
-            "no cached snapshot; run: dogopencli refresh payment sla",
-        )
-    now = _now()
-    stale = _stale(snapshot, config.ttl_hours, now)
-    if args.require_fresh and stale:
-        raise CliError(
-            CACHE_STALE,
-            f"cached snapshot is older than {config.ttl_hours:g} hours"
-            f" (fetched_at {snapshot.fetched_at})",
-        )
-    if args.require_complete and not snapshot.backend_complete:
-        raise CliError(
-            INCOMPLETE_RESULT,
-            "cached snapshot does not cover the complete backend scope",
-        )
+    cached = read_cached_query(
+        config,
+        source,
+        capability.name,
+        capability.default_scope,
+        refresh_command="refresh payment sla",
+        require_fresh=args.require_fresh,
+        require_complete=args.require_complete,
+        now=_now(),
+    )
     detail: dict[str, Any] | None = None
-    for _, body in stored:
+    for _, body in cached.stored:
         row = parse(body)
         if row["id"] == args.id:
             detail = row["detail"]
@@ -1102,21 +880,8 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
             NOT_FOUND,
             f"SLA baseline {args.id} is not present in the cached snapshot",
         )
-    meta = _meta_dict("cache", snapshot, stale, 1, 1, False)
+    meta = cached.meta(1, 1)
     return _emit_object(args, capability, detail, meta, fields)
-
-
-# Handler names, resolved through the module globals at call time so tests
-# can stub them with monkeypatch.
-_HANDLERS = {
-    ("payment", "channel", "list"): "cmd_channel_list",
-    ("payment", "cost", "list"): "cmd_cost_list",
-    ("payment", "sla", "baselines", "list"): "cmd_sla_list",
-    ("payment", "sla", "baselines", "get"): "cmd_sla_get",
-    ("refresh", "payment", "channel"): "cmd_refresh_channel",
-    ("refresh", "payment", "cost"): "cmd_refresh_cost",
-    ("refresh", "payment", "sla"): "cmd_refresh_sla",
-}
 
 
 def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
@@ -1130,7 +895,7 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
     args = parser.parse_args(
         [token for index, token in enumerate(values) if index not in word_indices]
     )
-    handler = globals()[_HANDLERS[node.path]]
+    handler = globals()[node.handler]
     try:
         return handler(args)
     except CliError as error:
@@ -1161,7 +926,7 @@ def main(argv: list[str] | None = None) -> int:
     values = list(sys.argv[1:] if argv is None else argv)
     word, index = leading_command(values)
     if word == "help":
-        return help_main(values[index + 1 :])
+        return help_main(values[:index] + values[index + 1 :])
     if word in AUTH_COMMANDS:
         # Authentication follows the DI-aligned envelope protocol (ADR 0004),
         # an explicit exception to the business data/meta/error protocol.

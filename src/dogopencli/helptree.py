@@ -2,7 +2,7 @@
 
 Issue #13: no-argument/bare-group navigation, ``help PATH``, ``PATH --help``
 and explicit ``--format text`` all resolve through the one command tree
-declared in ``helpspec`` (business) and ``auth/spec`` (authentication), and
+assembled in ``catalog`` from business and authentication declarations, and
 every help response is produced before config parsing, auth dispatch, cache
 construction, or CDP initialization. Help never reads config, cache,
 browser, or network state.
@@ -16,261 +16,30 @@ success always exits 0 with an empty stderr.
 import json
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from . import __version__
 from .auth.spec import SPECS as AUTH_SPECS
 from .auth.spec import document as auth_document
 from .auth.spec import render_text as auth_render_text
+from .catalog import AUTH_PATHS as _AUTH_PATHS
+from .catalog import NODES
+from .catalog import resolve_child as _resolve_child
 from .errors import EXIT_OK, EXIT_USAGE, INVALID_ARGUMENT
 from .helpspec import (
     HELP_FORMATS,
     BizNode,
     document,
-    opt,
     render_text,
-)
-from .helpspec import (
-    REFRESH_OUTPUT as _REFRESH_OUTPUT,
+    validate_help_options,
 )
 from .jsonutil import canonical
-from .plugins.payment.channel import CHANNEL_LIST_NODE
-from .plugins.payment.cost import COST_LIST_NODE
-from .plugins.payment.sla import SLA_GET_NODE, SLA_LIST_NODE
-
-_AUTH_PATHS = {("auth",), ("auth", "check"), ("login",), ("logout",)}
 
 # Options that may legally precede the first command word (auth globals and
 # help controls); anything else stops the command-word scan.
 _PRE_COMMAND_VALUE_OPTIONS = {"--config-dir", "--format"}
 _PRE_COMMAND_FLAGS = {"--verbose", "--quiet", "--no-color", "--version", "-h", "--help"}
-
-_REFRESH_EFFECTS_BASE = {
-    "mutates": True,
-    "network": False,
-    "browser_required": False,
-    "destructive": False,
-}
-_REFRESH_SNAPSHOT_VARIANT: dict[str, Any] = {
-    "when": "the configured source is a snapshot dataset",
-    "summary": "imports the local dataset; no network and no browser",
-    "effects": {
-        "mutates": True,
-        "network": False,
-        "browser_required": False,
-        "destructive": False,
-    },
-}
-_REFRESH_CDP_VARIANT: dict[str, Any] = {
-    "when": "the configured source is cdp",
-    "summary": "queries the backend through the existing CDP session and"
-    " rebuilds the cache",
-    "effects": {
-        "mutates": True,
-        "network": True,
-        "browser_required": True,
-        "destructive": False,
-    },
-}
-_REFRESH_CDP_EFFECTS: dict[str, Any] = {
-    "mutates": True,
-    "network": True,
-    "browser_required": True,
-    "destructive": False,
-}
-
-_REFRESH_CHANNEL_NODE = BizNode(
-    ("refresh", "payment", "channel"),
-    "Import the configured channel source into the local cache.",
-    options=(
-        opt(
-            "payout_type",
-            "Payout scope.",
-            "str",
-            default="EXTERNAL",
-            choices=("EXTERNAL", "LIQUIDITY", "MANUAL", "SETTLEMENT"),
-        ),
-    ),
-    constraints=(
-        "The source branch is decided by configuration; both branches are"
-        " listed statically in effects_variants.",
-        "Progress diagnostics go to stderr; the result envelope goes to stdout.",
-    ),
-    effects=dict(_REFRESH_EFFECTS_BASE),
-    effects_variants=(_REFRESH_SNAPSHOT_VARIANT, _REFRESH_CDP_VARIANT),
-    output=dict(_REFRESH_OUTPUT),
-    errors=(
-        "INVALID_ARGUMENT",
-        "CONFIG_ERROR",
-        "SOURCE_DATA_MISSING",
-        "SOURCE_DATA_INVALID",
-        "SOURCE_SCOPE_UNAVAILABLE",
-        "INVALID_RESPONSE",
-        "AUTH_REQUIRED",
-        "BROWSER_UNAVAILABLE",
-        "LOCKED",
-        "TIMEOUT",
-        "BUSINESS_QUERY_FAILED",
-    ),
-    examples=(
-        "dogopencli refresh payment channel",
-        "dogopencli refresh payment channel --payout-type EXTERNAL",
-    ),
-    next=("dogopencli help payment channel list",),
-    handler=True,
-)
-
-_REFRESH_COST_NODE = BizNode(
-    ("refresh", "payment", "cost"),
-    "Rebuild the payment cost cache through the existing CDP session.",
-    constraints=(
-        "Requires the CDP source and an existing authenticated browser session.",
-        "Progress diagnostics go to stderr; the result envelope goes to stdout.",
-    ),
-    effects=dict(_REFRESH_CDP_EFFECTS),
-    output=dict(_REFRESH_OUTPUT),
-    errors=(
-        "INVALID_ARGUMENT",
-        "CONFIG_ERROR",
-        "INVALID_RESPONSE",
-        "AUTH_REQUIRED",
-        "BROWSER_UNAVAILABLE",
-        "LOCKED",
-        "TIMEOUT",
-        "BUSINESS_QUERY_FAILED",
-    ),
-    examples=("dogopencli refresh payment cost",),
-    next=("dogopencli help payment cost list",),
-    handler=True,
-)
-
-_REFRESH_SLA_NODE = BizNode(
-    ("refresh", "payment", "sla"),
-    "Rebuild the payment SLA baseline cache through the existing CDP session"
-    " (full list, then every detail).",
-    constraints=(
-        "Requires the CDP source and an existing authenticated browser session.",
-        "Progress diagnostics go to stderr; the result envelope goes to stdout.",
-    ),
-    effects=dict(_REFRESH_CDP_EFFECTS),
-    output=dict(_REFRESH_OUTPUT),
-    errors=(
-        "INVALID_ARGUMENT",
-        "CONFIG_ERROR",
-        "INVALID_RESPONSE",
-        "AUTH_REQUIRED",
-        "BROWSER_UNAVAILABLE",
-        "LOCKED",
-        "TIMEOUT",
-        "BUSINESS_QUERY_FAILED",
-    ),
-    examples=("dogopencli refresh payment sla",),
-    next=("dogopencli help payment sla baselines list",),
-    handler=True,
-)
-
-_LEAF_NODES = (
-    CHANNEL_LIST_NODE,
-    COST_LIST_NODE,
-    SLA_LIST_NODE,
-    SLA_GET_NODE,
-    _REFRESH_CHANNEL_NODE,
-    _REFRESH_COST_NODE,
-    _REFRESH_SLA_NODE,
-)
-
-NODES: dict[tuple[str, ...], BizNode] = {
-    (): BizNode(
-        (),
-        "Inquiry-only, read-only payment operations queries; the default"
-        " reads the local cache.",
-        children=(
-            ("payment", "Payment product queries: channels, costs, and SLA baselines."),
-            ("refresh", "Explicitly rebuild local caches; never runs implicitly."),
-            ("auth", AUTH_SPECS[("auth",)].summary),
-            ("login", AUTH_SPECS[("login",)].summary),
-            ("logout", AUTH_SPECS[("logout",)].summary),
-        ),
-        constraints=(
-            "Business queries never modify production business configuration.",
-        ),
-        errors=("INVALID_ARGUMENT",),
-        examples=(
-            "dogopencli",
-            "dogopencli help payment",
-            "dogopencli help payment channel list",
-        ),
-        next=(
-            "dogopencli help payment",
-            "dogopencli help refresh",
-            "dogopencli --format text",
-        ),
-    ),
-    ("payment",): BizNode(
-        ("payment",),
-        "Payment product queries: channels, costs, and SLA baselines.",
-        children=(
-            ("channel", "Payment channel queries."),
-            ("cost", "Payment channel cost configuration queries."),
-            ("sla", "Payment SLA baseline queries."),
-        ),
-        examples=("dogopencli payment channel list",),
-        next=("dogopencli help payment channel",),
-    ),
-    ("payment", "channel"): BizNode(
-        ("payment", "channel"),
-        "Payment channel queries.",
-        children=(("list", CHANNEL_LIST_NODE.summary),),
-        examples=("dogopencli payment channel list",),
-        next=("dogopencli help payment channel list",),
-    ),
-    ("payment", "cost"): BizNode(
-        ("payment", "cost"),
-        "Payment channel cost configuration queries.",
-        children=(("list", COST_LIST_NODE.summary),),
-        examples=("dogopencli payment cost list",),
-        next=("dogopencli help payment cost list",),
-    ),
-    ("payment", "sla"): BizNode(
-        ("payment", "sla"),
-        "Payment SLA baseline queries.",
-        children=(("baselines", "SLA baseline list and detail queries."),),
-        examples=("dogopencli payment sla baselines list",),
-        next=("dogopencli help payment sla baselines",),
-    ),
-    ("payment", "sla", "baselines"): BizNode(
-        ("payment", "sla", "baselines"),
-        "SLA baseline list and detail queries.",
-        children=(
-            ("list", SLA_LIST_NODE.summary),
-            ("get", SLA_GET_NODE.summary),
-        ),
-        examples=("dogopencli payment sla baselines list",),
-        next=(
-            "dogopencli help payment sla baselines list",
-            "dogopencli help payment sla baselines get",
-        ),
-    ),
-    ("refresh",): BizNode(
-        ("refresh",),
-        "Explicitly rebuild local caches; never runs implicitly.",
-        children=(("payment", "Rebuild payment product caches."),),
-        examples=("dogopencli refresh payment channel",),
-        next=("dogopencli help refresh payment",),
-    ),
-    ("refresh", "payment"): BizNode(
-        ("refresh", "payment"),
-        "Rebuild payment product caches.",
-        children=(
-            ("channel", _REFRESH_CHANNEL_NODE.summary),
-            ("cost", _REFRESH_COST_NODE.summary),
-            ("sla", _REFRESH_SLA_NODE.summary),
-        ),
-        examples=("dogopencli refresh payment channel",),
-        next=("dogopencli help refresh payment channel",),
-    ),
-}
-NODES.update({node.path: node for node in _LEAF_NODES})
 
 
 def leading_command(tokens: list[str]) -> tuple[str | None, int]:
@@ -280,8 +49,9 @@ def leading_command(tokens: list[str]) -> tuple[str | None, int]:
         token = tokens[index]
         if token == "--":
             return None, len(tokens)
-        if token in _PRE_COMMAND_VALUE_OPTIONS:
-            index += 2
+        flag, separator, _value = token.partition("=")
+        if flag in _PRE_COMMAND_VALUE_OPTIONS:
+            index += 1 if separator else 2
             continue
         if token in _PRE_COMMAND_FLAGS:
             index += 1
@@ -290,22 +60,6 @@ def leading_command(tokens: list[str]) -> tuple[str | None, int]:
             return None, index
         return token, index
     return None, len(tokens)
-
-
-def _resolve_child(path: tuple[str, ...], word: str) -> tuple[str, ...] | None:
-    if path == ():
-        if word in ("payment", "refresh", "auth", "login", "logout"):
-            return (word,)
-        return None
-    if path == ("auth",):
-        return ("auth", "check") if word == "check" else None
-    node = NODES.get(path)
-    if node is None:
-        return None
-    for name, _summary in node.children:
-        if name == word:
-            return (*path, word)
-    return None
 
 
 def _document_for(path: tuple[str, ...]) -> dict[str, Any]:
@@ -367,195 +121,132 @@ def _auth_error(message: str, path: tuple[str, ...], format: str) -> int:
     return 1
 
 
-def _option_arity(node: BizNode, flag: str) -> int | None:
-    for option in node.options:
-        if option.flag == flag:
-            return 0 if option.kind == "bool" else 1
-    return None
+@dataclass
+class _Route:
+    path: tuple[str, ...] = ()
+    word_indices: set[int] = field(default_factory=set)
+    options: list[str] = field(default_factory=list)
+    help_position: int | None = None
+    version_position: int | None = None
+    format: str = "json"
+    pre_path_format: bool = False
+    unknown_word: str | None = None
+
+
+def _scan(tokens: list[str], *, explicit_help: bool) -> _Route:
+    """Resolve paths and consume option values once for both help entrances.
+
+    Keep original option tokens for the declaration-driven syntax validator.
+    Continue scanning after a bad path so trailing presentation flags apply
+    to errors too. Values and tokens after -- never become command words.
+    """
+    route = _Route()
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--":
+            route.options.extend(tokens[index:])
+            break
+        if token.startswith("-"):
+            flag, separator, inline = token.partition("=")
+            node = NODES.get(route.path)
+            takes_value = flag == "--format"
+            if not explicit_help and node is not None:
+                takes_value |= any(
+                    option.flag == flag and option.kind != "bool"
+                    for option in node.options
+                )
+            route.options.append(token)
+            value = inline if separator else None
+            consumed = 1
+            if takes_value and not separator and index + 1 < len(tokens):
+                following = tokens[index + 1]
+                # Negative numbers remain argument values, not command words.
+                negative = following.startswith("-") and following[1:2].isdigit()
+                if not following.startswith("-") or negative:
+                    value = following
+                    route.options.append(following)
+                    consumed = 2
+            if flag == "--format":
+                if not route.word_indices:
+                    route.pre_path_format = True
+                route.format = value if value in HELP_FORMATS else "json"
+            if token in ("--help", "-h") and route.help_position is None:
+                route.help_position = index
+            if token == "--version" and route.version_position is None:
+                route.version_position = index
+            index += consumed
+            continue
+        resolved = (
+            _resolve_child(route.path, token) if route.unknown_word is None else None
+        )
+        if resolved is None:
+            if route.unknown_word is None:
+                route.unknown_word = token
+        else:
+            route.path = resolved
+            route.word_indices.add(index)
+        index += 1
+    return route
+
+
+def _show_route_help(route: _Route, *, explicit_help: bool) -> int:
+    fail = _auth_error if route.path in _AUTH_PATHS else _business_error
+    if route.unknown_word is not None:
+        return fail(f"unknown command: {route.unknown_word}", route.path, route.format)
+    node = NODES.get(route.path)
+    options = node.options if node is not None and not explicit_help else ()
+    try:
+        validate_help_options(route.options, options)
+    except ValueError as error:
+        return fail(str(error), route.path, route.format)
+    return _emit_help(route.path, route.format)
 
 
 def help_main(tokens: list[str]) -> int:
-    """``dogopencli help [PATH]``: path words plus help control options only."""
-    try:
-        cut = tokens.index("--")
-        pre, post = tokens[:cut], tokens[cut + 1 :]
-    except ValueError:
-        pre, post = tokens, []
-    path: tuple[str, ...] = ()
-    format_value: str | None = None
-    format_missing = False
-    unknown_option: str | None = None
-    unknown_word: str | None = None
-    index = 0
-    while index < len(pre):
-        token = pre[index]
-        if token in ("-h", "--help"):
-            index += 1
-            continue
-        if token == "--format":
-            following = pre[index + 1] if index + 1 < len(pre) else None
-            if following is None or following.startswith("-"):
-                format_missing = True
-                index += 1
-            else:
-                format_value = following
-                index += 2
-            continue
-        if token.startswith("-"):
-            unknown_option = token
-            break
-        resolved = _resolve_child(path, token)
-        if resolved is None:
-            unknown_word = token
-            break
-        path = resolved
-        index += 1
-    fail = _auth_error if path in _AUTH_PATHS else _business_error
-    if format_missing:
-        return fail("option --format requires a value", path, "json")
-    if format_value is not None and format_value not in HELP_FORMATS:
-        return fail(
-            f"invalid help format: {format_value!r}; expected json or text",
-            path,
-            "json",
-        )
-    if unknown_word is not None:
-        return fail(f"unknown command: {unknown_word}", path, format_value or "json")
-    if unknown_option is not None:
-        return fail(
-            f"unrecognized option: {unknown_option}", path, format_value or "json"
-        )
-    if post:
-        return fail(
-            "unrecognized arguments: " + " ".join(post), path, format_value or "json"
-        )
-    return _emit_help(path, format_value or "json")
+    """Explicit help accepts path words and help controls only."""
+    return _show_route_help(_scan(tokens, explicit_help=True), explicit_help=True)
 
 
 def business_entry(
     values: list[str],
     execute: Callable[[BizNode, list[str], set[int]], int],
 ) -> int:
-    """Business/root routing: help and navigation errors, else execution.
-
-    ``execute`` receives the resolved leaf node, the original argv, and the
-    indices of the path-word tokens to strip before argparse parsing.
-    """
-    try:
-        cut = values.index("--")
-        pre, post = values[:cut], values[cut + 1 :]
-    except ValueError:
-        pre, post = values, []
-    node = NODES[()]
-    word_indices: set[int] = set()
-    help_flag = False
-    help_pos = -1
-    version_flag = False
-    version_pos = -1
-    format_value: str | None = None
-    format_missing = False
-    pre_path_format = False
-    unknown_option: str | None = None
-    unknown_word: str | None = None
-    index = 0
-    while index < len(pre):
-        token = pre[index]
-        if token in ("-h", "--help"):
-            if not help_flag:
-                help_pos = index
-            help_flag = True
-            index += 1
-            continue
-        if token == "--version":
-            if not version_flag:
-                version_pos = index
-            version_flag = True
-            index += 1
-            continue
-        if token == "--format":
-            following = pre[index + 1] if index + 1 < len(pre) else None
-            if following is None or following.startswith("-"):
-                format_missing = True
-                index += 1
-            else:
-                if not word_indices:
-                    pre_path_format = True
-                format_value = following
-                index += 2
-            continue
-        if token.startswith("-"):
-            arity = _option_arity(node, token) if node.handler else None
-            if arity is None:
-                if unknown_option is None:
-                    unknown_option = token
-                index += 1
-            elif arity == 0:
-                index += 1
-            else:
-                following = pre[index + 1] if index + 1 < len(pre) else None
-                if following is None or following.startswith("-"):
-                    index += 1
-                else:
-                    index += 2
-            continue
-        if node.handler:
-            unknown_word = token
-            break
-        resolved = _resolve_child(node.path, token)
-        if resolved is None:
-            unknown_word = token
-            break
-        node = NODES[resolved]
-        word_indices.add(index)
-        index += 1
-    if version_flag and not word_indices and (not help_flag or version_pos < help_pos):
-        # argparse version-action compatibility: print and exit 0.
+    route = _scan(values, explicit_help=False)
+    if (
+        route.version_position is not None
+        and not route.word_indices
+        and (
+            route.help_position is None or route.version_position < route.help_position
+        )
+    ):
+        # Preserve the root version action's existing protocol.
         print(f"dogopencli {__version__}")
         raise SystemExit(EXIT_OK)
-    if node.handler and not help_flag:
-        if unknown_word is not None:
+    if route.path in _AUTH_PATHS:
+        # Valid auth prefixes route to the auth shell in main. An invalid
+        # prefix must produce its protocol's error, never index the biz tree.
+        return _auth_error(
+            "unrecognized options before authentication command",
+            route.path,
+            route.format,
+        )
+    node = NODES[route.path]
+    if node.handler and route.help_position is None:
+        if route.unknown_word is not None:
             return _business_error(
-                f"unrecognized arguments: {unknown_word}", node.path, "json"
+                f"unrecognized arguments: {route.unknown_word}", node.path, "json"
             )
-        if pre_path_format:
+        if route.pre_path_format:
             return _business_error(
                 "unrecognized option before the command path: --format",
                 node.path,
                 "json",
             )
-        if version_flag:
+        if route.version_position is not None:
             return _business_error("unrecognized option: --version", node.path, "json")
-        return execute(node, values, word_indices)
-    if version_flag and unknown_option is None:
-        unknown_option = "--version"
-    if format_missing:
-        return _business_error("option --format requires a value", node.path, "json")
-    if format_value is not None and format_value not in HELP_FORMATS:
-        return _business_error(
-            f"invalid help format: {format_value!r}; expected json or text",
-            node.path,
-            "json",
-        )
-    if unknown_word is not None:
-        return _business_error(
-            f"unknown command: {unknown_word}", node.path, format_value or "json"
-        )
-    if unknown_option is not None:
-        return _business_error(
-            f"unrecognized option: {unknown_option}", node.path, format_value or "json"
-        )
-    if post:
-        return _business_error(
-            "unrecognized arguments: " + " ".join(post),
-            node.path,
-            format_value or "json",
-        )
-    return _emit_help(node.path, format_value or "json")
+        return execute(node, values, route.word_indices)
+    return _show_route_help(route, explicit_help=False)
 
 
-__all__ = [
-    "NODES",
-    "business_entry",
-    "help_main",
-    "leading_command",
-]
+__all__ = ["NODES", "business_entry", "help_main", "leading_command"]
