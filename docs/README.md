@@ -13,6 +13,7 @@
 | --- | --- | --- |
 | General | [运营平台访问与通用发现](research/general/2026-09-08-platform-access.md) | CDP、登录、聚合应用结构、查询协议、只读约束与技术参考 |
 | General | [DI 渐进式帮助参考](research/general/2026-09-12-cli-help-reference.md) | 无参数入口、JSON/text、逐层导航与 dogopencli 帮助差距 |
+| General | [CLI 帮助验收矩阵](research/general/2026-09-12-cli-help-acceptance-matrix.md) | 全部 20 条命令路径的验收规范、20 次探针 before 基线与 Task 4 覆盖清单 |
 | Payment | [付款产品设计与运行态发现](research/payment/2026-09-08-payment-operations.md) | 产品模型、27 个菜单、查询字段、接口证据、权限限制和 CLI 候选范围 |
 
 ## 查询契约补充
