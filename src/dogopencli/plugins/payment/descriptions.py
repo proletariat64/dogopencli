@@ -6,6 +6,8 @@ query contracts. Observations are annotations, never validation assertions.
 
 from typing import Any
 
+from ...annotations import schema_annotations
+
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
 
@@ -509,24 +511,5 @@ def data_schema(capability: str) -> dict[str, Any]:
         result["$defs"]["Ratio"] = _ratio()
     result["$schema"] = DIALECT
     result["title"] = capability
-    result["x-annotation-vocabulary"] = {
-        "x-evidence": {
-            "dimensions": {
-                "type": "Evidence for JSON type; only verified types constrain values.",
-                "presence": "Presence evidence; observed does not mean required.",
-                "nullability": "Nullability evidence; unknown remains open.",
-                "unit": "Unit evidence; unknown prohibits inferred conversion.",
-                "meaning": "Evidence for business interpretation.",
-            },
-            "values": {
-                "verified": "Guaranteed by CLI behavior or explicit verification.",
-                "observed": "Seen in documented samples, not a universal constraint.",
-                "unknown": "Unresolved; no guarantee or semantic inference.",
-                "not_applicable": "Dimension does not apply to this description.",
-            },
-        },
-        "x-observed-type": "Observed JSON type only; not a validation assertion.",
-        "x-observed-values": "Non-exhaustive observed values, never a closed enum.",
-        "x-unit": "Unit name when explicitly verified; no automatic conversion.",
-    }
+    result["x-annotation-vocabulary"] = schema_annotations()
     return result

@@ -6,6 +6,7 @@ not carry domain knowledge; new capabilities register here without
 modifying the core layers.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -78,15 +79,29 @@ class Capability(Protocol):
 
 _REGISTRY: dict[str, Capability] = {}
 _COMMANDS: dict[str, tuple[BizNode, ...]] = {}
+_DESCRIPTIONS: dict[tuple[str, ...], Callable[[BizNode], dict[str, Any]]] = {}
 
 
-def register(capability: Capability, *, commands: tuple[BizNode, ...] = ()) -> None:
+def register(
+    capability: Capability,
+    *,
+    commands: tuple[BizNode, ...] = (),
+    description: Callable[[BizNode], dict[str, Any]] | None = None,
+) -> None:
     _REGISTRY[capability.name] = capability
     _COMMANDS[capability.name] = commands
+    if description is not None:
+        for node in commands:
+            _DESCRIPTIONS[node.path] = description
 
 
 def command_nodes() -> tuple[BizNode, ...]:
     return tuple(node for commands in _COMMANDS.values() for node in commands)
+
+
+def get_description(node: BizNode) -> dict[str, Any]:
+    """Invoke the offline description provider registered with this command."""
+    return _DESCRIPTIONS[node.path](node)
 
 
 def get_capability(name: str) -> Capability:
@@ -96,11 +111,14 @@ def get_capability(name: str) -> Capability:
 def _load_builtins() -> None:
     from .payment.channel import CHANNEL_CAPABILITY, CHANNEL_LIST_NODE
     from .payment.cost import COST_CAPABILITY, COST_LIST_NODE
+    from .payment.reading import description
     from .payment.sla import SLA_CAPABILITY, SLA_GET_NODE, SLA_LIST_NODE
 
-    register(CHANNEL_CAPABILITY, commands=(CHANNEL_LIST_NODE,))
-    register(COST_CAPABILITY, commands=(COST_LIST_NODE,))
-    register(SLA_CAPABILITY, commands=(SLA_LIST_NODE, SLA_GET_NODE))
+    register(CHANNEL_CAPABILITY, commands=(CHANNEL_LIST_NODE,), description=description)
+    register(COST_CAPABILITY, commands=(COST_LIST_NODE,), description=description)
+    register(
+        SLA_CAPABILITY, commands=(SLA_LIST_NODE, SLA_GET_NODE), description=description
+    )
 
 
 _load_builtins()
