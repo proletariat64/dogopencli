@@ -190,16 +190,19 @@ def _scan(tokens: list[str], *, explicit_help: bool) -> _Route:
     return route
 
 
-def _show_route_help(route: _Route, *, explicit_help: bool) -> int:
+def _show_route_help(
+    route: _Route, *, explicit_help: bool, error_format: str | None = None
+) -> int:
     fail = _auth_error if route.path in _AUTH_PATHS else _business_error
+    error_format = error_format or route.format
     if route.unknown_word is not None:
-        return fail(f"unknown command: {route.unknown_word}", route.path, route.format)
+        return fail(f"unknown command: {route.unknown_word}", route.path, error_format)
     node = NODES.get(route.path)
     options = node.options if node is not None and not explicit_help else ()
     try:
         validate_help_options(route.options, options)
     except ValueError as error:
-        return fail(str(error), route.path, route.format)
+        return fail(str(error), route.path, error_format)
     return _emit_help(route.path, route.format)
 
 
@@ -246,7 +249,14 @@ def business_entry(
         if route.version_position is not None:
             return _business_error("unrecognized option: --version", node.path, "json")
         return execute(node, values, route.word_indices)
-    return _show_route_help(route, explicit_help=False)
+    # Invalid describe execution remains business JSON; explicit help uses
+    # the requested help format. Bare groups still navigate in that format.
+    error_format = (
+        "json"
+        if route.path[:1] == ("describe",) and route.help_position is None
+        else route.format
+    )
+    return _show_route_help(route, explicit_help=False, error_format=error_format)
 
 
 __all__ = ["NODES", "business_entry", "help_main", "leading_command"]

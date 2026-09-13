@@ -13,7 +13,7 @@ import pytest
 
 from dogopencli.plugins.payment.channel import SCOPES, STATUSES
 
-ROOT_CHILDREN = ["payment", "refresh", "auth", "login", "logout"]
+ROOT_CHILDREN = ["payment", "refresh", "describe", "auth", "login", "logout"]
 
 GROUPS = [
     [],

@@ -12,8 +12,11 @@ from dogopencli.plugins import command_nodes
 
 def test_every_executable_is_discoverable_and_dispatches(run_cli, monkeypatch):
     leaves = [node for node in NODES.values() if node.handler]
-    assert len({node.handler for node in leaves}) == len(leaves)
-    assert all(NODES[node.path] == node for node in command_nodes())
+    assert all(
+        NODES[node.path].handler == node.handler
+        and NODES[node.path].options == node.options
+        for node in command_nodes()
+    )
     for node in leaves:
         assert callable(getattr(cli, node.handler))
         assert NODES[node.path[:-1]].children.count((node.path[-1], node.summary)) == 1

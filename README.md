@@ -33,7 +33,7 @@ kind = "cdp"
 帮助为 DI 风格的渐进式导航（[规格 Issue #13](https://github.com/proletariat64/dogopencli/issues/13)），已替代旧的 argparse 文本默认帮助。无参数、`--help`/`-h`、`help` 均返回同一份 `help_version=1` JSON 文档并退出 0；每层只列直属子命令，叶子给出完整调用契约（必填项、默认值、choices、约束、操作影响、输出、错误码、示例与下一步）。帮助全程离线：不读取配置、缓存、浏览器或网络。
 
 ```bash
-dogopencli                                   # Agent：根 JSON 导航（children：payment/refresh/auth/login/logout）
+dogopencli                                   # Agent：根 JSON 导航（children：payment/refresh/describe/auth/login/logout）
 dogopencli help payment channel list         # 逐层钻取到叶子契约
 dogopencli payment sla baselines get --help  # PATH --help 等价于 help PATH
 dogopencli --format text                     # 人工：同一份文档的可读文本（任意节点可加 --format text）
@@ -42,6 +42,63 @@ dogopencli --format text                     # 人工：同一份文档的可读
 裸叶子保持执行语义：`dogopencli payment channel list` 仍执行缓存查询，`login`/`logout`/`auth check` 仍执行认证动作；只有无 handler 的命令路径才自动显示帮助。帮助 `--format` 只接受 `json|text`（业务执行格式不变，查询仍 `json|table`）。错误归属不变：根/业务导航参数错误为业务 JSON `INVALID_ARGUMENT` 退出 2，认证路径参数错误为认证 `invalid_arguments` 退出 1。
 
 `cache.path` 仅支持具备可靠 SQLite WAL/共享内存与 POSIX `flock` 语义的本地 Linux 文件系统，推荐 WSL Linux 磁盘上的默认目录。Windows DrvFS/9p 挂载及网络文件系统不在缓存支持范围；无法启用 WAL 时明确失败，不降级为回滚日志。升级前若缓存位于这些挂载上，请改到支持的本地路径并重新刷新；旧库的来源路径列会自动迁移。
+
+## Data helper
+
+Data helper v1 提供随程序发布的 schema、字段说明和读取指引（[规格 #16](https://github.com/proletariat64/dogopencli/issues/16)）。无需配置、缓存或登录；不读取业务数据、不联网、不启动浏览器、不初始化或迁移 SQLite。同一安装版本、同一目标的输出确定，不随本机快照变化。
+
+先从查询帮助的 `next` 找到描述入口，再读取描述、核对参数，最后执行已有查询：
+
+```bash
+dogopencli describe                          # 支持的描述路径导航
+dogopencli describe payment channel list
+dogopencli describe payment cost list
+dogopencli describe payment cost list --format text  # 人工阅读 schema、字段说明和读取指引
+dogopencli describe payment sla baselines list
+dogopencli describe payment sla baselines get
+dogopencli help payment cost list            # 参数的权威契约
+dogopencli payment cost list --all --fields itemId,costRateConfigList
+dogopencli payment sla baselines list --all --fields id
+dogopencli payment sla baselines get --id BASELINE_ID
+```
+
+`BASELINE_ID` 是合成占位符，替换为列表实际返回的 `id`。SLA 列表和详情分别是数组与对象；详情须独立读取，不能以列表行代替。缓存列表与详情由一次 SLA refresh 一起发布，live 详情是独立查询。
+
+成功描述直接返回 JSON 对象，固定键如下；它本身不使用业务 `data/meta/error` envelope：
+
+| 键 | v1 类型与含义 |
+| --- | --- |
+| `describe_version` | 整数 `1`，helper 文档协议版本 |
+| `capability` | 字符串：`payment.channel.list`、`payment.cost.list`、`payment.sla.baselines.list` 或 `payment.sla.baselines.get` |
+| `schema_version` | 整数 `1`，该查询能力的数据描述版本 |
+| `data_schema` | JSON Schema 对象，`$schema` 为 `https://json-schema.org/draft/2020-12/schema`；描述成功且未投影的业务 `data`，不是数据库表或整个 envelope |
+| `read_guide` | 对象，包含下面的读取规则及证据词汇 |
+| `query_help` | 对应 `dogopencli help <查询路径>` 字符串，参数以此帮助为准 |
+
+付款 schema 与领域读取指引由付款插件提供，随查询命令一起注册；核心只组装描述文档与通用输出说明。schema 和读取指引的注解词汇共用一份定义，分别以 `dimensions` 映射和 `aspects` 列表呈现同一组证据维度。
+
+`read_guide` 的公共键为：`parameter_contract`、`options`（直接复用查询帮助）、`filters`、`filter_semantics`、`envelope`、`metadata`、`access_modes`、`quality`、`projection`、`pagination`、`identifiers`、`interpretation`、`annotations`、`errors`、`exit_codes`、`examples`、`evolution`、`filter_notes`；SLA 另有 `list_to_detail`（`steps` 与 `meaning`）。每个 `filters` 条目有 `flag`、`request_field`、`record_field`；无法映射的记录字段为 JSON `null`。`metadata` 按实际 `meta` 字段名解释语义，`exit_codes` 使用字符串键。
+
+兼容演进可在同一版本增加字段或注解，消费者须允许未知键；不兼容 helper 形状变更提升 `describe_version`，不兼容能力 schema 变更提升 `schema_version`。这两个版本不改变业务 envelope 或 `help_version`。描述执行默认输出 JSON（也可显式 `--format json`）；`--format text` 将同一份完整文档渲染为缩进文本，保留嵌套字段、注解和读取指引。描述帮助仍支持 JSON/text。未知目标、认证/refresh 目标或查询参数（如描述后的 `--live`）返回业务 JSON `INVALID_ARGUMENT`，退出 2；不会执行目标查询或认证。
+
+字段说明位于 schema 的 `description`、`properties`、`items` 和 `$defs`，嵌套 Money/Ratio 通过 `$ref` 引用。只对已验证事实施加类型、必填或枚举约束；未知扩展保持开放。以下注解不是 JSON Schema 验证断言：
+
+| 注解 | 解释 |
+| --- | --- |
+| `x-evidence` | 独立给出 `type`、`presence`、`nullability`、`unit`、`meaning` 的证据状态 |
+| 状态值 | `verified` 已验证；`observed` 仅观察到、不作保证；`unknown` 未解决；`not_applicable` 该维度不适用 |
+| `x-observed-type` | 观察到的 JSON 类型，不限制其他类型或 null |
+| `x-observed-values` | 非穷尽观察值，不是封闭 enum；查询参数 choices 仍以帮助为准 |
+| `x-unit` | 仅明确验证时给出单位名；不执行转换 |
+| `x-annotation-vocabulary` | schema 内的注解词汇定义；`read_guide.annotations` 同时提供解释 |
+
+缺失、null、空字符串和空数组须分别保留，不能据此推断 false、零或能力不支持；只观察到空数组不能推定元素结构。保留数值精度及金额字符串，区分交易币种与成本币种，不能仅凭 `cent` 除以 100。未验证比例缩放、时间单位和枚举含义保持未知；SLA 两个成功时效字段明确标注已验证的 `seconds`，仍保留原始字符串。渠道成本配置不是实际收费/总支出，产品 SLA 基线不是观测到账耗时。
+
+`seqid` 是本地位置，不跨快照稳定；Channel `abilityId` 不保证全局唯一，Cost `itemId` 不是渠道 ID；没有通用跨域 join key 或已验证的一对一关系。账户别名和账号分别解释，Cost 的 `--bank-account` 映射 `bankAccountAliasName`，不接受“全账号”的语义替换。
+
+列表默认只显示 100 行；`--all` 读取全部匹配行，与显式 `--limit`/`--offset` 冲突。`--fields` 选择顶层字段并保留选中的完整嵌套值，可能删除标识字段；应按部分数据解释，不能仅因不满足未投影 schema 的必填项而拒绝。投影保留全部质量 metadata。缓存同字段多值 OR、不同字段 AND；live Cost/SLA 每字段单值，Channel 标量筛选单值、已验证数组筛选允许重复。SLA `--biz-legal-entity` 仅列表 live 透传，其独立筛选效果未验证、无对应列表字段，缓存使用报参数错误。
+
+查询时检查退出码与 `error`，再解释 `meta`：`source`（cache/live）和 `backend`（snapshot/cdp）独立；`snapshot_id`/`dataset_id` 标识内容，不提供历史查询或三域同步快照。`fetched_at`、`loaded_at`、`source_observed_from/to` 区分观察、采集和导入时间，导入不使旧观测变新。`stale` 与 `complete` 独立；`matched_total`/`returned_count`/`has_more` 仅说明当前可用来源的匹配与显示窗口。`complete` 是来源覆盖，`dataset_complete` 可以只表示整理集完整；Channel snapshot 的 `simulated=true`、EXTERNAL 范围不能证明生产全量，即使 `has_more=false` 或返回空列表。`--require-fresh` 拒绝过期缓存，`--require-complete` 检查 `complete`。默认缓存读不会隐式刷新，显式 refresh 才发布快照，`--live` 不更新缓存；describe 不执行其中任何操作。
 
 ## 登录与认证
 

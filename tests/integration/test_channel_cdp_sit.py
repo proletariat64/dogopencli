@@ -432,10 +432,10 @@ def test_unrefreshed_scope_is_cache_miss(run_cli, envelope, cdp_setup):
     assert envelope(out)["error"]["code"] == "CACHE_MISS"
 
 
-def test_unregistered_scope_rejected(run_cli, cdp_setup):
-    with pytest.raises(SystemExit) as caught:
-        listing(run_cli, "--payout-type", "OTHER")
-    assert caught.value.code == 2
+def test_unregistered_scope_rejected(run_cli, envelope, cdp_setup):
+    code, out, _ = listing(run_cli, "--payout-type", "OTHER")
+    assert code == 2
+    assert envelope(out)["error"]["code"] == "INVALID_ARGUMENT"
     assert cdp_setup.state.business_requests == []
 
 

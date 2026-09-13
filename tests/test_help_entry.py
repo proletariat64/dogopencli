@@ -36,6 +36,7 @@ def test_python_m_entry_returns_root_json() -> None:
     assert [child["name"] for child in doc["children"]] == [
         "payment",
         "refresh",
+        "describe",
         "auth",
         "login",
         "logout",
