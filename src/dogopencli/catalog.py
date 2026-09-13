@@ -10,6 +10,7 @@ from dataclasses import replace
 from typing import Any
 
 from .auth.spec import SPECS as AUTH_SPECS
+from .describe import description_nodes
 from .helpspec import REFRESH_OUTPUT as _REFRESH_OUTPUT
 from .helpspec import BizNode, opt
 from .plugins import command_nodes
@@ -243,7 +244,7 @@ def build_catalog(declarations: Iterable[BizNode]) -> dict[tuple[str, ...], BizN
 NODES = build_catalog(
     (
         *_GROUPS.values(),
-        *command_nodes(),
+        *description_nodes(command_nodes()),
         _REFRESH_CHANNEL_NODE,
         _REFRESH_COST_NODE,
         _REFRESH_SLA_NODE,

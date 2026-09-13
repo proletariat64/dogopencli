@@ -90,7 +90,7 @@ def _hint(path: tuple[str, ...]) -> str:
 
 def _business_error(message: str, path: tuple[str, ...], format: str) -> int:
     full = f"{message}; run: {_hint(path)}"
-    if format == "text":
+    if format == "text" and path[:1] != ("describe",):
         sys.stderr.write(f"error: {INVALID_ARGUMENT}: {full}\n")
     else:
         sys.stdout.write(
