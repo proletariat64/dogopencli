@@ -314,10 +314,10 @@ def test_argument_errors_exit_2(run_cli, envelope, small_setup):
         assert envelope(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
-def test_unknown_scope_is_usage_error(run_cli, small_setup):
-    with pytest.raises(SystemExit) as caught:
-        listing(run_cli, "--payout-type", "OTHER")
-    assert caught.value.code == 2
+def test_unknown_scope_is_usage_error(run_cli, envelope, small_setup):
+    code, out, _ = listing(run_cli, "--payout-type", "OTHER")
+    assert code == 2
+    assert envelope(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
 def test_decimal_precision_preserved(run_cli, small_setup):
