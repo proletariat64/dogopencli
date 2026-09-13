@@ -884,6 +884,13 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
     return _emit_object(args, capability, detail, meta, fields)
 
 
+def cmd_describe(args: argparse.Namespace) -> int:
+    from .describe import describe
+
+    sys.stdout.write(canonical(describe(args.describe_path)) + "\n")
+    return EXIT_OK
+
+
 class _BusinessParser(argparse.ArgumentParser):
     """Report syntax errors through the business protocol, without argparse IO."""
 
@@ -907,6 +914,8 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
     except CliError as error:
         # No successfully parsed output format exists yet; use the JSON default.
         return _emit_error(error)
+    if node.path[0] == "describe":
+        args.describe_path = node.path[1:]
     handler = globals()[node.handler]
     try:
         return handler(args)
