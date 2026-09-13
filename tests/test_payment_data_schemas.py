@@ -67,3 +67,19 @@ def test_unknown_array_elements_and_sla_units():
     assert fields["serviceLevelLimit"]["items"]["x-evidence"]["type"] == "unknown"
     assert fields["debitorSuccessSla"]["x-unit"] == "seconds"
     assert fields["gmtCreate"]["x-evidence"]["unit"] == "unknown"
+
+
+def test_field_roles_distinguish_currency_bounds_and_configuration():
+    fields = data_schema("payment.channel.list")["items"]["properties"]
+    assert "payment currency" in fields["debitCurrency"]["description"]
+    assert "receiving currency" in fields["creditCurrency"]["description"]
+    assert "minimum debit" in fields["debitMinAmount"]["description"]
+    assert "maximum credit" in fields["creditMaxAmount"]["description"]
+    assert "not measured" in fields["efficiencyLevel"]["description"]
+    assert "modification timestamp" in fields["gmtModified"]["description"]
+    assert fields["gmtModified"]["x-evidence"]["unit"] == "unknown"
+    cost = data_schema("payment.cost.list")["items"]["properties"]
+    rules = cost["costRateConfigList"]["items"]["properties"]
+    fee = rules["costRateVO"]["properties"]
+    assert "fixed fee" in fee["fixedAmount"]["description"]
+    assert "not an actual charge" in fee["fixedAmount"]["description"]
