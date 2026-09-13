@@ -25,7 +25,6 @@ from ...helpspec import (
     FORMAT_TABLE,
     LIMIT,
     LIVE,
-    LIVE_SINGLE_VALUE,
     OFFSET,
     QUERY_EFFECTS_VARIANTS,
     QUERY_OUTPUT,
@@ -229,9 +228,12 @@ CHANNEL_LIST_NODE = BizNode(
         CACHE_SEMANTICS,
         DISPLAY_WINDOW,
         SEQID_UNSTABLE,
-        LIVE_SINGLE_VALUE,
+        "--live accepts one value for --financial-inst-id, "
+        "--debit-inst-country-code and --status; verified array filters "
+        "--debit-account-name, --debit-account-no, --clearing-system-name, "
+        "--debit-currency and --credit-currency accept repeated values.",
         "A snapshot source covers only scope EXTERNAL and cannot serve --live;"
-        " its quality is marked by the simulated and backend_complete flags.",
+        " its quality is marked by the simulated and complete flags.",
     ),
     effects_variants=QUERY_EFFECTS_VARIANTS,
     output=QUERY_OUTPUT,

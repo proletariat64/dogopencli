@@ -5,6 +5,8 @@
 - [v0.1.0 付款只读 CLI 规格（GitHub Issue #1）](https://github.com/proletariat64/dogopencli/issues/1)：已发布，标签 `ready-for-agent`；公开 CLI＋假 CDP 为 SIT，生产只读验收为 UAT。
 - [DI 风格渐进式 CLI 帮助（GitHub Issue #13）](https://github.com/proletariat64/dogopencli/issues/13)：计划与规格已发布，标签 `ready-for-agent`；无参数导航、JSON/text、完整命令目录及离线帮助验收，尚未实现。
 
+- [Data helper v1（GitHub Issue #16）](https://github.com/proletariat64/dogopencli/issues/16)：四个付款查询叶子的离线 schema、字段证据与读取指引；[可运行命令与版本化机器契约](../README.md#data-helper)。
+
 ## 研究报告
 
 以下是 2026-09-08 的研究快照；运行态仅代表当时账号可见的页面和已验证请求，不保证后续版本、权限或数据不变。
