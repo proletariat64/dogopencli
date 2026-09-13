@@ -9,6 +9,102 @@ from typing import Any
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
 
+# Roles follow the query-contract field groups and verified UI/filter captions.
+# They identify a field without claiming an exhaustive encoding or calculation.
+_ROLES = {
+    "configVersion": "Channel configuration version; version ordering is unverified.",
+    "financialInstCode": "Channel financial institution code used by the bank filter.",
+    "operateTime": "Recorded operation time; format and timezone are unverified.",
+    "lastOperator": "Last operator information; sensitive, not a business identifier.",
+    "creator": "Record creator information; potentially sensitive.",
+    "discardReason": "Reason recorded for channel deprecation.",
+    "debitInstBic": "Debit institution BIC; preserve the backend code.",
+    "debitInstCountryCode": "Debit institution country / outflow country code.",
+    "debitInstMemberId": "Debit institution member ID; membership scope unknown.",
+    "clearingSystemName": "Channel clearing network name used by the network filter.",
+    "clearingSystemType": "Channel clearing network type; code meanings unverified.",
+    "creditRegion": "Creditor-side region; permitted region codes are unverified.",
+    "integrationMode": "Channel integration mode; code meanings unverified.",
+    "communicateMode": "Channel communication mode; code meanings unverified.",
+    "debitCurrency": "Debit / payment currency; distinct from creditor currency.",
+    "creditCurrency": "Credit / receiving currency; distinct from debit currency.",
+    "chargeBearer": "Charge-bearing arrangement; preserve its backend code.",
+    "chargeDescription": "Channel charge configuration description.",
+    "chargeMode": "Channel charging mode; full calculation semantics unverified.",
+    "fvtChargeType": "FVT charge configuration type; code meanings unverified.",
+    "holidayPayoutSolution": "Holiday payout handling configuration; encoding unknown.",
+    "insufficientBalanceSolution": "Insufficient-balance handling configuration.",
+    "regulatoryRequiredObo": "Regulatory OBO requirement setting; encoding unknown.",
+    "supportMultiCurrency": "Multi-currency support setting; encoding unknown.",
+    "supportPayoutReverse": "Payout reversal support setting; encoding unknown.",
+    "supportedDisplayNonUd": "Display/non-UD capability setting; semantics unresolved.",
+    "supportedFvt": "FVT support setting; encoding and full semantics unverified.",
+    "supportedObo": "OBO support setting; encoding and full semantics unverified.",
+    "mappingCode": "Cost mapping code; generation and uniqueness are unverified.",
+    "legalEntity": "Legal entity contracting for the channel cost configuration.",
+    "financialInst": "Financial institution for the cost configuration.",
+    "clearingNetworkName": "Cost configuration clearing network name.",
+    "feeRateRangeId": "Fee interval identifier; stability and uniqueness unverified.",
+    "feeItemRateConfigId": "Fee rate configuration ID; join guarantees unknown.",
+    "feeCalcBasisTypeCode": "Fee calculation basis code; complete methods unverified.",
+    "feeCalcBasisType": "Fee calculation basis/method; complete methods unverified.",
+    "feeCalcScale": "Fee precision setting; full calculation rules unknown.",
+    "feeRoundingMode": "Fee rounding configuration; full calculation rules unknown.",
+    "progressType": "Fee progression configuration; complete semantics unverified.",
+    "bizCategory": "Business line/category covered by the product SLA baseline.",
+    "creditorCurrency": "Creditor / receiving currency covered by the SLA baseline.",
+    "regionCode": "Creditor / receiving region covered by the SLA baseline.",
+    "status": "Configuration status; allowed values and transitions are open.",
+    "currency": "Money currency representation; preserve alongside amount.",
+    "currencyCode": "Money currency code; preserve alongside amount.",
+    "currencyValue": "Money currency value representation; mapping rules unverified.",
+    "ratioUnit": "Ratio unit representation; scaling rules unverified.",
+    "ratioUnitCode": "Ratio unit code; scaling rules unverified.",
+    "gmtCreate": "Record creation timestamp; epoch unit and timezone unverified.",
+    "gmtModified": "Record modification timestamp; epoch unit and timezone unverified.",
+    "validStartTime": "Fee validity start time; units/timezone unverified.",
+    "validEndTime": "Fee rule validity end time; timestamp units/timezone unverified.",
+    "costLevel": "Configured channel cost score/level, not measured spending.",
+    "noFvtCostLevel": "Configured non-FVT cost score/level, not measured spending.",
+    "efficiencyLevel": "Configured channel efficiency score, not measured performance.",
+    "chargePercent": "Configured charge proportion; percentage scaling unverified.",
+    "grayOrderCount": "Gray-release order count setting; counting rules unverified.",
+    "exceptedGrayOrderCount": "Gray-release expected-count setting; rules unverified.",
+    "amount": "Numeric amount representation; preserve decimal precision.",
+    "cent": "Money cent representation; do not assume division by 100.",
+    "centFactor": "Money cent factor; currency-dependent conversion unverified.",
+    "value": "Raw ratio value; scaling and relation to other representations unknown.",
+    "hundredthValue": "Ratio hundredth representation used by ordinary fee UI.",
+    "thousandthValue": "Ratio thousandth representation; conversion rules unverified.",
+    "tenThousandthValue": "Ratio ten-thousandth representation; conversion unverified.",
+    "averageProcessingTime": "Configured average processing time; not a measurement.",
+    "businessAcceptStartTime": "Configured business acceptance window start.",
+    "businessAcceptEndTime": "Configured business acceptance window end.",
+    "cutOffTime": "Configured channel cutoff time.",
+    "overCutOffTime": "Channel timing setting for after-cutoff handling.",
+    "overLimitTime": "Channel over-limit timing setting; precise semantics unknown.",
+    "payoutEfficiency": "Configured payout timeliness; not observed performance.",
+    "valueDateEfficiency": "Configured value-date timing; not measured performance.",
+    "timeZone": "Timezone associated with channel timing configuration.",
+}
+
+_MONEY_ROLES = {
+    "debitMinAmount": "Configured minimum debit / payment amount.",
+    "debitMaxAmount": "Configured maximum debit / payment amount.",
+    "creditMinAmount": "Configured minimum credit / receiving amount.",
+    "creditMaxAmount": "Configured maximum credit / receiving amount.",
+    "chargeAmount": "Configured channel charge amount; not an actual charge.",
+    "bottomAmount": "Configured fee lower bound; full calculation rules unverified.",
+    "fixedAmount": "Configured fixed fee component; not an actual charge.",
+    "topAmount": "Configured fee upper bound; full calculation rules unverified.",
+    "rangeBottom": "Lower amount boundary of this fee interval.",
+    "rangeTop": "Upper amount boundary of this fee interval.",
+    "rangeBottomFeeAmount": "Configured lower fee bound within this interval.",
+    "rangeTopFeeAmount": "Configured upper fee bound within this interval.",
+    "rangeFixedAmount": "Configured fixed fee component within this interval.",
+}
+
+
 def _field(
     description: str,
     observed: str | None = None,
@@ -55,8 +151,9 @@ def _unknown_items() -> dict[str, Any]:
 def _strings(names: str) -> dict[str, Any]:
     return {
         name: _field(
-            f"Backend {name} value; full encoding and business semantics unverified.",
+            _ROLES[name],
             "string",
+            meaning="observed",
         )
         for name in names.split()
     }
@@ -65,11 +162,19 @@ def _strings(names: str) -> dict[str, Any]:
 def _numbers(names: str, observed: str = "integer") -> dict[str, Any]:
     return {
         name: _field(
-            f"Raw {name}; unit, scaling and conversion rules unverified.",
+            _ROLES[name] + " Units and scaling remain unverified.",
             observed,
+            meaning="observed",
             unit="unknown",
         )
         for name in names.split()
+    }
+
+
+def _money_ref(name: str) -> dict[str, Any]:
+    return {
+        "$ref": "#/$defs/Money",
+        "description": _MONEY_ROLES[name] + " Preserve currency and numeric precision.",
     }
 
 
@@ -91,8 +196,13 @@ def _ratio() -> dict[str, Any]:
         "are not interchangeable. Preserve raw values; do not infer percentages.",
         {
             **_numbers(
-                "amount value hundredthValue thousandthValue tenThousandthValue",
+                "value hundredthValue thousandthValue tenThousandthValue",
                 "number",
+            ),
+            "amount": _field(
+                "Ratio amount representation; scaling unverified.",
+                "number",
+                unit="unknown",
             ),
             **_strings("ratioUnit ratioUnitCode"),
         },
@@ -121,7 +231,7 @@ def _channel() -> dict[str, Any]:
         "timeZone"
     ).split():
         fields[name] = _field(
-            f"Raw channel {name}; format, units and timezone unverified.",
+            _ROLES[name] + " Format, units and timezone unverified.",
             "string",
             unit="unknown",
         )
@@ -165,10 +275,15 @@ def _channel() -> dict[str, Any]:
     for name in (
         "debitMinAmount debitMaxAmount creditMinAmount creditMaxAmount chargeAmount"
     ).split():
-        fields[name] = {"$ref": "#/$defs/Money"}
+        fields[name] = _money_ref(name)
     for name in ("grayOrderBizNos", "supportCreditInstIdList"):
         fields[name] = _array(
-            f"{name}: only empty arrays observed; element structure unknown.",
+            (
+                "Gray-release order business numbers"
+                if name == "grayOrderBizNos"
+                else "Supported creditor institution list"
+            )
+            + "; only empty arrays observed, element structure unknown.",
             _unknown_items(),
         )
     fields["transferTypeList"] = _array(
@@ -197,13 +312,16 @@ def _cost() -> dict[str, Any]:
                 meaning="verified",
             ),
             **{
-                name: {"$ref": "#/$defs/Money"}
+                name: _money_ref(name)
                 for name in (
                     "rangeBottom rangeTop rangeBottomFeeAmount rangeTopFeeAmount "
                     "rangeFixedAmount"
                 ).split()
             },
-            "rangeFeeRateRatioValue": {"$ref": "#/$defs/Ratio"},
+            "rangeFeeRateRatioValue": {
+                "$ref": "#/$defs/Ratio",
+                "description": "Configured proportional fee for this interval.",
+            },
         },
     )
     rate = _object(
@@ -212,10 +330,13 @@ def _cost() -> dict[str, Any]:
             **_strings("feeItemRateConfigId feeCalcBasisTypeCode status lastOperator"),
             **_numbers("gmtCreate gmtModified"),
             **{
-                name: {"$ref": "#/$defs/Money"}
+                name: _money_ref(name)
                 for name in ("bottomAmount", "fixedAmount", "topAmount")
             },
-            "feeRateRatioValue": {"$ref": "#/$defs/Ratio"},
+            "feeRateRatioValue": {
+                "$ref": "#/$defs/Ratio",
+                "description": "Configured proportional fee; scaling unverified.",
+            },
             "costRateRangeList": _array("Observed CA4 fee intervals.", fee_range),
         },
     )
@@ -234,7 +355,7 @@ def _cost() -> dict[str, Any]:
         "progressType": ["FULL_PROGRESS"],
     }.items():
         config["properties"][name] = _field(
-            f"Observed {name} codes; full enum and calculation semantics unverified.",
+            _ROLES[name] + " Observed codes are not exhaustive.",
             "string",
             values=values,
         )
@@ -324,7 +445,8 @@ def _sla(detail: bool) -> dict[str, Any]:
     }
     for name in ("creditorMinAmount", "creditorMaxAmount"):
         fields[name] = _field(
-            "Creditor amount bound observed as decimal text; preserve strings and "
+            ("Minimum" if name == "creditorMinAmount" else "Maximum")
+            + " creditor amount bound observed as decimal text; preserve strings and "
             "precision. Currency conversion and bound semantics unverified.",
             "string",
             unit="unknown",
