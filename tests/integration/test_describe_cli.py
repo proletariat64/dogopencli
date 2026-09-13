@@ -145,3 +145,40 @@ def test_guide_examples_resolve_and_annotations_are_defined(run_cli, path):
         assert filters["--debit-account-no"]["request_field"] == "debitAccountNoList"
     elif path[-1] == "list":
         assert filters["--biz-legal-entity"]["record_field"] is None
+
+
+@pytest.mark.parametrize("entrance", ["help", "flag"])
+@pytest.mark.parametrize(
+    "target",
+    [
+        ["unknown"],
+        ["payment", "unknown"],
+        ["auth"],
+        ["--bogus"],
+        ["payment", "channel", "list", "--live"],
+        ["payment", "channel", "list", "--format", "yaml"],
+    ],
+)
+def test_describe_text_help_errors_follow_help_convention(
+    run_cli, offline, entrance, target
+):
+    argv = ["describe", *target]
+    argv = ["help", *argv] if entrance == "help" else [*argv, "--help"]
+    code, out, err = run_cli([*argv, "--format", "text"])
+    assert code == 2
+    assert out == ""
+    assert err.startswith("error: INVALID_ARGUMENT:")
+    assert "run: dogopencli help describe" in err
+
+
+@pytest.mark.parametrize("path", PATHS)
+def test_schema_and_guide_share_annotation_vocabulary(run_cli, offline, path):
+    doc = json.loads(run_cli(["describe", *path])[1])
+    schema = doc["data_schema"]["x-annotation-vocabulary"]
+    guide = doc["read_guide"]["annotations"]
+    assert set(guide["x-evidence"]["aspects"]) == set(
+        schema["x-evidence"]["dimensions"]
+    )
+    assert guide["x-evidence"]["values"] == schema["x-evidence"]["values"]
+    for name in ("x-unit", "x-observed-type", "x-observed-values"):
+        assert guide[name] == schema[name]
