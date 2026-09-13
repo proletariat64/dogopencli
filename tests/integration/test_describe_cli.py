@@ -17,6 +17,38 @@ PATHS = [
 ]
 
 
+@pytest.mark.parametrize("path", PATHS)
+def test_text_description_contains_schema_and_reading_guide(run_cli, offline, path):
+    doc = json.loads(run_cli(["describe", *path])[1])
+    argv = ["describe", *path, "--format", "text"]
+    code, out, err = run_cli(argv)
+    assert code == 0 and err == ""
+    assert (code, out, err) == run_cli(argv)
+    assert "data_schema:\n" in out and "read_guide:\n" in out
+    assert doc["query_help"] in out
+
+    # Field descriptions, nested definitions, evidence, and reading instructions
+    # must survive rendering, including future additive contract entries.
+    def check_contents(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                assert key + ":" in out
+                check_contents(item)
+        elif isinstance(value, list):
+            for item in value:
+                check_contents(item)
+        elif isinstance(value, str):
+            assert value in out
+
+    check_contents(doc)
+    help_result = run_cli(["help", *argv])
+    assert help_result[0] == 0 and help_result[1] != out
+    assert "data_schema:\n" not in help_result[1]
+    help_doc = json.loads(run_cli(["help", "describe", *path])[1])
+    assert help_doc["output"]["formats"] == ["json", "text"]
+    assert sorted(p.name for p in offline.iterdir()) == ["invalid.toml"]
+
+
 @pytest.fixture
 def offline(monkeypatch, tmp_path):
     def forbidden(*args, **kwargs):
@@ -101,7 +133,7 @@ def test_describe_groups_and_help(run_cli, offline, path):
         ["payment", "channel", "list", "--live"],
         ["payment", "channel", "list", "--fields", "abilityId"],
         ["payment", "sla", "baselines", "get", "--id", "BASELINE_ID"],
-        ["payment", "channel", "list", "--format", "text"],
+        ["payment", "channel", "list", "--format", "yaml"],
         ["payment", "unknown", "--format", "text"],
         ["auth", "--format", "text"],
         ["--bogus"],

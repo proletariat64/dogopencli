@@ -1,5 +1,6 @@
 """Installed, offline data descriptions; no business environment is inspected."""
 
+import json
 from collections.abc import Iterable
 from dataclasses import replace
 from typing import Any
@@ -25,7 +26,12 @@ def description_nodes(queries: Iterable[BizNode]) -> Iterable[BizNode]:
             path,
             ("Describe the unprojected business data schema and reading guidance."),
             options=(
-                opt("format", "Description format.", default="json", choices=("json",)),
+                opt(
+                    "format",
+                    "Description format.",
+                    default="json",
+                    choices=("json", "text"),
+                ),
             ),
             constraints=(
                 (
@@ -33,7 +39,7 @@ def description_nodes(queries: Iterable[BizNode]) -> Iterable[BizNode]:
                     "or network."
                 ),
             ),
-            output=dict(REFRESH_OUTPUT),
+            output={**REFRESH_OUTPUT, "formats": ["json", "text"]},
             examples=(command,),
             next=("dogopencli help " + " ".join(query.path),),
             handler="cmd_describe",
@@ -103,3 +109,30 @@ def describe(path: tuple[str, ...]) -> dict[str, Any]:
         "read_guide": guide,
         "query_help": "dogopencli help " + " ".join(path),
     }
+
+
+def render_text(description: dict[str, Any]) -> str:
+    """Render the whole contract as an indented outline, retaining annotations."""
+    lines: list[str] = []
+
+    def append(label: str, value: Any, depth: int) -> None:
+        prefix = "  " * depth + label + ":"
+        if isinstance(value, dict) and value:
+            lines.append(prefix)
+            for key, item in value.items():
+                append(key, item, depth + 1)
+        elif isinstance(value, list) and value:
+            lines.append(prefix)
+            for index, item in enumerate(value):
+                append(f"[{index}]", item, depth + 1)
+        else:
+            text = value if isinstance(value, str) else json.dumps(value)
+            parts = text.splitlines() or [""]
+            lines.append(prefix + " " + parts[0])
+            lines.extend("  " * (depth + 1) + part for part in parts[1:])
+
+    for key, value in description.items():
+        if lines:
+            lines.append("")
+        append(key, value, 0)
+    return "\n".join(lines) + "\n"

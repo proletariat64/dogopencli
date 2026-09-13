@@ -53,6 +53,7 @@ Data helper v1 提供随程序发布的 schema、字段说明和读取指引（[
 dogopencli describe                          # 支持的描述路径导航
 dogopencli describe payment channel list
 dogopencli describe payment cost list
+dogopencli describe payment cost list --format text  # 人工阅读 schema、字段说明和读取指引
 dogopencli describe payment sla baselines list
 dogopencli describe payment sla baselines get
 dogopencli help payment cost list            # 参数的权威契约
@@ -78,7 +79,7 @@ dogopencli payment sla baselines get --id BASELINE_ID
 
 `read_guide` 的公共键为：`parameter_contract`、`options`（直接复用查询帮助）、`filters`、`filter_semantics`、`envelope`、`metadata`、`access_modes`、`quality`、`projection`、`pagination`、`identifiers`、`interpretation`、`annotations`、`errors`、`exit_codes`、`examples`、`evolution`、`filter_notes`；SLA 另有 `list_to_detail`（`steps` 与 `meaning`）。每个 `filters` 条目有 `flag`、`request_field`、`record_field`；无法映射的记录字段为 JSON `null`。`metadata` 按实际 `meta` 字段名解释语义，`exit_codes` 使用字符串键。
 
-兼容演进可在同一版本增加字段或注解，消费者须允许未知键；不兼容 helper 形状变更提升 `describe_version`，不兼容能力 schema 变更提升 `schema_version`。这两个版本不改变业务 envelope 或 `help_version`。描述执行只支持默认 JSON 或 `--format json`；描述帮助仍支持 JSON/text。未知目标、认证/refresh 目标或查询参数（如描述后的 `--live`）返回业务 JSON `INVALID_ARGUMENT`，退出 2；不会执行目标查询或认证。
+兼容演进可在同一版本增加字段或注解，消费者须允许未知键；不兼容 helper 形状变更提升 `describe_version`，不兼容能力 schema 变更提升 `schema_version`。这两个版本不改变业务 envelope 或 `help_version`。描述执行默认输出 JSON（也可显式 `--format json`）；`--format text` 将同一份完整文档渲染为缩进文本，保留嵌套字段、注解和读取指引。描述帮助仍支持 JSON/text。未知目标、认证/refresh 目标或查询参数（如描述后的 `--live`）返回业务 JSON `INVALID_ARGUMENT`，退出 2；不会执行目标查询或认证。
 
 字段说明位于 schema 的 `description`、`properties`、`items` 和 `$defs`，嵌套 Money/Ratio 通过 `$ref` 引用。只对已验证事实施加类型、必填或枚举约束；未知扩展保持开放。以下注解不是 JSON Schema 验证断言：
 

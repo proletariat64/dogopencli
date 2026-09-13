@@ -885,9 +885,14 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
 
 
 def cmd_describe(args: argparse.Namespace) -> int:
-    from .describe import describe
+    from .describe import describe, render_text
 
-    sys.stdout.write(canonical(describe(args.describe_path)) + "\n")
+    description = describe(args.describe_path)
+    sys.stdout.write(
+        render_text(description)
+        if args.format == "text"
+        else canonical(description) + "\n"
+    )
     return EXIT_OK
 
 
