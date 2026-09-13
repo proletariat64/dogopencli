@@ -43,6 +43,10 @@ dogopencli --format text                     # 人工：同一份文档的可读
 
 `cache.path` 仅支持具备可靠 SQLite WAL/共享内存与 POSIX `flock` 语义的本地 Linux 文件系统，推荐 WSL Linux 磁盘上的默认目录。Windows DrvFS/9p 挂载及网络文件系统不在缓存支持范围；无法启用 WAL 时明确失败，不降级为回滚日志。升级前若缓存位于这些挂载上，请改到支持的本地路径并重新刷新；旧库的来源路径列会自动迁移。
 
+## Data helper
+
+Data helper v1 按[规格 #16](https://github.com/proletariat64/dogopencli/issues/16)建设离线数据描述：schema、字段说明和读取指引，供 Agent 在调用付款查询前理解数据。实现与验收分别跟踪于 #17、#18、#19。
+
 ## 登录与认证
 
 认证命令移植自 DI（基线 commit `8eb163c6d140554ca167bd50349a85ca224ac342`），独立运行不依赖已安装 DI；使用专用 Chrome profile（`~/.local/share/dogopencli/chrome/`）与 CDP 端口 9222，输出 `output_version` envelope，详见 [ADR 0004](docs/adr/0004-cli-runtime-boundaries.md)：
