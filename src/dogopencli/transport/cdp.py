@@ -18,7 +18,7 @@ from ..browser.cdp import (
     CdpError,
     CdpSession,
     CdpTransport,
-    _await_target_settled,
+    await_target_settled,
     probe_final_url,
     url_origin,
 )
@@ -210,7 +210,7 @@ class CdpQueryTransport:
             self._session.navigate(
                 self._page_url, max(0.001, deadline - time.monotonic())
             )
-            landing = _await_target_settled(
+            landing = await_target_settled(
                 self._session,
                 timeout=min(15.0, max(0.001, deadline - time.monotonic())),
             )

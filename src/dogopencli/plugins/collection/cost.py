@@ -23,7 +23,7 @@ from ...helpspec import (
     BizNode,
 )
 from .. import EndpointContract, ParsedPage
-from ..payment.cost import CostCapability, parse_cost_page
+from ..cost import TABLE_COLUMNS, parse_cost_page, sort_cost_records
 
 COST_TYPE = "FUND_IN_CHANNEL_TRANS_FEE"
 PAGE_SIZE = 1000
@@ -44,11 +44,13 @@ CONTRACT = EndpointContract(
 
 
 @dataclass(frozen=True)
-class CollectionCostCapability(CostCapability):
+class CollectionCostCapability:
     name: str = "collection.cost.list"
     source_config_key: str = "collection_cost"
     default_scope: str = COST_TYPE
     contract: EndpointContract = CONTRACT
+    id_field: str = "itemId"
+    table_columns: tuple[str, ...] = TABLE_COLUMNS
 
     def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
         if scope != COST_TYPE or page_num != 0 or page_size != PAGE_SIZE:
@@ -70,6 +72,12 @@ class CollectionCostCapability(CostCapability):
                 REQUEST_NOT_ALLOWED, "collection cost filters are unverified"
             )
         return records
+
+    def sort_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sort_cost_records(records)
+
+    def identity_key(self, record: dict[str, Any]) -> Any:
+        return record.get(self.id_field)
 
     def parse_page(self, body: bytes) -> ParsedPage:
         page = parse_cost_page(body, COST_TYPE, allow_omitted_empty=True)

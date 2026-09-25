@@ -12,7 +12,7 @@ fds, even within one process tree).
 """
 
 import os
-import shlex
+import re
 import signal
 import subprocess
 import time
@@ -226,9 +226,14 @@ def _endpoint_process_args(
             args = process.joinpath("cmdline").read_bytes().split(b"\0")
             decoded = [arg.decode("utf-8", "strict") for arg in args if arg]
             # Chrome can rewrite argv as one space-joined process title.
-            # Normalize only that form; retain exact argument matching below.
+            # This is not shell syntax: spaces and quotes inside values are
+            # literal. Split at Chrome switch boundaries, not every space.
+            # Ambiguous trailing positional text remains part of the value
+            # and therefore cannot pass the exact profile check below.
             if len(decoded) == 1:
-                decoded = shlex.split(decoded[0])
+                decoded = re.split(
+                    r" (?=--[a-zA-Z0-9][a-zA-Z0-9-]*(?:=| |$))", decoded[0]
+                )
             owners.append(decoded)
         except (OSError, UnicodeError, ValueError):
             continue  # Unreadable processes cannot establish ownership.
@@ -240,8 +245,10 @@ def require_profile(environment: BrowserEnvironment) -> None:
     try:
         owners = _endpoint_process_args(cdp_port(environment.cdp_url))
         expected = f"--user-data-dir={environment.profile}"
-        if len(owners) == 1 and expected in owners[0]:
-            return
+        if len(owners) == 1:
+            profiles = [arg for arg in owners[0] if arg.startswith("--user-data-dir")]
+            if profiles == [expected]:
+                return
     except (OSError, ValueError, IndexError):
         pass
     raise LauncherError(

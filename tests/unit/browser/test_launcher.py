@@ -133,22 +133,26 @@ def test_same_mode_foreign_browser_is_not_reused(tmp_path, monkeypatch, mode):
 
 
 @pytest.mark.parametrize("separator", ["\0", " "])
-def test_endpoint_process_args_uses_actual_listener(tmp_path, separator):
+@pytest.mark.parametrize(
+    "profile_name", ["dedicated", "dedicated profile", "it's mine"]
+)
+def test_endpoint_process_args_uses_actual_listener(tmp_path, separator, profile_name):
     net = tmp_path / "net"
     net.mkdir()
     (net / "tcp").write_text(
         "header\n0: 0100007F:2406 00000000:0000 0A 0 0 0 1000 0 42\n"
     )
     (net / "tcp6").write_text("header\n")
-    for pid, inode, profile in [(100, 42, "/dedicated"), (101, 43, "/foreign")]:
+    for pid, inode, profile in [(100, 42, f"/{profile_name}"), (101, 43, "/foreign")]:
         process = tmp_path / str(pid)
         (process / "fd").mkdir(parents=True)
         (process / "fd" / "1").symlink_to(f"socket:[{inode}]")
         (process / "cmdline").write_bytes(
-            f"chrome{separator}--user-data-dir={profile}\0".encode()
+            f"chrome{separator}--user-data-dir={profile}"
+            f"{separator}--remote-debugging-port=9222\0".encode()
         )
     assert launcher._endpoint_process_args(9222, tmp_path) == [
-        ["chrome", "--user-data-dir=/dedicated"]
+        ["chrome", f"--user-data-dir=/{profile_name}", "--remote-debugging-port=9222"]
     ]
 
 
@@ -161,12 +165,27 @@ def test_require_profile_fails_closed(tmp_path, monkeypatch, owners):
         launcher.require_profile(_environment(tmp_path))
 
 
-def test_require_profile_rejects_profile_prefix(tmp_path, monkeypatch):
+@pytest.mark.parametrize("suffix", ["-other", " other", " extra/profile"])
+def test_require_profile_rejects_profile_prefix(tmp_path, monkeypatch, suffix):
     env = _environment(tmp_path)
     monkeypatch.setattr(
         launcher,
         "_endpoint_process_args",
-        lambda port: [["chrome", f"--user-data-dir={env.profile}-other"]],
+        lambda port: [["chrome", f"--user-data-dir={env.profile}{suffix}"]],
+    )
+    with pytest.raises(launcher.LauncherError):
+        launcher.require_profile(env)
+
+
+@pytest.mark.parametrize("other", ["--user-data-dir=/foreign", "--user-data-dir"])
+def test_require_profile_rejects_multiple_profile_switches(
+    tmp_path, monkeypatch, other
+):
+    env = _environment(tmp_path)
+    monkeypatch.setattr(
+        launcher,
+        "_endpoint_process_args",
+        lambda port: [["chrome", f"--user-data-dir={env.profile}", other]],
     )
     with pytest.raises(launcher.LauncherError):
         launcher.require_profile(env)

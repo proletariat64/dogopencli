@@ -550,15 +550,18 @@ def _cmd_cost_list_live(
 
 
 def cmd_cost_list(args: argparse.Namespace) -> int:
-    return _cost_list(args, COST, _cost_filters(args))
+    return _cost_list(args, COST, _cost_filters(args), "refresh payment cost")
 
 
 def cmd_collection_cost_list(args: argparse.Namespace) -> int:
-    return _cost_list(args, COLLECTION_COST, {})
+    return _cost_list(args, COLLECTION_COST, {}, "refresh collection cost")
 
 
 def _cost_list(
-    args: argparse.Namespace, capability_name: str, filters: dict[str, list[str]]
+    args: argparse.Namespace,
+    capability_name: str,
+    filters: dict[str, list[str]],
+    refresh_command: str,
 ) -> int:
     capability = get_capability(capability_name)
     limit, offset, fields = _display_options(args)
@@ -573,8 +576,7 @@ def _cost_list(
         source,
         capability.name,
         capability.default_scope,
-        refresh_command="refresh "
-        + capability.name.removesuffix(".list").replace(".", " "),
+        refresh_command=refresh_command,
         require_fresh=args.require_fresh,
         require_complete=args.require_complete,
         now=_now(),

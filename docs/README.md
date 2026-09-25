@@ -54,3 +54,5 @@
 - [分诊标签](agents/triage-labels.md)
 
 研究报告是观察快照；已接受的架构决策以上方 ADR 为准，其他实现建议不代表已交付行为。
+
+- [Collection cost PR review validation](research/general/2026-09-26-collection-cost-review.md)

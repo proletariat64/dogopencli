@@ -5,23 +5,29 @@ from fake_cdp import PAYMENT_URL, SSO_URL, FakeBrowser, FakeSession
 
 from dogopencli.browser import cdp
 from dogopencli.errors import CliError
-from dogopencli.plugins.collection.cost import COLLECTION_COST_CAPABILITY as CAPABILITY
+from dogopencli.plugins.collection.cost import COLLECTION_COST_CAPABILITY
+from dogopencli.plugins.payment.cost import COST_CAPABILITY
 from dogopencli.transport import QueryRequest
 from dogopencli.transport.cdp import CdpQueryTransport
 
 
-def request():
-    contract = CAPABILITY.contract
+@pytest.fixture(params=[COLLECTION_COST_CAPABILITY, COST_CAPABILITY])
+def capability(request):
+    return request.param
+
+
+def request(capability):
+    contract = capability.contract
     return QueryRequest(
-        CAPABILITY.name,
+        capability.name,
         contract.method,
         contract.host,
         contract.path,
-        CAPABILITY.page_body(CAPABILITY.default_scope, 0, 1000),
+        capability.page_body(capability.default_scope, 0, contract.page_size),
     )
 
 
-def test_blank_and_loading_target_settles_before_fetch(monkeypatch):
+def test_blank_and_loading_target_settles_before_fetch(monkeypatch, capability):
     state = FakeBrowser()
     state.business_script.append({"status": 200, "body": {}})
     states = iter(
@@ -46,10 +52,10 @@ def test_blank_and_loading_target_settles_before_fetch(monkeypatch):
     monkeypatch.setattr(FakeSession, "evaluate", evaluate)
     monkeypatch.setattr(cdp.time, "sleep", lambda seconds: None)
     transport = CdpQueryTransport(
-        state.transport("unused"), CAPABILITY, page_url=PAYMENT_URL
+        state.transport("unused"), capability, page_url=PAYMENT_URL
     )
     try:
-        assert transport.execute(request()).status == 200
+        assert transport.execute(request(capability)).status == 200
     finally:
         transport.close()
     assert state.transports[0].navigations == [PAYMENT_URL]
@@ -60,15 +66,15 @@ def test_blank_and_loading_target_settles_before_fetch(monkeypatch):
     "url, code",
     [(SSO_URL, "AUTH_REQUIRED"), ("https://other.example/", "INVALID_RESPONSE")],
 )
-def test_redirect_never_sends_business_request(monkeypatch, url, code):
+def test_redirect_never_sends_business_request(monkeypatch, url, code, capability):
     state = FakeBrowser(href=url)
     monkeypatch.setattr(cdp.time, "sleep", lambda seconds: None)
     transport = CdpQueryTransport(
-        state.transport("unused"), CAPABILITY, page_url=PAYMENT_URL
+        state.transport("unused"), capability, page_url=PAYMENT_URL
     )
     try:
         with pytest.raises(CliError) as caught:
-            transport.execute(request())
+            transport.execute(request(capability))
         assert caught.value.code == code
         assert not state.business_requests
     finally:
