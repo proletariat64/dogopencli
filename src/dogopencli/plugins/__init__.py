@@ -113,11 +113,22 @@ def get_capability(name: str) -> Capability:
 def _load_builtins() -> None:
     from .collection.cost import COLLECTION_COST_CAPABILITY, COLLECTION_COST_LIST_NODE
     from .collection.reading import description as collection_description
+    from .collection.sla import (
+        COLLECTION_SLA,
+        COLLECTION_SLA_GET_NODE,
+        COLLECTION_SLA_LIST_NODE,
+    )
+    from .collection.sla_reading import description as sla_description
     from .payment.channel import CHANNEL_CAPABILITY, CHANNEL_LIST_NODE
     from .payment.cost import COST_CAPABILITY, COST_LIST_NODE
     from .payment.reading import description
     from .payment.sla import SLA_CAPABILITY, SLA_GET_NODE, SLA_LIST_NODE
 
+    register(
+        COLLECTION_SLA,
+        commands=(COLLECTION_SLA_LIST_NODE, COLLECTION_SLA_GET_NODE),
+        description=sla_description,
+    )
     register(
         COLLECTION_COST_CAPABILITY,
         commands=(COLLECTION_COST_LIST_NODE,),
