@@ -58,3 +58,11 @@ HTTP 401 is `AUTH_REQUIRED`; HTTP 403 remains `BUSINESS_QUERY_FAILED` with
 `HTTP 403` retained in the message, is not retried, and never means an empty
 scope or `NOT_FOUND`. Unknown backend business-error envelopes stay generic:
 no verified collection-specific permission error code is available to classify.
+
+Required detail-field presence is a client completeness policy, supported by the
+observed schema and all-detail checks; it is not a permanent backend requiredness
+guarantee. Missing keys cannot currently be distinguished from truncated detail,
+so they fail with the previous snapshot intact. Explicit null remains distinct
+from omission. If legitimate omission is observed, verify and record its contract
+before changing this policy; retaining unknown fields does not establish that
+known SLA targets can safely be omitted.

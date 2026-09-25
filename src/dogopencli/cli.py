@@ -39,8 +39,10 @@ from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
 from .plugins import get_capability
+from .plugins.collection import sla as collection_sla
 from .plugins.payment.channel import assign_seqids
-from .plugins.payment.sla import SLA_DETAIL, detail_body, parse_detail
+from .plugins.payment.sla import SLA_DETAIL, detail_body
+from .plugins.payment.sla import parse_detail as parse_payment_sla_detail
 from .table import render_table
 from .transport import QueryRequest, validate_request
 from .transport.cdp import CdpQueryTransport, FetchFailed
@@ -617,7 +619,7 @@ def _fetch_sla_detail(
             )
         if failure is None and response is not None:
             if response.status == 200:
-                return parse_detail(response.body, baseline_id)
+                return parse_payment_sla_detail(response.body, baseline_id)
             if response.status not in collect_mod.RETRYABLE_STATUSES:
                 if response.status == 401:
                     raise CliError(
@@ -910,9 +912,7 @@ def _collection_sla_cached(
     config: config_mod.Config,
     source: config_mod.SourceConfig,
 ) -> tuple[CachedQuery, list[dict[str, Any]]]:
-    from .plugins.collection.sla import COLLECTION_SLA, validate_pair
-
-    cap = COLLECTION_SLA
+    cap = collection_sla.COLLECTION_SLA
     cached = read_cached_query(
         config,
         source,
@@ -928,7 +928,7 @@ def _collection_sla_cached(
         pair = parse(body)
         if not isinstance(pair, dict):
             raise CliError(INVALID_RESPONSE, "invalid cached SLA configuration pair")
-        validate_pair(pair.get("config"), pair.get("detail"))
+        collection_sla.validate_pair(pair.get("config"), pair.get("detail"))
         pairs.append(pair)
     if len(pairs) != cached.snapshot.row_count or len(
         {pair["config"]["slaConfigId"] for pair in pairs}
@@ -944,22 +944,17 @@ def _fetch_collection_sla_detail(
     identity: str,
     deadline: float,
 ) -> dict[str, Any]:
-    from .plugins.collection.sla import COLLECTION_SLA_DETAIL, parse_detail
-
     response = collect_mod._execute_bounded(
-        COLLECTION_SLA_DETAIL, transport, {"slaConfigId": identity}, deadline
+        collection_sla.COLLECTION_SLA_DETAIL,
+        transport,
+        {"slaConfigId": identity},
+        deadline,
     )
-    return parse_detail(response.body, identity)
+    return collection_sla.parse_detail(response.body, identity)
 
 
 def cmd_refresh_collection_sla(args: argparse.Namespace) -> int:
-    from .plugins.collection.sla import (
-        COLLECTION_SLA,
-        COLLECTION_SLA_DETAIL,
-        validate_pair,
-    )
-
-    cap = COLLECTION_SLA
+    cap = collection_sla.COLLECTION_SLA
     config = config_mod.load([cap.source_config_key])
     source = _cdp_source(config, cap.source_config_key)
     store = Cache(config.cache_path)
@@ -974,13 +969,13 @@ def cmd_refresh_collection_sla(args: argparse.Namespace) -> int:
             )
             if not result.complete:
                 raise CliError(INCOMPLETE_RESULT, "collection SLA list is incomplete")
-            transport = session.transport(COLLECTION_SLA_DETAIL)
+            transport = session.transport(collection_sla.COLLECTION_SLA_DETAIL)
             pairs = []
             for record in cap.sort_records(result.records):
                 detail = _fetch_collection_sla_detail(
                     transport, record[cap.id_field], result.deadline
                 )
-                validate_pair(record, detail)
+                collection_sla.validate_pair(record, detail)
                 pairs.append({"config": record, "detail": detail})
                 print(
                     f"refresh: collected detail {len(pairs)}/{len(result.records)}",
@@ -1022,12 +1017,10 @@ def cmd_refresh_collection_sla(args: argparse.Namespace) -> int:
 
 
 def cmd_collection_sla_list(args: argparse.Namespace) -> int:
-    from .plugins.collection.sla import COLLECTION_SLA, FILTER_FIELDS
-
-    cap = COLLECTION_SLA
+    cap = collection_sla.COLLECTION_SLA
     limit, offset, fields = _display_options(args)
     filters: dict[str, list[str]] = {}
-    for flag, field in FILTER_FIELDS.items():
+    for flag, field in collection_sla.FILTER_FIELDS.items():
         values = getattr(args, flag.replace("-", "_"))
         if any(not value.strip() for value in values):
             raise _argument_error(f"--{flag} must be nonempty")
@@ -1058,8 +1051,6 @@ def cmd_collection_sla_list(args: argparse.Namespace) -> int:
 
 
 def cmd_collection_sla_get(args: argparse.Namespace) -> int:
-    from .plugins.collection.sla import COLLECTION_SLA, COLLECTION_SLA_DETAIL
-
     if not args.id.strip():
         raise _argument_error("--id must be nonempty")
     fields = None
@@ -1067,18 +1058,21 @@ def cmd_collection_sla_get(args: argparse.Namespace) -> int:
         fields = [field.strip() for field in args.fields.split(",") if field.strip()]
         if not fields:
             raise _argument_error("--fields must name at least one field")
-    cap = COLLECTION_SLA
+    cap = collection_sla.COLLECTION_SLA
     config = config_mod.load([cap.source_config_key])
     source = _cdp_source(config, cap.source_config_key)
     if args.live:
         with inquiry_session(config_file=config_mod.config_path()) as session:
             detail = _fetch_collection_sla_detail(
-                session.transport(COLLECTION_SLA_DETAIL),
+                session.transport(collection_sla.COLLECTION_SLA_DETAIL),
                 args.id,
                 collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS,
             )
         meta = _live_meta(source, cap.default_scope, True, 1, 1, 0)
-        meta["query"] = {"capability": COLLECTION_SLA_DETAIL.name, "id": args.id}
+        meta["query"] = {
+            "capability": collection_sla.COLLECTION_SLA_DETAIL.name,
+            "id": args.id,
+        }
     else:
         cached, pairs = _collection_sla_cached(args, config, source)
         detail = next(

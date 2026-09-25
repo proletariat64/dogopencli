@@ -66,3 +66,23 @@ Historical UAT is
 recorded in [the implementation acceptance report](2026-09-26-collection-sla-implementation-uat.md).
 New failure cases use the agreed synthetic SIT seam; they are not counted as new
 production UAT. No production records are written to create failure conditions.
+
+## Second Kimi review
+
+Reviewed the operator-provided second review against `e4c8bf2`. No new blocking
+behavior defect was identified. Consolidated five function-local collection SLA
+imports into one module import, and explicitly named the payment detail parser;
+collection calls now use the module-qualified parser, eliminating name shadowing.
+The existing plugin registry already loads both plugins, so this does not add a
+new lazy/eager loading dependency or change request behavior.
+
+Retained distinct refresh orchestration and ordering functions for the reasons
+above. The seven required detail fields are an explicit client completeness
+policy, not a backend forever-required assertion. The prior correction already
+documents them in ADR/schema/help and validates all 55 current production details;
+ADR now explicitly explains the compatibility limit and evidence needed to relax
+it. No runtime validation or public argument was changed in this second pass.
+
+Second-pass verification: **112 payment/collection SLA public-CLI tests passed
+in 134.88s**; Ruff lint/format, documentation guard and whitespace checks passed. The prior full-suite and production evidence
+remain recorded above; this import-only pass does not claim another production run.
