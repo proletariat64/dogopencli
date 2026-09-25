@@ -117,6 +117,22 @@ _REFRESH_COST_NODE = BizNode(
     handler="cmd_refresh_cost",
 )
 
+_REFRESH_COLLECTION_COST_NODE = replace(
+    _REFRESH_COST_NODE,
+    path=("refresh", "collection", "cost"),
+    summary="Rebuild the collection transaction-cost cache "
+    "through the existing CDP session.",
+    constraints=(
+        *_REFRESH_COST_NODE.constraints,
+        "Fixed collection transaction-cost type; only complete unique results publish.",
+        "Only the local cache changes; production business state remains read-only.",
+    ),
+    errors=(*_REFRESH_COST_NODE.errors, "INCOMPLETE_RESULT"),
+    examples=("dogopencli refresh collection cost",),
+    next=("dogopencli help collection cost list",),
+    handler="cmd_refresh_collection_cost",
+)
+
 _REFRESH_SLA_NODE = BizNode(
     ("refresh", "payment", "sla"),
     "Rebuild the payment SLA baseline cache through the existing CDP session"
@@ -145,7 +161,7 @@ _REFRESH_SLA_NODE = BizNode(
 _GROUPS: dict[tuple[str, ...], BizNode] = {
     (): BizNode(
         (),
-        "Inquiry-only, read-only payment operations queries; the default"
+        "Inquiry-only, read-only payment and collection operations queries; the default"
         " reads the local cache.",
         constraints=(
             "Business queries never modify production business configuration.",
@@ -207,6 +223,21 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
         examples=("dogopencli refresh payment channel",),
         next=("dogopencli help refresh payment channel",),
     ),
+    ("collection",): BizNode(
+        ("collection",),
+        "Read-only collection transaction-cost configurations.",
+        next=("dogopencli help collection cost",),
+    ),
+    ("collection", "cost"): BizNode(
+        ("collection", "cost"),
+        "Collection transaction-cost configuration queries.",
+        next=("dogopencli help collection cost list",),
+    ),
+    ("refresh", "collection"): BizNode(
+        ("refresh", "collection"),
+        "Rebuild collection product caches.",
+        next=("dogopencli help refresh collection cost",),
+    ),
 }
 
 
@@ -247,6 +278,7 @@ NODES = build_catalog(
         *description_nodes(command_nodes()),
         _REFRESH_CHANNEL_NODE,
         _REFRESH_COST_NODE,
+        _REFRESH_COLLECTION_COST_NODE,
         _REFRESH_SLA_NODE,
     )
 )

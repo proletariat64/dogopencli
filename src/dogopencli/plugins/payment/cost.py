@@ -11,8 +11,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...errors import (
-    BUSINESS_QUERY_FAILED,
-    INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
     CliError,
 )
@@ -34,8 +32,8 @@ from ...helpspec import (
     BizNode,
     opt,
 )
-from ...jsonutil import parse
 from .. import EndpointContract, ParsedPage
+from ..cost import TABLE_COLUMNS, parse_cost_page, sort_cost_records
 
 COST_TYPE = "FUND_OUT_CHANNEL_TRANS_FEE"
 PAGE_SIZE = 5000
@@ -73,19 +71,6 @@ FILTER_FIELDS = {
     "clearingNetworkName": "clearingNetworkName",
 }
 
-PAGINATION_KEYS = ("pageNo", "pageSize", "totalCount")
-
-
-def _invalid(message: str) -> CliError:
-    return CliError(INVALID_RESPONSE, message)
-
-
-def _record_key(record: dict[str, Any]) -> tuple[int, Any]:
-    item_id = record.get("itemId")
-    if isinstance(item_id, str) and item_id.isdigit():
-        return (0, int(item_id))
-    return (1, str(item_id))
-
 
 @dataclass(frozen=True)
 class CostCapability:
@@ -94,17 +79,7 @@ class CostCapability:
     default_scope: str = COST_TYPE
     contract: EndpointContract = CONTRACT
     id_field: str = "itemId"
-    table_columns: tuple[str, ...] = (
-        "itemId",
-        "status",
-        "legalEntity",
-        "financialInst",
-        "bankAccountAliasName",
-        "transCurrencyCode",
-        "costCurrencyCode",
-        "chargeBearer",
-        "clearingNetworkName",
-    )
+    table_columns: tuple[str, ...] = TABLE_COLUMNS
 
     def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
         return {"costTypeCode": scope, "pageNo": page_num, "pageSize": page_size}
@@ -135,51 +110,13 @@ class CostCapability:
 
     def sort_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Deterministic local order: original itemId ascending."""
-        return sorted(records, key=_record_key)
+        return sort_cost_records(records)
 
     def identity_key(self, record: dict[str, Any]) -> Any:
         return record.get(self.id_field)
 
     def parse_page(self, body: bytes) -> ParsedPage:
-        try:
-            document = parse(body)
-        except ValueError as error:
-            raise _invalid("response is not valid JSON") from error
-        if not isinstance(document, dict):
-            raise _invalid("response envelope is not an object")
-        # A success envelope also carries errorContext with errorName=SUCCESS;
-        # only the success flag itself decides the business outcome.
-        if document.get("success") is not True:
-            raise CliError(BUSINESS_QUERY_FAILED, "backend reported a business failure")
-        paging: dict[str, int] = {}
-        for key in PAGINATION_KEYS:
-            value = document.get(key)
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise _invalid(f"invalid pagination field {key}")
-            paging[key] = value
-        if paging["pageSize"] <= 0:
-            raise _invalid("invalid pagination field pageSize")
-        rows = document.get("resultDataList")
-        if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
-            raise _invalid("missing resultDataList")
-        if paging["totalCount"] == 0 and rows:
-            raise _invalid("inconsistent empty result")
-        if len(rows) > paging["pageSize"]:
-            raise _invalid("page returned more rows than pageSize")
-        for row in rows:
-            if row.get("itemType") != COST_TYPE:
-                raise _invalid("row itemType is outside the fixed payment cost type")
-            item_id = row.get("itemId")
-            if not isinstance(item_id, str) or not item_id:
-                raise _invalid("row is missing itemId")
-        total_pages = -(-paging["totalCount"] // paging["pageSize"])
-        return ParsedPage(
-            records=list(rows),
-            page_num=paging["pageNo"],
-            page_size=paging["pageSize"],
-            total_count=paging["totalCount"],
-            total_pages=total_pages,
-        )
+        return parse_cost_page(body, self.default_scope)
 
 
 COST_CAPABILITY = CostCapability()

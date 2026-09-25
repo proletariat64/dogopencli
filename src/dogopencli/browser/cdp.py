@@ -249,7 +249,7 @@ def _remaining_timeout(deadline: float) -> float:
     return remaining
 
 
-def _await_target_settled(session: CdpSession, *, timeout: float = 15.0) -> str:
+def await_target_settled(session: CdpSession, *, timeout: float = 15.0) -> str:
     """Wait for navigation to settle and return the final href (any origin).
 
     The auth probe classifies the final origin itself, so an SSO redirect must
@@ -317,7 +317,7 @@ def probe_final_url(transport: CdpTransport, url: str, *, timeout: float = 15.0)
             timeout=_remaining_timeout(deadline),
         )
         session.navigate(url, _remaining_timeout(deadline))
-        href = _await_target_settled(session, timeout=_remaining_timeout(deadline))
+        href = await_target_settled(session, timeout=_remaining_timeout(deadline))
         _remaining_timeout(deadline)
         return _confirm_entry_stability(session, url, href, deadline=deadline)
     finally:
@@ -352,12 +352,12 @@ def _confirm_entry_stability(
             raw = session.evaluate(expression, min(5.0, remaining))
         except CdpError:
             # A navigation starting mid-poll can break the evaluation.
-            return _await_target_settled(session, timeout=remaining)
+            return await_target_settled(session, timeout=remaining)
         if not isinstance(raw, Mapping):
             raise CdpError("target readiness probe returned an unusable value")
         current = str(raw.get("href") or "")
         if current != href:
-            return _await_target_settled(session, timeout=remaining)
+            return await_target_settled(session, timeout=remaining)
     return href
 
 

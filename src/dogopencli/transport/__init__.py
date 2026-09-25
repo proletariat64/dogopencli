@@ -67,3 +67,11 @@ def validate_request(request: QueryRequest, contract: EndpointContract) -> None:
             REQUEST_NOT_ALLOWED,
             f"request body keys are not registered: {unknown}",
         )
+
+    for key, expected in contract.fixed_body_values:
+        actual = request.body.get(key)
+        if type(actual) is not type(expected) or actual != expected:
+            raise CliError(
+                REQUEST_NOT_ALLOWED,
+                f"request field {key} must match its registered fixed value",
+            )

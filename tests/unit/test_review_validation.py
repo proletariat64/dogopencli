@@ -81,7 +81,12 @@ def test_dead_cdp_session_is_recreated_on_retry():
             self.dead = dead
             self.closed = False
 
+        def navigate(self, url, timeout):
+            self.url = url
+
         def evaluate(self, expression, timeout):
+            if "fetch(" not in expression:
+                return {"ready_state": "complete", "href": self.url}
             if self.dead:
                 raise CdpError("socket closed")
             return {"status": 200, "body": "{}"}
@@ -106,7 +111,9 @@ def test_dead_cdp_session_is_recreated_on_retry():
             self.closed_targets.append(target_id)
 
     browser = Browser()
-    transport = CdpQueryTransport(browser, COST_CAPABILITY, page_url="about:blank")
+    transport = CdpQueryTransport(
+        browser, COST_CAPABILITY, page_url="https://example.invalid"
+    )
     contract = COST_CAPABILITY.contract
     request = QueryRequest(
         COST_CAPABILITY.name,

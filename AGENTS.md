@@ -1,17 +1,18 @@
 # Repository Guidelines
 
 ## Scope and Architecture
-Dogopencli is a Python CLI for querying the product operations platform, intended for one person on one machine. Version 0.1.0 covers payment products; collection products are excluded.
+Dogopencli is a Python CLI for querying the product operations platform, intended for one person on one machine. The current scope covers payment products and the collection transaction-cost inquiries in issue #21. Other collection capabilities, including VA fees, rules, SLA, pools and physical accounts, remain deferred.
 
-Production scope starts at `https://ifundcontrol.alipay.com/productOperation/paymentProductManagement/`. Confirm actual menus and API contracts before implementation; historical knowledge-base designs do not prove current production behavior.
+Payment production scope starts at `https://ifundcontrol.alipay.com/productOperation/paymentProductManagement/`. Collection scope is limited to the verified `collectionProductManagement/productPriceManagement/channelCost` entry and its cost-query contract. Confirm actual menus and API contracts before implementation; historical knowledge-base designs do not prove current production behavior.
 
 Keep every business operation inquiry-only. Allow explicitly verified query endpoints and request actions through a shared transport. HTTP method alone does not establish read-only behavior. Exclude mutation commands and arbitrary request or JavaScript entry points.
 
 ## Project Structure
-The repository currently has no application source, dependency manifest, tests, or commits. Use this proposed layout when scaffolding:
+The application uses the following layout:
 
 - `src/dogopencli/`: CLI, configuration, browser transport, and plugin discovery.
 - `src/dogopencli/plugins/payment/`: payment queries, schemas, and response parsing.
+- `src/dogopencli/plugins/collection/`: collection transaction-cost queries and schemas.
 - `tests/`: unit and integration tests with sanitized fixtures.
 - `docs/`: verified API contracts and design decisions.
 
@@ -23,7 +24,7 @@ Use headed Chrome for interactive OAuth/SSO login and headless Chrome for routin
 Never use CDP ports **9330–9340**, including tests and verification. Before browser or authentication work, read `~/dev/di/docs/spec/browser-cdp-v1.1.md` and its referenced implementation; adapt its defaults. Keep cookies, tokens, profiles, and sensitive responses out of Git and logs.
 
 ## Development and Testing
-Prefix shell commands with `rtk`; use `rtk proxy <command>` for unsupported commands. No build or test tooling is configured yet. After scaffolding, configure pytest and Ruff in `pyproject.toml`:
+Prefix shell commands with `rtk`; use `rtk proxy <command>` for unsupported commands. Use the pytest and Ruff configuration in `pyproject.toml`:
 
 - `rtk pytest -q`: run tests.
 - `rtk proxy ruff check .`: lint Python.
