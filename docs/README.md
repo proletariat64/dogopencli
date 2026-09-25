@@ -8,6 +8,8 @@
 - [Data helper v1（GitHub Issue #16）](https://github.com/proletariat64/dogopencli/issues/16)：四个付款查询叶子的离线 schema、字段证据与读取指引；[可运行命令与版本化机器契约](../README.md#data-helper)。
 - [收款交易成本查询规划（GitHub Issue #21）](https://github.com/proletariat64/dogopencli/issues/21)：当前开发分支实现固定类型的交易成本列表、live、刷新及离线描述；VA 规则、VA 费用及池/实体账户等仍排除。
 
+- [收款 SLA 配置查询（GitHub Issue #27）](https://github.com/proletariat64/dogopencli/issues/27)：列表、真实详情、原子刷新与四项本地筛选；实施及验收见下方报告。
+
 ## 研究报告
 
 以下报告各自记录观察日期；运行态仅代表当时账号可见的页面和已验证请求，不保证后续版本、权限或数据不变。
@@ -23,6 +25,11 @@
 | General | [收款 VA 规则列表与详情](research/general/2026-09-23-collection-va-rule-query.md) | 独立于银行账户规则；两次 907 条完整列表、三个详情样本、ID 筛选与下一步设计缺口 |
 | General | [收款 SLA 配置列表与详情](research/general/2026-09-23-collection-sla-query.md) | 55 条列表与全部详情、单值筛选、秒单位/节假日结构及下一步设计缺口 |
 | General | [收款 VA 池查询](research/general/2026-09-23-collection-va-pool-query.md) | 登录恢复；容量/凭证/规则详情与池的区别，已查导航及失败证据；用户要求停止入口搜索；池/实体账户保持未验证并排除 |
+| General | [收款 VA value 术语核验](research/general/2026-09-26-collection-va-value-terminology.md) | 更正未经证实的命令建议，区分 VA 规则、费用与账户对象 |
+| General | [收款菜单只读探查计划](research/general/2026-09-26-collection-menu-readonly-plan.md) | 逐菜单检查范围、只读边界和完成记录 |
+| General | [收款菜单深度探查](research/general/2026-09-26-collection-menu-deep-survey.md) | 页面、实际查询入口与权限受限项目；作为后续规格输入 |
+| General | [收款 SLA 实施与 UAT](research/general/2026-09-26-collection-sla-implementation-uat.md) | 全参数矩阵、151 项生产只读与本地验收、SIT 和修复后的门禁记录 |
+| General | [收款 SLA PR 审查处理](research/general/2026-09-26-collection-sla-review.md) | Kimi 与 GitHub 审查逐项核验、修复及回归证据 |
 | Payment | [付款产品设计与运行态发现](research/payment/2026-09-08-payment-operations.md) | 产品模型、27 个菜单、查询字段、接口证据、权限限制和 CLI 候选范围 |
 
 ## 查询契约补充
@@ -45,6 +52,8 @@
 - [ADR 0002：v0.1.0 付款范围](adr/0002-payment-v010-scope.md)：渠道、SLA 基线和成本查询；规则类移至下一版本。
 - [ADR 0003：本地查询快照](adr/0003-local-query-snapshots.md)：默认只读 SQLite 缓存、72 小时有效期、仅发布完整快照；重试边界待定。
 - [ADR 0004：CLI 与登录流程](adr/0004-cli-runtime-boundaries.md)：JSON 输出、三个内置领域插件、`dogopencli login` 管理并校验专用 Chrome。
+
+- [ADR 0008：收款 SLA 配置查询](adr/0008-collection-sla-configurations.md)：独立对象、完整列表与详情、离线快照、本地筛选及完整性边界。
 
 ## 协作规范
 

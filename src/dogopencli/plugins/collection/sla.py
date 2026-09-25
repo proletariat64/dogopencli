@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...errors import (
-    BUSINESS_QUERY_FAILED,
     INCOMPLETE_RESULT,
     INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
@@ -25,8 +24,8 @@ from ...helpspec import (
     BizNode,
     opt,
 )
-from ...jsonutil import parse
 from .. import EndpointContract, ParsedPage
+from ..envelope import success_document
 
 FILTER_FIELDS = {
     "business-line": "businessCategory",
@@ -34,6 +33,9 @@ FILTER_FIELDS = {
     "currency": "creditorCurrency",
     "region": "creditorRegion",
 }
+
+DETAIL_FIELDS = (*FILTER_FIELDS.values(), "endToEndSla", "ipayInnerSla", "holidayLimit")
+LIST_ONLY_FIELDS = frozenset({"viewProcessInstanceRequired"})
 
 PAGE_SIZE = 1000
 LIST_CONTRACT = EndpointContract(
@@ -55,18 +57,6 @@ DETAIL_CONTRACT = EndpointContract(
 )
 
 
-def _document(body: bytes) -> dict[str, Any]:
-    try:
-        document = parse(body)
-    except ValueError as error:
-        raise CliError(INVALID_RESPONSE, "response is not valid JSON") from error
-    if not isinstance(document, dict):
-        raise CliError(INVALID_RESPONSE, "response envelope is not an object")
-    if document.get("success") is not True:
-        raise CliError(BUSINESS_QUERY_FAILED, "backend reported a business failure")
-    return document
-
-
 def _validate_record(record: Any) -> None:
     if (
         not isinstance(record, dict)
@@ -78,9 +68,28 @@ def _validate_record(record: Any) -> None:
         )
 
 
-def parse_detail(body: bytes, identity: str) -> dict[str, Any]:
-    detail = _document(body).get("resultData")
+def _validate_detail(detail: Any) -> None:
     _validate_record(detail)
+    if any(field not in detail for field in DETAIL_FIELDS):
+        raise CliError(
+            INVALID_RESPONSE, "SLA detail is missing required business fields"
+        )
+    holiday = detail["holidayLimit"]
+    # Presence proves completeness; nullable business values remain raw.
+    if holiday is not None and (
+        not isinstance(holiday, dict)
+        or any(
+            not isinstance(holiday.get(field), list)
+            or any(not isinstance(value, str) for value in holiday[field])
+            for field in ("currencyCodes", "regionCodes")
+        )
+    ):
+        raise CliError(INVALID_RESPONSE, "SLA detail requires complete holiday arrays")
+
+
+def parse_detail(body: bytes, identity: str) -> dict[str, Any]:
+    detail = success_document(body).get("resultData")
+    _validate_detail(detail)
     if detail["slaConfigId"] != identity:
         raise CliError(INVALID_RESPONSE, "detail slaConfigId does not match request")
     return detail
@@ -89,8 +98,11 @@ def parse_detail(body: bytes, identity: str) -> dict[str, Any]:
 def validate_pair(record: Any, detail: Any) -> None:
     """Keep true detail separate; reject changes in any shared business field."""
     _validate_record(record)
-    _validate_record(detail)
-    if any(record[key] != detail[key] for key in record.keys() & detail.keys()):
+    _validate_detail(detail)
+    if any(
+        key not in detail or record[key] != detail[key]
+        for key in record.keys() - LIST_ONLY_FIELDS
+    ):
         raise CliError(INVALID_RESPONSE, "SLA list and detail shared fields differ")
 
 
@@ -155,7 +167,7 @@ class CollectionSlaCapability:
         return record[self.id_field]
 
     def parse_page(self, body: bytes) -> ParsedPage:
-        document = _document(body)
+        document = success_document(body)
         for key in ("pageNo", "pageSize", "totalCount"):
             if type(document.get(key)) is not int:
                 raise CliError(INVALID_RESPONSE, f"invalid pagination field {key}")
@@ -163,6 +175,8 @@ class CollectionSlaCapability:
         if document["pageNo"] != 0 or document["pageSize"] != PAGE_SIZE or total < 0:
             raise CliError(INVALID_RESPONSE, "invalid collection SLA pagination")
         rows = document.get("resultDataList")
+        if total == 0 and "resultDataList" not in document:
+            rows = []
         if not isinstance(rows, list):
             raise CliError(INVALID_RESPONSE, "invalid resultDataList")
         for row in rows:
@@ -230,7 +244,10 @@ COLLECTION_SLA_LIST_NODE = BizNode(
         ),
         (
             "Live fetches the complete unfiltered scope before local filtering, "
-            "stable-ID sorting and display windowing. No independent backend "
+            "stable-ID sorting and display windowing. ASCII digit IDs sort "
+            "numerically, with original string as the tie-breaker; other IDs "
+            "sort lexically afterward. Original string IDs remain unchanged. "
+            "No independent backend "
             "businessCategory filtering is claimed. Refresh is unfiltered; "
             "get accepts only ID selection."
         ),
@@ -272,7 +289,9 @@ COLLECTION_SLA_GET_NODE = BizNode(
     constraints=(
         CACHE_SEMANTICS,
         (
-            "Never substitutes a list row for detail. Null or invalid"
+            "Never substitutes a list row for detail. Core business fields "
+            "must be present; explicit null values remain raw. Nonnull "
+            "holidayLimit requires both complete string arrays. Null or invalid"
             " live detail fails; backend not-found semantics are "
             "unverified."
         ),

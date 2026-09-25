@@ -396,7 +396,10 @@ def test_local_filters_identical_cached_live(run_cli, envelope, setup, flag, fie
     del rows[4][field]
     setup.state.business_script.append(page(rows))
     setup.state.business_script.extend(
-        {"status": 200, "body": {"success": True, "resultData": record}}
+        {
+            "status": 200,
+            "body": {"success": True, "resultData": {field: None, **record}},
+        }
         for record in sorted(rows, key=lambda record: int(record["slaConfigId"]))
     )
     assert refresh(run_cli)[0] == 0
@@ -479,3 +482,161 @@ def test_filtered_live_permission_failure_is_not_no_match(run_cli, envelope, set
     code, out, _ = listing(run_cli, "--live", "--currency", "no-match")
     assert code == 1
     assert envelope(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "businessCategory",
+        "legalEntityCode",
+        "creditorCurrency",
+        "creditorRegion",
+        "endToEndSla",
+        "ipayInnerSla",
+        "holidayLimit",
+    ],
+)
+@pytest.mark.parametrize("live", [False, True])
+def test_incomplete_detail_rejected_without_replacing_cache(
+    run_cli, envelope, setup, field, live
+):
+    old = seed(run_cli, setup)
+    response = detail()
+    del response["body"]["resultData"][field]
+    if not live:
+        setup.state.business_script.append(page())
+    setup.state.business_script.append(response)
+    result = getting(run_cli, "--live", "--id", "1") if live else refresh(run_cli)
+    assert result[0] == 1
+    assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
+    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+
+
+@pytest.mark.parametrize(
+    "holiday",
+    [
+        {},
+        {"currencyCodes": []},
+        {"currencyCodes": "USD", "regionCodes": []},
+        {"currencyCodes": [], "regionCodes": [1]},
+    ],
+)
+def test_malformed_holiday_detail_rejected(run_cli, envelope, setup, holiday):
+    setup.state.business_script.append(detail(holidayLimit=holiday))
+    result = getting(run_cli, "--live", "--id", "1")
+    assert result[0] == 1
+    assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
+    assert not setup.cache_path.exists()
+
+
+def test_detail_must_preserve_list_extension_but_not_list_only_field(
+    run_cli, envelope, setup
+):
+    old = seed(run_cli, setup)
+    response = detail()
+    del response["body"]["resultData"]["unknownExtension"]
+    setup.state.business_script.extend([page(), response])
+    result = refresh(run_cli)
+    assert result[0] == 1
+    assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
+    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    setup.state.business_script.extend(
+        [page([row(viewProcessInstanceRequired=True)]), detail()]
+    )
+    assert refresh(run_cli)[0] == 0
+    assert (
+        "viewProcessInstanceRequired"
+        not in envelope(getting(run_cli, "--id", "1")[1])["data"]
+    )
+
+
+def test_explicit_nullable_detail_values_preserved(run_cli, envelope, setup):
+    changes = dict(businessCategory=None, endToEndSla=None, holidayLimit=None)
+    setup.state.business_script.extend([page([row(**changes)]), detail(**changes)])
+    assert refresh(run_cli)[0] == 0
+    result = envelope(getting(run_cli, "--id", "1")[1])["data"]
+    assert all(result[key] is None for key in changes)
+
+
+@pytest.mark.parametrize("total,omit", [(0, True), (1, True), (0, False)])
+def test_omitted_empty_rows_and_invalid_absence(run_cli, envelope, setup, total, omit):
+    old = seed(run_cli, setup)
+    response = page([], totalCount=total)
+    if omit:
+        del response["body"]["resultDataList"]
+    else:
+        response["body"]["resultDataList"] = None
+    setup.state.business_script.append(response)
+    result = refresh(run_cli)
+    if total == 0 and omit:
+        assert result[0] == 0
+        setup.state.running = False
+        cached = envelope(listing(run_cli, "--require-complete")[1])
+        assert cached["data"] == [] and cached["meta"]["complete"]
+        assert (
+            envelope(getting(run_cli, "--id", "1")[1])["error"]["code"] == "NOT_FOUND"
+        )
+    else:
+        assert result[0] == 1
+        assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
+        assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+
+
+def test_stable_id_order_preserves_original_strings(run_cli, envelope, setup):
+    identities = ["20", "2", "02", "a", "١", "²", "A"]
+    setup.state.business_script.append(page([row(identity) for identity in identities]))
+    result = envelope(listing(run_cli, "--live", "--all")[1])
+    assert [record["slaConfigId"] for record in result["data"]] == [
+        "02",
+        "2",
+        "20",
+        "A",
+        "a",
+        "²",
+        "١",
+    ]
+    help_text = run_cli(["help", "collection", "sla", "configs", "list"])[1]
+    assert "ASCII" in help_text and "original string" in help_text
+
+
+@pytest.mark.parametrize("action", ["list", "get", "refresh"])
+def test_permission_http_evidence_preserved_without_retry_or_cache_change(
+    run_cli, envelope, setup, action
+):
+    old = seed(run_cli, setup)
+    count = len(setup.state.business_requests)
+    if action == "refresh":
+        setup.state.business_script.append(page())
+    setup.state.business_script.append({"status": 403, "body": {}})
+    if action == "list":
+        result = listing(run_cli, "--live")
+    elif action == "get":
+        result = getting(run_cli, "--live", "--id", "1")
+    else:
+        result = refresh(run_cli)
+    assert result[0] == 1
+    error = envelope(result[1])["error"]
+    assert error["code"] == "BUSINESS_QUERY_FAILED"
+    assert "403" in error["message"]
+    assert error["retryable"] is False
+    assert len(setup.state.business_requests) == count + 1 + int(action == "refresh")
+    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+
+
+def test_unverified_backend_denial_text_not_classified_or_leaked(
+    run_cli, envelope, setup
+):
+    setup.state.business_script.append(
+        {
+            "status": 200,
+            "body": {
+                "success": False,
+                "errorContext": {"message": "permission denied SENSITIVE-CONTEXT"},
+            },
+        }
+    )
+    code, out, _ = getting(run_cli, "--live", "--id", "1")
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"
+    assert "SENSITIVE-CONTEXT" not in out
+    assert len(setup.state.business_requests) == 1

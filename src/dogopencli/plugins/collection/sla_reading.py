@@ -4,10 +4,11 @@ from typing import Any
 
 from ...annotations import schema_annotations
 from ...helpspec import BizNode
-from .sla import FILTER_FIELDS
+from .sla import DETAIL_FIELDS, FILTER_FIELDS
 
 
 def description(node: BizNode) -> dict[str, Any]:
+    is_detail = node.path[-1] == "get"
     properties: dict[str, Any] = {
         "slaConfigId": {
             "type": "string",
@@ -50,9 +51,18 @@ def description(node: BizNode) -> dict[str, Any]:
         },
         "holidayLimit": {
             "x-observed-type": "object",
+            **(
+                {
+                    "type": ["object", "null"],
+                    "required": ["currencyCodes", "regionCodes"],
+                }
+                if is_detail
+                else {}
+            ),
             "properties": {
                 name: {
                     "x-observed-type": "array",
+                    **({"type": "array"} if is_detail else {}),
                     "items": {"type": "string"},
                     "description": "Full array; calendar precedence is unknown.",
                 }
@@ -63,7 +73,7 @@ def description(node: BizNode) -> dict[str, Any]:
     }
     record = {
         "type": "object",
-        "required": ["slaConfigId"],
+        "required": ["slaConfigId", *(DETAIL_FIELDS if is_detail else ())],
         "properties": properties,
         "additionalProperties": True,
     }
@@ -114,7 +124,8 @@ def description(node: BizNode) -> dict[str, Any]:
                 ),
                 "refresh": (
                     "refresh collection sla collects the full list and every "
-                    "true detail, validates IDs/shared fields, then "
+                    "true detail, validates IDs and every list field except "
+                    "viewProcessInstanceRequired, then "
                     "atomically publishes. Any failure preserves the old "
                     "snapshot."
                 ),
@@ -134,13 +145,16 @@ def description(node: BizNode) -> dict[str, Any]:
                 (
                     "List and detail remain distinct raw objects; list-only "
                     "viewProcessInstanceRequired was absent from observed "
-                    "details. Shared-field mismatch rejects refresh; this is "
-                    "not a backend transactional snapshot."
+                    "details. Missing or mismatched list fields reject refresh; "
+                    "this is not a backend transactional snapshot."
                 ),
                 (
                     "Unknown business fields, numeric values and time values "
-                    "are preserved. Observed types do not imply mandatory "
-                    "presence or non-null guarantees."
+                    "are preserved. Detail requires all four selection fields, "
+                    "both SLA targets and holidayLimit to be present. Explicit "
+                    "null business values remain raw; a nonnull holidayLimit "
+                    "requires both complete string arrays. Other observed types "
+                    "do not imply mandatory presence or non-null guarantees."
                 ),
                 (
                     "Local filtering precedes stable ID sorting and display windows. "

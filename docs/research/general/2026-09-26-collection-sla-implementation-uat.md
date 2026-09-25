@@ -105,3 +105,24 @@ A fresh private cache was then initialized through the actual public `refresh co
 Final integrated full-suite gate on `4b6d8ea`: **641 passed, 23 subtests passed in 226.79s**. Ruff lint and formatting (119 files), documentation guard (37 Markdown files), and whitespace checks passed. Both independent review axes reported zero remaining findings, including the cache fix delta.
 
 PR #30 is ready for review. All three clean, merged implementer worktrees were removed. Implementation remains on `feat/27-collection-sla`; master was not changed.
+
+## External review corrections
+
+The earlier zero-finding reviews missed the documentation index/scope mismatch,
+partial-detail acceptance and omitted-list zero-total handling. See the
+[review disposition and regression record](2026-09-26-collection-sla-review.md)
+for each Kimi and GitHub finding; the original 151-case run did not establish
+coverage of those missing synthetic cases.
+
+After the parser fixes, 58 additional public-CLI checks passed using CDP 9222 and
+a new private cache: complete production read-only refresh (55 configurations
+and all details), offline complete list, all 55 cached details, and a live detail
+with unchanged cache digest. No permission/authentication block was observed in
+this SLA scope. Failure-shape additions remain synthetic SIT, not production
+incidents. The original argument inventory is unchanged; these 58 checks validate
+the corrected parsing path and do not replace or inflate unique argument coverage.
+
+Review-fix integrated gate: **669 passed, 23 subtests passed in 263.20s**.
+Focused SLA/payment-cost/collection-cost SIT passed 167 cases. Ruff lint/format,
+documentation guard and whitespace checks passed; follow-up Standards and Spec
+reviews found no additional actionable issues.
