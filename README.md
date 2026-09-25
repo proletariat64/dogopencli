@@ -27,6 +27,9 @@ kind = "cdp"
 
 [sources.collection_cost]
 kind = "cdp"
+
+[sources.collection_sla]
+kind = "cdp"
 ```
 
 配置示例见被 Git 忽略的 `tmp/channel-2026-09-11/source.toml`；整理集为私有数据，不随 Git 分发。
@@ -174,7 +177,7 @@ dogopencli collection cost list --live --all
 
 采集只发送已验证的 `pageNo=0,pageSize=1000`。总数超过容量、重复 ID、截断或元数据异常都明确失败并保留旧缓存；`INCOMPLETE_RESULT` 不能通过去掉 `--require-complete` 绕过，不切换小页或扩大容量。成功且总数为零时允许省略列表，null 或非零总数缺列表则失败。1000 不是服务端上限保证。
 
-收款 schema 独立标注观察证据与未知含义；保留原始嵌套费率、精确小数、单位、业务时间和未知扩展，不推导实际交易费用。VA 费用、VA 池/实体账户、规则、SLA、签约及单据不在此次实现范围。
+收款 schema 独立标注观察证据与未知含义；保留原始嵌套费率、精确小数、单位、业务时间和未知扩展，不推导实际交易费用。VA 费用、VA 池/实体账户、规则、签约及单据不在此次实现范围。
 
 ## 未完成的外部验收依赖
 
@@ -204,3 +207,32 @@ rtk proxy make test-doc-guard
 ```
 
 Make 目标分别为 `make doc-guard`、`make test-doc-guard`；doc-guard 使用 Python 3.10+ 标准库，无需安装项目依赖。校验不连接生产、浏览器或知识库，也不改写文档。
+
+### Collection SLA configurations
+
+[Issue #27](https://github.com/proletariat64/dogopencli/issues/27) adds a separate
+collection SLA configuration scope:
+
+```bash
+dogopencli help collection sla configs list
+dogopencli describe collection sla configs get
+dogopencli refresh collection sla
+dogopencli collection sla configs list --all --require-complete
+dogopencli collection sla configs get --id CONFIG_ID
+dogopencli collection sla configs get --id CONFIG_ID --live
+```
+
+Replace `CONFIG_ID` with a returned string `slaConfigId`. Default reads are
+entirely offline; live inquiries never publish or silently fall back. Refresh
+validates the full list and every actual detail before replacing the isolated
+`collection.sla.configs.list:configs:cdp` snapshot. Any failure preserves the old
+snapshot. `endToEndSla` and `ipayInnerSla` remain seconds; `holidayLimit` retains
+both complete arrays. Raw business timestamps and unknown extensions are kept.
+These are configuration targets, not measured transaction performance.
+
+The acquisition uses verified `pageNo=0,pageSize=1000`; overflow, duplicates,
+invalid metadata and incomplete detail fail without speculative paging. Null
+live details are errors, not proof of missing records. Backend snapshot isolation
+is not guaranteed; shared list/detail fields must agree. List and detail are
+separate raw objects. Domain filter arguments are delivered in the next slice
+of #27; this core does not expose placeholder options.
