@@ -4,7 +4,7 @@ Observed: 2026-09-26
 Scope: general
 Status: snapshot
 
-Specification: [#27](https://github.com/proletariat64/dogopencli/issues/27). Tickets: [#28](https://github.com/proletariat64/dogopencli/issues/28) → [#29](https://github.com/proletariat64/dogopencli/issues/29). Draft PR: [#30](https://github.com/proletariat64/dogopencli/pull/30).
+Specification: [#27](https://github.com/proletariat64/dogopencli/issues/27). Tickets: [#28](https://github.com/proletariat64/dogopencli/issues/28) → [#29](https://github.com/proletariat64/dogopencli/issues/29). PR: [#30](https://github.com/proletariat64/dogopencli/pull/30).
 
 ## Work plan
 
@@ -15,7 +15,7 @@ Specification: [#27](https://github.com/proletariat64/dogopencli/issues/27). Tic
 - [x] Implement #29 in its own worktree after #28; merge to PR branch.
 - [x] Reconcile every exposed argument with public-CLI SIT and read-only UAT evidence.
 - [x] Run required gates and full suite, perform standards/spec review, fix findings.
-- [ ] Update PR description, mark ready only when acceptance complete, clean implementer worktrees.
+- [x] Update PR description, mark ready only when acceptance complete, clean implementer worktrees.
 
 ## Boundaries
 
@@ -103,3 +103,5 @@ Two deterministic real-lock tests demonstrated red before the fix, then recovery
 A fresh private cache was then initialized through the actual public `refresh collection sla` production-read-only command:55 configurations and their details published successfully. Offline complete/fresh list and ID detail queries passed. These3 additional checks bring safe CLI UAT/local acceptance to **151 passed**; no production writes were performed. The normal operator cache remained separate.
 
 Final integrated full-suite gate on `4b6d8ea`: **641 passed, 23 subtests passed in 226.79s**. Ruff lint and formatting (119 files), documentation guard (37 Markdown files), and whitespace checks passed. Both independent review axes reported zero remaining findings, including the cache fix delta.
+
+PR #30 is ready for review. All three clean, merged implementer worktrees were removed. Implementation remains on `feat/27-collection-sla`; master was not changed.
