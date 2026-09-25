@@ -12,8 +12,8 @@ Specification: [#27](https://github.com/proletariat64/dogopencli/issues/27). Tic
 - [x] Recheck native production list/detail inquiry contract on dedicated CDP 9222.
 - [x] Implement #28 in its own worktree; merge reviewed commit to PR branch.
 - [x] Verify #28 core through public CLI and read-only production queries.
-- [ ] Implement #29 in its own worktree after #28; merge to PR branch.
-- [ ] Reconcile every exposed argument with public-CLI SIT and read-only UAT evidence.
+- [x] Implement #29 in its own worktree after #28; merge to PR branch.
+- [x] Reconcile every exposed argument with public-CLI SIT and read-only UAT evidence.
 - [ ] Run required gates and full suite, perform standards/spec review, fix findings.
 - [ ] Update PR description, mark ready only when acceptance complete, clean implementer worktrees.
 
@@ -57,3 +57,39 @@ An initial sandbox-limited attempt failed while touching the dedicated profile's
 Business leaves do not inherit authentication-only `--config-dir`, `--verbose`, `--quiet`, `--no-color` or `--version` options; no such new globals were added. Config selection for UAT used the existing environment-variable contract. Final help inventory and any new filter arguments are reconciled after #29.
 
 Core SIT: 114 passing focused tests across collection SLA, payment SLA and collection cost; documentation guard tests9 passed/15 subtests. Core Ruff and format checks passed. Synthetic SIT covers failure/interruption retention, restrictions and envelope anomalies that were not deliberately created in production. Final suite and review remain pending until the filter slice is integrated.
+
+## Filter UAT and final argument reconciliation (#29)
+
+On merged commit `66f6581`, 28 additional filter cases passed using the same real refreshed local snapshot and explicit production read-only queries. For each of `--business-line`, `--entity`, `--currency` and `--region`, cached and live single-value and repeated-argument queries matched the expected literal local predicate. Empty values were rejected; local nonmatches returned empty data. Cross-field AND and filtering-before-windowing passed.
+
+The current55-row snapshot has1 distinct businessCategory,7 legalEntityCode values,10 creditorCurrency values and10 creditorRegion values. Business-line repetition consequently used the same existing value twice; differentiated OR/case/literal-star/null/missing-field behavior is independently demonstrated with synthetic public-CLI SIT. Do not infer backend business-line selectivity from this dataset. No production values are recorded.
+
+Eight supplemental cases passed for explicit JSON help and rejection of five authentication-only flags on the business list command. One cached missing-detail case returned NOT_FOUND without contacting production. Three projection checks confirmed existing shared behavior: unknown field names are omitted, while valid requested fields remain; empty selection syntax is rejected. Spec#27's ambiguous matrix phrase was clarified to this existing shared contract rather than changing payment/cost projection behavior.
+
+The safe CLI acceptance total is **148 passed**:108 core +28 filter +8 help/global-boundary +1 cached not-found +3 projection checks. These include actual read-only production queries and offline/local validation against their refreshed snapshot, not148 independent production network calls. Initial environment-blocked attempts are excluded.
+
+Final public help inventory:
+
+| Command | Every exposed capability argument | Evidence |
+| --- | --- | --- |
+| `collection sla configs list` | `--business-line`, `--entity`, `--currency`, `--region` | Four filter sets above; each cached/live single and repeated form, empty rejection and local nonmatch; cross-field AND and display-window interaction |
+| same list | `--limit`, `--offset`, `--all`, `--live`, `--require-fresh`, `--require-complete`, `--format`, `--fields` | Core matrix above; JSON/table, single/multiple projection, limit/offset boundaries and conflicts, stale/complete coverage |
+| `collection sla configs get` | `--id`, `--live`, `--require-fresh`, `--require-complete`, `--format`, `--fields` | Core matrix; all55 offline IDs and current live detail, missing/empty inputs, stale rejection, both formats and projection |
+| `refresh collection sla` | No capability-specific options | Actual unfiltered complete list + all-detail publication; no selector passthrough |
+| both `describe` leaves | `--format json|text` | Offline default/explicit JSON and text plus help |
+| help entry points | `help PATH`, PATH `--help`/`-h`, help format JSON/text | List/get/refresh parity and group navigation; help works with unavailable browser |
+
+No newly exposed arguments remain without a case. The business paths expose no inherited authentication-only globals; explicit rejection of `--config-dir`, `--verbose`, `--quiet`, `--no-color` and `--version` was checked. Browser authentication itself was reused, not changed merely to test error handling.
+
+## Engineering gates and review
+
+- Filter-focused SLA SIT:52 passed; catalog7 passed; help/describe155 passed and1 skipped.
+- Final Ruff lint passed; formatting check119 files; documentation guard37 Markdown files; whitespace check passed.
+- First full repository gate:638 passed,23 subtests passed,1 failed in the existing concurrent cold-cache reader/writer test. Failure occurred while promoting a new SQLite database to WAL (`database is locked`); cache implementation and this test were unchanged against origin/master. Investigation/fix and a new final gate remain pending.
+- Standards review:0 actionable findings against `origin/master...66f6581`.
+- Spec review:0 implementation defects; projection wording discrepancy reconciled as described above.
+- Graph refreshed and impact analyzed against actual default `origin/master`; its static gap warnings for dynamically dispatched CLI handlers were checked against the public CLI SIT tests, not taken as evidence of missing execution coverage.
+
+## Remaining evidence limits
+
+Successful production queries cover the current configuration set, not a permanent row count, backend transaction guarantee or server maximum capacity. Acquisition beyond the verified1000-row request fails safely; no speculative paging fallback was added. Permission/auth failures, interruption, empty/incomplete/malformed responses and failed-refresh preservation are validated with synthetic SIT instead of manufacturing production incidents. Those negative branches are not claimed as observed production failures. Business data stayed read-only throughout.
