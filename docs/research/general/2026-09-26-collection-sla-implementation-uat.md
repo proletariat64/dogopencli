@@ -14,7 +14,7 @@ Specification: [#27](https://github.com/proletariat64/dogopencli/issues/27). Tic
 - [x] Verify #28 core through public CLI and read-only production queries.
 - [x] Implement #29 in its own worktree after #28; merge to PR branch.
 - [x] Reconcile every exposed argument with public-CLI SIT and read-only UAT evidence.
-- [ ] Run required gates and full suite, perform standards/spec review, fix findings.
+- [x] Run required gates and full suite, perform standards/spec review, fix findings.
 - [ ] Update PR description, mark ready only when acceptance complete, clean implementer worktrees.
 
 ## Boundaries
@@ -85,7 +85,7 @@ No newly exposed arguments remain without a case. The business paths expose no i
 
 - Filter-focused SLA SIT:52 passed; catalog7 passed; help/describe155 passed and1 skipped.
 - Final Ruff lint passed; formatting check119 files; documentation guard37 Markdown files; whitespace check passed.
-- First full repository gate:638 passed,23 subtests passed,1 failed in the existing concurrent cold-cache reader/writer test. Failure occurred while promoting a new SQLite database to WAL (`database is locked`); cache implementation and this test were unchanged against origin/master. Investigation/fix and a new final gate remain pending.
+- First full repository gate:638 passed,23 subtests passed,1 failed in the existing concurrent cold-cache reader/writer test. Failure occurred while promoting a new SQLite database to WAL (`database is locked`); cache implementation and this test were unchanged against origin/master. The root cause was reproduced and fixed as recorded below; a final full-suite rerun verifies the integrated branch.
 - Standards review:0 actionable findings against `origin/master...66f6581`.
 - Spec review:0 implementation defects; projection wording discrepancy reconciled as described above.
 - Graph refreshed and impact analyzed against actual default `origin/master`; its static gap warnings for dynamically dispatched CLI handlers were checked against the public CLI SIT tests, not taken as evidence of missing execution coverage.
@@ -93,3 +93,13 @@ No newly exposed arguments remain without a case. The business paths expose no i
 ## Remaining evidence limits
 
 Successful production queries cover the current configuration set, not a permanent row count, backend transaction guarantee or server maximum capacity. Acquisition beyond the verified1000-row request fails safely; no speculative paging fallback was added. Permission/auth failures, interruption, empty/incomplete/malformed responses and failed-refresh preservation are validated with synthetic SIT instead of manufacturing production incidents. Those negative branches are not claimed as observed production failures. Business data stayed read-only throughout.
+
+## Acceptance follow-up: concurrent cold-cache initialization
+
+The initial full-suite failure was reproduced with two real Cache readers initializing a new database; the unchanged baseline failed by iteration5. SQLite can return SQLITE_BUSY immediately during `PRAGMA journal_mode=WAL` despite its normal connection timeout. Commit `05e1425` adds a WAL-initialization-only retry bounded to ten seconds, temporarily avoids SQLite's separate busy wait, and restores the original busy timeout in finally. Other errors propagate; already-WAL readers and normal writer locking remain unchanged.
+
+Two deterministic real-lock tests demonstrated red before the fix, then recovery after lock release and bounded failure under a persistent lock. Two hundred paired cold-cache starts passed after the fix. Cache, payment-cost SIT and collection-SLA SIT passed112 focused tests. Both independent review axes checked the delta through merged `4b6d8ea`:0 findings.
+
+A fresh private cache was then initialized through the actual public `refresh collection sla` production-read-only command:55 configurations and their details published successfully. Offline complete/fresh list and ID detail queries passed. These3 additional checks bring safe CLI UAT/local acceptance to **151 passed**; no production writes were performed. The normal operator cache remained separate.
+
+Final integrated full-suite gate on `4b6d8ea`: **641 passed, 23 subtests passed in 226.79s**. Ruff lint and formatting (119 files), documentation guard (37 Markdown files), and whitespace checks passed. Both independent review axes reported zero remaining findings, including the cache fix delta.
