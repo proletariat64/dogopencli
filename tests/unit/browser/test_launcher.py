@@ -132,7 +132,8 @@ def test_same_mode_foreign_browser_is_not_reused(tmp_path, monkeypatch, mode):
         launcher.launch(env, mode)
 
 
-def test_endpoint_process_args_uses_actual_listener(tmp_path):
+@pytest.mark.parametrize("separator", ["\0", " "])
+def test_endpoint_process_args_uses_actual_listener(tmp_path, separator):
     net = tmp_path / "net"
     net.mkdir()
     (net / "tcp").write_text(
@@ -144,7 +145,7 @@ def test_endpoint_process_args_uses_actual_listener(tmp_path):
         (process / "fd").mkdir(parents=True)
         (process / "fd" / "1").symlink_to(f"socket:[{inode}]")
         (process / "cmdline").write_bytes(
-            f"chrome\0--user-data-dir={profile}\0".encode()
+            f"chrome{separator}--user-data-dir={profile}\0".encode()
         )
     assert launcher._endpoint_process_args(9222, tmp_path) == [
         ["chrome", "--user-data-dir=/dedicated"]
@@ -158,6 +159,17 @@ def test_require_profile_fails_closed(tmp_path, monkeypatch, owners):
     monkeypatch.setattr(launcher, "_endpoint_process_args", lambda port: owners)
     with pytest.raises(launcher.LauncherError):
         launcher.require_profile(_environment(tmp_path))
+
+
+def test_require_profile_rejects_profile_prefix(tmp_path, monkeypatch):
+    env = _environment(tmp_path)
+    monkeypatch.setattr(
+        launcher,
+        "_endpoint_process_args",
+        lambda port: [["chrome", f"--user-data-dir={env.profile}-other"]],
+    )
+    with pytest.raises(launcher.LauncherError):
+        launcher.require_profile(env)
 
 
 def test_chrome_keeps_sandbox_and_origin_protection(tmp_path):

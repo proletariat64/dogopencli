@@ -141,45 +141,58 @@ class CostCapability:
         return record.get(self.id_field)
 
     def parse_page(self, body: bytes) -> ParsedPage:
-        try:
-            document = parse(body)
-        except ValueError as error:
-            raise _invalid("response is not valid JSON") from error
-        if not isinstance(document, dict):
-            raise _invalid("response envelope is not an object")
-        # A success envelope also carries errorContext with errorName=SUCCESS;
-        # only the success flag itself decides the business outcome.
-        if document.get("success") is not True:
-            raise CliError(BUSINESS_QUERY_FAILED, "backend reported a business failure")
-        paging: dict[str, int] = {}
-        for key in PAGINATION_KEYS:
-            value = document.get(key)
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise _invalid(f"invalid pagination field {key}")
-            paging[key] = value
-        if paging["pageSize"] <= 0:
-            raise _invalid("invalid pagination field pageSize")
-        rows = document.get("resultDataList")
-        if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
-            raise _invalid("missing resultDataList")
-        if paging["totalCount"] == 0 and rows:
-            raise _invalid("inconsistent empty result")
-        if len(rows) > paging["pageSize"]:
-            raise _invalid("page returned more rows than pageSize")
-        for row in rows:
-            if row.get("itemType") != COST_TYPE:
-                raise _invalid("row itemType is outside the fixed payment cost type")
-            item_id = row.get("itemId")
-            if not isinstance(item_id, str) or not item_id:
-                raise _invalid("row is missing itemId")
-        total_pages = -(-paging["totalCount"] // paging["pageSize"])
-        return ParsedPage(
-            records=list(rows),
-            page_num=paging["pageNo"],
-            page_size=paging["pageSize"],
-            total_count=paging["totalCount"],
-            total_pages=total_pages,
-        )
+        return parse_cost_page(body, self.default_scope)
+
+
+def parse_cost_page(
+    body: bytes, cost_type: str, *, allow_omitted_empty: bool = False
+) -> ParsedPage:
+    """Parse the shared cost envelope while preserving exact values and extensions."""
+    try:
+        document = parse(body)
+    except ValueError as error:
+        raise _invalid("response is not valid JSON") from error
+    if not isinstance(document, dict):
+        raise _invalid("response envelope is not an object")
+    # A success envelope also carries errorContext with errorName=SUCCESS;
+    # only the success flag itself decides the business outcome.
+    if document.get("success") is not True:
+        raise CliError(BUSINESS_QUERY_FAILED, "backend reported a business failure")
+    paging: dict[str, int] = {}
+    for key in PAGINATION_KEYS:
+        value = document.get(key)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise _invalid(f"invalid pagination field {key}")
+        paging[key] = value
+    if paging["pageSize"] <= 0:
+        raise _invalid("invalid pagination field pageSize")
+    rows = document.get("resultDataList")
+    if (
+        allow_omitted_empty
+        and paging["totalCount"] == 0
+        and "resultDataList" not in document
+    ):
+        rows = []
+    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+        raise _invalid("missing resultDataList")
+    if paging["totalCount"] == 0 and rows:
+        raise _invalid("inconsistent empty result")
+    if len(rows) > paging["pageSize"]:
+        raise _invalid("page returned more rows than pageSize")
+    for row in rows:
+        if row.get("itemType") != cost_type:
+            raise _invalid("row itemType is outside the fixed cost type")
+        item_id = row.get("itemId")
+        if not isinstance(item_id, str) or not item_id:
+            raise _invalid("row is missing itemId")
+    total_pages = -(-paging["totalCount"] // paging["pageSize"])
+    return ParsedPage(
+        records=list(rows),
+        page_num=paging["pageNo"],
+        page_size=paging["pageSize"],
+        total_count=paging["totalCount"],
+        total_pages=total_pages,
+    )
 
 
 COST_CAPABILITY = CostCapability()

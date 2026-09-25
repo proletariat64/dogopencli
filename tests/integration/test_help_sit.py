@@ -13,7 +13,15 @@ import pytest
 
 from dogopencli.plugins.payment.channel import SCOPES, STATUSES
 
-ROOT_CHILDREN = ["payment", "refresh", "describe", "auth", "login", "logout"]
+ROOT_CHILDREN = [
+    "payment",
+    "refresh",
+    "collection",
+    "describe",
+    "auth",
+    "login",
+    "logout",
+]
 
 GROUPS = [
     [],
@@ -24,6 +32,9 @@ GROUPS = [
     ["payment", "sla", "baselines"],
     ["refresh"],
     ["refresh", "payment"],
+    ["collection"],
+    ["collection", "cost"],
+    ["refresh", "collection"],
 ]
 
 GROUP_CHILDREN = {
@@ -33,8 +44,11 @@ GROUP_CHILDREN = {
     ("payment", "cost"): ["list"],
     ("payment", "sla"): ["baselines"],
     ("payment", "sla", "baselines"): ["list", "get"],
-    ("refresh",): ["payment"],
+    ("refresh",): ["payment", "collection"],
     ("refresh", "payment"): ["channel", "cost", "sla"],
+    ("collection",): ["cost"],
+    ("collection", "cost"): ["list"],
+    ("refresh", "collection"): ["cost"],
 }
 
 QUERY_LEAVES = [

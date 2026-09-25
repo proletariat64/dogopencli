@@ -12,6 +12,7 @@ fds, even within one process tree).
 """
 
 import os
+import shlex
 import signal
 import subprocess
 import time
@@ -223,8 +224,13 @@ def _endpoint_process_args(
             if not any(os.readlink(fd) in inodes for fd in (process / "fd").iterdir()):
                 continue
             args = process.joinpath("cmdline").read_bytes().split(b"\0")
-            owners.append([arg.decode("utf-8", "strict") for arg in args if arg])
-        except (OSError, UnicodeError):
+            decoded = [arg.decode("utf-8", "strict") for arg in args if arg]
+            # Chrome can rewrite argv as one space-joined process title.
+            # Normalize only that form; retain exact argument matching below.
+            if len(decoded) == 1:
+                decoded = shlex.split(decoded[0])
+            owners.append(decoded)
+        except (OSError, UnicodeError, ValueError):
             continue  # Unreadable processes cannot establish ownership.
     return owners
 

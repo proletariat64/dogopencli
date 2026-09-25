@@ -1,6 +1,6 @@
 # Dogopencli
 
-将产品运营网站的查询能力转为 Python CLI，供单机单人使用。v0.1.0 聚焦付款产品，收款产品不在本版本范围。所有业务操作仅查询，不创建、修改或审批任何生产配置。
+将产品运营网站的查询能力转为 Python CLI，供单机单人使用。v0.1.0 的既定范围聚焦付款产品；v0.1.4 按 Issue #21 增加独立的收款交易成本查询里程碑。所有业务操作仅查询，不创建、修改或审批任何生产配置。
 
 Channel 后端故障期间使用显式离线替代源推进工程；正式 CDP 架构保持，真实 Channel 全量验收在后端修复后进行（见[规格 Issue #1](https://github.com/proletariat64/dogopencli/issues/1)、[ADR 0005](docs/adr/0005-channel-snapshot-source.md)）。Cost/SLA 始终走真实 CDP 路径。
 
@@ -24,6 +24,9 @@ kind = "cdp"
 
 [sources.payment_sla]
 kind = "cdp"
+
+[sources.collection_cost]
+kind = "cdp"
 ```
 
 配置示例见被 Git 忽略的 `tmp/channel-2026-09-11/source.toml`；整理集为私有数据，不随 Git 分发。
@@ -33,7 +36,7 @@ kind = "cdp"
 帮助为 DI 风格的渐进式导航（[规格 Issue #13](https://github.com/proletariat64/dogopencli/issues/13)），已替代旧的 argparse 文本默认帮助。无参数、`--help`/`-h`、`help` 均返回同一份 `help_version=1` JSON 文档并退出 0；每层只列直属子命令，叶子给出完整调用契约（必填项、默认值、choices、约束、操作影响、输出、错误码、示例与下一步）。帮助全程离线：不读取配置、缓存、浏览器或网络。
 
 ```bash
-dogopencli                                   # Agent：根 JSON 导航（children：payment/refresh/describe/auth/login/logout）
+dogopencli                                   # Agent：根 JSON 导航（children：payment/collection/refresh/describe/auth/login/logout）
 dogopencli help payment channel list         # 逐层钻取到叶子契约
 dogopencli payment sla baselines get --help  # PATH --help 等价于 help PATH
 dogopencli --format text                     # 人工：同一份文档的可读文本（任意节点可加 --format text）
@@ -69,7 +72,7 @@ dogopencli payment sla baselines get --id BASELINE_ID
 | 键 | v1 类型与含义 |
 | --- | --- |
 | `describe_version` | 整数 `1`，helper 文档协议版本 |
-| `capability` | 字符串：`payment.channel.list`、`payment.cost.list`、`payment.sla.baselines.list` 或 `payment.sla.baselines.get` |
+| `capability` | 字符串：`payment.channel.list`、`payment.cost.list`、`payment.sla.baselines.list` 或 `payment.sla.baselines.get`、`collection.cost.list` |
 | `schema_version` | 整数 `1`，该查询能力的数据描述版本 |
 | `data_schema` | JSON Schema 对象，`$schema` 为 `https://json-schema.org/draft/2020-12/schema`；描述成功且未投影的业务 `data`，不是数据库表或整个 envelope |
 | `read_guide` | 对象，包含下面的读取规则及证据词汇 |
@@ -77,7 +80,7 @@ dogopencli payment sla baselines get --id BASELINE_ID
 
 付款 schema 与领域读取指引由付款插件提供，随查询命令一起注册；核心只组装描述文档与通用输出说明。schema 和读取指引的注解词汇共用一份定义，分别以 `dimensions` 映射和 `aspects` 列表呈现同一组证据维度。
 
-`read_guide` 的公共键为：`parameter_contract`、`options`（直接复用查询帮助）、`filters`、`filter_semantics`、`envelope`、`metadata`、`access_modes`、`quality`、`projection`、`pagination`、`identifiers`、`interpretation`、`annotations`、`errors`、`exit_codes`、`examples`、`evolution`、`filter_notes`；SLA 另有 `list_to_detail`（`steps` 与 `meaning`）。每个 `filters` 条目有 `flag`、`request_field`、`record_field`；无法映射的记录字段为 JSON `null`。`metadata` 按实际 `meta` 字段名解释语义，`exit_codes` 使用字符串键。
+付款 `read_guide` 的领域键与公共键为：`parameter_contract`、`options`（直接复用查询帮助）、`filters`、`filter_semantics`、`envelope`、`metadata`、`access_modes`、`quality`、`projection`、`pagination`、`identifiers`、`interpretation`、`annotations`、`errors`、`exit_codes`、`examples`、`evolution`、`filter_notes`；SLA 另有 `list_to_detail`（`steps` 与 `meaning`）。每个 `filters` 条目有 `flag`、`request_field`、`record_field`；无法映射的记录字段为 JSON `null`。`metadata` 按实际 `meta` 字段名解释语义，`exit_codes` 使用字符串键。
 
 兼容演进可在同一版本增加字段或注解，消费者须允许未知键；不兼容 helper 形状变更提升 `describe_version`，不兼容能力 schema 变更提升 `schema_version`。这两个版本不改变业务 envelope 或 `help_version`。描述执行默认输出 JSON（也可显式 `--format json`）；`--format text` 将同一份完整文档渲染为缩进文本，保留嵌套字段、注解和读取指引。描述帮助仍支持 JSON/text。未知目标、认证/refresh 目标或查询参数（如描述后的 `--live`）返回业务 JSON `INVALID_ARGUMENT`，退出 2；不会执行目标查询或认证。
 
@@ -154,6 +157,24 @@ Channel 单轮 CDP 采集中，同 `abilityId` 不同内容会阻止发布完整
 | REQUEST_NOT_ALLOWED | 请求不在只读允许清单；属于防护行为，不开放任意请求入口 |
 
 业务查询与 refresh 退出码：0 成功（含允许的部分/空列表）、1 运行失败、2 参数错误、130 用户中断；认证命令：0 成功/帮助/版本、1 参数或运行失败、130 中断。
+
+## 收款交易成本查询
+
+[Issue #21](https://github.com/proletariat64/dogopencli/issues/21) 在 [ADR 0002](docs/adr/0002-payment-v010-scope.md) 的付款版本范围之外增加独立后续里程碑；不修改历史 v0.1.0 范围。配置 `[sources.collection_cost] kind = "cdp"` 后使用：
+
+```bash
+dogopencli help collection cost list
+dogopencli describe collection cost list
+dogopencli refresh collection cost
+dogopencli collection cost list --require-fresh --require-complete
+dogopencli collection cost list --live --all
+```
+
+固定 `FUND_IN_CHANNEL_TRANS_FEE`，无领域筛选、任意类型、详情或计算费用参数。默认只读独立缓存；`--live` 不写缓存、不回退旧数据。`refresh` 仅在结果完整时原子替换本地快照，生产业务始终只读。JSON/table、顶层字段投影和展示分页沿用公共约定。
+
+采集只发送已验证的 `pageNo=0,pageSize=1000`。总数超过容量、重复 ID、截断或元数据异常都明确失败并保留旧缓存；`INCOMPLETE_RESULT` 不能通过去掉 `--require-complete` 绕过，不切换小页或扩大容量。成功且总数为零时允许省略列表，null 或非零总数缺列表则失败。1000 不是服务端上限保证。
+
+收款 schema 独立标注观察证据与未知含义；保留原始嵌套费率、精确小数、单位、业务时间和未知扩展，不推导实际交易费用。VA 费用、VA 池/实体账户、规则、SLA、签约及单据不在此次实现范围。
 
 ## 未完成的外部验收依赖
 

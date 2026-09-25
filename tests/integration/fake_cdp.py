@@ -96,6 +96,10 @@ class FakeTransport(cdp.CdpTransport):
     def new_target(self, url: str, *, timeout: float | None = None) -> dict:
         if not self._state.running:
             raise cdp.CdpError("connection refused")
+        # Sequential targets have independent navigation observations. A
+        # re-probe after a fetch failure must not inherit the query page's URL.
+        self._href = None
+        self._evaluations = 0
         self._next_target += 1
         target_id = f"created-{self._next_target}"
         self.created.append(url)

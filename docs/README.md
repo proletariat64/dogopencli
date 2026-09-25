@@ -6,16 +6,23 @@
 - [DI 风格渐进式 CLI 帮助（GitHub Issue #13）](https://github.com/proletariat64/dogopencli/issues/13)：计划与规格已发布，标签 `ready-for-agent`；无参数导航、JSON/text、完整命令目录及离线帮助验收，尚未实现。
 
 - [Data helper v1（GitHub Issue #16）](https://github.com/proletariat64/dogopencli/issues/16)：四个付款查询叶子的离线 schema、字段证据与读取指引；[可运行命令与版本化机器契约](../README.md#data-helper)。
+- [收款交易成本查询规划（GitHub Issue #21）](https://github.com/proletariat64/dogopencli/issues/21)：当前开发分支实现固定类型的交易成本列表、live、刷新及离线描述；VA 规则、VA 费用及池/实体账户等仍排除。
 
 ## 研究报告
 
-以下是 2026-09-08 的研究快照；运行态仅代表当时账号可见的页面和已验证请求，不保证后续版本、权限或数据不变。
+以下报告各自记录观察日期；运行态仅代表当时账号可见的页面和已验证请求，不保证后续版本、权限或数据不变。
 
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
 | General | [运营平台访问与通用发现](research/general/2026-09-08-platform-access.md) | CDP、登录、聚合应用结构、查询协议、只读约束与技术参考 |
 | General | [DI 渐进式帮助参考](research/general/2026-09-12-cli-help-reference.md) | 无参数入口、JSON/text、逐层导航与 dogopencli 帮助差距 |
 | General | [CLI 帮助验收矩阵](research/general/2026-09-12-cli-help-acceptance-matrix.md) | 全部 20 条命令路径的验收规范、20 次探针 before 基线与 Task 4 覆盖清单 |
+| General | [收款成本全参数 UAT](research/general/2026-09-26-collection-cost-argument-uat.md) | 84 个 CLI 验收用例；全部选项、帮助/描述、边界与错误组合，区分生产查询和本地状态检查 |
+| General | [收款成本实现验证](research/general/2026-09-26-collection-cost-verification.md) | Issue #21 实现清单、只读边界、页面就绪故障及验证结果 |
+| General | [收款生产发现与首批范围](research/general/2026-09-23-collection-discovery.md) | 22 个菜单、交易/VA 成本契约、银行账户 VA 规则分页异常及成本优先的实施计划 |
+| General | [收款 VA 规则列表与详情](research/general/2026-09-23-collection-va-rule-query.md) | 独立于银行账户规则；两次 907 条完整列表、三个详情样本、ID 筛选与下一步设计缺口 |
+| General | [收款 SLA 配置列表与详情](research/general/2026-09-23-collection-sla-query.md) | 55 条列表与全部详情、单值筛选、秒单位/节假日结构及下一步设计缺口 |
+| General | [收款 VA 池查询](research/general/2026-09-23-collection-va-pool-query.md) | 登录恢复；容量/凭证/规则详情与池的区别，已查导航及失败证据；用户要求停止入口搜索；池/实体账户保持未验证并排除 |
 | Payment | [付款产品设计与运行态发现](research/payment/2026-09-08-payment-operations.md) | 产品模型、27 个菜单、查询字段、接口证据、权限限制和 CLI 候选范围 |
 
 ## 查询契约补充

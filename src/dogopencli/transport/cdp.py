@@ -18,7 +18,9 @@ from ..browser.cdp import (
     CdpError,
     CdpSession,
     CdpTransport,
+    _await_target_settled,
     probe_final_url,
+    url_origin,
 )
 from ..browser.probe import is_login_landing
 from ..errors import AUTH_REQUIRED, INVALID_RESPONSE, REQUEST_NOT_ALLOWED, CliError
@@ -133,7 +135,7 @@ class CdpQueryTransport:
         )
         try:
             session = self._ensure_session(deadline)
-        except CdpError as error:
+        except (CdpError, BrowserLoss) as error:
             raise FetchFailed("business query session setup failed") from error
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -203,6 +205,21 @@ class CdpQueryTransport:
                     "business query budget exhausted during target creation"
                 )
             self._session = self._cdp.open_session(ws_url, timeout=remaining)
+            # /json/new may return while its page is still about:blank.
+            # The separate authentication probe does not ready this target.
+            self._session.navigate(
+                self._page_url, max(0.001, deadline - time.monotonic())
+            )
+            landing = _await_target_settled(
+                self._session,
+                timeout=min(15.0, max(0.001, deadline - time.monotonic())),
+            )
+            if is_login_landing(landing):
+                raise CliError(AUTH_REQUIRED, "session expired; run dogopencli login")
+            if url_origin(landing) != url_origin(self._page_url):
+                raise CliError(
+                    INVALID_RESPONSE, "query page settled on an unverified origin"
+                )
         return self._session
 
     def close(self) -> None:

@@ -48,6 +48,7 @@ from .transport.snapshot import SnapshotTransport, load_dataset
 
 CHANNEL = "payment.channel.list"
 COST = "payment.cost.list"
+COLLECTION_COST = "collection.cost.list"
 SLA = "payment.sla.baselines.list"
 
 AUTH_COMMANDS = {"login", "auth", "logout"}
@@ -426,7 +427,15 @@ def _progress(done: int, total: int) -> None:
 
 
 def cmd_refresh_cost(args: argparse.Namespace) -> int:
-    capability = get_capability(COST)
+    return _refresh_cost(args, COST)
+
+
+def cmd_refresh_collection_cost(args: argparse.Namespace) -> int:
+    return _refresh_cost(args, COLLECTION_COST)
+
+
+def _refresh_cost(args: argparse.Namespace, capability_name: str) -> int:
+    capability = get_capability(capability_name)
     config = config_mod.load([capability.source_config_key])
     source = _cdp_source(config, capability.source_config_key)
     store = Cache(config.cache_path)
@@ -541,11 +550,20 @@ def _cmd_cost_list_live(
 
 
 def cmd_cost_list(args: argparse.Namespace) -> int:
-    capability = get_capability(COST)
+    return _cost_list(args, COST, _cost_filters(args))
+
+
+def cmd_collection_cost_list(args: argparse.Namespace) -> int:
+    return _cost_list(args, COLLECTION_COST, {})
+
+
+def _cost_list(
+    args: argparse.Namespace, capability_name: str, filters: dict[str, list[str]]
+) -> int:
+    capability = get_capability(capability_name)
     limit, offset, fields = _display_options(args)
     config = config_mod.load([capability.source_config_key])
     source = _cdp_source(config, capability.source_config_key)
-    filters = _cost_filters(args)
     if args.live:
         return _cmd_cost_list_live(
             args, capability, source, filters, limit, offset, fields
@@ -555,7 +573,8 @@ def cmd_cost_list(args: argparse.Namespace) -> int:
         source,
         capability.name,
         capability.default_scope,
-        refresh_command="refresh payment cost",
+        refresh_command="refresh "
+        + capability.name.removesuffix(".list").replace(".", " "),
         require_fresh=args.require_fresh,
         require_complete=args.require_complete,
         now=_now(),

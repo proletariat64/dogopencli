@@ -30,6 +30,8 @@ class EndpointContract:
     # A repeated business identifier with differing content prevents proof of
     # completeness without making that identifier a deduplication key.
     consistency_field: str | None = None
+    # Exact required request values for capabilities with a fixed acquisition.
+    fixed_body_values: tuple[tuple[str, str | int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -109,11 +111,18 @@ def get_capability(name: str) -> Capability:
 
 
 def _load_builtins() -> None:
+    from .collection.cost import COLLECTION_COST_CAPABILITY, COLLECTION_COST_LIST_NODE
+    from .collection.reading import description as collection_description
     from .payment.channel import CHANNEL_CAPABILITY, CHANNEL_LIST_NODE
     from .payment.cost import COST_CAPABILITY, COST_LIST_NODE
     from .payment.reading import description
     from .payment.sla import SLA_CAPABILITY, SLA_GET_NODE, SLA_LIST_NODE
 
+    register(
+        COLLECTION_COST_CAPABILITY,
+        commands=(COLLECTION_COST_LIST_NODE,),
+        description=collection_description,
+    )
     register(CHANNEL_CAPABILITY, commands=(CHANNEL_LIST_NODE,), description=description)
     register(COST_CAPABILITY, commands=(COST_LIST_NODE,), description=description)
     register(

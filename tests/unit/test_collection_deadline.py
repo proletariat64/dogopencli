@@ -33,22 +33,34 @@ def test_cdp_setup_and_fetch_receive_remaining_budget(monkeypatch):
     clock = [0.0]
     monkeypatch.setattr(transport_mod.time, "monotonic", lambda: clock[0])
     observed = []
+    monkeypatch.setattr(
+        transport_mod.time,
+        "sleep",
+        lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+    )
 
     class Session:
+        def navigate(self, url, timeout):
+            observed.append(("navigate", timeout))
+            clock[0] += 0.125
+
         def evaluate(self, expression, timeout):
+            if "fetch(" not in expression:
+                observed.append(("ready", timeout))
+                return {"ready_state": "complete", "href": "https://example.invalid"}
             observed.append(("fetch", timeout))
-            assert "controller.abort(), 300" in expression
+            assert "controller.abort(), 375" in expression
             return {"status": 200, "body": "{}"}
 
     class Browser:
         def new_target(self, url, *, timeout):
             observed.append(("target", timeout))
-            clock[0] += 0.1
+            clock[0] += 0.125
             return {"id": "fake", "webSocketDebuggerUrl": "ws://fake"}
 
         def open_session(self, url, *, timeout):
             observed.append(("session", timeout))
-            clock[0] += 0.1
+            clock[0] += 0.125
             return Session()
 
     transport = transport_mod.CdpQueryTransport(
@@ -62,5 +74,12 @@ def test_cdp_setup_and_fetch_receive_remaining_budget(monkeypatch):
         contract.path,
         COST_CAPABILITY.page_body(COST_TYPE, 0, 5000),
     )
-    transport.execute(request, timeout=0.5)
-    assert observed == [("target", 0.5), ("session", 0.4), ("fetch", 0.3)]
+    transport.execute(request, timeout=1.0)
+    assert observed == [
+        ("target", 1.0),
+        ("session", 0.875),
+        ("navigate", 0.75),
+        ("ready", 0.625),
+        ("ready", 0.375),
+        ("fetch", 0.375),
+    ]
