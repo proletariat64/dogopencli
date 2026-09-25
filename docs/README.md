@@ -10,6 +10,8 @@
 
 - [收款 SLA 配置查询（GitHub Issue #27）](https://github.com/proletariat64/dogopencli/issues/27)：列表、真实详情、原子刷新与四项本地筛选；实施及验收见下方报告。
 
+- [收款 VA 规则查询（GitHub Issue #31）](https://github.com/proletariat64/dogopencli/issues/31)：列表、主详情、原子刷新规格；契约证据见 VA 规则研究与当日契约复核。
+
 ## 研究报告
 
 以下报告各自记录观察日期；运行态仅代表当时账号可见的页面和已验证请求，不保证后续版本、权限或数据不变。
@@ -30,6 +32,7 @@
 | General | [收款菜单深度探查](research/general/2026-09-26-collection-menu-deep-survey.md) | 页面、实际查询入口与权限受限项目；作为后续规格输入 |
 | General | [收款 SLA 实施与 UAT](research/general/2026-09-26-collection-sla-implementation-uat.md) | 全参数矩阵、151 项生产只读与本地验收、SIT 和修复后的门禁记录 |
 | General | [收款 SLA PR 审查处理](research/general/2026-09-26-collection-sla-review.md) | Kimi 与 GitHub 审查逐项核验、修复及回归证据 |
+| General | [收款 VA 规则契约复核](research/general/2026-09-26-collection-va-rule-contract-recheck.md) | 当前 911 条列表/详情契约与 H2 一致;分页、ID 筛选、字段重验及未验证缺口 |
 | Payment | [付款产品设计与运行态发现](research/payment/2026-09-08-payment-operations.md) | 产品模型、27 个菜单、查询字段、接口证据、权限限制和 CLI 候选范围 |
 
 ## 查询契约补充
