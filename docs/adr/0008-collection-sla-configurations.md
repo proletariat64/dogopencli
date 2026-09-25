@@ -26,9 +26,18 @@ errors; backend not-found behavior remains unverified.
 
 Default queries read only this snapshot. Explicit live queries never modify it or
 fall back. Freshness and completeness remain separate quality properties. Display
-windows follow stable-ID sorting and do not change completeness. The core slice
-has no domain filter options; #29 supplies exact local selectors for both cached
-and complete live records without claiming unverified backend filtering semantics.
+windows follow filtering and stable-ID sorting and do not change completeness.
+
+List selectors map `--business-line` to `businessCategory`, `--entity` to
+`legalEntityCode`, `--currency` to `creditorCurrency` and `--region` to
+`creditorRegion`. Values are repeatable, nonempty, case-sensitive literal strings;
+whitespace-only values are invalid, with no trimming, case normalization or
+wildcards. Missing/null fields cannot match. Repeated values use same-field OR;
+different fields use AND. These predicates run locally on both cached and
+complete live records before sorting/windowing. Live backend requests stay
+unfiltered, since independent businessCategory filtering and backend combination
+semantics remain unverified. Refresh has no selectors and get selects only by ID.
+Matched/display counts remain independent from source freshness/completeness.
 
 Preserve raw seconds, all holiday arrays, original timestamps and unknown fields.
 Do not map collection field names onto payment models or calculate arrival times.

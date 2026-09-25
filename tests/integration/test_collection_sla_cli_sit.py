@@ -251,7 +251,7 @@ def test_offline_navigation_schema_and_arguments(run_cli, envelope, monkeypatch)
         ("--limit", "0"),
         ("--offset", "-1"),
         ("--fields", " , "),
-        ("--business-line", "X"),
+        ("--business-line", " "),
     ]:
         assert listing(run_cli, *flags)[0] == 2
     for flags in [(), ("--id", ""), ("--id", " "), ("--id", "1", "--limit", "1")]:
@@ -373,3 +373,109 @@ def test_detail_retries_authentication_and_business_failures(
             == code
         )
     assert not setup.cache_path.exists()
+
+
+FILTERS = [
+    ("--business-line", "businessCategory"),
+    ("--entity", "legalEntityCode"),
+    ("--currency", "creditorCurrency"),
+    ("--region", "creditorRegion"),
+]
+
+
+@pytest.mark.parametrize("flag,field", FILTERS)
+def test_local_filters_identical_cached_live(run_cli, envelope, setup, flag, field):
+    rows = [
+        row("20", **{field: "A"}),
+        row("2", **{field: "B"}),
+        row("3", **{field: "*"}),
+        row("4", **{field: None}),
+        row("5"),
+        row("6", **{field: " A "}),
+    ]
+    del rows[4][field]
+    setup.state.business_script.append(page(rows))
+    setup.state.business_script.extend(
+        {"status": 200, "body": {"success": True, "resultData": record}}
+        for record in sorted(rows, key=lambda record: int(record["slaConfigId"]))
+    )
+    assert refresh(run_cli)[0] == 0
+    before = setup.cache_path.read_bytes()
+    cases = [
+        ([flag, "A"], ["20"]),
+        ([flag, "A", flag, "B"], ["2", "20"]),
+        ([flag, "A", flag, "B", "--limit", "1", "--offset", "1"], ["20"]),
+        ([flag, "*"], ["3"]),
+        ([flag, "a"], []),
+        ([flag, " A "], ["6"]),
+        ([flag, "no-match"], []),
+    ]
+    for flags, ids in cases:
+        for live in [False, True]:
+            requests = len(setup.state.business_requests)
+            if live:
+                setup.state.business_script.append(page(rows))
+            code, out, _ = listing(run_cli, *flags, *(["--live"] if live else []))
+            assert code == 0, out
+            result = envelope(out)
+            assert [record["slaConfigId"] for record in result["data"]] == ids
+            assert result["meta"]["complete"] and not result["meta"]["stale"]
+            assert len(setup.state.business_requests) == requests + int(live)
+            if live:
+                assert setup.state.business_requests[-1] == {
+                    "pageNo": 0,
+                    "pageSize": 1000,
+                }
+    assert setup.cache_path.read_bytes() == before
+
+
+def test_local_filter_cross_field_and_before_window(run_cli, envelope, setup):
+    rows = [
+        row("10"),
+        row("2"),
+        row("3", creditorRegion="SG"),
+        row("4", creditorCurrency="EUR"),
+        row("5", legalEntityCode="OTHER"),
+        row("6", businessCategory="OTHER"),
+    ]
+    setup.state.business_script.append(page(rows))
+    setup.state.business_script.extend(
+        {"status": 200, "body": {"success": True, "resultData": record}}
+        for record in sorted(rows, key=lambda record: int(record["slaConfigId"]))
+    )
+    assert refresh(run_cli)[0] == 0
+    flags = [
+        "--business-line",
+        "SYNTHETIC",
+        "--entity",
+        "ENTITY",
+        "--currency",
+        "USD",
+        "--region",
+        "US",
+        "--limit",
+        "1",
+    ]
+    for live in [False, True]:
+        if live:
+            setup.state.business_script.append(page(rows))
+        result = envelope(listing(run_cli, *flags, *(["--live"] if live else []))[1])
+        assert [record["slaConfigId"] for record in result["data"]] == ["2"]
+        assert result["meta"]["matched_total"] == 2
+        assert result["meta"]["complete"] and result["meta"]["has_more"]
+
+
+@pytest.mark.parametrize("flag,field", FILTERS)
+def test_filter_validation_and_scope_before_network(run_cli, setup, flag, field):
+    for flags in [[flag], [flag, ""], [flag, " \t"], [flag, "A", flag, ""]]:
+        assert listing(run_cli, "--live", *flags)[0] == 2
+    assert getting(run_cli, "--id", "1", flag, "A")[0] == 2
+    assert run_cli(["refresh", "collection", "sla", flag, "A"])[0] == 2
+    assert setup.state.transports == []
+
+
+def test_filtered_live_permission_failure_is_not_no_match(run_cli, envelope, setup):
+    setup.state.business_script.append({"status": 403, "body": {}})
+    code, out, _ = listing(run_cli, "--live", "--currency", "no-match")
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"

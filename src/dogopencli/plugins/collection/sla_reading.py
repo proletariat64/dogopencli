@@ -4,6 +4,7 @@ from typing import Any
 
 from ...annotations import schema_annotations
 from ...helpspec import BizNode
+from .sla import FILTER_FIELDS
 
 
 def description(node: BizNode) -> dict[str, Any]:
@@ -81,7 +82,24 @@ def description(node: BizNode) -> dict[str, Any]:
                 "collection.sla.configs.list:configs:cdp cache; "
                 "sources.collection_sla kind=cdp."
             ),
-            "filters": [],
+            "filters": (
+                [
+                    {
+                        "option": f"--{flag}",
+                        "field": field,
+                        "semantics": (
+                            "Repeatable nonempty exact case-sensitive local match "
+                            "for cache and live; same-field OR, cross-field AND. "
+                            "Literal * is not a wildcard. Missing/null does not "
+                            "match. Whitespace-only values are rejected; no "
+                            "trimming or normalization."
+                        ),
+                    }
+                    for flag, field in FILTER_FIELDS.items()
+                ]
+                if node.path[-1] == "list"
+                else []
+            ),
             "access_modes": {
                 "cached": (
                     "Default reads only the local list/detail snapshot; TTL "
@@ -90,7 +108,8 @@ def description(node: BizNode) -> dict[str, Any]:
                 ),
                 "live": (
                     "Explicit read-only browser inquiries never write cache "
-                    "or fall back. Live get completeness covers the requested"
+                    "or fall back. Live list fetches the full unfiltered scope "
+                    "before local selection. Live get completeness covers the requested"
                     " detail only."
                 ),
                 "refresh": (
@@ -124,7 +143,8 @@ def description(node: BizNode) -> dict[str, Any]:
                     "presence or non-null guarantees."
                 ),
                 (
-                    "Stable ID sorting precedes display windows. complete is "
+                    "Local filtering precedes stable ID sorting and display windows. "
+                    "Backend businessCategory filtering is not claimed. complete is "
                     "acquisition coverage, has_more is display truncation, "
                     "stale is cache age."
                 ),

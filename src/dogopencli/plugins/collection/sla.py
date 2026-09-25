@@ -28,6 +28,13 @@ from ...helpspec import (
 from ...jsonutil import parse
 from .. import EndpointContract, ParsedPage
 
+FILTER_FIELDS = {
+    "business-line": "businessCategory",
+    "entity": "legalEntityCode",
+    "currency": "creditorCurrency",
+    "region": "creditorRegion",
+}
+
 PAGE_SIZE = 1000
 LIST_CONTRACT = EndpointContract(
     method="POST",
@@ -135,11 +142,11 @@ class CollectionSlaCapability:
     def filter_records(
         self, records: list[dict[str, Any]], filters: dict[str, list[str]]
     ) -> list[dict[str, Any]]:
-        if filters:
-            raise CliError(
-                REQUEST_NOT_ALLOWED, "collection SLA filters are not exposed"
-            )
-        return records
+        return [
+            record
+            for record in records
+            if all(record.get(field) in values for field, values in filters.items())
+        ]
 
     def sort_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return sorted(records, key=_identity_order)
@@ -195,10 +202,38 @@ _ERRORS = (
 COLLECTION_SLA_LIST_NODE = BizNode(
     ("collection", "sla", "configs", "list"),
     "List collection SLA configurations from cache or explicitly with --live.",
-    options=(LIMIT, OFFSET, ALL, LIVE, *CACHE_FLAGS, FORMAT_TABLE, FIELDS),
+    options=(
+        *(
+            opt(
+                flag.replace("-", "_"),
+                f"Nonempty exact local match on {field}.",
+                "append",
+            )
+            for flag, field in FILTER_FIELDS.items()
+        ),
+        LIMIT,
+        OFFSET,
+        ALL,
+        LIVE,
+        *CACHE_FLAGS,
+        FORMAT_TABLE,
+        FIELDS,
+    ),
     constraints=(
         CACHE_SEMANTICS,
         DISPLAY_WINDOW,
+        (
+            "Filters are local for cache and live: exact case-sensitive literal "
+            "values, same-field OR and cross-field AND. Whitespace-only values "
+            "are invalid; values are never trimmed or normalized. A literal * "
+            "is not a wildcard. Missing/null fields do not match."
+        ),
+        (
+            "Live fetches the complete unfiltered scope before local filtering, "
+            "stable-ID sorting and display windowing. No independent backend "
+            "businessCategory filtering is claimed. Refresh is unfiltered; "
+            "get accepts only ID selection."
+        ),
         (
             "Configuration targets, not actual order timing. "
             "endToEndSla and ipayInnerSla remain raw seconds; "
@@ -213,7 +248,11 @@ COLLECTION_SLA_LIST_NODE = BizNode(
     effects_variants=QUERY_EFFECTS_VARIANTS,
     output=QUERY_OUTPUT,
     errors=_ERRORS,
-    examples=("dogopencli collection sla configs list",),
+    examples=(
+        "dogopencli collection sla configs list",
+        "dogopencli collection sla configs list --currency USD --currency EUR --all",
+        "dogopencli collection sla configs list --currency USD --region US --live",
+    ),
     next=(
         "dogopencli help collection sla configs get",
         "dogopencli help refresh collection sla",

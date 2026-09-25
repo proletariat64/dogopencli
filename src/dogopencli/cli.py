@@ -1022,10 +1022,17 @@ def cmd_refresh_collection_sla(args: argparse.Namespace) -> int:
 
 
 def cmd_collection_sla_list(args: argparse.Namespace) -> int:
-    from .plugins.collection.sla import COLLECTION_SLA
+    from .plugins.collection.sla import COLLECTION_SLA, FILTER_FIELDS
 
     cap = COLLECTION_SLA
     limit, offset, fields = _display_options(args)
+    filters: dict[str, list[str]] = {}
+    for flag, field in FILTER_FIELDS.items():
+        values = getattr(args, flag.replace("-", "_"))
+        if any(not value.strip() for value in values):
+            raise _argument_error(f"--{flag} must be nonempty")
+        if values:
+            filters[field] = values
     config = config_mod.load([cap.source_config_key])
     source = _cdp_source(config, cap.source_config_key)
     if args.live:
@@ -1035,14 +1042,16 @@ def cmd_collection_sla_list(args: argparse.Namespace) -> int:
             )
         if not result.complete:
             raise CliError(INCOMPLETE_RESULT, "collection SLA list is incomplete")
-        records = cap.sort_records(result.records)
+        records = cap.sort_records(cap.filter_records(result.records, filters))
         window = records[offset:] if args.all else records[offset : offset + limit]
         meta = _live_meta(
             source, cap.default_scope, True, len(records), len(window), offset
         )
     else:
         cached, pairs = _collection_sla_cached(args, config, source)
-        records = cap.sort_records([pair["config"] for pair in pairs])
+        records = cap.sort_records(
+            cap.filter_records([pair["config"] for pair in pairs], filters)
+        )
         window = records[offset:] if args.all else records[offset : offset + limit]
         meta = cached.meta(len(records), len(window), offset=offset)
     return _emit_window(args, cap, window, meta, fields)
