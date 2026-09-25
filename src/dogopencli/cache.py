@@ -14,6 +14,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
+from time import monotonic, sleep
 
 from .errors import LOCKED, CliError
 
@@ -127,7 +128,30 @@ class Cache:
         try:
             mode = connection.execute("PRAGMA journal_mode").fetchone()
             if mode is None or str(mode[0]).lower() != "wal":
-                mode = connection.execute("PRAGMA journal_mode=WAL").fetchone()
+                # Concurrent first connections can make the WAL transition return
+                # SQLITE_BUSY without invoking SQLite's busy timeout. Retry only
+                # this initialization step, with the same ten-second bound.
+                deadline = monotonic() + 10.0
+                timeout = connection.execute("PRAGMA busy_timeout").fetchone()[0]
+                connection.execute("PRAGMA busy_timeout=0")
+                try:
+                    while True:
+                        try:
+                            mode = connection.execute(
+                                "PRAGMA journal_mode=WAL"
+                            ).fetchone()
+                            break
+                        except sqlite3.OperationalError as error:
+                            code = getattr(error, "sqlite_errorcode", 0) & 0xFF
+                            busy = code == getattr(sqlite3, "SQLITE_BUSY", 5) or (
+                                code == 0 and str(error) == "database is locked"
+                            )
+                            remaining = deadline - monotonic()
+                            if not busy or remaining <= 0:
+                                raise
+                            sleep(min(0.01, remaining))
+                finally:
+                    connection.execute(f"PRAGMA busy_timeout={timeout}")
                 if mode is None or str(mode[0]).lower() != "wal":
                     raise CliError("CACHE_ERROR", "cache requires WAL journal mode")
             connection.executescript(SCHEMA)

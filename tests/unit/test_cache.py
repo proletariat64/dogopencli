@@ -233,3 +233,64 @@ def test_refresh_lock_preserves_os_error_cause(tmp_path, monkeypatch):
             pytest.fail("lock must not be acquired")
     assert caught.value.code == "IO_ERROR"
     assert caught.value.__cause__ is error
+
+
+@pytest.mark.parametrize("release_lock", [True, False])
+def test_wal_initialization_retries_only_within_deadline(
+    tmp_path, monkeypatch, release_lock
+):
+    import sqlite3
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from dogopencli.errors import CliError
+
+    path = tmp_path / "cache.sqlite3"
+    connect = sqlite3.connect
+    holder = connect(path, isolation_level=None)
+    holder.execute("CREATE TABLE existing (id INTEGER)")
+    holder.execute("BEGIN")
+    holder.execute("SELECT * FROM existing").fetchall()
+    busy = Event()
+    released = Event()
+
+    class ObservedConnection(sqlite3.Connection):
+        def execute(self, sql, *args, **kwargs):
+            try:
+                return super().execute(sql, *args, **kwargs)
+            except sqlite3.OperationalError:
+                if sql == "PRAGMA journal_mode=WAL":
+                    busy.set()
+                    if release_lock:
+                        assert released.wait(5)
+                raise
+
+    def observed_connect(*args, **kwargs):
+        kwargs["timeout"] = 0.01
+        return connect(*args, factory=ObservedConnection, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", observed_connect)
+    if not release_lock:
+        ticks = iter([0.0, 11.0])
+        monkeypatch.setattr("dogopencli.cache.monotonic", lambda: next(ticks))
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            result = pool.submit(Cache(path).read, "test")
+            try:
+                assert busy.wait(5)
+            finally:
+                if release_lock:
+                    holder.rollback()
+                    released.set()
+            if release_lock:
+                assert result.result(timeout=5) == (None, [])
+            else:
+                with pytest.raises(CliError) as caught:
+                    result.result(timeout=5)
+                assert caught.value.code == "LOCKED"
+                assert caught.value.retryable is True
+    finally:
+        holder.close()
+    with connect(path) as connection:
+        assert connection.execute("SELECT * FROM existing").fetchall() == []
+    assert path.stat().st_mode & 0o777 == 0o600

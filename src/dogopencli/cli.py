@@ -16,7 +16,7 @@ from uuid import uuid4
 from . import collect as collect_mod
 from . import config as config_mod
 from .cache import Cache, SnapshotMeta, namespace
-from .cached_query import is_stale, read_cached_query, snapshot_meta
+from .cached_query import CachedQuery, is_stale, read_cached_query, snapshot_meta
 from .errors import (
     AUTH_REQUIRED,
     BUSINESS_QUERY_FAILED,
@@ -39,8 +39,10 @@ from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
 from .plugins import get_capability
+from .plugins.collection import sla as collection_sla
 from .plugins.payment.channel import assign_seqids
-from .plugins.payment.sla import SLA_DETAIL, detail_body, parse_detail
+from .plugins.payment.sla import SLA_DETAIL, detail_body
+from .plugins.payment.sla import parse_detail as parse_payment_sla_detail
 from .table import render_table
 from .transport import QueryRequest, validate_request
 from .transport.cdp import CdpQueryTransport, FetchFailed
@@ -617,7 +619,7 @@ def _fetch_sla_detail(
             )
         if failure is None and response is not None:
             if response.status == 200:
-                return parse_detail(response.body, baseline_id)
+                return parse_payment_sla_detail(response.body, baseline_id)
             if response.status not in collect_mod.RETRYABLE_STATUSES:
                 if response.status == 401:
                     raise CliError(
@@ -903,6 +905,195 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
         )
     meta = cached.meta(1, 1)
     return _emit_object(args, capability, detail, meta, fields)
+
+
+def _collection_sla_cached(
+    args: argparse.Namespace,
+    config: config_mod.Config,
+    source: config_mod.SourceConfig,
+) -> tuple[CachedQuery, list[dict[str, Any]]]:
+    cap = collection_sla.COLLECTION_SLA
+    cached = read_cached_query(
+        config,
+        source,
+        cap.name,
+        cap.default_scope,
+        refresh_command="refresh collection sla",
+        require_fresh=args.require_fresh,
+        require_complete=args.require_complete,
+        now=_now(),
+    )
+    pairs = []
+    for _, body in cached.stored:
+        pair = parse(body)
+        if not isinstance(pair, dict):
+            raise CliError(INVALID_RESPONSE, "invalid cached SLA configuration pair")
+        collection_sla.validate_pair(pair.get("config"), pair.get("detail"))
+        pairs.append(pair)
+    if len(pairs) != cached.snapshot.row_count or len(
+        {pair["config"]["slaConfigId"] for pair in pairs}
+    ) != len(pairs):
+        raise CliError(
+            INCOMPLETE_RESULT, "cached SLA configuration coverage is invalid"
+        )
+    return cached, pairs
+
+
+def _fetch_collection_sla_detail(
+    transport: CdpQueryTransport,
+    identity: str,
+    deadline: float,
+) -> dict[str, Any]:
+    response = collect_mod._execute_bounded(
+        collection_sla.COLLECTION_SLA_DETAIL,
+        transport,
+        {"slaConfigId": identity},
+        deadline,
+    )
+    return collection_sla.parse_detail(response.body, identity)
+
+
+def cmd_refresh_collection_sla(args: argparse.Namespace) -> int:
+    cap = collection_sla.COLLECTION_SLA
+    config = config_mod.load([cap.source_config_key])
+    source = _cdp_source(config, cap.source_config_key)
+    store = Cache(config.cache_path)
+    ns = namespace(cap.name, cap.default_scope, source.kind)
+    with store.refresh_lock():
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            result = collect_mod.collect_scope(
+                cap,
+                session.transport(cap),
+                cap.default_scope,
+                progress=_progress,
+            )
+            if not result.complete:
+                raise CliError(INCOMPLETE_RESULT, "collection SLA list is incomplete")
+            transport = session.transport(collection_sla.COLLECTION_SLA_DETAIL)
+            pairs = []
+            for record in cap.sort_records(result.records):
+                detail = _fetch_collection_sla_detail(
+                    transport, record[cap.id_field], result.deadline
+                )
+                collection_sla.validate_pair(record, detail)
+                pairs.append({"config": record, "detail": detail})
+                print(
+                    f"refresh: collected detail {len(pairs)}/{len(result.records)}",
+                    file=sys.stderr,
+                )
+        fetched_at = _now().isoformat()
+        snapshot = SnapshotMeta(
+            namespace=ns,
+            capability=cap.name,
+            scope=cap.default_scope,
+            source_kind=source.kind,
+            snapshot_id=hashlib.sha256(canonical(pairs).encode()).hexdigest(),
+            dataset_id=None,
+            simulated=False,
+            backend_complete=True,
+            dataset_complete=True,
+            fetched_at=fetched_at,
+            loaded_at=_now().isoformat(),
+            source_observed_from=None,
+            source_observed_to=None,
+            row_count=len(pairs),
+        )
+        collect_mod.remaining_seconds(result.deadline)
+        store.publish(
+            snapshot, [(i, canonical(pair)) for i, pair in enumerate(pairs, 1)]
+        )
+    _emit(
+        {"namespace": ns, "published": True, "row_count": len(pairs)},
+        snapshot_meta(
+            "cache",
+            snapshot,
+            is_stale(snapshot, config.ttl_hours, _now()),
+            len(pairs),
+            len(pairs),
+            False,
+        ),
+    )
+    return EXIT_OK
+
+
+def cmd_collection_sla_list(args: argparse.Namespace) -> int:
+    cap = collection_sla.COLLECTION_SLA
+    limit, offset, fields = _display_options(args)
+    filters: dict[str, list[str]] = {}
+    for flag, field in collection_sla.FILTER_FIELDS.items():
+        values = getattr(args, flag.replace("-", "_"))
+        if any(not value.strip() for value in values):
+            raise _argument_error(f"--{flag} must be nonempty")
+        if values:
+            filters[field] = values
+    config = config_mod.load([cap.source_config_key])
+    source = _cdp_source(config, cap.source_config_key)
+    if args.live:
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            result = collect_mod.collect_scope(
+                cap, session.transport(cap), cap.default_scope
+            )
+        if not result.complete:
+            raise CliError(INCOMPLETE_RESULT, "collection SLA list is incomplete")
+        records = cap.sort_records(cap.filter_records(result.records, filters))
+        window = records[offset:] if args.all else records[offset : offset + limit]
+        meta = _live_meta(
+            source, cap.default_scope, True, len(records), len(window), offset
+        )
+    else:
+        cached, pairs = _collection_sla_cached(args, config, source)
+        records = cap.sort_records(
+            cap.filter_records([pair["config"] for pair in pairs], filters)
+        )
+        window = records[offset:] if args.all else records[offset : offset + limit]
+        meta = cached.meta(len(records), len(window), offset=offset)
+    return _emit_window(args, cap, window, meta, fields)
+
+
+def cmd_collection_sla_get(args: argparse.Namespace) -> int:
+    if not args.id.strip():
+        raise _argument_error("--id must be nonempty")
+    fields = None
+    if args.fields is not None:
+        fields = [field.strip() for field in args.fields.split(",") if field.strip()]
+        if not fields:
+            raise _argument_error("--fields must name at least one field")
+    cap = collection_sla.COLLECTION_SLA
+    config = config_mod.load([cap.source_config_key])
+    source = _cdp_source(config, cap.source_config_key)
+    if args.live:
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            detail = _fetch_collection_sla_detail(
+                session.transport(collection_sla.COLLECTION_SLA_DETAIL),
+                args.id,
+                collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS,
+            )
+        meta = _live_meta(source, cap.default_scope, True, 1, 1, 0)
+        meta["query"] = {
+            "capability": collection_sla.COLLECTION_SLA_DETAIL.name,
+            "id": args.id,
+        }
+    else:
+        cached, pairs = _collection_sla_cached(args, config, source)
+        detail = next(
+            (
+                pair["detail"]
+                for pair in pairs
+                if pair["config"]["slaConfigId"] == args.id
+            ),
+            None,
+        )
+        if detail is None:
+            if not cached.snapshot.backend_complete:
+                raise CliError(
+                    INCOMPLETE_RESULT,
+                    "cannot confirm absence in incomplete SLA snapshot",
+                )
+            raise CliError(
+                NOT_FOUND, "SLA configuration is not present in the cached snapshot"
+            )
+        meta = cached.meta(1, 1)
+    return _emit_object(args, cap, detail, meta, fields)
 
 
 def cmd_describe(args: argparse.Namespace) -> int:

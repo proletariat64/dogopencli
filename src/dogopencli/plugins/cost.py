@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from ..errors import BUSINESS_QUERY_FAILED, INVALID_RESPONSE, CliError
-from ..jsonutil import parse
+from ..errors import INVALID_RESPONSE, CliError
 from . import ParsedPage
+from .envelope import success_document
 
 TABLE_COLUMNS = (
     "itemId",
@@ -41,16 +41,7 @@ def parse_cost_page(
     body: bytes, cost_type: str, *, allow_omitted_empty: bool = False
 ) -> ParsedPage:
     """Parse the shared cost envelope while preserving exact values and extensions."""
-    try:
-        document = parse(body)
-    except ValueError as error:
-        raise _invalid("response is not valid JSON") from error
-    if not isinstance(document, dict):
-        raise _invalid("response envelope is not an object")
-    # A success envelope also carries errorContext with errorName=SUCCESS;
-    # only the success flag itself decides the business outcome.
-    if document.get("success") is not True:
-        raise CliError(BUSINESS_QUERY_FAILED, "backend reported a business failure")
+    document = success_document(body)
     paging: dict[str, int] = {}
     for key in PAGINATION_KEYS:
         value = document.get(key)

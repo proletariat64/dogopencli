@@ -158,6 +158,30 @@ _REFRESH_SLA_NODE = BizNode(
     handler="cmd_refresh_sla",
 )
 
+_REFRESH_COLLECTION_SLA_NODE = replace(
+    _REFRESH_SLA_NODE,
+    path=("refresh", "collection", "sla"),
+    summary=(
+        "Refresh collection SLA configurations: full list and "
+        "every true detail, published atomically."
+    ),
+    constraints=(
+        *_REFRESH_SLA_NODE.constraints,
+        (
+            "Only local cache changes. Any list/detail failure "
+            "preserves the previous snapshot."
+        ),
+        (
+            "One verified 1000-row acquisition; no business filters "
+            "or speculative pagination."
+        ),
+    ),
+    errors=(*_REFRESH_SLA_NODE.errors, "INCOMPLETE_RESULT"),
+    examples=("dogopencli refresh collection sla",),
+    next=("dogopencli help collection sla configs list",),
+    handler="cmd_refresh_collection_sla",
+)
+
 _GROUPS: dict[tuple[str, ...], BizNode] = {
     (): BizNode(
         (),
@@ -225,8 +249,21 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
     ),
     ("collection",): BizNode(
         ("collection",),
-        "Read-only collection transaction-cost configurations.",
+        "Read-only collection transaction-cost and SLA configurations.",
         next=("dogopencli help collection cost",),
+    ),
+    ("collection", "sla"): BizNode(
+        ("collection", "sla"),
+        "Collection SLA configuration queries.",
+        next=("dogopencli help collection sla configs",),
+    ),
+    ("collection", "sla", "configs"): BizNode(
+        ("collection", "sla", "configs"),
+        "Collection SLA list and true detail queries.",
+        next=(
+            "dogopencli help collection sla configs list",
+            "dogopencli help collection sla configs get",
+        ),
     ),
     ("collection", "cost"): BizNode(
         ("collection", "cost"),
@@ -279,6 +316,7 @@ NODES = build_catalog(
         _REFRESH_CHANNEL_NODE,
         _REFRESH_COST_NODE,
         _REFRESH_COLLECTION_COST_NODE,
+        _REFRESH_COLLECTION_SLA_NODE,
         _REFRESH_SLA_NODE,
     )
 )

@@ -1,9 +1,9 @@
 # Repository Guidelines
 
 ## Scope and Architecture
-Dogopencli is a Python CLI for querying the product operations platform, intended for one person on one machine. The current scope covers payment products and the collection transaction-cost inquiries in issue #21. Other collection capabilities, including VA fees, rules, SLA, pools and physical accounts, remain deferred.
+Dogopencli is a Python CLI for querying the product operations platform, intended for one person on one machine. The current scope covers payment products and the collection transaction-cost inquiries in issue #21 and SLA configuration inquiries in issue #27. Other collection capabilities, including VA fees, rules, pools and physical accounts, remain deferred.
 
-Payment production scope starts at `https://ifundcontrol.alipay.com/productOperation/paymentProductManagement/`. Collection scope is limited to the verified `collectionProductManagement/productPriceManagement/channelCost` entry and its cost-query contract. Confirm actual menus and API contracts before implementation; historical knowledge-base designs do not prove current production behavior.
+Payment production scope starts at `https://ifundcontrol.alipay.com/productOperation/paymentProductManagement/`. Collection scope covers the verified `collectionProductManagement/productPriceManagement/channelCost` and `collectionProductManagement/productSLAManagement/SlaManagement` entries and their cost/SLA inquiry contracts. Confirm actual menus and API contracts before implementation; historical knowledge-base designs do not prove current production behavior.
 
 Keep every business operation inquiry-only. Allow explicitly verified query endpoints and request actions through a shared transport. HTTP method alone does not establish read-only behavior. Exclude mutation commands and arbitrary request or JavaScript entry points.
 
@@ -12,7 +12,7 @@ The application uses the following layout:
 
 - `src/dogopencli/`: CLI, configuration, browser transport, and plugin discovery.
 - `src/dogopencli/plugins/payment/`: payment queries, schemas, and response parsing.
-- `src/dogopencli/plugins/collection/`: collection transaction-cost queries and schemas.
+- `src/dogopencli/plugins/collection/`: collection transaction-cost and SLA configuration queries and schemas.
 - `tests/`: unit and integration tests with sanitized fixtures.
 - `docs/`: verified API contracts and design decisions.
 
