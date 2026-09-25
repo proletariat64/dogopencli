@@ -34,6 +34,8 @@ GROUPS = [
     ["refresh", "payment"],
     ["collection"],
     ["collection", "cost"],
+    ["collection", "sla"],
+    ["collection", "sla", "configs"],
     ["refresh", "collection"],
 ]
 
@@ -46,9 +48,11 @@ GROUP_CHILDREN = {
     ("payment", "sla", "baselines"): ["list", "get"],
     ("refresh",): ["payment", "collection"],
     ("refresh", "payment"): ["channel", "cost", "sla"],
-    ("collection",): ["cost"],
+    ("collection",): ["sla", "cost"],
+    ("collection", "sla"): ["configs"],
+    ("collection", "sla", "configs"): ["list", "get"],
     ("collection", "cost"): ["list"],
-    ("refresh", "collection"): ["cost"],
+    ("refresh", "collection"): ["cost", "sla"],
 }
 
 QUERY_LEAVES = [

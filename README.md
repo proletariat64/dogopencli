@@ -234,5 +234,22 @@ The acquisition uses verified `pageNo=0,pageSize=1000`; overflow, duplicates,
 invalid metadata and incomplete detail fail without speculative paging. Null
 live details are errors, not proof of missing records. Backend snapshot isolation
 is not guaranteed; shared list/detail fields must agree. List and detail are
-separate raw objects. Domain filter arguments are delivered in the next slice
-of #27; this core does not expose placeholder options.
+separate raw objects.
+
+List accepts repeatable `--business-line` (`businessCategory`), `--entity`
+(`legalEntityCode`), `--currency` (`creditorCurrency`) and `--region`
+(`creditorRegion`). Both cached and live queries match exact case-sensitive
+literal values locally: repeated values of one field use OR, different fields
+use AND. Values are not trimmed or normalized; empty/whitespace-only values
+are rejected. A literal `*` is not a wildcard; missing/null fields do not match.
+Live always acquires the complete unfiltered list, then filters, sorts by ID and
+applies the display window. Filtering does not change source completeness or
+freshness. No independent backend business-category filtering is claimed.
+Refresh stays unfiltered; get selects only by ID.
+
+```bash
+dogopencli collection sla configs list --currency USD --currency EUR --region US --all
+dogopencli collection sla configs list --entity ENTITY_CODE --business-line BUSINESS_CODE --live
+```
+
+Use actual returned entity/business codes in place of the example values.
