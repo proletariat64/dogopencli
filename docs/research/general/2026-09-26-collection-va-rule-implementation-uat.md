@@ -4,8 +4,13 @@ Observed: 2026-09-26
 Scope: general
 Status: snapshot
 
-Specification: [#31](https://github.com/proletariat64/dogopencli/issues/31).
-Ticket: [#32](https://github.com/proletariat64/dogopencli/issues/32).
+Specification: [#31](https://github.com/proletariat64/dogopencli/issues/31)
+(closed 2026-09-26; publish guarantee amended by ADR 0010). Tickets:
+[#32](https://github.com/proletariat64/dogopencli/issues/32) (delivered,
+closed), [#33](https://github.com/proletariat64/dogopencli/issues/33) (domain
+filters; closed unimplemented, deferred). PR:
+[#35](https://github.com/proletariat64/dogopencli/pull/35), merged to master
+as `444a7d6`.
 
 ## Work plan
 
@@ -14,7 +19,9 @@ Ticket: [#32](https://github.com/proletariat64/dogopencli/issues/32).
 - [x] Run read-only production UAT over every exposed argument.
 - [x] Diagnose the refresh blocker, quantify it with a full read-only sweep.
 - [x] Amend the publish guarantee and verify the amended behavior.
-- [ ] Run final gates on the integrated branch, review, merge and PR.
+- [x] Address Greptile/Kimi review findings, merge PR #35, re-run gates on master.
+- [x] Execute complete CLI acceptance on the shipped surface (#33 acceptance
+  half); close #31–#33 with the deviation of record.
 
 ## Boundaries
 
@@ -156,8 +163,66 @@ findings.
 | Kimi: `va_rule.py`, `cli.py` and the SIT file replicate the SLA shape a third time | Valid, deferred | No change in this slice; a shared pair-refresh skeleton is a post-merge refactor candidate. |
 | Kimi: `is_business_refusal` name undersells that it raises | Valid | Docstring now says it is not a pure predicate and why an unknown shape still raises `INVALID_RESPONSE`. Name kept: callers read it as a gate on tolerance, which is its only role. |
 | Kimi: ADR 0010 cites ADR 0003 for the flag meanings | Valid | Corrected: ADR 0005 records the two flag meanings; ADR 0003 supplies the completeness policy and the all-or-nothing detail-refresh precedent that ADR 0010 narrows. |
-| Kimi: #31 prescribed a different remedy (list-only refresh, live-only detail get) | Valid and material | ADR 0010 now names that spec fallback, records why it was rejected, and states that the operator chose this remedy over it on 2026-09-26, making ADR 0010 the amendment of record. The #31 issue itself still needs the matching comment. |
+| Kimi: #31 prescribed a different remedy (list-only refresh, live-only detail get) | Valid and material | ADR 0010 now names that spec fallback, records why it was rejected, and states that the operator chose this remedy over it on 2026-09-26, making ADR 0010 the amendment of record. The amendment is also recorded in the #31 closing comment. |
 | Kimi: `describe` omits the `assignFlows` caveat required by #31 | Valid | `assignInfo` description now carries "an empty `assignFlows` list does not prove assignment history is empty" plus the no-inference rule for counters. Regression test added. |
+
+## Complete CLI acceptance (#33 acceptance half)
+
+#33 combined the domain-filter slice with the final argument-inventory
+reconciliation. No filter was ever exposed (#32 shipped without placeholders),
+so the filter-dependent criteria were never executable; the acceptance half was
+executed against the shipped surface instead: **37 additional read-only checks,
+all passed**, with no production writes and no cache modification.
+
+- Argument inventory from `help --format json` matches the accepted set
+  exactly: list = `--limit/--offset/--all/--live/--require-fresh/
+  --require-complete/--format/--fields`; get = `--id` plus the same six shared
+  flags; refresh = none. Every one of the 14 capability arguments has an
+  acceptance case in the 88-check UAT above or the 93-case SIT suite; no
+  argument shipped without evidence.
+- The five authentication-only globals (`--config-dir`, `--verbose`, `--quiet`,
+  `--no-color`, `--version`) are rejected with exit 2 on all three VA business
+  paths (15 cases).
+- All nine filter-candidate flags, including the array-valued `--countries`
+  and `--scene-codes`, stay unexposed on list and get (18 cases), and refresh
+  rejects a business selector (1 case). Array-valued row fields are therefore
+  excluded from filtering outright — no element-matching semantics were
+  invented and nothing is stringified.
+- Not executed, because no filter exists: per-filter local predicates,
+  cached/live predicate agreement, filter-before-windowing composition, and the
+  differentiated OR/case/literal-star/null/missing-field SIT. These remain
+  valid inputs for a re-scoped filter ticket.
+
+Against #31's minimum argument-level acceptance matrix, every row now has
+recorded evidence: list default/`--live` (offline reads with digest unchanged;
+live 911-row scope, default 100-row window, `--all`), get `--id`/`--live`
+(all 911 offline; live healthy and refused; blank/missing rejection; synthetic
+failure distinctions in SIT), refresh (complete list + all details with the
+ADR 0010 amendment; offline get for every captured ID; preservation on
+simulated failure in SIT), windowing boundaries and conflicts, both quality
+flags (fresh success; `CACHE_STALE` in a copied cache; incomplete rejection on
+the real partial snapshot), both formats and projections, and help/describe/
+navigation with the inherited-global rejections above.
+
+## Issue closure (2026-09-26)
+
+PR #35 merged to master as `444a7d6`; the merge commit's tree is identical to
+reviewed commit `dee9678`. Post-merge gates on master: 764 passed, 23 subtests,
+Ruff lint and format clean (128 files), doc-guard 42 files.
+
+- **#32 closed as delivered.** Its criterion 5 ("publishes atomically only
+  after all checks ... incomplete details preserve the prior snapshot") is
+  superseded by ADR 0010 with operator approval: an explicit backend refusal
+  publishes `detail=null` with `dataset_complete=false` and refresh exits 1
+  `INCOMPLETE_RESULT`; every other failure still preserves the prior snapshot.
+- **#31 closed with the same amendment of record** against story 7 and the
+  acceptance-matrix refresh row; the matrix is fully reconciled above.
+- **#33 closed: acceptance half complete (this section), filter slice
+  unimplemented and deferred** at operator direction. Re-scope a new ticket
+  from its criteria if filtering is wanted after the platform fix.
+- The platform defect report (71 refused rule IDs) is with platform
+  engineering, outside Git. A refresh reporting zero refusals is the trigger to
+  revisit ADR 0010 tolerance.
 
 ## Remaining evidence limits
 

@@ -10,7 +10,7 @@
 
 - [收款 SLA 配置查询（GitHub Issue #27）](https://github.com/proletariat64/dogopencli/issues/27)：列表、真实详情、原子刷新与四项本地筛选；实施及验收见下方报告。
 
-- [收款 VA 规则查询（GitHub Issue #31）](https://github.com/proletariat64/dogopencli/issues/31)：列表、主详情、原子刷新规格；契约证据见 VA 规则研究与当日契约复核；其中“全量详情方可发布”已由 [ADR 0010](adr/0010-collection-va-partial-detail-tolerance.md) 收窄为仅容忍后端明确拒绝的单个详情。
+- [收款 VA 规则查询（GitHub Issue #31）](https://github.com/proletariat64/dogopencli/issues/31)：列表、主详情、原子刷新规格；契约证据见 VA 规则研究与当日契约复核；其中“全量详情方可发布”已由 [ADR 0010](adr/0010-collection-va-partial-detail-tolerance.md) 收窄为仅容忍后端明确拒绝的单个详情。#31/#32 已随 PR #35 合并关闭；#33 筛选切片未实施、延期。
 
 ## 研究报告
 
