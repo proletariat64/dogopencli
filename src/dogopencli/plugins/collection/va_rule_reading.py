@@ -110,7 +110,10 @@ def description(node: BizNode) -> dict[str, Any]:
             "x-observed-type": "object",
             "description": (
                 "Observed VA assignment counters and flows; reading them "
-                "never performs an assignment."
+                "never performs an assignment. Counters are raw display "
+                "summaries, not inferred assignment state, and an empty "
+                "assignFlows list does not prove assignment history is empty "
+                "because flow history semantics are unverified."
             ),
             "properties": {
                 name: {"x-evidence": {"presence": "observed", "meaning": "unknown"}}
@@ -165,8 +168,13 @@ def description(node: BizNode) -> dict[str, Any]:
                 "refresh": (
                     "refresh collection va collects the full list and every "
                     "true detail, validates IDs and every shared business "
-                    "field, then atomically publishes. Any failure preserves "
-                    "the old snapshot."
+                    "field, then atomically publishes. A detail the backend "
+                    "explicitly refuses (success=false) publishes that rule "
+                    "with a null detail and dataset_complete=false, after "
+                    "which refresh reports INCOMPLETE_RESULT; every other "
+                    "failure preserves the old snapshot. A partial refresh "
+                    "still replaces the snapshot, so details an earlier run "
+                    "held can be lost."
                 ),
             },
             "quality": [

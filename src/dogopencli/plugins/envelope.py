@@ -28,6 +28,8 @@ def success_document(body: bytes) -> dict[str, Any]:
 def is_business_refusal(body: bytes) -> bool:
     """True only for a valid object envelope declaring success=false.
 
-    A missing or non-boolean `success` is an unknown shape, not a refusal.
+    Not a pure predicate: an unparseable body or a non-object envelope still
+    raises INVALID_RESPONSE, because unknown shapes must never be tolerated. A
+    missing or non-boolean `success` is an unknown shape, not a refusal.
     """
     return _document(body).get("success") is False

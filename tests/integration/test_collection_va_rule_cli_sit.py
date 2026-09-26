@@ -266,6 +266,28 @@ def test_offline_help_describe_and_bare_navigation(run_cli, envelope, monkeypatc
     assert "vaWarningInfo" not in detail_schema["required"]
 
 
+def test_describe_guidance_matches_refusal_semantics(run_cli, envelope):
+    """Review finding: describe must not promise atomicity ADR 0010 removed."""
+    guides = [
+        envelope(run_cli(["describe", "collection", "va", "rules", action])[1])[
+            "read_guide"
+        ]
+        for action in ("list", "get")
+    ]
+    for guide in guides:
+        refresh = guide["access_modes"]["refresh"]
+        assert "Any failure preserves" not in refresh
+        assert "null detail" in refresh
+        assert "INCOMPLETE_RESULT" in refresh
+    detail_schema = envelope(
+        run_cli(["describe", "collection", "va", "rules", "get"])[1]
+    )["data_schema"]
+    assert (
+        "does not prove assignment history is empty"
+        in detail_schema["properties"]["assignInfo"]["description"]
+    )
+
+
 def test_unsupported_domain_filters_rejected_before_browser(run_cli, envelope, setup):
     for argv in [
         ["collection", "va", "rules", "list", "--entity", "SYNTHETIC"],
