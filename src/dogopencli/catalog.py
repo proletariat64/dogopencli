@@ -212,6 +212,43 @@ _REFRESH_COLLECTION_VA_NODE = replace(
     handler="cmd_refresh_collection_va",
 )
 
+_REFRESH_COLLECTION_VA_CAPACITY_NODE = BizNode(
+    ("refresh", "collection", "va", "capacity"),
+    "Rebuild the collection VA capacity cache through the existing CDP session.",
+    constraints=(
+        "Requires the CDP source and an existing authenticated browser session.",
+        "Progress diagnostics go to stderr; the result envelope goes to stdout.",
+        (
+            "Only the local capacity cache changes; production business state "
+            "remains read-only. Bare refresh collection va still refreshes VA "
+            "rules; this child refreshes only the capacity snapshot."
+        ),
+        (
+            "Pages the verified endpoint with pageSize=1000 until the first "
+            "short page; only the final converged totalCount validates "
+            "completeness. Any failure — authentication, refusal, malformed "
+            "data, changing totals, duplicate identities, lock or timeout — "
+            "preserves the previous snapshot."
+        ),
+    ),
+    effects=dict(_REFRESH_CDP_EFFECTS),
+    output=dict(_REFRESH_OUTPUT),
+    errors=(
+        "INVALID_ARGUMENT",
+        "CONFIG_ERROR",
+        "INVALID_RESPONSE",
+        "INCOMPLETE_RESULT",
+        "AUTH_REQUIRED",
+        "BROWSER_UNAVAILABLE",
+        "LOCKED",
+        "TIMEOUT",
+        "BUSINESS_QUERY_FAILED",
+    ),
+    examples=("dogopencli refresh collection va capacity",),
+    next=("dogopencli help collection va capacity list",),
+    handler="cmd_refresh_collection_va_capacity",
+)
+
 _GROUPS: dict[tuple[str, ...], BizNode] = {
     (): BizNode(
         (),
@@ -279,7 +316,7 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
     ),
     ("collection",): BizNode(
         ("collection",),
-        "Read-only collection transaction-cost and SLA configurations.",
+        "Read-only collection cost, SLA and VA queries.",
         next=("dogopencli help collection cost",),
     ),
     ("collection", "sla"): BizNode(
@@ -302,7 +339,7 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
     ),
     ("collection", "va"): BizNode(
         ("collection", "va"),
-        "Collection VA rule queries.",
+        "Collection VA rule and capacity monitoring queries.",
         next=("dogopencli help collection va rules",),
     ),
     ("collection", "va", "rules"): BizNode(
@@ -312,6 +349,11 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
             "dogopencli help collection va rules list",
             "dogopencli help collection va rules get",
         ),
+    ),
+    ("collection", "va", "capacity"): BizNode(
+        ("collection", "va", "capacity"),
+        "Collection VA capacity monitoring queries.",
+        next=("dogopencli help collection va capacity list",),
     ),
     ("refresh", "collection"): BizNode(
         ("refresh", "collection"),
@@ -346,8 +388,10 @@ def build_catalog(declarations: Iterable[BizNode]) -> dict[tuple[str, ...], BizN
             for child_path, child in all_nodes.items()
             if child_path and child_path[:-1] == path
         )
-        if bool(node.handler) == bool(children):
+        if not node.handler and not children:
             raise ValueError(f"command must be either group or executable: {path}")
+        # An executable node may also be a parent: bare refresh collection va
+        # runs its handler while refresh collection va capacity is its child.
         nodes[path] = replace(node, children=children)
     return nodes
 
@@ -361,6 +405,7 @@ NODES = build_catalog(
         _REFRESH_COLLECTION_COST_NODE,
         _REFRESH_COLLECTION_SLA_NODE,
         _REFRESH_COLLECTION_VA_NODE,
+        _REFRESH_COLLECTION_VA_CAPACITY_NODE,
         _REFRESH_SLA_NODE,
     )
 )

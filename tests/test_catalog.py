@@ -47,13 +47,21 @@ def test_new_leaf_only_needs_its_declaration():
         (BizNode(("missing", "leaf"), "Orphan", handler="run"), "missing parent"),
         (BizNode(("empty",), "No handler or children"), "either group or executable"),
         (BizNode(("bad",), "Bad handler", handler=True), "invalid handler"),
-        (
-            BizNode(("payment", "cost", "list", "child"), "Child", handler="run"),
-            "either group or executable",
-        ),
     ],
 )
 def test_reject_inconsistent_declarations(extra, message):
     declarations = [replace(node, children=()) for node in NODES.values()]
     with pytest.raises(ValueError, match=message):
         build_catalog((*declarations, extra))
+
+
+def test_executable_parent_keeps_handler_and_children():
+    """An executable node may parent children (bare refresh collection va)."""
+    parent = BizNode(("payment", "cost", "inspect"), "Inspect cost.", handler="run")
+    child = BizNode(
+        ("payment", "cost", "inspect", "child"), "Inspect child.", handler="run_child"
+    )
+    declarations = [replace(node, children=()) for node in NODES.values()]
+    catalog = build_catalog((*declarations, parent, child))
+    assert catalog[parent.path].handler == "run"
+    assert ("child", "Inspect child.") in catalog[parent.path].children
