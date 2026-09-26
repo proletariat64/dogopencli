@@ -182,6 +182,18 @@ _REFRESH_COLLECTION_SLA_NODE = replace(
     handler="cmd_refresh_collection_sla",
 )
 
+_REFRESH_COLLECTION_VA_NODE = replace(
+    _REFRESH_COLLECTION_SLA_NODE,
+    path=("refresh", "collection", "va"),
+    summary=(
+        "Refresh collection VA rules: full list and "
+        "every true detail, published atomically."
+    ),
+    examples=("dogopencli refresh collection va",),
+    next=("dogopencli help collection va rules list",),
+    handler="cmd_refresh_collection_va",
+)
+
 _GROUPS: dict[tuple[str, ...], BizNode] = {
     (): BizNode(
         (),
@@ -270,6 +282,19 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
         "Collection transaction-cost configuration queries.",
         next=("dogopencli help collection cost list",),
     ),
+    ("collection", "va"): BizNode(
+        ("collection", "va"),
+        "Collection VA rule queries.",
+        next=("dogopencli help collection va rules",),
+    ),
+    ("collection", "va", "rules"): BizNode(
+        ("collection", "va", "rules"),
+        "Collection VA rule list and true detail queries.",
+        next=(
+            "dogopencli help collection va rules list",
+            "dogopencli help collection va rules get",
+        ),
+    ),
     ("refresh", "collection"): BizNode(
         ("refresh", "collection"),
         "Rebuild collection product caches.",
@@ -317,6 +342,7 @@ NODES = build_catalog(
         _REFRESH_COST_NODE,
         _REFRESH_COLLECTION_COST_NODE,
         _REFRESH_COLLECTION_SLA_NODE,
+        _REFRESH_COLLECTION_VA_NODE,
         _REFRESH_SLA_NODE,
     )
 )
