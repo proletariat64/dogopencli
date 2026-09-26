@@ -147,7 +147,7 @@ def _attempt(
             raise CliError(TIMEOUT, "collection budget exhausted", retryable=True)
         body = capability.page_body(scope, page_num, page_size)
         body.update(filters)
-        response = _execute_bounded(capability, transport, body, deadline)
+        response = execute_bounded(capability, transport, body, deadline)
         page = capability.parse_page(response.body)
         if contract.scope_field is not None and any(
             record.get(contract.scope_field) != scope for record in page.records
@@ -269,12 +269,19 @@ def execute_before_deadline(transport: Any, request: QueryRequest, deadline: flo
     return response
 
 
-def _execute_bounded(
+def execute_bounded(
     capability: Capability,
     transport: Any,
     body: dict[str, Any],
-    deadline: float,
+    deadline: float | None = None,
 ) -> TransportResponse:
+    """Execute a verified inquiry with shared retry and deadline policy.
+
+    Acquisition supplies its remaining deadline; an independent detail inquiry
+    gets the normal inquiry budget. Business-envelope policy stays with callers.
+    """
+    if deadline is None:
+        deadline = _monotonic() + REFRESH_BUDGET_SECONDS
     request = QueryRequest(
         capability=capability.name,
         method=capability.contract.method,

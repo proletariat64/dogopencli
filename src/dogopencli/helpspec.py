@@ -322,3 +322,25 @@ def render_text(node: BizNode) -> str:
         )
     lines.append("Help formats: " + ", ".join(doc["output"]["help_formats"]))
     return "\n".join(lines) + "\n"
+
+
+REFRESH_CDP_EFFECTS = {
+    "mutates": True,
+    "network": True,
+    "browser_required": True,
+    "destructive": False,
+}
+REFRESH_CDP_CONSTRAINTS = (
+    "Requires the CDP source and an existing authenticated browser session.",
+    "Progress diagnostics go to stderr; the result envelope goes to stdout.",
+)
+REFRESH_CDP_ERRORS = (
+    "INVALID_ARGUMENT",
+    "CONFIG_ERROR",
+    "INVALID_RESPONSE",
+    "AUTH_REQUIRED",
+    "BROWSER_UNAVAILABLE",
+    "LOCKED",
+    "TIMEOUT",
+    "BUSINESS_QUERY_FAILED",
+)

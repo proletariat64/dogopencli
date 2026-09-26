@@ -248,3 +248,11 @@ def refresh_node(cap: NetworkConfigCapability) -> BizNode:
         next=(f"dogopencli help collection {cap.slug} list",),
         handler=f"cmd_refresh_collection_{cap.slug.replace('-', '_')}",
     )
+
+
+def group_node(cap: NetworkConfigCapability) -> BizNode:
+    return BizNode(
+        ("collection", cap.slug),
+        cap.title,
+        next=(f"dogopencli help collection {cap.slug} list",),
+    )

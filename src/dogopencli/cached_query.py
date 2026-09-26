@@ -4,6 +4,7 @@ Domain filtering and SLA list/detail projection remain with their callers.
 This layer never reads source files and never attempts an implicit refresh.
 """
 
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -11,6 +12,7 @@ from typing import Any
 from .cache import Cache, SnapshotMeta, namespace
 from .config import SOURCE_SNAPSHOT, Config, SourceConfig
 from .errors import CACHE_MISS, CACHE_STALE, INCOMPLETE_RESULT, CliError
+from .jsonutil import parse
 
 
 def snapshot_meta(
@@ -52,6 +54,29 @@ class CachedQuery:
     snapshot: SnapshotMeta
     stored: list[tuple[int, str]]
     stale: bool
+
+    def validated_records(
+        self,
+        validate: Callable[[Any], None],
+        identity: Callable[[dict[str, Any]], Hashable],
+        *,
+        coverage_error: str,
+    ) -> list[dict[str, Any]]:
+        """Decode and validate the whole snapshot before exposing any records.
+
+        Domain validators own row/pair shape; this module owns storage decoding
+        and coverage. Quality gates run at read time, before record validation.
+        """
+        records = []
+        for _, body in self.stored:
+            record = parse(body)
+            validate(record)
+            records.append(record)
+        if len(records) != self.snapshot.row_count or len(
+            {identity(record) for record in records}
+        ) != len(records):
+            raise CliError(INCOMPLETE_RESULT, coverage_error)
+        return records
 
     def meta(
         self, matched_total: int, returned_count: int, *, offset: int = 0

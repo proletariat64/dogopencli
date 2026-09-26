@@ -43,6 +43,7 @@
 | General | [清算系统契约](research/general/2026-09-27-collection-clearing-system-contract.md) | 原生请求、分页覆盖、字段与筛选决策（#42） |
 | General | [卡模板契约](research/general/2026-09-27-collection-card-template-contract.md) | 原生请求、分页覆盖、字段与筛选决策（#46） |
 | General | [清算系统与卡模板全参数 UAT](research/general/2026-09-27-collection-network-config-uat.md) | 27 项参数、595 项生产及私有缓存断言、SIT 分工（#44/#48） |
+| General | [Collection architecture refactor UAT](research/general/2026-09-27-collection-architecture-refactor-uat.md) | Six collection capabilities, 2,010 assertions, all cached SLA/VA details, expected VA refusal behavior and cache isolation |
 | General | [清算系统与卡模板审查核验](research/general/2026-09-27-collection-network-config-review.md) | Qoder 六项建议逐项处理、Greptile 状态和刷新流程去重验证（PR #49） |
 | Payment | [付款产品设计与运行态发现](research/payment/2026-09-08-payment-operations.md) | 产品模型、27 个菜单、查询字段、接口证据、权限限制和 CLI 候选范围 |
 

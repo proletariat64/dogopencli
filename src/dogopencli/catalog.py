@@ -13,8 +13,7 @@ from .auth.spec import SPECS as AUTH_SPECS
 from .describe import description_nodes
 from .helpspec import REFRESH_OUTPUT as _REFRESH_OUTPUT
 from .helpspec import BizNode, opt
-from .plugins import command_nodes
-from .plugins.collection.network_config import CAPABILITIES, refresh_node
+from .plugins import command_nodes, group_nodes, refresh_nodes
 
 # The shared root is business-owned; auth retains its own help protocol.
 AUTH_PATHS = frozenset(path for path in AUTH_SPECS if path)
@@ -118,22 +117,6 @@ _REFRESH_COST_NODE = BizNode(
     handler="cmd_refresh_cost",
 )
 
-_REFRESH_COLLECTION_COST_NODE = replace(
-    _REFRESH_COST_NODE,
-    path=("refresh", "collection", "cost"),
-    summary="Rebuild the collection transaction-cost cache "
-    "through the existing CDP session.",
-    constraints=(
-        *_REFRESH_COST_NODE.constraints,
-        "Fixed collection transaction-cost type; only complete unique results publish.",
-        "Only the local cache changes; production business state remains read-only.",
-    ),
-    errors=(*_REFRESH_COST_NODE.errors, "INCOMPLETE_RESULT"),
-    examples=("dogopencli refresh collection cost",),
-    next=("dogopencli help collection cost list",),
-    handler="cmd_refresh_collection_cost",
-)
-
 _REFRESH_SLA_NODE = BizNode(
     ("refresh", "payment", "sla"),
     "Rebuild the payment SLA baseline cache through the existing CDP session"
@@ -159,106 +142,7 @@ _REFRESH_SLA_NODE = BizNode(
     handler="cmd_refresh_sla",
 )
 
-_REFRESH_COLLECTION_SLA_NODE = replace(
-    _REFRESH_SLA_NODE,
-    path=("refresh", "collection", "sla"),
-    summary=(
-        "Refresh collection SLA configurations: full list and "
-        "every true detail, published atomically."
-    ),
-    constraints=(
-        *_REFRESH_SLA_NODE.constraints,
-        (
-            "Only local cache changes. Any list/detail failure "
-            "preserves the previous snapshot."
-        ),
-        (
-            "One verified 1000-row acquisition; no business filters "
-            "or speculative pagination."
-        ),
-    ),
-    errors=(*_REFRESH_SLA_NODE.errors, "INCOMPLETE_RESULT"),
-    examples=("dogopencli refresh collection sla",),
-    next=("dogopencli help collection sla configs list",),
-    handler="cmd_refresh_collection_sla",
-)
-
-_REFRESH_COLLECTION_VA_NODE = replace(
-    _REFRESH_COLLECTION_SLA_NODE,
-    path=("refresh", "collection", "va"),
-    summary=(
-        "Refresh collection VA rules: full list and every true detail; "
-        "publishes atomically, or partially with INCOMPLETE_RESULT when the "
-        "backend refuses a detail."
-    ),
-    constraints=(
-        *_REFRESH_SLA_NODE.constraints,
-        (
-            "Any list failure and any detail failure other than an explicit "
-            "backend refusal (success=false) preserves the previous snapshot."
-        ),
-        (
-            "A refused detail publishes that rule's real list row with a null "
-            "detail, leaves backend_complete true, sets dataset_complete false, "
-            "and the refresh then fails with INCOMPLETE_RESULT naming the "
-            "counts instead of reporting success."
-        ),
-        (
-            "One verified 1000-row acquisition; no business filters "
-            "or speculative pagination."
-        ),
-    ),
-    examples=("dogopencli refresh collection va",),
-    next=("dogopencli help collection va rules list",),
-    handler="cmd_refresh_collection_va",
-)
-
-_REFRESH_COLLECTION_VA_CAPACITY_NODE = BizNode(
-    ("refresh", "collection", "va", "capacity"),
-    "Rebuild the collection VA capacity cache through the existing CDP session.",
-    constraints=(
-        "Requires the CDP source and an existing authenticated browser session.",
-        "Progress diagnostics go to stderr; the result envelope goes to stdout.",
-        (
-            "Only the local capacity cache changes; production business state "
-            "remains read-only. Bare refresh collection va still refreshes VA "
-            "rules; this child refreshes only the capacity snapshot."
-        ),
-        (
-            "Pages the verified endpoint with pageSize=1000 until the first "
-            "short page; only the final converged totalCount validates "
-            "completeness. Any failure — authentication, refusal, malformed "
-            "data, changing totals, duplicate identities, lock or timeout — "
-            "preserves the previous snapshot."
-        ),
-    ),
-    effects=dict(_REFRESH_CDP_EFFECTS),
-    output=dict(_REFRESH_OUTPUT),
-    errors=(
-        "INVALID_ARGUMENT",
-        "CONFIG_ERROR",
-        "INVALID_RESPONSE",
-        "INCOMPLETE_RESULT",
-        "AUTH_REQUIRED",
-        "BROWSER_UNAVAILABLE",
-        "LOCKED",
-        "TIMEOUT",
-        "BUSINESS_QUERY_FAILED",
-    ),
-    examples=("dogopencli refresh collection va capacity",),
-    next=("dogopencli help collection va capacity list",),
-    handler="cmd_refresh_collection_va_capacity",
-)
-
 _GROUPS: dict[tuple[str, ...], BizNode] = {
-    **{
-        ("collection", cap.slug): BizNode(
-            ("collection", cap.slug),
-            cap.title,
-            next=(f"dogopencli help collection {cap.slug} list",),
-        )
-        for cap in CAPABILITIES
-    },
     (): BizNode(
         (),
         "Inquiry-only, read-only payment and collection operations queries; the default"
@@ -407,15 +291,12 @@ def build_catalog(declarations: Iterable[BizNode]) -> dict[tuple[str, ...], BizN
 
 NODES = build_catalog(
     (
+        *group_nodes(),
         *_GROUPS.values(),
         *description_nodes(command_nodes()),
         _REFRESH_CHANNEL_NODE,
         _REFRESH_COST_NODE,
-        *(refresh_node(cap) for cap in CAPABILITIES),
-        _REFRESH_COLLECTION_COST_NODE,
-        _REFRESH_COLLECTION_SLA_NODE,
-        _REFRESH_COLLECTION_VA_NODE,
-        _REFRESH_COLLECTION_VA_CAPACITY_NODE,
+        *refresh_nodes(),
         _REFRESH_SLA_NODE,
     )
 )

@@ -21,6 +21,10 @@ from ...helpspec import (
     OFFSET,
     QUERY_EFFECTS_VARIANTS,
     QUERY_OUTPUT,
+    REFRESH_CDP_CONSTRAINTS,
+    REFRESH_CDP_EFFECTS,
+    REFRESH_CDP_ERRORS,
+    REFRESH_OUTPUT,
     BizNode,
     opt,
 )
@@ -104,6 +108,13 @@ def validate_pair(record: Any, detail: Any) -> None:
         for key in record.keys() - LIST_ONLY_FIELDS
     ):
         raise CliError(INVALID_RESPONSE, "SLA list and detail shared fields differ")
+
+
+def validate_stored_pair(pair: Any) -> None:
+    """Validate the distinct list/detail objects stored in a snapshot."""
+    if not isinstance(pair, dict):
+        raise CliError(INVALID_RESPONSE, "invalid cached SLA configuration pair")
+    validate_pair(pair.get("config"), pair.get("detail"))
 
 
 def _identity_order(record: dict[str, Any]) -> tuple[Any, ...]:
@@ -303,4 +314,30 @@ COLLECTION_SLA_GET_NODE = BizNode(
     examples=("dogopencli collection sla configs get --id CONFIG_ID",),
     next=("dogopencli help collection sla configs list",),
     handler="cmd_collection_sla_get",
+)
+
+
+REFRESH_NODE = BizNode(
+    effects=dict(REFRESH_CDP_EFFECTS),
+    output=REFRESH_OUTPUT,
+    path=("refresh", "collection", "sla"),
+    summary=(
+        "Refresh collection SLA configurations: full list and "
+        "every true detail, published atomically."
+    ),
+    constraints=(
+        *REFRESH_CDP_CONSTRAINTS,
+        (
+            "Only local cache changes. Any list/detail failure "
+            "preserves the previous snapshot."
+        ),
+        (
+            "One verified 1000-row acquisition; no business filters "
+            "or speculative pagination."
+        ),
+    ),
+    errors=(*REFRESH_CDP_ERRORS, "INCOMPLETE_RESULT"),
+    examples=("dogopencli refresh collection sla",),
+    next=("dogopencli help collection sla configs list",),
+    handler="cmd_refresh_collection_sla",
 )
