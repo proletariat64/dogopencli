@@ -143,6 +143,22 @@ synthetic SIT coverage.
   consulted by VA refresh; payment, cost and SLA gate output is unchanged in the
   full suite.
 
+## Review findings and disposition (PR #35)
+
+Greptile reviewed the pushed branch (confidence 4/5, two P2 findings) and an
+independent Kimi review reported three standards judgement calls and two spec
+findings.
+
+| Finding | Verdict | Action |
+| --- | --- | --- |
+| Greptile: `describe` still said "any failure preserves the old snapshot" | Valid | `va_rule_reading.py` refresh guidance now states the null-detail partial publish, `INCOMPLETE_RESULT`, and that a partial refresh replaces the snapshot. Regression test added. |
+| Greptile: cached `get --id` validates all stored pairs | Valid observation, not material | Measured on the real 911-row snapshot: snapshot read 26 ms, JSON parse 9.6 ms, whole-snapshot validation 1.2 ms. The validation the finding targets costs about 4% of one read, and the coverage and uniqueness checks need every row regardless. No change; single-row lookup would trade a cache-integrity guarantee for microseconds. |
+| Kimi: `va_rule.py`, `cli.py` and the SIT file replicate the SLA shape a third time | Valid, deferred | No change in this slice; a shared pair-refresh skeleton is a post-merge refactor candidate. |
+| Kimi: `is_business_refusal` name undersells that it raises | Valid | Docstring now says it is not a pure predicate and why an unknown shape still raises `INVALID_RESPONSE`. Name kept: callers read it as a gate on tolerance, which is its only role. |
+| Kimi: ADR 0010 cites ADR 0003 for the flag meanings | Valid | Corrected: ADR 0005 records the two flag meanings; ADR 0003 supplies the completeness policy and the all-or-nothing detail-refresh precedent that ADR 0010 narrows. |
+| Kimi: #31 prescribed a different remedy (list-only refresh, live-only detail get) | Valid and material | ADR 0010 now names that spec fallback, records why it was rejected, and states that the operator chose this remedy over it on 2026-09-26, making ADR 0010 the amendment of record. The #31 issue itself still needs the matching comment. |
+| Kimi: `describe` omits the `assignFlows` caveat required by #31 | Valid | `assignInfo` description now carries "an empty `assignFlows` list does not prove assignment history is empty" plus the no-inference rule for counters. Regression test added. |
+
 ## Remaining evidence limits
 
 - The real 911-detail refresh used about 11 minutes of the shared 900-second

@@ -30,11 +30,29 @@ invalid detail fields, and drift in any shared business field between a list
 row and its true detail. A refusal is never stored as a detail, never merged
 into the list row, and never attributed to a backend cause the envelope hides.
 
-Quality metadata keeps the ADR 0003 meanings. `backend_complete` stays true
+The two completeness flags keep their recorded meanings: `dataset_complete`
+describes the loaded dataset and `backend_complete` describes backend scope
+coverage (ADR 0005), under ADR 0003's completeness policy that partial data may
+be used only when explicitly marked incomplete and that a query demanding
+completeness fails when it cannot be satisfied. `backend_complete` stays true
 for a partial publish because the list proved complete scope coverage, so a
 confirmed absent ID remains `NOT_FOUND`. `dataset_complete` is true only when
-no detail was refused. `--require-complete` additionally rejects a snapshot
-whose `dataset_complete` is false; this gate is local to VA rules and does not
+no detail was refused.
+
+Issue #31 named a different remedy for exactly this situation: if bulk detail
+reads proved unreliable at scale, fall back to list-only refresh with live-only
+detail get, recorded as a spec amendment before shipping, and never ship a
+weaker guarantee silently. This ADR is that amendment of record, and the
+operator chose this remedy over the spec-named fallback on 2026-09-26.
+List-only refresh was rejected because it drops the offline `get` that detail
+collection exists to serve (#31 story 6) for all 911 rules in order to protect
+the 71 the platform cannot read, and it records nothing about which detail is
+missing; a null `detail` says exactly that, per rule. ADR 0003's all-or-nothing
+detail-refresh precedent is narrowed here for VA rules only, and payment, cost
+and collection SLA publish rules are unchanged.
+
+`--require-complete` additionally rejects a snapshot whose
+`dataset_complete` is false; this gate is local to VA rules and does not
 change shared freshness or completeness semantics for payment or collection
 cost and SLA queries.
 
