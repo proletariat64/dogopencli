@@ -50,6 +50,7 @@
 ## 查询契约补充
 
 - [Account-isolation contract](research/general/2026-09-27-collection-account-isolation-contract.md): verified complete acquisition and eight local whole-string filters (#51).
+- [Account-isolation acceptance](research/general/2026-09-27-collection-account-isolation-uat.md): 16 options, 315 production/private-cache assertions and synthetic failure coverage.
 - [Bank-account VA rule blocker](research/general/2026-09-27-collection-bank-va-rule-blocker.md): pagination failure reproduced at multiple supported sizes; #52 remains blocked.
 
 - [付款渠道列表](research/payment/2026-09-08-channel-query-contract.md)：多选筛选、动态字典、响应及页码回退规则。
