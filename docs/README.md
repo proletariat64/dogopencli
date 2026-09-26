@@ -34,6 +34,7 @@
 | General | [收款 SLA PR 审查处理](research/general/2026-09-26-collection-sla-review.md) | Kimi 与 GitHub 审查逐项核验、修复及回归证据 |
 | General | [收款 VA 规则契约复核](research/general/2026-09-26-collection-va-rule-contract-recheck.md) | 当前 911 条列表/详情契约与 H2 一致;分页、ID 筛选、字段重验及未验证缺口 |
 | General | [收款 VA 规则实现与验收](research/general/2026-09-26-collection-va-rule-implementation-uat.md) | 911 条生产只读 UAT、71 条详情拒绝的定位与容错发布验证、门限结果与证据边界 |
+| General | [收款 VA 容量查询契约验证](research/general/2026-09-26-collection-va-capacity-contract.md) | warningUseCount 契约、行身份与漂移、运行估算 totalCount、筛选决策及剩余缺口（#37） |
 | Payment | [付款产品设计与运行态发现](research/payment/2026-09-08-payment-operations.md) | 产品模型、27 个菜单、查询字段、接口证据、权限限制和 CLI 候选范围 |
 
 ## 查询契约补充
