@@ -32,6 +32,11 @@ class EndpointContract:
     consistency_field: str | None = None
     # Exact required request values for capabilities with a fixed acquisition.
     fixed_body_values: tuple[tuple[str, str | int], ...] = ()
+    # True when the backend's interim totalCount is a running estimate
+    # (VA capacity): acquire until the first short page, tolerate changing
+    # interim totals, and let only the final converged total validate
+    # completeness. False keeps the verified fixed-total contract.
+    running_total: bool = False
 
 
 @dataclass(frozen=True)
@@ -119,6 +124,13 @@ def _load_builtins() -> None:
         COLLECTION_SLA_LIST_NODE,
     )
     from .collection.sla_reading import description as sla_description
+    from .collection.va_capacity import (
+        COLLECTION_VA_CAPACITY,
+        COLLECTION_VA_CAPACITY_LIST_NODE,
+    )
+    from .collection.va_capacity_reading import (
+        description as va_capacity_description,
+    )
     from .collection.va_rule import (
         COLLECTION_VA_RULE_GET_NODE,
         COLLECTION_VA_RULE_LIST_NODE,
@@ -139,6 +151,11 @@ def _load_builtins() -> None:
         COLLECTION_VA_RULES,
         commands=(COLLECTION_VA_RULE_LIST_NODE, COLLECTION_VA_RULE_GET_NODE),
         description=va_rule_description,
+    )
+    register(
+        COLLECTION_VA_CAPACITY,
+        commands=(COLLECTION_VA_CAPACITY_LIST_NODE,),
+        description=va_capacity_description,
     )
     register(
         COLLECTION_COST_CAPABILITY,

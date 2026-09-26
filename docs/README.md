@@ -10,6 +10,7 @@
 
 - [收款 SLA 配置查询（GitHub Issue #27）](https://github.com/proletariat64/dogopencli/issues/27)：列表、真实详情、原子刷新与四项本地筛选；实施及验收见下方报告。
 
+- [收款 VA 容量监控（GitHub Issue #36）](https://github.com/proletariat64/dogopencli/issues/36)：容量列表、原子刷新与两项本地筛选规格；契约证据见容量契约验证报告，实施与验收分别见 #38/#39。
 - [收款 VA 规则查询（GitHub Issue #31）](https://github.com/proletariat64/dogopencli/issues/31)：列表、主详情、原子刷新规格；契约证据见 VA 规则研究与当日契约复核；其中“全量详情方可发布”已由 [ADR 0010](adr/0010-collection-va-partial-detail-tolerance.md) 收窄为仅容忍后端明确拒绝的单个详情。#31/#32 已随 PR #35 合并关闭；#33 筛选切片未实施、延期。
 
 ## 研究报告
@@ -34,6 +35,8 @@
 | General | [收款 SLA PR 审查处理](research/general/2026-09-26-collection-sla-review.md) | Kimi 与 GitHub 审查逐项核验、修复及回归证据 |
 | General | [收款 VA 规则契约复核](research/general/2026-09-26-collection-va-rule-contract-recheck.md) | 当前 911 条列表/详情契约与 H2 一致;分页、ID 筛选、字段重验及未验证缺口 |
 | General | [收款 VA 规则实现与验收](research/general/2026-09-26-collection-va-rule-implementation-uat.md) | 911 条生产只读 UAT、71 条详情拒绝的定位与容错发布验证、门限结果与证据边界 |
+| General | [收款 VA 容量查询契约验证](research/general/2026-09-26-collection-va-capacity-contract.md) | warningUseCount 契约、行身份与漂移、运行估算 totalCount、筛选决策及剩余缺口（#37） |
+| General | [收款 VA 容量全参数 UAT](research/general/2026-09-26-collection-va-capacity-argument-uat.md) | 全部参数的逐项验收、生产只读刷新与本地状态检查、SIT 分工及门禁记录（#39） |
 | Payment | [付款产品设计与运行态发现](research/payment/2026-09-08-payment-operations.md) | 产品模型、27 个菜单、查询字段、接口证据、权限限制和 CLI 候选范围 |
 
 ## 查询契约补充
@@ -60,6 +63,7 @@
 - [ADR 0008：收款 SLA 配置查询](adr/0008-collection-sla-configurations.md)：独立对象、完整列表与详情、离线快照、本地筛选及完整性边界。
 - [ADR 0009：收款 VA 规则查询](adr/0009-collection-va-rules.md)：一页大页采集与失败保留、列表/详情共享字段一致性、稳定 ID 排序、错误分类及银行账户 VA 规则排除。
 - [ADR 0010：收款 VA 规则详情容错](adr/0010-collection-va-partial-detail-tolerance.md)：修订 ADR 0009 的全量发布约束，仅容忍后端明确拒绝的单个详情，发布 `detail=null` 且 `dataset_complete=false` 的部分快照并以 `INCOMPLETE_RESULT` 结束；其余失败仍保留旧快照。
+- [ADR 0011：收款 VA 容量监控](adr/0011-collection-va-capacity.md)：多页采集与收敛 totalCount、ruleId 行身份、两项本地筛选、预警状态不暴露及空范围/失败包络边界。
 
 ## 协作规范
 

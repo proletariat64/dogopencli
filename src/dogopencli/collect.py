@@ -10,6 +10,13 @@ one full-candidate rebuild when business success shows capacity truncation
 or coverage gaps. No fallback to small overlapping pages, no merging across
 candidates. Authentication, permission, unknown-schema and generic
 business errors are never hidden by retries or page shrinking.
+
+Contracts with a fixed total stop at the page range the first total
+declares and reject any later change. Contracts that set
+``running_total=True`` (VA capacity) instead treat interim totals as
+backend estimates: they acquire until the first short page, tolerate
+changing interim totals, and let only the final converged total validate
+completeness.
 """
 
 import math
@@ -148,25 +155,32 @@ def _attempt(
             raise CliError(
                 INVALID_RESPONSE, "response rows do not match requested scope"
             )
-        empty = page.total_count == 0 and page.total_pages == 0 and not page.records
-        if empty and expected_total is None:
-            # Verified empty-result shape: the page-number echo is zeroed,
-            # which is not a pagination error; the size echo must still match.
-            if page.page_size != page_size:
-                raise CliError(
-                    INVALID_RESPONSE,
-                    "pagination echo mismatch: requested page "
-                    f"{page_num} size {page_size}, got page {page.page_num} "
-                    f"size {page.page_size}",
-                )
-        elif page.page_num != page_num or page.page_size != page_size:
+        # Verified empty-result shape: the page-number echo is zeroed, which
+        # is not a pagination error. Any other wrong echo — including on an
+        # empty page — is rejected, so a garbage empty response can never be
+        # accepted as a complete empty scope.
+        zeroed_empty_echo = (
+            expected_total is None
+            and page.page_num == 0
+            and page.total_count == 0
+            and page.total_pages == 0
+            and not page.records
+        )
+        if page.page_size != page_size or (
+            page.page_num != page_num and not zeroed_empty_echo
+        ):
             raise CliError(
                 INVALID_RESPONSE,
                 "pagination echo mismatch: requested page "
                 f"{page_num} size {page_size}, got page {page.page_num} "
                 f"size {page.page_size}",
             )
-        if expected_total is None:
+        if contract.running_total:
+            # Interim totals are running estimates: track the latest, never
+            # compare across pages, and terminate on the first short page.
+            expected_total = page.total_count
+            total_pages = math.ceil(expected_total / page_size)
+        elif expected_total is None:
             expected_total = page.total_count
             total_pages = math.ceil(expected_total / page_size)
             if total_pages > max_pages:
@@ -177,8 +191,13 @@ def _attempt(
         elif page.total_count != expected_total:
             raise CliError(INVALID_RESPONSE, "backend total changed during collection")
         pages += 1
+        if pages > max_pages:
+            raise CliError(
+                TIMEOUT,
+                f"page budget exceeded: {pages} pages > {max_pages}",
+            )
         done_pages = page_num - first_page + 1
-        if not page.records and done_pages < total_pages:
+        if not contract.running_total and not page.records and done_pages < total_pages:
             raise CliError(
                 INVALID_RESPONSE,
                 "collection made no progress: empty page before the range end",
@@ -207,8 +226,11 @@ def _attempt(
             seen[record_id] = content
             ordered.append(record)
         if progress is not None:
-            progress(pages, total_pages)
-        if done_pages >= total_pages:
+            progress(pages, max(total_pages, pages))
+        if contract.running_total:
+            if len(page.records) < page_size:
+                break
+        elif done_pages >= total_pages:
             break
         page_num += 1
     remaining_seconds(deadline)

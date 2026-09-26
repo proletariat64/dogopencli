@@ -38,6 +38,7 @@ GROUPS = [
     ["collection", "sla", "configs"],
     ["collection", "va"],
     ["collection", "va", "rules"],
+    ["collection", "va", "capacity"],
     ["refresh", "collection"],
 ]
 
@@ -54,8 +55,9 @@ GROUP_CHILDREN = {
     ("collection", "sla"): ["configs"],
     ("collection", "sla", "configs"): ["list", "get"],
     ("collection", "cost"): ["list"],
-    ("collection", "va"): ["rules"],
+    ("collection", "va"): ["rules", "capacity"],
     ("collection", "va", "rules"): ["list", "get"],
+    ("collection", "va", "capacity"): ["list"],
     ("refresh", "collection"): ["cost", "sla", "va"],
 }
 

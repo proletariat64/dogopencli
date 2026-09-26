@@ -40,6 +40,7 @@ from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
 from .plugins import get_capability
 from .plugins.collection import sla as collection_sla
+from .plugins.collection import va_capacity as collection_va_capacity
 from .plugins.collection import va_rule as collection_va
 from .plugins.envelope import is_business_refusal
 from .plugins.payment.channel import assign_seqids
@@ -1299,6 +1300,125 @@ def cmd_collection_va_rules_get(args: argparse.Namespace) -> int:
             )
         meta = cached.meta(1, 1)
     return _emit_object(args, cap, detail, meta, fields)
+
+
+def _va_capacity_filters(args: argparse.Namespace) -> dict[str, list[str]]:
+    filters: dict[str, list[str]] = {}
+    for flag, field in collection_va_capacity.FILTER_FIELDS.items():
+        values = getattr(args, flag.replace("-", "_"))
+        if any(not value.strip() for value in values):
+            raise _argument_error(f"--{flag} must be nonempty")
+        if values:
+            filters[field] = values
+    return filters
+
+
+def _collection_va_capacity_cached(
+    args: argparse.Namespace,
+    config: config_mod.Config,
+    source: config_mod.SourceConfig,
+) -> tuple[CachedQuery, list[dict[str, Any]]]:
+    cap = collection_va_capacity.COLLECTION_VA_CAPACITY
+    cached = read_cached_query(
+        config,
+        source,
+        cap.name,
+        cap.default_scope,
+        refresh_command="refresh collection va capacity",
+        require_fresh=args.require_fresh,
+        require_complete=args.require_complete,
+        now=_now(),
+    )
+    records = []
+    for _, body in cached.stored:
+        record = parse(body)
+        collection_va_capacity.validate_row(record)
+        records.append(record)
+    if len(records) != cached.snapshot.row_count or len(
+        {record["ruleId"] for record in records}
+    ) != len(records):
+        raise CliError(INCOMPLETE_RESULT, "cached VA capacity coverage is invalid")
+    return cached, records
+
+
+def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
+    cap = collection_va_capacity.COLLECTION_VA_CAPACITY
+    config = config_mod.load([cap.source_config_key])
+    source = _cdp_source(config, cap.source_config_key)
+    store = Cache(config.cache_path)
+    ns = namespace(cap.name, cap.default_scope, source.kind)
+    with store.refresh_lock():
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            result = collect_mod.collect_scope(
+                cap,
+                session.transport(cap),
+                cap.default_scope,
+                progress=_progress,
+            )
+        if not result.complete:
+            raise CliError(
+                INCOMPLETE_RESULT,
+                "collection VA capacity scope is incomplete; the previous "
+                "cache is retained",
+            )
+        records = cap.sort_records(result.records)
+        fetched_at = _now().isoformat()
+        snapshot = SnapshotMeta(
+            namespace=ns,
+            capability=cap.name,
+            scope=cap.default_scope,
+            source_kind=source.kind,
+            snapshot_id=hashlib.sha256(canonical(records).encode()).hexdigest(),
+            dataset_id=None,
+            simulated=False,
+            backend_complete=True,
+            dataset_complete=True,
+            fetched_at=fetched_at,
+            loaded_at=_now().isoformat(),
+            source_observed_from=None,
+            source_observed_to=None,
+            row_count=len(records),
+        )
+        collect_mod.remaining_seconds(result.deadline)
+        store.publish(
+            snapshot,
+            [(index, canonical(record)) for index, record in enumerate(records, 1)],
+        )
+    print(f"refresh: published {len(records)} rows to {ns}", file=sys.stderr)
+    stale = is_stale(snapshot, config.ttl_hours, _now())
+    _emit(
+        {"namespace": ns, "published": True, "row_count": len(records)},
+        snapshot_meta("cache", snapshot, stale, len(records), len(records), False),
+    )
+    return EXIT_OK
+
+
+def cmd_collection_va_capacity_list(args: argparse.Namespace) -> int:
+    cap = collection_va_capacity.COLLECTION_VA_CAPACITY
+    limit, offset, fields = _display_options(args)
+    filters = _va_capacity_filters(args)
+    config = config_mod.load([cap.source_config_key])
+    source = _cdp_source(config, cap.source_config_key)
+    if args.live:
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            result = collect_mod.collect_scope(
+                cap, session.transport(cap), cap.default_scope
+            )
+        if not result.complete:
+            raise CliError(
+                INCOMPLETE_RESULT, "collection VA capacity list is incomplete"
+            )
+        records = cap.sort_records(cap.filter_records(result.records, filters))
+        window = records[offset:] if args.all else records[offset : offset + limit]
+        meta = _live_meta(
+            source, cap.default_scope, True, len(records), len(window), offset
+        )
+    else:
+        cached, records = _collection_va_capacity_cached(args, config, source)
+        records = cap.sort_records(cap.filter_records(records, filters))
+        window = records[offset:] if args.all else records[offset : offset + limit]
+        meta = cached.meta(len(records), len(window), offset=offset)
+    return _emit_window(args, cap, window, meta, fields)
 
 
 def cmd_describe(args: argparse.Namespace) -> int:

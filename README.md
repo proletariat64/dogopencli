@@ -33,6 +33,9 @@ kind = "cdp"
 
 [sources.collection_va]
 kind = "cdp"
+
+[sources.collection_va_capacity]
+kind = "cdp"
 ```
 
 配置示例见被 Git 忽略的 `tmp/channel-2026-09-11/source.toml`；整理集为私有数据，不随 Git 分发。
@@ -68,6 +71,7 @@ dogopencli describe payment sla baselines get
 dogopencli describe collection cost list
 dogopencli describe collection sla configs get
 dogopencli describe collection va rules get
+dogopencli describe collection va capacity list
 dogopencli help payment cost list            # 参数的权威契约
 dogopencli payment cost list --all --fields itemId,costRateConfigList
 dogopencli payment sla baselines list --all --fields id
@@ -81,7 +85,7 @@ dogopencli payment sla baselines get --id BASELINE_ID
 | 键 | v1 类型与含义 |
 | --- | --- |
 | `describe_version` | 整数 `1`，helper 文档协议版本 |
-| `capability` | 字符串：`payment.channel.list`、`payment.cost.list`、`payment.sla.baselines.list`、`payment.sla.baselines.get`、`collection.cost.list`、`collection.sla.configs.list`、`collection.sla.configs.get`、`collection.va.rules.list` 或 `collection.va.rules.get` |
+| `capability` | 字符串：`payment.channel.list`、`payment.cost.list`、`payment.sla.baselines.list`、`payment.sla.baselines.get`、`collection.cost.list`、`collection.sla.configs.list`、`collection.sla.configs.get`、`collection.va.rules.list`、`collection.va.rules.get` 或 `collection.va.capacity.list` |
 | `schema_version` | 整数 `1`，该查询能力的数据描述版本 |
 | `data_schema` | JSON Schema 对象，`$schema` 为 `https://json-schema.org/draft/2020-12/schema`；描述成功且未投影的业务 `data`，不是数据库表或整个 envelope |
 | `read_guide` | 对象，包含下面的读取规则及证据词汇 |
@@ -132,7 +136,8 @@ dogopencli refresh payment cost
 dogopencli refresh payment sla        # 全列表 + 逐条详情一起原子发布
 dogopencli refresh collection cost
 dogopencli refresh collection sla
-dogopencli refresh collection va
+dogopencli refresh collection va          # VA 规则
+dogopencli refresh collection va capacity # VA 容量
 
 dogopencli payment channel list       # 默认场景 EXTERNAL，--payout-type 可选 LIQUIDITY/MANUAL/SETTLEMENT
 dogopencli payment cost list          # 固定 FUND_OUT_CHANNEL_TRANS_FEE
@@ -141,6 +146,7 @@ dogopencli payment sla baselines get --id ID
 dogopencli collection cost list
 dogopencli collection sla configs list
 dogopencli collection va rules list
+dogopencli collection va capacity list
 ```
 
 Channel 的 live 查询还会按已验证字段进行本地精确筛选，避免后端忽略条件时透出不匹配行；Cost/SLA 保持已验证的后端筛选语义。实时 SLA 详情的 complete 指所请求 ID 的详情，`meta.query` 标明 ID，成功获取时满足 freshness/completeness 要求。refresh 的 `meta.source=cache` 表示刚发布的本地快照。
@@ -315,3 +321,38 @@ logs or docs. The list exposes no filters; get selects only by ID. Stable-ID
 sorting precedes display windows: ASCII digit IDs sort numerically with the
 original string as tie-breaker, other IDs lexically afterward; stored string
 IDs never change.
+
+### Collection VA capacity
+
+[Issue #36](https://github.com/proletariat64/dogopencli/issues/36) specifies the
+collection VA capacity monitoring scope, implemented under
+[Issue #38](https://github.com/proletariat64/dogopencli/issues/38) after the
+contract verification in
+[Issue #37](https://github.com/proletariat64/dogopencli/issues/37). Configure
+`[sources.collection_va_capacity] kind = "cdp"`, then:
+
+```bash
+dogopencli help collection va capacity list
+dogopencli describe collection va capacity list
+dogopencli refresh collection va capacity
+dogopencli collection va capacity list --all --require-complete
+dogopencli collection va capacity list --va-rule-id RULE_ID
+dogopencli collection va capacity list --bank-va-rule-id BANK_RULE_ID --live
+```
+
+Each row is one VA rule's capacity/warning projection; `ruleId` is the row
+identity. `id`, `bankAccountVaId` and `accountNo` are not unique and are never
+accepted as the identity; `--bank-va-rule-id` matches the `bankAccountVaId`
+field. Filters are local exact matches over the acquired scope. The UI warning
+state is not exposed: rows carry no warning-state field and the server
+classification is volatile and not derivable from row counters.
+
+Refresh pages the verified endpoint at `pageSize=1000` until the first short
+page and publishes atomically only after the final converged `totalCount`, the
+collected row count and unique `ruleId`s agree; interim page totals are
+backend running estimates and are never trusted. Duplicate or drifting
+identities, changed totals, malformed pages and every other failure preserve
+the previous snapshot. Bare `refresh collection va` still refreshes VA rules.
+Capacity counters are live values: check `meta.fetched_at`/`stale` and refresh
+or use `--live` before acting on them. See
+[ADR 0011](docs/adr/0011-collection-va-capacity.md).
