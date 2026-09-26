@@ -11,8 +11,14 @@ from typing import Any
 
 from .auth.spec import SPECS as AUTH_SPECS
 from .describe import description_nodes
+from .helpspec import (
+    REFRESH_CDP_CONSTRAINTS,
+    REFRESH_CDP_EFFECTS,
+    REFRESH_CDP_ERRORS,
+    BizNode,
+    opt,
+)
 from .helpspec import REFRESH_OUTPUT as _REFRESH_OUTPUT
-from .helpspec import BizNode, opt
 from .plugins import command_nodes, group_nodes, refresh_nodes
 
 # The shared root is business-owned; auth retains its own help protocol.
@@ -38,18 +44,7 @@ _REFRESH_CDP_VARIANT: dict[str, Any] = {
     "when": "the configured source is cdp",
     "summary": "queries the backend through the existing CDP session and"
     " rebuilds the cache",
-    "effects": {
-        "mutates": True,
-        "network": True,
-        "browser_required": True,
-        "destructive": False,
-    },
-}
-_REFRESH_CDP_EFFECTS: dict[str, Any] = {
-    "mutates": True,
-    "network": True,
-    "browser_required": True,
-    "destructive": False,
+    "effects": dict(REFRESH_CDP_EFFECTS),
 }
 
 _REFRESH_CHANNEL_NODE = BizNode(
@@ -96,22 +91,10 @@ _REFRESH_CHANNEL_NODE = BizNode(
 _REFRESH_COST_NODE = BizNode(
     ("refresh", "payment", "cost"),
     "Rebuild the payment cost cache through the existing CDP session.",
-    constraints=(
-        "Requires the CDP source and an existing authenticated browser session.",
-        "Progress diagnostics go to stderr; the result envelope goes to stdout.",
-    ),
-    effects=dict(_REFRESH_CDP_EFFECTS),
+    constraints=REFRESH_CDP_CONSTRAINTS,
+    effects=dict(REFRESH_CDP_EFFECTS),
     output=dict(_REFRESH_OUTPUT),
-    errors=(
-        "INVALID_ARGUMENT",
-        "CONFIG_ERROR",
-        "INVALID_RESPONSE",
-        "AUTH_REQUIRED",
-        "BROWSER_UNAVAILABLE",
-        "LOCKED",
-        "TIMEOUT",
-        "BUSINESS_QUERY_FAILED",
-    ),
+    errors=REFRESH_CDP_ERRORS,
     examples=("dogopencli refresh payment cost",),
     next=("dogopencli help payment cost list",),
     handler="cmd_refresh_cost",
@@ -121,22 +104,10 @@ _REFRESH_SLA_NODE = BizNode(
     ("refresh", "payment", "sla"),
     "Rebuild the payment SLA baseline cache through the existing CDP session"
     " (full list, then every detail).",
-    constraints=(
-        "Requires the CDP source and an existing authenticated browser session.",
-        "Progress diagnostics go to stderr; the result envelope goes to stdout.",
-    ),
-    effects=dict(_REFRESH_CDP_EFFECTS),
+    constraints=REFRESH_CDP_CONSTRAINTS,
+    effects=dict(REFRESH_CDP_EFFECTS),
     output=dict(_REFRESH_OUTPUT),
-    errors=(
-        "INVALID_ARGUMENT",
-        "CONFIG_ERROR",
-        "INVALID_RESPONSE",
-        "AUTH_REQUIRED",
-        "BROWSER_UNAVAILABLE",
-        "LOCKED",
-        "TIMEOUT",
-        "BUSINESS_QUERY_FAILED",
-    ),
+    errors=REFRESH_CDP_ERRORS,
     examples=("dogopencli refresh payment sla",),
     next=("dogopencli help payment sla baselines list",),
     handler="cmd_refresh_sla",

@@ -88,6 +88,7 @@ def test_plugin_registration_supplies_query_refresh_and_navigation(monkeypatch):
         "Refresh fixture.",
         handler="fixture_refresh",
     )
+    existing_refresh = plugins.refresh_nodes()
     plugins.register(
         capability,
         commands=(query,),
@@ -106,6 +107,7 @@ def test_plugin_registration_supplies_query_refresh_and_navigation(monkeypatch):
         if node.path not in NODES
     ]
     catalog = build_catalog((*declarations, *added))
+    assert plugins.refresh_nodes() == (*existing_refresh, refresh)
     assert catalog[query.path].handler == "fixture_list"
     assert catalog[refresh.path].handler == "fixture_refresh"
     assert catalog[group.path].children == (("list", "List fixture."),)

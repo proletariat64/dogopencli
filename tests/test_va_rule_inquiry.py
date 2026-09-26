@@ -91,15 +91,21 @@ def test_newest_refusal_replaces_detail_but_http_failure_preserves_it(tmp_path, 
         refresh()
     snapshot = read()
     assert snapshot.rows == [ROW]
+    meta = snapshot.meta(1, 1)
+    assert meta["source"] == "cache"
+    assert meta["returned_count"] == 1
+    assert meta["has_more"] is False
+    assert snapshot.meta(2, 1)["has_more"] is True
+    assert snapshot.meta(2, 1, offset=1)["has_more"] is False
     if status == 403:
         assert caught.value.code == "BUSINESS_QUERY_FAILED"
-        assert snapshot.cached.snapshot.snapshot_id == original.snapshot_id
+        assert meta["snapshot_id"] == original.snapshot_id
         assert snapshot.detail("01") == DETAIL
     else:
         assert caught.value.code == "INCOMPLETE_RESULT"
-        assert snapshot.cached.snapshot.snapshot_id != original.snapshot_id
-        assert snapshot.cached.snapshot.backend_complete is True
-        assert snapshot.cached.snapshot.dataset_complete is False
+        assert meta["snapshot_id"] != original.snapshot_id
+        assert meta["complete"] is True
+        assert meta["dataset_complete"] is False
         with pytest.raises(CliError, match="refused"):
             snapshot.detail("01")
         with pytest.raises(CliError) as missing:

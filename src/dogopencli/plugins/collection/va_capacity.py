@@ -27,7 +27,9 @@ from ...helpspec import (
     OFFSET,
     QUERY_EFFECTS_VARIANTS,
     QUERY_OUTPUT,
+    REFRESH_CDP_CONSTRAINTS,
     REFRESH_CDP_EFFECTS,
+    REFRESH_CDP_ERRORS,
     REFRESH_OUTPUT,
     BizNode,
     opt,
@@ -252,8 +254,7 @@ REFRESH_NODE = BizNode(
     ("refresh", "collection", "va", "capacity"),
     "Rebuild the collection VA capacity cache through the existing CDP session.",
     constraints=(
-        "Requires the CDP source and an existing authenticated browser session.",
-        "Progress diagnostics go to stderr; the result envelope goes to stdout.",
+        *REFRESH_CDP_CONSTRAINTS,
         (
             "Only the local capacity cache changes; production business state "
             "remains read-only. Bare refresh collection va still refreshes VA "
@@ -269,16 +270,12 @@ REFRESH_NODE = BizNode(
     ),
     effects=dict(REFRESH_CDP_EFFECTS),
     output=dict(REFRESH_OUTPUT),
+    # Keep the established help order: capacity reports incomplete coverage
+    # immediately after invalid responses, before authentication/runtime errors.
     errors=(
-        "INVALID_ARGUMENT",
-        "CONFIG_ERROR",
-        "INVALID_RESPONSE",
+        *REFRESH_CDP_ERRORS[:3],
         "INCOMPLETE_RESULT",
-        "AUTH_REQUIRED",
-        "BROWSER_UNAVAILABLE",
-        "LOCKED",
-        "TIMEOUT",
-        "BUSINESS_QUERY_FAILED",
+        *REFRESH_CDP_ERRORS[3:],
     ),
     examples=("dogopencli refresh collection va capacity",),
     next=("dogopencli help collection va capacity list",),

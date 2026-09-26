@@ -126,3 +126,25 @@ This UAT covers the six collection capabilities affected by this refactor.
 Payment production inquiries, authentication lifecycle UAT and wheel-install UAT
 were not rerun in this session. No live backend write or forced failure was
 needed to establish the reported acceptance.
+
+## Review follow-up validation
+
+The subsequent review cleanup shares refresh effects/constraints/errors between
+payment and collection declarations, restores separate output dictionaries for
+the moved cost/SLA/VA refresh nodes, and exposes VA result metadata through
+`VaRuleSnapshot.meta()` instead of its internal cached query. Acquisition,
+publication and refusal policy are unchanged.
+
+The follow-up passed 111 catalog/help/inquiry-module tests and all 93 VA CLI SIT
+cases. All 66 command help documents and handler bindings still match the
+pre-cleanup catalog, including error and navigation ordering. The registration
+test also proves that a new plugin appends its refresh declaration without
+editing the existing compatibility-order reservations. Ruff lint/format,
+documentation guard and whitespace checks passed.
+
+The 951-test full-suite result and the 2,010 production UAT assertions above
+belong to the original refactor (`bec1629`), not a new production run of this
+cleanup. Production queries were not repeated for metadata encapsulation and
+identical static command declarations. SLA inquiry extraction remains outside
+the three selected refactor candidates; its existing all-detail policy is not
+changed by the VA-specific inquiry module.

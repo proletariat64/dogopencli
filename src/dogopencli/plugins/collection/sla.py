@@ -319,7 +319,7 @@ COLLECTION_SLA_GET_NODE = BizNode(
 
 REFRESH_NODE = BizNode(
     effects=dict(REFRESH_CDP_EFFECTS),
-    output=REFRESH_OUTPUT,
+    output=dict(REFRESH_OUTPUT),
     path=("refresh", "collection", "sla"),
     summary=(
         "Refresh collection SLA configurations: full list and "

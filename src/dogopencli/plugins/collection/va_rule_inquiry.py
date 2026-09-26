@@ -28,12 +28,18 @@ from . import va_rule
 class VaRuleSnapshot:
     """Validated rule/detail pairs with domain-aware offline detail lookup."""
 
-    cached: CachedQuery
+    _cached: CachedQuery
     _pairs: list[dict[str, Any]]
 
     @property
     def rows(self) -> list[dict[str, Any]]:
         return [pair["rule"] for pair in self._pairs]
+
+    def meta(
+        self, matched_total: int, returned_count: int, *, offset: int = 0
+    ) -> dict[str, Any]:
+        """Expose result metadata without exposing serialized cache storage."""
+        return self._cached.meta(matched_total, returned_count, offset=offset)
 
     def detail(self, identity: str) -> dict[str, Any]:
         pair = next(
@@ -41,7 +47,7 @@ class VaRuleSnapshot:
             None,
         )
         if pair is None:
-            if not self.cached.snapshot.backend_complete:
+            if not self._cached.snapshot.backend_complete:
                 raise CliError(
                     INCOMPLETE_RESULT,
                     "cannot confirm absence in incomplete VA rule snapshot",

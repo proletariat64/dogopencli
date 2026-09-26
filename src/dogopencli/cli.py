@@ -1144,7 +1144,7 @@ def cmd_collection_va_rules_list(args: argparse.Namespace) -> int:
         )
         records = cap.sort_records(snapshot.rows)
         window = records[offset:] if args.all else records[offset : offset + limit]
-        meta = snapshot.cached.meta(len(records), len(window), offset=offset)
+        meta = snapshot.meta(len(records), len(window), offset=offset)
     return _emit_window(args, cap, window, meta, fields)
 
 
@@ -1179,7 +1179,7 @@ def cmd_collection_va_rules_get(args: argparse.Namespace) -> int:
             now=_now(),
         )
         detail = snapshot.detail(args.id)
-        meta = snapshot.cached.meta(1, 1)
+        meta = snapshot.meta(1, 1)
     return _emit_object(args, cap, detail, meta, fields)
 
 

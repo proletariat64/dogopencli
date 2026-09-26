@@ -141,7 +141,7 @@ COLLECTION_COST_LIST_NODE = BizNode(
 
 REFRESH_NODE = BizNode(
     effects=dict(REFRESH_CDP_EFFECTS),
-    output=REFRESH_OUTPUT,
+    output=dict(REFRESH_OUTPUT),
     path=("refresh", "collection", "cost"),
     summary="Rebuild the collection transaction-cost cache "
     "through the existing CDP session.",

@@ -321,7 +321,7 @@ COLLECTION_VA_RULE_GET_NODE = BizNode(
 
 REFRESH_NODE = BizNode(
     effects=dict(REFRESH_CDP_EFFECTS),
-    output=REFRESH_OUTPUT,
+    output=dict(REFRESH_OUTPUT),
     path=("refresh", "collection", "va"),
     summary=(
         "Refresh collection VA rules: full list and every true detail; "
