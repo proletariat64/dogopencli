@@ -1,6 +1,6 @@
 # Dogopencli
 
-将产品运营网站的查询能力转为 Python CLI，供单机单人使用。v0.1.0 的既定范围聚焦付款产品；v0.1.4 增加收款交易成本，v0.1.6 增加收款 SLA 配置，v0.1.7 增加收款 VA 规则查询，v0.1.8 增加收款 VA 容量监控。所有业务操作仅查询，不创建、修改或审批任何生产配置。
+将产品运营网站的查询能力转为 Python CLI，供单机单人使用。v0.1.0 的既定范围聚焦付款产品；v0.1.4 增加收款交易成本，v0.1.6 增加收款 SLA 配置，v0.1.7 增加收款 VA 规则查询，v0.1.8 增加收款 VA 容量监控，v0.1.10 增加收款清算系统与卡模板配置查询。所有业务操作仅查询，不创建、修改或审批任何生产配置。
 
 Channel 后端故障期间使用显式离线替代源推进工程；正式 CDP 架构保持，真实 Channel 全量验收在后端修复后进行（见[规格 Issue #1](https://github.com/proletariat64/dogopencli/issues/1)、[ADR 0005](docs/adr/0005-channel-snapshot-source.md)）。Cost/SLA/VA 规则查询走真实 CDP 路径。
 
