@@ -34,3 +34,9 @@ _Avoid_: 将收款交易成本配置简称为实际收款费用，或与 VA 费�
 **收款 SLA 配置（Collection SLA Config）**：按收款业务线、主体、币种与地区约定的
 时效目标，包含端到端和内部处理时长以及节假日限制。详情与列表摘要分别表示。
 _Avoid_: 将收款 SLA 配置称为付款 SLA 基线，或将配置目标等同于实际订单耗时。
+
+**收款 VA 规则（Collection VA Rule）**：在银行账户 VA 规则之上附加主体、场景与地区等
+业务维度、用于后续 VA 申请匹配的规则配置；以字符串 `vaRuleId` 标识，列表与真实详情
+分别表示。
+_Avoid_: 将收款 VA 规则与 `bankRuleId` 指向的银行账户 VA 规则（bankAccountVaRule，
+不在查询范围）、VA 池/容量监控/PTR 库，或已撤回的 va-value 候选命名混用。

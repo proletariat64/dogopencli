@@ -57,6 +57,7 @@
 - [ADR 0004：CLI 与登录流程](adr/0004-cli-runtime-boundaries.md)：JSON 输出、三个内置领域插件、`dogopencli login` 管理并校验专用 Chrome。
 
 - [ADR 0008：收款 SLA 配置查询](adr/0008-collection-sla-configurations.md)：独立对象、完整列表与详情、离线快照、本地筛选及完整性边界。
+- [ADR 0009：收款 VA 规则查询](adr/0009-collection-va-rules.md)：一页大页采集与失败保留、列表/详情共享字段一致性、稳定 ID 排序、错误分类及银行账户 VA 规则排除。
 
 ## 协作规范
 

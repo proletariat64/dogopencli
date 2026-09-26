@@ -30,6 +30,9 @@ kind = "cdp"
 
 [sources.collection_sla]
 kind = "cdp"
+
+[sources.collection_va]
+kind = "cdp"
 ```
 
 配置示例见被 Git 忽略的 `tmp/channel-2026-09-11/source.toml`；整理集为私有数据，不随 Git 分发。
@@ -253,3 +256,45 @@ dogopencli collection sla configs list --entity ENTITY_CODE --business-line BUSI
 ```
 
 Use actual returned entity/business codes in place of the example values.
+
+### Collection VA rules
+
+[Issue #31](https://github.com/proletariat64/dogopencli/issues/31) specifies a
+separate collection VA rule scope, implemented under
+[Issue #32](https://github.com/proletariat64/dogopencli/issues/32). Configure
+`[sources.collection_va] kind = "cdp"`, then:
+
+```bash
+dogopencli help collection va rules list
+dogopencli describe collection va rules get
+dogopencli refresh collection va
+dogopencli collection va rules list --all --require-complete
+dogopencli collection va rules get --id VA_RULE_ID
+dogopencli collection va rules get --id VA_RULE_ID --live
+```
+
+Replace `VA_RULE_ID` with a returned string `vaRuleId`. Default reads are
+entirely offline; live inquiries never publish or silently fall back. Refresh
+validates the complete list and every true detail — the requested ID and all
+eight shared business fields must agree — before atomically replacing the
+isolated `collection.va.rules.list:rules:cdp` snapshot. Any failure preserves
+the old snapshot. `vaRuleId` is the VA rule identity; `bankRuleId` references a
+distinct bank-account VA rule object and is never accepted as a VA rule ID. The
+related bank-account rule detail (`bankAccountVaRule`) is out of scope and
+never queried or merged.
+
+The acquisition is one verified one-based `pageNo=1,pageSize=1000` request;
+overflow, duplicates, invalid metadata or truncation fail with
+`INCOMPLETE_RESULT` instead of speculative paging. 1000 rows is an observed
+capacity at the current scale, not a server-side guarantee; no historical count
+is hardcoded. A null or invalid live detail (`resultObj=null`) is
+`INVALID_RESPONSE`, not proof of a missing record; only a confirmed absent ID
+in a complete local snapshot is `NOT_FOUND`.
+
+List rows and true details stay distinct raw objects. List `countries` and
+detail `creditAreas` keep their different names and are never merged or
+equated. `vaWarningInfo` is optional; its contact details never enter fixtures,
+logs or docs. The list exposes no filters; get selects only by ID. Stable-ID
+sorting precedes display windows: ASCII digit IDs sort numerically with the
+original string as tie-breaker, other IDs lexically afterward; stored string
+IDs never change.
