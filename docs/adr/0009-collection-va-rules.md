@@ -1,6 +1,9 @@
 # Collection VA rule inquiries
 
-Status: accepted for implementation — issues #31–32
+Status: accepted for implementation — issues #31–32. The all-detail publish
+requirement below is amended by
+[ADR 0010](0010-collection-va-partial-detail-tolerance.md), which tolerates only
+an explicit backend refusal of one detail.
 
 Collection VA rules use `collection va rules list/get` and
 `refresh collection va`. They model the rules that add business dimensions
@@ -42,8 +45,12 @@ with its true detail on all eight shared business fields. List rows and
 details stay distinct raw objects, and the differently named list `countries`
 and detail `creditAreas` are never merged, renamed or equated. Refresh
 atomically publishes the validated rule/detail pairs to
-`collection.va.rules.list:rules:cdp` only after every check. Any error or
-interruption preserves the previous snapshot. This is a consistency check, not
+`collection.va.rules.list:rules:cdp` only after every check, except for the one
+tolerated failure class in ADR 0010: a detail the backend explicitly refuses
+(HTTP 200 with `success` set to `false`) publishes that rule's real list row
+with a null `detail`, leaves `backend_complete` true, sets `dataset_complete`
+false, and fails with `INCOMPLETE_RESULT` after publication. Every other error
+or interruption preserves the previous snapshot. This is a consistency check, not
 a claim of transactional isolation on the backend.
 
 Default queries read only this snapshot. Explicit live queries never modify it
@@ -59,7 +66,9 @@ A null or invalid live detail — including a successful envelope with
 unverified. A confirmed absent ID in a complete local snapshot is `NOT_FOUND`,
 following the payment SLA baseline and collection SLA configuration
 precedents; absence cannot be confirmed in an incomplete snapshot, which is
-`INCOMPLETE_RESULT`. HTTP 401 is `AUTH_REQUIRED`; HTTP 403 remains
+`INCOMPLETE_RESULT`. An ID present in the snapshot whose detail the backend
+refused is also `INCOMPLETE_RESULT` — the rule exists, and its list row is never
+returned as a detail (ADR 0010). HTTP 401 is `AUTH_REQUIRED`; HTTP 403 remains
 `BUSINESS_QUERY_FAILED` with `HTTP 403` retained in the message, is not
 retried, and never means an empty scope or `NOT_FOUND`. Unknown backend
 business-error envelopes stay generic: no verified VA-specific permission

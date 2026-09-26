@@ -277,8 +277,13 @@ Replace `VA_RULE_ID` with a returned string `vaRuleId`. Default reads are
 entirely offline; live inquiries never publish or silently fall back. Refresh
 validates the complete list and every true detail — the requested ID and all
 eight shared business fields must agree — before atomically replacing the
-isolated `collection.va.rules.list:rules:cdp` snapshot. Any failure preserves
-the old snapshot. `vaRuleId` is the VA rule identity; `bankRuleId` references a
+isolated `collection.va.rules.list:rules:cdp` snapshot. Any failure except one
+preserves the old snapshot: when the backend explicitly refuses a single detail
+(`success=false`), that rule still publishes with its real list row and a null
+`detail`, the snapshot is marked `dataset_complete=false`, and the command then
+fails with `INCOMPLETE_RESULT` naming how many details were refused instead of
+reporting success ([ADR 0010](docs/adr/0010-collection-va-partial-detail-tolerance.md)).
+`vaRuleId` is the VA rule identity; `bankRuleId` references a
 distinct bank-account VA rule object and is never accepted as a VA rule ID. The
 related bank-account rule detail (`bankAccountVaRule`) is out of scope and
 never queried or merged.
@@ -289,7 +294,10 @@ overflow, duplicates, invalid metadata or truncation fail with
 capacity at the current scale, not a server-side guarantee; no historical count
 is hardcoded. A null or invalid live detail (`resultObj=null`) is
 `INVALID_RESPONSE`, not proof of a missing record; only a confirmed absent ID
-in a complete local snapshot is `NOT_FOUND`.
+in a complete local snapshot is `NOT_FOUND`. `--require-complete` additionally
+rejects a snapshot with refused details, and `get` on such a rule is
+`INCOMPLETE_RESULT` — the rule exists, so its list row is never returned in
+place of the detail.
 
 List rows and true details stay distinct raw objects. List `countries` and
 detail `creditAreas` keep their different names and are never merged or

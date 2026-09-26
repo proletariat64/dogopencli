@@ -6,11 +6,11 @@
 - [DI 风格渐进式 CLI 帮助（GitHub Issue #13）](https://github.com/proletariat64/dogopencli/issues/13)：计划与规格已发布，标签 `ready-for-agent`；无参数导航、JSON/text、完整命令目录及离线帮助验收，尚未实现。
 
 - [Data helper v1（GitHub Issue #16）](https://github.com/proletariat64/dogopencli/issues/16)：四个付款查询叶子的离线 schema、字段证据与读取指引；[可运行命令与版本化机器契约](../README.md#data-helper)。
-- [收款交易成本查询规划（GitHub Issue #21）](https://github.com/proletariat64/dogopencli/issues/21)：当前开发分支实现固定类型的交易成本列表、live、刷新及离线描述；VA 规则、VA 费用及池/实体账户等仍排除。
+- [收款交易成本查询规划（GitHub Issue #21）](https://github.com/proletariat64/dogopencli/issues/21)：当前开发分支实现固定类型的交易成本列表、live、刷新及离线描述；VA 费用及池/实体账户等仍排除，VA 规则另见 #31。
 
 - [收款 SLA 配置查询（GitHub Issue #27）](https://github.com/proletariat64/dogopencli/issues/27)：列表、真实详情、原子刷新与四项本地筛选；实施及验收见下方报告。
 
-- [收款 VA 规则查询（GitHub Issue #31）](https://github.com/proletariat64/dogopencli/issues/31)：列表、主详情、原子刷新规格；契约证据见 VA 规则研究与当日契约复核。
+- [收款 VA 规则查询（GitHub Issue #31）](https://github.com/proletariat64/dogopencli/issues/31)：列表、主详情、原子刷新规格；契约证据见 VA 规则研究与当日契约复核；其中“全量详情方可发布”已由 [ADR 0010](adr/0010-collection-va-partial-detail-tolerance.md) 收窄为仅容忍后端明确拒绝的单个详情。
 
 ## 研究报告
 
@@ -33,6 +33,7 @@
 | General | [收款 SLA 实施与 UAT](research/general/2026-09-26-collection-sla-implementation-uat.md) | 全参数矩阵、151 项生产只读与本地验收、SIT 和修复后的门禁记录 |
 | General | [收款 SLA PR 审查处理](research/general/2026-09-26-collection-sla-review.md) | Kimi 与 GitHub 审查逐项核验、修复及回归证据 |
 | General | [收款 VA 规则契约复核](research/general/2026-09-26-collection-va-rule-contract-recheck.md) | 当前 911 条列表/详情契约与 H2 一致;分页、ID 筛选、字段重验及未验证缺口 |
+| General | [收款 VA 规则实现与验收](research/general/2026-09-26-collection-va-rule-implementation-uat.md) | 911 条生产只读 UAT、71 条详情拒绝的定位与容错发布验证、门限结果与证据边界 |
 | Payment | [付款产品设计与运行态发现](research/payment/2026-09-08-payment-operations.md) | 产品模型、27 个菜单、查询字段、接口证据、权限限制和 CLI 候选范围 |
 
 ## 查询契约补充
@@ -58,6 +59,7 @@
 
 - [ADR 0008：收款 SLA 配置查询](adr/0008-collection-sla-configurations.md)：独立对象、完整列表与详情、离线快照、本地筛选及完整性边界。
 - [ADR 0009：收款 VA 规则查询](adr/0009-collection-va-rules.md)：一页大页采集与失败保留、列表/详情共享字段一致性、稳定 ID 排序、错误分类及银行账户 VA 规则排除。
+- [ADR 0010：收款 VA 规则详情容错](adr/0010-collection-va-partial-detail-tolerance.md)：修订 ADR 0009 的全量发布约束，仅容忍后端明确拒绝的单个详情，发布 `detail=null` 且 `dataset_complete=false` 的部分快照并以 `INCOMPLETE_RESULT` 结束；其余失败仍保留旧快照。
 
 ## 协作规范
 

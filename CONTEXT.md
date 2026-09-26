@@ -40,3 +40,7 @@ _Avoid_: 将收款 SLA 配置称为付款 SLA 基线，或将配置目标等同�
 分别表示。
 _Avoid_: 将收款 VA 规则与 `bankRuleId` 指向的银行账户 VA 规则（bankAccountVaRule，
 不在查询范围）、VA 池/容量监控/PTR 库，或已撤回的 va-value 候选命名混用。
+
+**详情拒绝（Detail Refusal）**：后端明确拒绝单个已列出对象的详情读取（HTTP 200 且
+`success=false`）；列表行仍是真实配置数据，与“记录不存在”和“列表覆盖不完整”分别表示。
+_Avoid_: 将详情拒绝称为详情为空、缺失记录或查询成功。
