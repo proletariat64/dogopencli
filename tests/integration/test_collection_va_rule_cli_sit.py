@@ -88,6 +88,11 @@ def detail(identity="1", **changes):
     return {"status": 200, "body": {"success": True, "resultObj": result}}
 
 
+def refusal():
+    """The observed platform refusal: HTTP 200 declaring success=false."""
+    return {"status": 200, "body": {"success": False, "errorCode": "SYNTHETIC-REFUSAL"}}
+
+
 def listing(run_cli, *flags):
     return run_cli(["collection", "va", "rules", "list", *flags])
 
@@ -347,7 +352,8 @@ def test_list_rejects_incomplete_or_bad_data(
 @pytest.mark.parametrize(
     "body,expected",
     [
-        ({"success": False}, "BUSINESS_QUERY_FAILED"),
+        ({"errorCode": "SYNTHETIC-REFUSAL"}, "BUSINESS_QUERY_FAILED"),
+        ({"success": None}, "BUSINESS_QUERY_FAILED"),
         ({"success": True, "resultObj": None}, "INVALID_RESPONSE"),
         (
             {"success": True, "resultObj": detail("wrong")["body"]["resultObj"]},
@@ -362,6 +368,57 @@ def test_detail_failure_preserves_snapshot(run_cli, envelope, setup, body, expec
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == expected
     assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_detail_refusal_boundary_preserves_snapshot(run_cli, envelope, setup, status):
+    """Only an explicit success=false refusal is tolerated (ADR 0010)."""
+    old = seed(run_cli, setup)
+    setup.state.business_script.extend(
+        [page([row("1"), row("2")]), detail("1"), {"status": status, "body": {}}]
+    )
+    result = refresh(run_cli)
+    assert result[0] == 1
+    assert envelope(result[1])["error"]["code"] == (
+        "AUTH_REQUIRED" if status == 401 else "BUSINESS_QUERY_FAILED"
+    )
+    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+
+
+def test_refused_detail_publishes_partial_snapshot(run_cli, envelope, setup):
+    rows = [row("2"), row("20")]
+    setup.state.business_script.extend([page(rows), detail("2"), refusal()])
+    code, out, _ = refresh(run_cli)
+    assert code == 1
+    error = envelope(out)["error"]
+    assert error["code"] == "INCOMPLETE_RESULT"
+    assert "1/2" in error["message"]
+    assert "SYNTHETIC-REFUSAL" not in out
+    listed = envelope(listing(run_cli, "--all")[1])
+    assert [record["vaRuleId"] for record in listed["data"]] == ["2", "20"]
+    # The list scope is still complete; only the detail dataset is not.
+    assert listed["meta"]["complete"] is True
+    assert listed["meta"]["dataset_complete"] is False
+
+
+def test_partial_snapshot_reads_report_the_missing_detail(run_cli, envelope, setup):
+    rows = [row("2"), row("20")]
+    setup.state.business_script.extend([page(rows), detail("2"), refusal()])
+    assert refresh(run_cli)[0] == 1
+    missing = getting(run_cli, "--id", "20")
+    assert missing[0] == 1
+    assert envelope(missing[1])["error"]["code"] == "INCOMPLETE_RESULT"
+    # A refusal never answers with the list row.
+    assert envelope(missing[1])["data"] is None
+    healthy = envelope(getting(run_cli, "--id", "2")[1])
+    assert healthy["data"] == detail("2")["body"]["resultObj"]
+    assert envelope(getting(run_cli, "--id", "999")[1])["error"]["code"] == "NOT_FOUND"
+    for result in [
+        listing(run_cli, "--require-complete"),
+        getting(run_cli, "--id", "2", "--require-complete"),
+    ]:
+        assert result[0] == 1
+        assert envelope(result[1])["error"]["code"] == "INCOMPLETE_RESULT"
 
 
 DETAIL_REQUIRED_FIELDS = [
