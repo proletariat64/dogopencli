@@ -145,6 +145,10 @@ synthetic SIT coverage.
 
 ## Remaining evidence limits
 
+- The real 911-detail refresh used about 11 minutes of the shared 900-second
+  acquisition budget. Scope growth or transient retries can therefore trip
+  `TIMEOUT`, which publishes nothing; no budget constant was widened in this
+  slice because it is shared with payment and collection queries.
 - 911 rows and 71 refusals are a current observation, not an invariant; the
   1000-row page remains observed capacity rather than a server guarantee.
 - A refresh always replaces the snapshot with the latest acquisition, so a later
