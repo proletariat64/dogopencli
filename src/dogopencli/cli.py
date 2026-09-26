@@ -39,7 +39,7 @@ from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
 from .plugins import get_capability
-from .plugins.collection import network_config, va_rule_inquiry
+from .plugins.collection import account_isolation, network_config, va_rule_inquiry
 from .plugins.collection import sla as collection_sla
 from .plugins.collection import va_capacity as collection_va_capacity
 from .plugins.collection import va_rule as collection_va
@@ -1221,6 +1221,7 @@ def _refresh_complete_collection_list(
     cap: (
         collection_va_capacity.CollectionVaCapacityCapability
         | network_config.NetworkConfigCapability
+        | account_isolation.AccountIsolationCapability
     ),
     scope_name: str,
 ) -> int:
@@ -1312,7 +1313,8 @@ def _network_config_cached(
     args: argparse.Namespace,
     config: config_mod.Config,
     source: config_mod.SourceConfig,
-    cap: network_config.NetworkConfigCapability,
+    cap: network_config.NetworkConfigCapability
+    | account_isolation.AccountIsolationCapability,
 ) -> tuple[CachedQuery, list[dict[str, Any]]]:
     cached = read_cached_query(
         config,
@@ -1332,7 +1334,9 @@ def _network_config_cached(
 
 
 def _list_network_config(
-    args: argparse.Namespace, cap: network_config.NetworkConfigCapability
+    args: argparse.Namespace,
+    cap: network_config.NetworkConfigCapability
+    | account_isolation.AccountIsolationCapability,
 ) -> int:
     limit, offset, fields = _display_options(args)
     filters: dict[str, list[str]] = {}
@@ -1368,6 +1372,16 @@ def _list_network_config(
 
 def cmd_collection_clearing_system_list(args: argparse.Namespace) -> int:
     return _list_network_config(args, network_config.CLEARING_SYSTEM)
+
+
+def cmd_collection_account_isolation_list(args: argparse.Namespace) -> int:
+    return _list_network_config(args, account_isolation.ACCOUNT_ISOLATION)
+
+
+def cmd_refresh_collection_account_isolation(args: argparse.Namespace) -> int:
+    return _refresh_complete_collection_list(
+        account_isolation.ACCOUNT_ISOLATION, "account-isolation configuration"
+    )
 
 
 def cmd_refresh_collection_clearing_system(args: argparse.Namespace) -> int:

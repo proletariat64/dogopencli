@@ -33,6 +33,7 @@ GROUPS = [
     ["refresh"],
     ["refresh", "payment"],
     ["collection"],
+    ["collection", "account-isolation"],
     ["collection", "cost"],
     ["collection", "sla"],
     ["collection", "sla", "configs"],
@@ -51,7 +52,15 @@ GROUP_CHILDREN = {
     ("payment", "sla", "baselines"): ["list", "get"],
     ("refresh",): ["payment", "collection"],
     ("refresh", "payment"): ["channel", "cost", "sla"],
-    ("collection",): ["clearing-system", "card-template", "sla", "cost", "va"],
+    ("collection",): [
+        "clearing-system",
+        "card-template",
+        "account-isolation",
+        "sla",
+        "cost",
+        "va",
+    ],
+    ("collection", "account-isolation"): ["list"],
     ("collection", "sla"): ["configs"],
     ("collection", "sla", "configs"): ["list", "get"],
     ("collection", "cost"): ["list"],
@@ -64,6 +73,7 @@ GROUP_CHILDREN = {
         "cost",
         "sla",
         "va",
+        "account-isolation",
     ],
 }
 

@@ -130,6 +130,21 @@ def get_capability(name: str) -> Capability:
 
 
 def _load_builtins() -> None:
+    from .collection.account_isolation import (
+        ACCOUNT_ISOLATION,
+    )
+    from .collection.account_isolation import (
+        GROUP_NODE as isolation_group,
+    )
+    from .collection.account_isolation import (
+        LIST_NODE as isolation_list,
+    )
+    from .collection.account_isolation import (
+        REFRESH_NODE as isolation_refresh,
+    )
+    from .collection.account_isolation_reading import (
+        description as isolation_description,
+    )
     from .collection.cost import COLLECTION_COST_CAPABILITY, COLLECTION_COST_LIST_NODE
     from .collection.cost import REFRESH_NODE as cost_refresh
     from .collection.network_config import (
@@ -214,6 +229,14 @@ def _load_builtins() -> None:
     register(COST_CAPABILITY, commands=(COST_LIST_NODE,), description=description)
     register(
         SLA_CAPABILITY, commands=(SLA_LIST_NODE, SLA_GET_NODE), description=description
+    )
+
+    register(
+        ACCOUNT_ISOLATION,
+        commands=(isolation_list,),
+        refresh_commands=(isolation_refresh,),
+        groups=(isolation_group,),
+        description=isolation_description,
     )
 
 
