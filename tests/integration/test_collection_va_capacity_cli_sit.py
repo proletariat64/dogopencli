@@ -190,7 +190,54 @@ def test_list_rejects_incomplete_or_bad_data(
     assert listing(run_cli)[1] == old
 
 
-def test_changing_total_mid_sweep_fails(run_cli, envelope, setup):
+def test_running_estimate_total_converges_and_completes(run_cli, envelope, setup):
+    """Interim totals are running estimates; only the final page validates.
+
+    A full first page reporting an estimate equal to the page size must not
+    terminate the sweep, and a converging total on the short last page is
+    the completeness proof (#37 contract).
+    """
+    first = bulk_rows(1000)
+    last = [row("999999")]
+    setup.state.business_script.extend(
+        [
+            page(first, totalCount=1000),
+            page(last, pageNo=2, totalCount=1001),
+        ]
+    )
+    code, out, _ = refresh(run_cli)
+    assert code == 0, out
+    assert envelope(out)["data"]["row_count"] == 1001
+    assert envelope(out)["meta"]["complete"] is True
+    assert setup.state.business_requests == [
+        {"pageNo": 1, "pageSize": 1000},
+        {"pageNo": 2, "pageSize": 1000},
+    ]
+
+
+def test_exact_full_pages_end_on_beyond_end_empty_page(run_cli, envelope, setup):
+    """A scope that is an exact page-size multiple ends on a zero-row page."""
+    first = bulk_rows(1000)
+    second = [row(f"{2000 + index}") for index in range(1000)]
+    setup.state.business_script.extend(
+        [
+            page(first, totalCount=1000),
+            page(second, pageNo=2, totalCount=2000),
+            page([], pageNo=3, totalCount=2000),
+        ]
+    )
+    code, out, _ = refresh(run_cli)
+    assert code == 0, out
+    assert envelope(out)["data"]["row_count"] == 2000
+    assert setup.state.business_requests == [
+        {"pageNo": 1, "pageSize": 1000},
+        {"pageNo": 2, "pageSize": 1000},
+        {"pageNo": 3, "pageSize": 1000},
+    ]
+
+
+def test_converged_total_mismatch_is_incomplete(run_cli, envelope, setup):
+    """Interim totals may move; a final total below coverage is incomplete."""
     old = seed(run_cli, setup)
     setup.state.business_script.extend(
         [
@@ -198,6 +245,19 @@ def test_changing_total_mid_sweep_fails(run_cli, envelope, setup):
             page(bulk_rows(500), pageNo=2, totalCount=1400),
         ]
     )
+    result = refresh(run_cli)
+    assert result[0] == 1
+    assert envelope(result[1])["error"]["code"] == "INCOMPLETE_RESULT"
+    assert listing(run_cli)[1] == old
+
+
+def test_empty_first_page_with_wrong_page_echo_preserves_snapshot(
+    run_cli, envelope, setup
+):
+    """An empty page does not waive the echo check; garbage must not clear
+    the previous snapshot."""
+    old = seed(run_cli, setup)
+    setup.state.business_script.append(page([], pageNo=99, totalCount=0))
     result = refresh(run_cli)
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"

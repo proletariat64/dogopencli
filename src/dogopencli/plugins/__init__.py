@@ -32,6 +32,11 @@ class EndpointContract:
     consistency_field: str | None = None
     # Exact required request values for capabilities with a fixed acquisition.
     fixed_body_values: tuple[tuple[str, str | int], ...] = ()
+    # True when the backend's interim totalCount is a running estimate
+    # (VA capacity): acquire until the first short page, tolerate changing
+    # interim totals, and let only the final converged total validate
+    # completeness. False keeps the verified fixed-total contract.
+    running_total: bool = False
 
 
 @dataclass(frozen=True)

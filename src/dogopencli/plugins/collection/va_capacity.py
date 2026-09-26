@@ -43,6 +43,9 @@ LIST_CONTRACT = EndpointContract(
     allowed_body_keys=frozenset({"pageNo", "pageSize"}),
     # pageNo varies across the verified multi-page sweep; pageSize is fixed.
     fixed_body_values=(("pageSize", PAGE_SIZE),),
+    # Interim totalCount is a running estimate; only the final converged
+    # total on the first short page validates completeness (#37).
+    running_total=True,
 )
 
 # Accepted local filters: CLI flag -> raw row field (frozen in #36).
@@ -141,7 +144,11 @@ class CollectionVaCapacityCapability:
         # A full page may have more rows behind it; only a short page ends the
         # scope. The shared collector checks the final total against coverage.
         total_pages = -(-total // PAGE_SIZE)
-        if len(rows) > PAGE_SIZE or (rows and len(rows) > total):
+        # Interim totals are estimates, so a page is never rejected for
+        # exceeding the current estimate; the collector's converged-total
+        # check is the only coverage validation. A page larger than the
+        # requested size remains invalid under any total semantics.
+        if len(rows) > PAGE_SIZE:
             raise CliError(
                 INCOMPLETE_RESULT, "VA capacity page exceeds its declared scope"
             )
