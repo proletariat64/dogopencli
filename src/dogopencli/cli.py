@@ -40,6 +40,8 @@ from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
 from .plugins import get_capability
 from .plugins.collection import sla as collection_sla
+from .plugins.collection import va_rule as collection_va
+from .plugins.envelope import is_business_refusal
 from .plugins.payment.channel import assign_seqids
 from .plugins.payment.sla import SLA_DETAIL, detail_body
 from .plugins.payment.sla import parse_detail as parse_payment_sla_detail
@@ -1091,6 +1093,209 @@ def cmd_collection_sla_get(args: argparse.Namespace) -> int:
                 )
             raise CliError(
                 NOT_FOUND, "SLA configuration is not present in the cached snapshot"
+            )
+        meta = cached.meta(1, 1)
+    return _emit_object(args, cap, detail, meta, fields)
+
+
+def _collection_va_cached(
+    args: argparse.Namespace,
+    config: config_mod.Config,
+    source: config_mod.SourceConfig,
+) -> tuple[CachedQuery, list[dict[str, Any]]]:
+    cap = collection_va.COLLECTION_VA_RULES
+    cached = read_cached_query(
+        config,
+        source,
+        cap.name,
+        cap.default_scope,
+        refresh_command="refresh collection va",
+        require_fresh=args.require_fresh,
+        require_complete=args.require_complete,
+        now=_now(),
+    )
+    if args.require_complete and not cached.snapshot.dataset_complete:
+        raise CliError(
+            INCOMPLETE_RESULT,
+            "cached VA rule snapshot has details the backend refused;"
+            " run: dogopencli refresh collection va",
+        )
+    pairs = []
+    for _, body in cached.stored:
+        pair = parse(body)
+        collection_va.validate_stored_pair(pair)
+        pairs.append(pair)
+    if len(pairs) != cached.snapshot.row_count or len(
+        {pair["rule"]["vaRuleId"] for pair in pairs}
+    ) != len(pairs):
+        raise CliError(INCOMPLETE_RESULT, "cached VA rule coverage is invalid")
+    return cached, pairs
+
+
+def _fetch_collection_va_detail(
+    transport: CdpQueryTransport,
+    identity: str,
+    deadline: float,
+    *,
+    tolerate_refusal: bool = False,
+) -> dict[str, Any] | None:
+    response = collect_mod._execute_bounded(
+        collection_va.COLLECTION_VA_RULES_DETAIL,
+        transport,
+        {"vaRuleId": identity},
+        deadline,
+    )
+    if tolerate_refusal and is_business_refusal(response.body):
+        return None
+    return collection_va.parse_detail(response.body, identity)
+
+
+def cmd_refresh_collection_va(args: argparse.Namespace) -> int:
+    cap = collection_va.COLLECTION_VA_RULES
+    config = config_mod.load([cap.source_config_key])
+    source = _cdp_source(config, cap.source_config_key)
+    store = Cache(config.cache_path)
+    ns = namespace(cap.name, cap.default_scope, source.kind)
+    with store.refresh_lock():
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            result = collect_mod.collect_scope(
+                cap,
+                session.transport(cap),
+                cap.default_scope,
+                progress=_progress,
+            )
+            if not result.complete:
+                raise CliError(
+                    INCOMPLETE_RESULT, "collection VA rule list is incomplete"
+                )
+            transport = session.transport(collection_va.COLLECTION_VA_RULES_DETAIL)
+            pairs = []
+            refused = 0
+            for record in cap.sort_records(result.records):
+                detail = _fetch_collection_va_detail(
+                    transport,
+                    record[cap.id_field],
+                    result.deadline,
+                    tolerate_refusal=True,
+                )
+                if detail is None:
+                    refused += 1
+                else:
+                    collection_va.validate_pair(record, detail)
+                pairs.append({"rule": record, "detail": detail})
+                print(
+                    f"refresh: detail "
+                    f"{'refused' if detail is None else 'collected'} "
+                    f"{len(pairs)}/{len(result.records)}",
+                    file=sys.stderr,
+                )
+        fetched_at = _now().isoformat()
+        snapshot = SnapshotMeta(
+            namespace=ns,
+            capability=cap.name,
+            scope=cap.default_scope,
+            source_kind=source.kind,
+            snapshot_id=hashlib.sha256(canonical(pairs).encode()).hexdigest(),
+            dataset_id=None,
+            simulated=False,
+            backend_complete=True,
+            dataset_complete=refused == 0,
+            fetched_at=fetched_at,
+            loaded_at=_now().isoformat(),
+            source_observed_from=None,
+            source_observed_to=None,
+            row_count=len(pairs),
+        )
+        collect_mod.remaining_seconds(result.deadline)
+        store.publish(
+            snapshot, [(i, canonical(pair)) for i, pair in enumerate(pairs, 1)]
+        )
+    if refused:
+        raise CliError(
+            INCOMPLETE_RESULT,
+            f"published {len(pairs) - refused}/{len(pairs)} collection VA rule"
+            f" details; {refused} refused by the backend",
+        )
+    _emit(
+        {"namespace": ns, "published": True, "row_count": len(pairs)},
+        snapshot_meta(
+            "cache",
+            snapshot,
+            is_stale(snapshot, config.ttl_hours, _now()),
+            len(pairs),
+            len(pairs),
+            False,
+        ),
+    )
+    return EXIT_OK
+
+
+def cmd_collection_va_rules_list(args: argparse.Namespace) -> int:
+    cap = collection_va.COLLECTION_VA_RULES
+    limit, offset, fields = _display_options(args)
+    config = config_mod.load([cap.source_config_key])
+    source = _cdp_source(config, cap.source_config_key)
+    if args.live:
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            result = collect_mod.collect_scope(
+                cap, session.transport(cap), cap.default_scope
+            )
+        if not result.complete:
+            raise CliError(INCOMPLETE_RESULT, "collection VA rule list is incomplete")
+        records = cap.sort_records(result.records)
+        window = records[offset:] if args.all else records[offset : offset + limit]
+        meta = _live_meta(
+            source, cap.default_scope, True, len(records), len(window), offset
+        )
+    else:
+        cached, pairs = _collection_va_cached(args, config, source)
+        records = cap.sort_records([pair["rule"] for pair in pairs])
+        window = records[offset:] if args.all else records[offset : offset + limit]
+        meta = cached.meta(len(records), len(window), offset=offset)
+    return _emit_window(args, cap, window, meta, fields)
+
+
+def cmd_collection_va_rules_get(args: argparse.Namespace) -> int:
+    if not args.id.strip():
+        raise _argument_error("--id must be nonempty")
+    fields = None
+    if args.fields is not None:
+        fields = [field.strip() for field in args.fields.split(",") if field.strip()]
+        if not fields:
+            raise _argument_error("--fields must name at least one field")
+    cap = collection_va.COLLECTION_VA_RULES
+    config = config_mod.load([cap.source_config_key])
+    source = _cdp_source(config, cap.source_config_key)
+    if args.live:
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            detail = _fetch_collection_va_detail(
+                session.transport(collection_va.COLLECTION_VA_RULES_DETAIL),
+                args.id,
+                collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS,
+            )
+        meta = _live_meta(source, cap.default_scope, True, 1, 1, 0)
+        meta["query"] = {
+            "capability": collection_va.COLLECTION_VA_RULES_DETAIL.name,
+            "id": args.id,
+        }
+    else:
+        cached, pairs = _collection_va_cached(args, config, source)
+        pair = next(
+            (pair for pair in pairs if pair["rule"]["vaRuleId"] == args.id), None
+        )
+        if pair is None:
+            if not cached.snapshot.backend_complete:
+                raise CliError(
+                    INCOMPLETE_RESULT,
+                    "cannot confirm absence in incomplete VA rule snapshot",
+                )
+            raise CliError(NOT_FOUND, "VA rule is not present in the cached snapshot")
+        detail = pair["detail"]
+        if detail is None:
+            raise CliError(
+                INCOMPLETE_RESULT,
+                "VA rule detail was refused by the backend;"
+                " run: dogopencli refresh collection va",
             )
         meta = cached.meta(1, 1)
     return _emit_object(args, cap, detail, meta, fields)

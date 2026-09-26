@@ -119,6 +119,12 @@ def _load_builtins() -> None:
         COLLECTION_SLA_LIST_NODE,
     )
     from .collection.sla_reading import description as sla_description
+    from .collection.va_rule import (
+        COLLECTION_VA_RULE_GET_NODE,
+        COLLECTION_VA_RULE_LIST_NODE,
+        COLLECTION_VA_RULES,
+    )
+    from .collection.va_rule_reading import description as va_rule_description
     from .payment.channel import CHANNEL_CAPABILITY, CHANNEL_LIST_NODE
     from .payment.cost import COST_CAPABILITY, COST_LIST_NODE
     from .payment.reading import description
@@ -128,6 +134,11 @@ def _load_builtins() -> None:
         COLLECTION_SLA,
         commands=(COLLECTION_SLA_LIST_NODE, COLLECTION_SLA_GET_NODE),
         description=sla_description,
+    )
+    register(
+        COLLECTION_VA_RULES,
+        commands=(COLLECTION_VA_RULE_LIST_NODE, COLLECTION_VA_RULE_GET_NODE),
+        description=va_rule_description,
     )
     register(
         COLLECTION_COST_CAPABILITY,
