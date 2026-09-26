@@ -51,14 +51,20 @@ GROUP_CHILDREN = {
     ("payment", "sla", "baselines"): ["list", "get"],
     ("refresh",): ["payment", "collection"],
     ("refresh", "payment"): ["channel", "cost", "sla"],
-    ("collection",): ["sla", "cost", "va"],
+    ("collection",): ["clearing-system", "card-template", "sla", "cost", "va"],
     ("collection", "sla"): ["configs"],
     ("collection", "sla", "configs"): ["list", "get"],
     ("collection", "cost"): ["list"],
     ("collection", "va"): ["rules", "capacity"],
     ("collection", "va", "rules"): ["list", "get"],
     ("collection", "va", "capacity"): ["list"],
-    ("refresh", "collection"): ["cost", "sla", "va"],
+    ("refresh", "collection"): [
+        "clearing-system",
+        "card-template",
+        "cost",
+        "sla",
+        "va",
+    ],
 }
 
 QUERY_LEAVES = [

@@ -14,6 +14,7 @@ from .describe import description_nodes
 from .helpspec import REFRESH_OUTPUT as _REFRESH_OUTPUT
 from .helpspec import BizNode, opt
 from .plugins import command_nodes
+from .plugins.collection.network_config import CAPABILITIES, refresh_node
 
 # The shared root is business-owned; auth retains its own help protocol.
 AUTH_PATHS = frozenset(path for path in AUTH_SPECS if path)
@@ -250,6 +251,14 @@ _REFRESH_COLLECTION_VA_CAPACITY_NODE = BizNode(
 )
 
 _GROUPS: dict[tuple[str, ...], BizNode] = {
+    **{
+        ("collection", cap.slug): BizNode(
+            ("collection", cap.slug),
+            cap.title,
+            next=(f"dogopencli help collection {cap.slug} list",),
+        )
+        for cap in CAPABILITIES
+    },
     (): BizNode(
         (),
         "Inquiry-only, read-only payment and collection operations queries; the default"
@@ -402,6 +411,7 @@ NODES = build_catalog(
         *description_nodes(command_nodes()),
         _REFRESH_CHANNEL_NODE,
         _REFRESH_COST_NODE,
+        *(refresh_node(cap) for cap in CAPABILITIES),
         _REFRESH_COLLECTION_COST_NODE,
         _REFRESH_COLLECTION_SLA_NODE,
         _REFRESH_COLLECTION_VA_NODE,

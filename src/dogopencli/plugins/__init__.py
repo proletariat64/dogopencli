@@ -117,6 +117,8 @@ def get_capability(name: str) -> Capability:
 
 def _load_builtins() -> None:
     from .collection.cost import COLLECTION_COST_CAPABILITY, COLLECTION_COST_LIST_NODE
+    from .collection.network_config import CAPABILITIES, list_node
+    from .collection.network_reading import description as network_description
     from .collection.reading import description as collection_description
     from .collection.sla import (
         COLLECTION_SLA,
@@ -142,6 +144,12 @@ def _load_builtins() -> None:
     from .payment.reading import description
     from .payment.sla import SLA_CAPABILITY, SLA_GET_NODE, SLA_LIST_NODE
 
+    for capability in CAPABILITIES:
+        register(
+            capability,
+            commands=(list_node(capability),),
+            description=network_description,
+        )
     register(
         COLLECTION_SLA,
         commands=(COLLECTION_SLA_LIST_NODE, COLLECTION_SLA_GET_NODE),
