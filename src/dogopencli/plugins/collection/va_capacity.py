@@ -27,6 +27,10 @@ from ...helpspec import (
     OFFSET,
     QUERY_EFFECTS_VARIANTS,
     QUERY_OUTPUT,
+    REFRESH_CDP_CONSTRAINTS,
+    REFRESH_CDP_EFFECTS,
+    REFRESH_CDP_ERRORS,
+    REFRESH_OUTPUT,
     BizNode,
     opt,
 )
@@ -243,4 +247,37 @@ COLLECTION_VA_CAPACITY_LIST_NODE = BizNode(
     ),
     next=("dogopencli help refresh collection va capacity",),
     handler="cmd_collection_va_capacity_list",
+)
+
+
+REFRESH_NODE = BizNode(
+    ("refresh", "collection", "va", "capacity"),
+    "Rebuild the collection VA capacity cache through the existing CDP session.",
+    constraints=(
+        *REFRESH_CDP_CONSTRAINTS,
+        (
+            "Only the local capacity cache changes; production business state "
+            "remains read-only. Bare refresh collection va still refreshes VA "
+            "rules; this child refreshes only the capacity snapshot."
+        ),
+        (
+            "Pages the verified endpoint with pageSize=1000 until the first "
+            "short page; only the final converged totalCount validates "
+            "completeness. Any failure — authentication, refusal, malformed "
+            "data, changing totals, duplicate identities, lock or timeout — "
+            "preserves the previous snapshot."
+        ),
+    ),
+    effects=dict(REFRESH_CDP_EFFECTS),
+    output=dict(REFRESH_OUTPUT),
+    # Keep the established help order: capacity reports incomplete coverage
+    # immediately after invalid responses, before authentication/runtime errors.
+    errors=(
+        *REFRESH_CDP_ERRORS[:3],
+        "INCOMPLETE_RESULT",
+        *REFRESH_CDP_ERRORS[3:],
+    ),
+    examples=("dogopencli refresh collection va capacity",),
+    next=("dogopencli help collection va capacity list",),
+    handler="cmd_refresh_collection_va_capacity",
 )

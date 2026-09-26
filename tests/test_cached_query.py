@@ -88,3 +88,36 @@ def test_exact_ttl_boundary_is_fresh(cached_scope):
     config, source, now = cached_scope
     result = read((config, source, now - timedelta(hours=1)), require_fresh=True)
     assert result.stale is False
+
+
+@pytest.mark.parametrize("mode", ["valid", "duplicate", "missing", "invalid"])
+def test_validated_snapshot_records(cached_scope, mode):
+    """Read-time integrity uses real stored data and preserves domain failures."""
+    import sqlite3
+
+    config, _, _ = cached_scope
+    with sqlite3.connect(config.cache_path) as connection:
+        if mode == "duplicate":
+            connection.execute("UPDATE records SET body = '{\"id\":1}'")
+        elif mode == "missing":
+            connection.execute("DELETE FROM records WHERE seqid = 2")
+        elif mode == "invalid":
+            connection.execute("UPDATE records SET body = 'null' WHERE seqid = 2")
+
+    def validate(record):
+        if not isinstance(record, dict):
+            raise CliError("INVALID_RESPONSE", "invalid fixture row")
+
+    cached = read(cached_scope)
+    if mode == "valid":
+        assert cached.validated_records(
+            validate, lambda row: row["id"], coverage_error="invalid coverage"
+        ) == [{"id": 1}, {"id": 2}]
+    else:
+        with pytest.raises(CliError) as caught:
+            cached.validated_records(
+                validate, lambda row: row["id"], coverage_error="invalid coverage"
+            )
+        assert caught.value.code == (
+            "INVALID_RESPONSE" if mode == "invalid" else "INCOMPLETE_RESULT"
+        )

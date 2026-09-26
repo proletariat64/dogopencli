@@ -86,6 +86,8 @@ class Capability(Protocol):
 
 _REGISTRY: dict[str, Capability] = {}
 _COMMANDS: dict[str, tuple[BizNode, ...]] = {}
+_REFRESH_COMMANDS: dict[str, tuple[BizNode, ...]] = {}
+_GROUPS: dict[str, tuple[BizNode, ...]] = {}
 _DESCRIPTIONS: dict[tuple[str, ...], Callable[[BizNode], dict[str, Any]]] = {}
 
 
@@ -93,10 +95,14 @@ def register(
     capability: Capability,
     *,
     commands: tuple[BizNode, ...] = (),
+    refresh_commands: tuple[BizNode, ...] = (),
+    groups: tuple[BizNode, ...] = (),
     description: Callable[[BizNode], dict[str, Any]] | None = None,
 ) -> None:
     _REGISTRY[capability.name] = capability
     _COMMANDS[capability.name] = commands
+    _REFRESH_COMMANDS[capability.name] = refresh_commands
+    _GROUPS[capability.name] = groups
     if description is not None:
         for node in commands:
             _DESCRIPTIONS[node.path] = description
@@ -104,6 +110,14 @@ def register(
 
 def command_nodes() -> tuple[BizNode, ...]:
     return tuple(node for commands in _COMMANDS.values() for node in commands)
+
+
+def refresh_nodes() -> tuple[BizNode, ...]:
+    return tuple(node for nodes in _REFRESH_COMMANDS.values() for node in nodes)
+
+
+def group_nodes() -> tuple[BizNode, ...]:
+    return tuple(node for nodes in _GROUPS.values() for node in nodes)
 
 
 def get_description(node: BizNode) -> dict[str, Any]:
@@ -117,7 +131,13 @@ def get_capability(name: str) -> Capability:
 
 def _load_builtins() -> None:
     from .collection.cost import COLLECTION_COST_CAPABILITY, COLLECTION_COST_LIST_NODE
-    from .collection.network_config import CAPABILITIES, list_node
+    from .collection.cost import REFRESH_NODE as cost_refresh
+    from .collection.network_config import (
+        CAPABILITIES,
+        group_node,
+        list_node,
+        refresh_node,
+    )
     from .collection.network_reading import description as network_description
     from .collection.reading import description as collection_description
     from .collection.sla import (
@@ -125,11 +145,13 @@ def _load_builtins() -> None:
         COLLECTION_SLA_GET_NODE,
         COLLECTION_SLA_LIST_NODE,
     )
+    from .collection.sla import REFRESH_NODE as sla_refresh
     from .collection.sla_reading import description as sla_description
     from .collection.va_capacity import (
         COLLECTION_VA_CAPACITY,
         COLLECTION_VA_CAPACITY_LIST_NODE,
     )
+    from .collection.va_capacity import REFRESH_NODE as capacity_refresh
     from .collection.va_capacity_reading import (
         description as va_capacity_description,
     )
@@ -138,36 +160,54 @@ def _load_builtins() -> None:
         COLLECTION_VA_RULE_LIST_NODE,
         COLLECTION_VA_RULES,
     )
+    from .collection.va_rule import REFRESH_NODE as va_refresh
     from .collection.va_rule_reading import description as va_rule_description
     from .payment.channel import CHANNEL_CAPABILITY, CHANNEL_LIST_NODE
     from .payment.cost import COST_CAPABILITY, COST_LIST_NODE
     from .payment.reading import description
     from .payment.sla import SLA_CAPABILITY, SLA_GET_NODE, SLA_LIST_NODE
 
+    # Refresh navigation predates query discovery and has a different order.
+    # Reserve its slots so moving declarations does not reorder public help.
+    for capability in (
+        *CAPABILITIES,
+        COLLECTION_COST_CAPABILITY,
+        COLLECTION_SLA,
+        COLLECTION_VA_RULES,
+        COLLECTION_VA_CAPACITY,
+    ):
+        _REFRESH_COMMANDS[capability.name] = ()
+
     for capability in CAPABILITIES:
         register(
             capability,
             commands=(list_node(capability),),
+            refresh_commands=(refresh_node(capability),),
+            groups=(group_node(capability),),
             description=network_description,
         )
     register(
         COLLECTION_SLA,
         commands=(COLLECTION_SLA_LIST_NODE, COLLECTION_SLA_GET_NODE),
+        refresh_commands=(sla_refresh,),
         description=sla_description,
     )
     register(
         COLLECTION_VA_RULES,
         commands=(COLLECTION_VA_RULE_LIST_NODE, COLLECTION_VA_RULE_GET_NODE),
+        refresh_commands=(va_refresh,),
         description=va_rule_description,
     )
     register(
         COLLECTION_VA_CAPACITY,
         commands=(COLLECTION_VA_CAPACITY_LIST_NODE,),
+        refresh_commands=(capacity_refresh,),
         description=va_capacity_description,
     )
     register(
         COLLECTION_COST_CAPABILITY,
         commands=(COLLECTION_COST_LIST_NODE,),
+        refresh_commands=(cost_refresh,),
         description=collection_description,
     )
     register(CHANNEL_CAPABILITY, commands=(CHANNEL_LIST_NODE,), description=description)

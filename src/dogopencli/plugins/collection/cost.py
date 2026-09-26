@@ -20,6 +20,10 @@ from ...helpspec import (
     OFFSET,
     QUERY_EFFECTS_VARIANTS,
     QUERY_OUTPUT,
+    REFRESH_CDP_CONSTRAINTS,
+    REFRESH_CDP_EFFECTS,
+    REFRESH_CDP_ERRORS,
+    REFRESH_OUTPUT,
     BizNode,
 )
 from .. import EndpointContract, ParsedPage
@@ -132,4 +136,22 @@ COLLECTION_COST_LIST_NODE = BizNode(
     ),
     next=("dogopencli help refresh collection cost",),
     handler="cmd_collection_cost_list",
+)
+
+
+REFRESH_NODE = BizNode(
+    effects=dict(REFRESH_CDP_EFFECTS),
+    output=dict(REFRESH_OUTPUT),
+    path=("refresh", "collection", "cost"),
+    summary="Rebuild the collection transaction-cost cache "
+    "through the existing CDP session.",
+    constraints=(
+        *REFRESH_CDP_CONSTRAINTS,
+        "Fixed collection transaction-cost type; only complete unique results publish.",
+        "Only the local cache changes; production business state remains read-only.",
+    ),
+    errors=(*REFRESH_CDP_ERRORS, "INCOMPLETE_RESULT"),
+    examples=("dogopencli refresh collection cost",),
+    next=("dogopencli help collection cost list",),
+    handler="cmd_refresh_collection_cost",
 )

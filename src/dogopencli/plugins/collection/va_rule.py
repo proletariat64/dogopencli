@@ -21,6 +21,10 @@ from ...helpspec import (
     OFFSET,
     QUERY_EFFECTS_VARIANTS,
     QUERY_OUTPUT,
+    REFRESH_CDP_CONSTRAINTS,
+    REFRESH_CDP_EFFECTS,
+    REFRESH_CDP_ERRORS,
+    REFRESH_OUTPUT,
     BizNode,
     opt,
 )
@@ -312,4 +316,37 @@ COLLECTION_VA_RULE_GET_NODE = BizNode(
     examples=("dogopencli collection va rules get --id VA_RULE_ID",),
     next=("dogopencli help collection va rules list",),
     handler="cmd_collection_va_rules_get",
+)
+
+
+REFRESH_NODE = BizNode(
+    effects=dict(REFRESH_CDP_EFFECTS),
+    output=dict(REFRESH_OUTPUT),
+    path=("refresh", "collection", "va"),
+    summary=(
+        "Refresh collection VA rules: full list and every true detail; "
+        "publishes atomically, or partially with INCOMPLETE_RESULT when the "
+        "backend refuses a detail."
+    ),
+    constraints=(
+        *REFRESH_CDP_CONSTRAINTS,
+        (
+            "Any list failure and any detail failure other than an explicit "
+            "backend refusal (success=false) preserves the previous snapshot."
+        ),
+        (
+            "A refused detail publishes that rule's real list row with a null "
+            "detail, leaves backend_complete true, sets dataset_complete false, "
+            "and the refresh then fails with INCOMPLETE_RESULT naming the "
+            "counts instead of reporting success."
+        ),
+        (
+            "One verified 1000-row acquisition; no business filters "
+            "or speculative pagination."
+        ),
+    ),
+    errors=(*REFRESH_CDP_ERRORS, "INCOMPLETE_RESULT"),
+    examples=("dogopencli refresh collection va",),
+    next=("dogopencli help collection va rules list",),
+    handler="cmd_refresh_collection_va",
 )
