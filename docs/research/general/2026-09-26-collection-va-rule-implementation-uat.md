@@ -204,6 +204,41 @@ flags (fresh success; `CACHE_STALE` in a copied cache; incomplete rejection on
 the real partial snapshot), both formats and projections, and help/describe/
 navigation with the inherited-global rejections above.
 
+## Master revalidation and explicit argument matrix
+
+On `cf3bc6e` (documentation-only changes since the production UAT on
+`444a7d6`), the public help inventory still exposes exactly eight list options,
+six get options, and no refresh options. A private copy of the operator snapshot
+was used for 984 offline CLI invocations. The sweep returned 840 true details
+and 71 `INCOMPLETE_RESULT` responses across all 911 IDs, with no list-row
+substitution; all 71 refusal responses were rechecked with explicit exit-code,
+error-code and null-data assertions. The first temporary runner incorrectly
+expected exit 0 for those 71 known refusals; the corrected recheck found no CLI
+failures. Eight additional format/projection assertions passed. The focused VA
+SIT passed 93 tests. The private cache digest was unchanged after the offline
+and live reads.
+
+| Shipped argument | Executed UAT case and expected result |
+| --- | --- |
+| list `--limit` | Default 100, one-row and last-row windows; zero rejected. |
+| list `--offset` | Second-row, last-row, at-end and beyond-end windows; negative value rejected. |
+| list `--all` | All 911 unique rows, no `has_more`; conflict with limit or offset rejected. |
+| list/get `--live` | After human SSO recovery, live default list returned 100 of 911; live `--all` returned 911; healthy get returned true detail; refused get returned `BUSINESS_QUERY_FAILED` with null data. |
+| list/get `--require-fresh` | Fresh snapshot accepted; both paths returned `CACHE_STALE` with a zero-hour TTL in the private config; stale default read remained available. |
+| list/get `--require-complete` | Both paths rejected the real partial snapshot with `INCOMPLETE_RESULT`. |
+| list/get `--format` | JSON envelopes and table output accepted on both paths. |
+| list/get `--fields` | Single and multiple field projections preserved metadata; unknown field omitted; empty selection rejected. |
+| get `--id` | All 911 cached IDs checked; 840 true details, 71 explicit refusals; absent ID returned `NOT_FOUND`; missing and blank IDs rejected. |
+| refresh collection va | No options exposed. The full 911-detail production refresh on the unchanged implementation remains the acceptance evidence above: 840 published, 71 refused, exit 1 `INCOMPLETE_RESULT`. |
+
+The five authentication-only globals were rejected on each business path;
+nine unshipped filter candidates were rejected on list and get, and refresh
+rejected a business selector. These are negative boundary cases, not shipped
+arguments. A transient `BROWSER_UNAVAILABLE` preceded an expired session;
+after the operator completed the supported headed login, all four live cases
+passed. No production write, arbitrary request or JavaScript entry point was
+used in this revalidation.
+
 ## Issue closure (2026-09-26)
 
 PR #35 merged to master as `444a7d6`; the merge commit's tree is identical to
