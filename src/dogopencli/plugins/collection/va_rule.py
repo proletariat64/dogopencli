@@ -111,6 +111,15 @@ def validate_pair(row: Any, detail: Any) -> None:
         raise CliError(INVALID_RESPONSE, "VA rule list and detail shared fields differ")
 
 
+def validate_stored_pair(pair: Any) -> None:
+    """Accept a detail or the null detail ADR 0010 stores for a backend refusal."""
+    if not isinstance(pair, dict) or "rule" not in pair or "detail" not in pair:
+        raise CliError(INVALID_RESPONSE, "invalid cached VA rule pair")
+    _validate_row(pair["rule"])
+    if pair["detail"] is not None:
+        validate_pair(pair["rule"], pair["detail"])
+
+
 def _identity_order(record: dict[str, Any]) -> tuple[Any, ...]:
     identity = record["vaRuleId"]
     return (
@@ -247,6 +256,12 @@ COLLECTION_VA_RULE_LIST_NODE = BizNode(
             "pageNo=1/pageSize=1000 response; no speculative paging "
             "or implicit refresh."
         ),
+        (
+            "A detail the backend refuses (success=false) still publishes its "
+            "list row with a null detail: backend_complete stays true, "
+            "dataset_complete becomes false, and --require-complete rejects "
+            "such a snapshot."
+        ),
     ),
     effects_variants=QUERY_EFFECTS_VARIANTS,
     output=QUERY_OUTPUT,
@@ -279,6 +294,11 @@ COLLECTION_VA_RULE_GET_NODE = BizNode(
             "must be present; explicit null values remain raw. Null or invalid"
             " live detail fails; backend not-found semantics are "
             "unverified."
+        ),
+        (
+            "A cached rule whose detail the backend refused is "
+            "INCOMPLETE_RESULT, not NOT_FOUND, and never its list row; an "
+            "explicit live get reports the business failure instead."
         ),
         (
             "The related bank-account rule lookup (bankAccountVaRule) is not "

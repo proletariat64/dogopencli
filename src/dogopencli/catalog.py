@@ -186,8 +186,26 @@ _REFRESH_COLLECTION_VA_NODE = replace(
     _REFRESH_COLLECTION_SLA_NODE,
     path=("refresh", "collection", "va"),
     summary=(
-        "Refresh collection VA rules: full list and "
-        "every true detail, published atomically."
+        "Refresh collection VA rules: full list and every true detail; "
+        "publishes atomically, or partially with INCOMPLETE_RESULT when the "
+        "backend refuses a detail."
+    ),
+    constraints=(
+        *_REFRESH_SLA_NODE.constraints,
+        (
+            "Any list failure and any detail failure other than an explicit "
+            "backend refusal (success=false) preserves the previous snapshot."
+        ),
+        (
+            "A refused detail publishes that rule's real list row with a null "
+            "detail, leaves backend_complete true, sets dataset_complete false, "
+            "and the refresh then fails with INCOMPLETE_RESULT naming the "
+            "counts instead of reporting success."
+        ),
+        (
+            "One verified 1000-row acquisition; no business filters "
+            "or speculative pagination."
+        ),
     ),
     examples=("dogopencli refresh collection va",),
     next=("dogopencli help collection va rules list",),

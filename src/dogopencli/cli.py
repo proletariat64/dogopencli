@@ -41,6 +41,7 @@ from .jsonutil import canonical, parse
 from .plugins import get_capability
 from .plugins.collection import sla as collection_sla
 from .plugins.collection import va_rule as collection_va
+from .plugins.envelope import is_business_refusal
 from .plugins.payment.channel import assign_seqids
 from .plugins.payment.sla import SLA_DETAIL, detail_body
 from .plugins.payment.sla import parse_detail as parse_payment_sla_detail
@@ -1113,12 +1114,16 @@ def _collection_va_cached(
         require_complete=args.require_complete,
         now=_now(),
     )
+    if args.require_complete and not cached.snapshot.dataset_complete:
+        raise CliError(
+            INCOMPLETE_RESULT,
+            "cached VA rule snapshot has details the backend refused;"
+            " run: dogopencli refresh collection va",
+        )
     pairs = []
     for _, body in cached.stored:
         pair = parse(body)
-        if not isinstance(pair, dict):
-            raise CliError(INVALID_RESPONSE, "invalid cached VA rule pair")
-        collection_va.validate_pair(pair.get("rule"), pair.get("detail"))
+        collection_va.validate_stored_pair(pair)
         pairs.append(pair)
     if len(pairs) != cached.snapshot.row_count or len(
         {pair["rule"]["vaRuleId"] for pair in pairs}
@@ -1131,13 +1136,17 @@ def _fetch_collection_va_detail(
     transport: CdpQueryTransport,
     identity: str,
     deadline: float,
-) -> dict[str, Any]:
+    *,
+    tolerate_refusal: bool = False,
+) -> dict[str, Any] | None:
     response = collect_mod._execute_bounded(
         collection_va.COLLECTION_VA_RULES_DETAIL,
         transport,
         {"vaRuleId": identity},
         deadline,
     )
+    if tolerate_refusal and is_business_refusal(response.body):
+        return None
     return collection_va.parse_detail(response.body, identity)
 
 
@@ -1161,14 +1170,23 @@ def cmd_refresh_collection_va(args: argparse.Namespace) -> int:
                 )
             transport = session.transport(collection_va.COLLECTION_VA_RULES_DETAIL)
             pairs = []
+            refused = 0
             for record in cap.sort_records(result.records):
                 detail = _fetch_collection_va_detail(
-                    transport, record[cap.id_field], result.deadline
+                    transport,
+                    record[cap.id_field],
+                    result.deadline,
+                    tolerate_refusal=True,
                 )
-                collection_va.validate_pair(record, detail)
+                if detail is None:
+                    refused += 1
+                else:
+                    collection_va.validate_pair(record, detail)
                 pairs.append({"rule": record, "detail": detail})
                 print(
-                    f"refresh: collected detail {len(pairs)}/{len(result.records)}",
+                    f"refresh: detail "
+                    f"{'refused' if detail is None else 'collected'} "
+                    f"{len(pairs)}/{len(result.records)}",
                     file=sys.stderr,
                 )
         fetched_at = _now().isoformat()
@@ -1181,7 +1199,7 @@ def cmd_refresh_collection_va(args: argparse.Namespace) -> int:
             dataset_id=None,
             simulated=False,
             backend_complete=True,
-            dataset_complete=True,
+            dataset_complete=refused == 0,
             fetched_at=fetched_at,
             loaded_at=_now().isoformat(),
             source_observed_from=None,
@@ -1191,6 +1209,12 @@ def cmd_refresh_collection_va(args: argparse.Namespace) -> int:
         collect_mod.remaining_seconds(result.deadline)
         store.publish(
             snapshot, [(i, canonical(pair)) for i, pair in enumerate(pairs, 1)]
+        )
+    if refused:
+        raise CliError(
+            INCOMPLETE_RESULT,
+            f"published {len(pairs) - refused}/{len(pairs)} collection VA rule"
+            f" details; {refused} refused by the backend",
         )
     _emit(
         {"namespace": ns, "published": True, "row_count": len(pairs)},
@@ -1256,17 +1280,23 @@ def cmd_collection_va_rules_get(args: argparse.Namespace) -> int:
         }
     else:
         cached, pairs = _collection_va_cached(args, config, source)
-        detail = next(
-            (pair["detail"] for pair in pairs if pair["rule"]["vaRuleId"] == args.id),
-            None,
+        pair = next(
+            (pair for pair in pairs if pair["rule"]["vaRuleId"] == args.id), None
         )
-        if detail is None:
+        if pair is None:
             if not cached.snapshot.backend_complete:
                 raise CliError(
                     INCOMPLETE_RESULT,
                     "cannot confirm absence in incomplete VA rule snapshot",
                 )
             raise CliError(NOT_FOUND, "VA rule is not present in the cached snapshot")
+        detail = pair["detail"]
+        if detail is None:
+            raise CliError(
+                INCOMPLETE_RESULT,
+                "VA rule detail was refused by the backend;"
+                " run: dogopencli refresh collection va",
+            )
         meta = cached.meta(1, 1)
     return _emit_object(args, cap, detail, meta, fields)
 
