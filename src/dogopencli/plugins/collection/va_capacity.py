@@ -234,8 +234,6 @@ COLLECTION_VA_CAPACITY_LIST_NODE = BizNode(
         "dogopencli collection va capacity list --va-rule-id RULE_ID",
         "dogopencli collection va capacity list --bank-va-rule-id BANK_RULE_ID --all",
     ),
-    next=(
-        "dogopencli help refresh collection va capacity",
-    ),
+    next=("dogopencli help refresh collection va capacity",),
     handler="cmd_collection_va_capacity_list",
 )
