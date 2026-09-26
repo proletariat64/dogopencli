@@ -36,6 +36,12 @@ kind = "cdp"
 
 [sources.collection_va_capacity]
 kind = "cdp"
+
+[sources.collection_clearing_system]
+kind = "cdp"
+
+[sources.collection_card_template]
+kind = "cdp"
 ```
 
 配置示例见被 Git 忽略的 `tmp/channel-2026-09-11/source.toml`；整理集为私有数据，不随 Git 分发。
@@ -85,7 +91,7 @@ dogopencli payment sla baselines get --id BASELINE_ID
 | 键 | v1 类型与含义 |
 | --- | --- |
 | `describe_version` | 整数 `1`，helper 文档协议版本 |
-| `capability` | 字符串：`payment.channel.list`、`payment.cost.list`、`payment.sla.baselines.list`、`payment.sla.baselines.get`、`collection.cost.list`、`collection.sla.configs.list`、`collection.sla.configs.get`、`collection.va.rules.list`、`collection.va.rules.get` 或 `collection.va.capacity.list` |
+| `capability` | 字符串：`payment.channel.list`、`payment.cost.list`、`payment.sla.baselines.list`、`payment.sla.baselines.get`、`collection.cost.list`、`collection.sla.configs.list`、`collection.sla.configs.get`、`collection.va.rules.list`、`collection.va.rules.get` 、`collection.va.capacity.list`、`collection.clearing_system.list` 或 `collection.card_template.list` |
 | `schema_version` | 整数 `1`，该查询能力的数据描述版本 |
 | `data_schema` | JSON Schema 对象，`$schema` 为 `https://json-schema.org/draft/2020-12/schema`；描述成功且未投影的业务 `data`，不是数据库表或整个 envelope |
 | `read_guide` | 对象，包含下面的读取规则及证据词汇 |
@@ -356,3 +362,41 @@ the previous snapshot. Bare `refresh collection va` still refreshes VA rules.
 Capacity counters are live values: check `meta.fetched_at`/`stale` and refresh
 or use `--live` before acting on them. See
 [ADR 0011](docs/adr/0011-collection-va-capacity.md).
+
+
+## 收款清算系统与卡模板配置
+
+[清算系统规格 #41](https://github.com/proletariat64/dogopencli/issues/41) 与
+[卡模板规格 #45](https://github.com/proletariat64/dogopencli/issues/45) 增加两个独立配置列表：
+
+```bash
+dogopencli refresh collection clearing-system
+dogopencli collection clearing-system list --currency GBP --system-type ACH --all
+dogopencli collection clearing-system list --system-name NETWORK_NAME --status VALID
+dogopencli refresh collection card-template
+dogopencli collection card-template list --bank BANK_CODE --template-name TEMPLATE_NAME
+dogopencli collection card-template list --template-id TEMPLATE_ID --live
+dogopencli help collection clearing-system list
+dogopencli describe collection card-template list
+```
+
+清算系统筛选：`--bank-location`、`--currency`、`--system-type`、`--system-name`、`--status`。
+卡模板筛选：`--bank-location`、`--currency`、`--bank`、`--template-name`、`--template-id`、`--status`。
+全部为本地精确字符串匹配：区分大小写、同字段重复 OR、跨字段 AND；`*` 是字面值；
+空白值拒绝，合法值不做标准化。`--system-name` 对应 `clearingNetworkId`；
+`--template-name` 对应 `templateName`，不是后端请求键 `cardTemplateName`。
+
+两项均支持既有八个通用选项：`--limit`、`--offset`、`--all`、`--live`、
+`--require-fresh`、`--require-complete`、`--format json|table` 和 `--fields`。
+默认离线读取、100 行、offset 0、JSON、共享 72h TTL；live 不写缓存、不回退。
+刷新不接受筛选，独立使用 `collection.clearing_system.list:all:cdp` 与
+`collection.card_template.list:all:cdp` 快照。
+
+采集仅允许第 1 页、pageSize=1000，要求行数等于总数且 ID 唯一。超出 1000 或不完整
+即失败并保留旧快照；不自动翻页，因为实际越界页会回到第 1 页，且清算系统小页
+扫描出现重复。ID 保留字符串、按字典序排序后再展示。关联对象查询、详情和导出
+不在范围；卡模板列表的 `cardTemplateItemList` 目前观察为空，不能声称完整详情。
+成本/速度等级保留原值，不推导费用或 SLA；时间戳单位和时区未验证。
+
+契约证据：[清算系统](docs/research/general/2026-09-27-collection-clearing-system-contract.md)、
+[卡模板](docs/research/general/2026-09-27-collection-card-template-contract.md)。

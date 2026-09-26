@@ -39,6 +39,7 @@ from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
 from .plugins import get_capability
+from .plugins.collection import network_config
 from .plugins.collection import sla as collection_sla
 from .plugins.collection import va_capacity as collection_va_capacity
 from .plugins.collection import va_rule as collection_va
@@ -1341,8 +1342,14 @@ def _collection_va_capacity_cached(
     return cached, records
 
 
-def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
-    cap = collection_va_capacity.COLLECTION_VA_CAPACITY
+def _refresh_complete_collection_list(
+    cap: (
+        collection_va_capacity.CollectionVaCapacityCapability
+        | network_config.NetworkConfigCapability
+    ),
+    scope_name: str,
+) -> int:
+    """Publish one complete acquisition using each capability's own contract."""
     config = config_mod.load([cap.source_config_key])
     source = _cdp_source(config, cap.source_config_key)
     store = Cache(config.cache_path)
@@ -1358,8 +1365,7 @@ def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
         if not result.complete:
             raise CliError(
                 INCOMPLETE_RESULT,
-                "collection VA capacity scope is incomplete; the previous "
-                "cache is retained",
+                f"{scope_name} scope is incomplete; the previous cache is retained",
             )
         records = cap.sort_records(result.records)
         fetched_at = _now().isoformat()
@@ -1393,6 +1399,12 @@ def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
+    return _refresh_complete_collection_list(
+        collection_va_capacity.COLLECTION_VA_CAPACITY, "collection VA capacity"
+    )
+
+
 def cmd_collection_va_capacity_list(args: argparse.Namespace) -> int:
     cap = collection_va_capacity.COLLECTION_VA_CAPACITY
     limit, offset, fields = _display_options(args)
@@ -1419,6 +1431,91 @@ def cmd_collection_va_capacity_list(args: argparse.Namespace) -> int:
         window = records[offset:] if args.all else records[offset : offset + limit]
         meta = cached.meta(len(records), len(window), offset=offset)
     return _emit_window(args, cap, window, meta, fields)
+
+
+def _network_config_cached(
+    args: argparse.Namespace,
+    config: config_mod.Config,
+    source: config_mod.SourceConfig,
+    cap: network_config.NetworkConfigCapability,
+) -> tuple[CachedQuery, list[dict[str, Any]]]:
+    cached = read_cached_query(
+        config,
+        source,
+        cap.name,
+        cap.default_scope,
+        refresh_command=f"refresh collection {cap.slug}",
+        require_fresh=args.require_fresh,
+        require_complete=args.require_complete,
+        now=_now(),
+    )
+    records = []
+    for _, body in cached.stored:
+        record = parse(body)
+        network_config.validate_row(record)
+        records.append(record)
+    if len(records) != cached.snapshot.row_count or len(
+        {record["id"] for record in records}
+    ) != len(records):
+        raise CliError(
+            INCOMPLETE_RESULT, "cached network configuration coverage is invalid"
+        )
+    return cached, records
+
+
+def _list_network_config(
+    args: argparse.Namespace, cap: network_config.NetworkConfigCapability
+) -> int:
+    limit, offset, fields = _display_options(args)
+    filters: dict[str, list[str]] = {}
+    for flag, field in cap.filters:
+        values = getattr(args, flag.replace("-", "_"))
+        if any(not value.strip() for value in values):
+            raise _argument_error(f"--{flag} must be nonempty")
+        if values:
+            filters[field] = values
+    config = config_mod.load([cap.source_config_key])
+    source = _cdp_source(config, cap.source_config_key)
+    if args.live:
+        with inquiry_session(config_file=config_mod.config_path()) as session:
+            result = collect_mod.collect_scope(
+                cap, session.transport(cap), cap.default_scope
+            )
+        if not result.complete:
+            raise CliError(
+                INCOMPLETE_RESULT, "collection network configuration list is incomplete"
+            )
+        records = cap.sort_records(cap.filter_records(result.records, filters))
+        window = records[offset:] if args.all else records[offset : offset + limit]
+        meta = _live_meta(
+            source, cap.default_scope, True, len(records), len(window), offset
+        )
+    else:
+        cached, records = _network_config_cached(args, config, source, cap)
+        records = cap.sort_records(cap.filter_records(records, filters))
+        window = records[offset:] if args.all else records[offset : offset + limit]
+        meta = cached.meta(len(records), len(window), offset=offset)
+    return _emit_window(args, cap, window, meta, fields)
+
+
+def cmd_collection_clearing_system_list(args: argparse.Namespace) -> int:
+    return _list_network_config(args, network_config.CLEARING_SYSTEM)
+
+
+def cmd_refresh_collection_clearing_system(args: argparse.Namespace) -> int:
+    return _refresh_complete_collection_list(
+        network_config.CLEARING_SYSTEM, "collection network configuration"
+    )
+
+
+def cmd_collection_card_template_list(args: argparse.Namespace) -> int:
+    return _list_network_config(args, network_config.CARD_TEMPLATE)
+
+
+def cmd_refresh_collection_card_template(args: argparse.Namespace) -> int:
+    return _refresh_complete_collection_list(
+        network_config.CARD_TEMPLATE, "collection network configuration"
+    )
 
 
 def cmd_describe(args: argparse.Namespace) -> int:
