@@ -1,8 +1,8 @@
 # Dogopencli
 
-将产品运营网站的查询能力转为 Python CLI，供单机单人使用。v0.1.0 的既定范围聚焦付款产品；v0.1.4 按 Issue #21 增加独立的收款交易成本查询里程碑。所有业务操作仅查询，不创建、修改或审批任何生产配置。
+将产品运营网站的查询能力转为 Python CLI，供单机单人使用。v0.1.0 的既定范围聚焦付款产品；v0.1.4 增加收款交易成本，v0.1.6 增加收款 SLA 配置，v0.1.7 增加收款 VA 规则查询。所有业务操作仅查询，不创建、修改或审批任何生产配置。
 
-Channel 后端故障期间使用显式离线替代源推进工程；正式 CDP 架构保持，真实 Channel 全量验收在后端修复后进行（见[规格 Issue #1](https://github.com/proletariat64/dogopencli/issues/1)、[ADR 0005](docs/adr/0005-channel-snapshot-source.md)）。Cost/SLA 始终走真实 CDP 路径。
+Channel 后端故障期间使用显式离线替代源推进工程；正式 CDP 架构保持，真实 Channel 全量验收在后端修复后进行（见[规格 Issue #1](https://github.com/proletariat64/dogopencli/issues/1)、[ADR 0005](docs/adr/0005-channel-snapshot-source.md)）。Cost/SLA/VA 规则查询走真实 CDP 路径。
 
 ## 安装
 
@@ -65,6 +65,9 @@ dogopencli describe payment cost list
 dogopencli describe payment cost list --format text  # 人工阅读 schema、字段说明和读取指引
 dogopencli describe payment sla baselines list
 dogopencli describe payment sla baselines get
+dogopencli describe collection cost list
+dogopencli describe collection sla configs get
+dogopencli describe collection va rules get
 dogopencli help payment cost list            # 参数的权威契约
 dogopencli payment cost list --all --fields itemId,costRateConfigList
 dogopencli payment sla baselines list --all --fields id
@@ -78,13 +81,13 @@ dogopencli payment sla baselines get --id BASELINE_ID
 | 键 | v1 类型与含义 |
 | --- | --- |
 | `describe_version` | 整数 `1`，helper 文档协议版本 |
-| `capability` | 字符串：`payment.channel.list`、`payment.cost.list`、`payment.sla.baselines.list` 或 `payment.sla.baselines.get`、`collection.cost.list` |
+| `capability` | 字符串：`payment.channel.list`、`payment.cost.list`、`payment.sla.baselines.list`、`payment.sla.baselines.get`、`collection.cost.list`、`collection.sla.configs.list`、`collection.sla.configs.get`、`collection.va.rules.list` 或 `collection.va.rules.get` |
 | `schema_version` | 整数 `1`，该查询能力的数据描述版本 |
 | `data_schema` | JSON Schema 对象，`$schema` 为 `https://json-schema.org/draft/2020-12/schema`；描述成功且未投影的业务 `data`，不是数据库表或整个 envelope |
 | `read_guide` | 对象，包含下面的读取规则及证据词汇 |
 | `query_help` | 对应 `dogopencli help <查询路径>` 字符串，参数以此帮助为准 |
 
-付款 schema 与领域读取指引由付款插件提供，随查询命令一起注册；核心只组装描述文档与通用输出说明。schema 和读取指引的注解词汇共用一份定义，分别以 `dimensions` 映射和 `aspects` 列表呈现同一组证据维度。
+各领域 schema 与读取指引由对应插件提供，随查询命令一起注册；核心只组装描述文档与通用输出说明。schema 和读取指引的注解词汇共用一份定义，分别以 `dimensions` 映射和 `aspects` 列表呈现同一组证据维度。
 
 付款 `read_guide` 的领域键与公共键为：`parameter_contract`、`options`（直接复用查询帮助）、`filters`、`filter_semantics`、`envelope`、`metadata`、`access_modes`、`quality`、`projection`、`pagination`、`identifiers`、`interpretation`、`annotations`、`errors`、`exit_codes`、`examples`、`evolution`、`filter_notes`；SLA 另有 `list_to_detail`（`steps` 与 `meaning`）。每个 `filters` 条目有 `flag`、`request_field`、`record_field`；无法映射的记录字段为 JSON `null`。`metadata` 按实际 `meta` 字段名解释语义，`exit_codes` 使用字符串键。
 
@@ -107,7 +110,7 @@ dogopencli payment sla baselines get --id BASELINE_ID
 
 列表默认只显示 100 行；`--all` 读取全部匹配行，与显式 `--limit`/`--offset` 冲突。`--fields` 选择顶层字段并保留选中的完整嵌套值，可能删除标识字段；应按部分数据解释，不能仅因不满足未投影 schema 的必填项而拒绝。投影保留全部质量 metadata。缓存同字段多值 OR、不同字段 AND；live Cost/SLA 每字段单值，Channel 标量筛选单值、已验证数组筛选允许重复。SLA `--biz-legal-entity` 仅列表 live 透传，其独立筛选效果未验证、无对应列表字段，缓存使用报参数错误。
 
-查询时检查退出码与 `error`，再解释 `meta`：`source`（cache/live）和 `backend`（snapshot/cdp）独立；`snapshot_id`/`dataset_id` 标识内容，不提供历史查询或三域同步快照。`fetched_at`、`loaded_at`、`source_observed_from/to` 区分观察、采集和导入时间，导入不使旧观测变新。`stale` 与 `complete` 独立；`matched_total`/`returned_count`/`has_more` 仅说明当前可用来源的匹配与显示窗口。`complete` 是来源覆盖，`dataset_complete` 可以只表示整理集完整；Channel snapshot 的 `simulated=true`、EXTERNAL 范围不能证明生产全量，即使 `has_more=false` 或返回空列表。`--require-fresh` 拒绝过期缓存，`--require-complete` 检查 `complete`。默认缓存读不会隐式刷新，显式 refresh 才发布快照，`--live` 不更新缓存；describe 不执行其中任何操作。
+查询时检查退出码与 `error`，再解释 `meta`：`source`（cache/live）和 `backend`（snapshot/cdp）独立；`snapshot_id`/`dataset_id` 标识内容，不提供历史查询或跨域同步快照。`fetched_at`、`loaded_at`、`source_observed_from/to` 区分观察、采集和导入时间，导入不使旧观测变新。`stale` 与 `complete` 独立；`matched_total`/`returned_count`/`has_more` 仅说明当前可用来源的匹配与显示窗口。`complete` 是来源覆盖，`dataset_complete` 可以只表示整理集完整；Channel snapshot 的 `simulated=true`、EXTERNAL 范围不能证明生产全量，即使 `has_more=false` 或返回空列表。`--require-fresh` 拒绝过期缓存，`--require-complete` 检查来源覆盖；VA 规则查询还拒绝 `dataset_complete=false` 的详情拒绝快照。默认缓存读不会隐式刷新，显式 refresh 才发布快照，`--live` 不更新缓存；describe 不执行其中任何操作。
 
 ## 登录与认证
 
@@ -121,17 +124,23 @@ dogopencli logout               # 仅清理并验证专用本地认证；不撤�
 
 ## 刷新与查询
 
-普通查询只读本地 SQLite 缓存，不隐式联网、不启动浏览器；缓存缺失明确失败。显式 refresh 才访问来源并原子发布缓存；失败或不完整保留旧快照。snapshot 查询不读取源 manifest 或数据文件，导入后源文件暂时不可用也能查缓存。缓存记录导入来源路径和 dataset_id；改路径或显式身份后必须刷新，同路径文件内容的变化在显式刷新时校验。旧缓存缺少来源路径时需要刷新一次：
+普通查询只读本地 SQLite 缓存，不隐式联网、不启动浏览器；缓存缺失明确失败。显式 refresh 才访问来源并原子发布缓存；VA 规则详情被后端明确拒绝时可发布不完整快照并返回 `INCOMPLETE_RESULT`，其余失败保留旧快照。snapshot 查询不读取源 manifest 或数据文件，导入后源文件暂时不可用也能查缓存。缓存记录导入来源路径和 dataset_id；改路径或显式身份后必须刷新，同路径文件内容的变化在显式刷新时校验。旧缓存缺少来源路径时需要刷新一次：
 
 ```bash
 dogopencli refresh payment channel    # snapshot：导入配置指向的整理集；cdp：真实采集
 dogopencli refresh payment cost
 dogopencli refresh payment sla        # 全列表 + 逐条详情一起原子发布
+dogopencli refresh collection cost
+dogopencli refresh collection sla
+dogopencli refresh collection va
 
 dogopencli payment channel list       # 默认场景 EXTERNAL，--payout-type 可选 LIQUIDITY/MANUAL/SETTLEMENT
 dogopencli payment cost list          # 固定 FUND_OUT_CHANNEL_TRANS_FEE
 dogopencli payment sla baselines list
 dogopencli payment sla baselines get --id ID
+dogopencli collection cost list
+dogopencli collection sla configs list
+dogopencli collection va rules list
 ```
 
 Channel 的 live 查询还会按已验证字段进行本地精确筛选，避免后端忽略条件时透出不匹配行；Cost/SLA 保持已验证的后端筛选语义。实时 SLA 详情的 complete 指所请求 ID 的详情，`meta.query` 标明 ID，成功获取时满足 freshness/completeness 要求。refresh 的 `meta.source=cache` 表示刚发布的本地快照。
@@ -152,7 +161,7 @@ Channel 单轮 CDP 采集中，同 `abilityId` 不同内容会阻止发布完整
 | --- | --- |
 | CACHE_MISS | 无缓存或来源身份不一致；运行对应 `refresh payment …` |
 | CACHE_STALE | 快照超过 TTL；刷新，或去掉 `--require-fresh` 显式使用过期数据 |
-| INCOMPLETE_RESULT | 替代集不覆盖后端全量；`--require-complete` 下不可用，去掉该标记可显式使用部分数据 |
+| INCOMPLETE_RESULT | 来源覆盖或详情完整性不足；VA 规则部分刷新可能已发布快照，需检查返回计数和 `dataset_complete`。VA 规则缺详情的 `get` 不返回列表行 |
 | AUTH_REQUIRED | 会话失效；运行 `dogopencli login` |
 | BROWSER_UNAVAILABLE | 专用浏览器不可达；运行 `dogopencli login` 恢复。连接的 Chrome 必须属于专用 profile；无法证明归属时拒绝复用或退出。Chrome 默认启用沙箱，不开放通配 WebSocket Origin，CLI 原生连接不发送 Origin 头；启动失败时检查 Chrome 日志，不自动关闭沙箱 |
 | LOCKED | 另一刷新、SQLite 锁竞争或浏览器生命周期操作进行中；稍后重试 |
@@ -180,14 +189,14 @@ dogopencli collection cost list --live --all
 
 采集只发送已验证的 `pageNo=0,pageSize=1000`。总数超过容量、重复 ID、截断或元数据异常都明确失败并保留旧缓存；`INCOMPLETE_RESULT` 不能通过去掉 `--require-complete` 绕过，不切换小页或扩大容量。成功且总数为零时允许省略列表，null 或非零总数缺列表则失败。1000 不是服务端上限保证。
 
-收款 schema 独立标注观察证据与未知含义；保留原始嵌套费率、精确小数、单位、业务时间和未知扩展，不推导实际交易费用。VA 费用、VA 池/实体账户、规则、签约及单据不在此次实现范围。
+收款 schema 独立标注观察证据与未知含义；保留原始嵌套费率、精确小数、单位、业务时间和未知扩展，不推导实际交易费用。VA 费用、VA 池/实体账户、签约及单据不在此次实现范围；VA 规则由下文独立能力提供。
 
 ## 未完成的外部验收依赖
 
 安全参数变更后已用独立空 profile、CDP 9228 的真实 Chrome 验证：启用沙箱、不添加 `--remote-allow-origins` 时，无 Origin 的原生 CDP 连接成功执行 `1+1`；携带不可信 Origin 的连接被 HTTP 403 拒绝。本地证据目录为 `tmp/chrome-secure-smoke-tiwgh41d/` 与 `tmp/chrome-origin-check-gwlhhvs6/`（不随 Git 分发）。该检查仅覆盖连接通路。
 
 - Channel 真实全量 UAT：待后端故障修复后执行（Issue #10），当前替代集明确标记 backend_complete=false，不代表生产全量。
-- 认证 UAT（login headed/headless 交接、logout 范围）与 Cost/SLA 生产只读 UAT：待用户完成一次人工 `dogopencli login` 后执行；待办命令清单与验收证据见被 Git 忽略的 `tmp/acceptance-2026-09-11.md`。
+- 认证 UAT 的 logout 范围仍需单独确认；Cost、SLA 和 VA 规则的生产只读 UAT 已分别记录在 [Cost 验收](docs/research/general/2026-09-26-collection-cost-argument-uat.md)、[SLA 验收](docs/research/general/2026-09-26-collection-sla-implementation-uat.md)和 [VA 规则验收](docs/research/general/2026-09-26-collection-va-rule-implementation-uat.md)。
 - launcher 安全参数变更后的生产连接复验仍待完成：使用当前默认参数执行 `dogopencli login`，随后执行 `dogopencli refresh payment cost`，验证应用会话与采集；上述空 profile 检查不替代此项 UAT。
 
 ## 文档入口
