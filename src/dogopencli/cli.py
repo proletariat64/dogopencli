@@ -1342,8 +1342,14 @@ def _collection_va_capacity_cached(
     return cached, records
 
 
-def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
-    cap = collection_va_capacity.COLLECTION_VA_CAPACITY
+def _refresh_complete_collection_list(
+    cap: (
+        collection_va_capacity.CollectionVaCapacityCapability
+        | network_config.NetworkConfigCapability
+    ),
+    scope_name: str,
+) -> int:
+    """Publish one complete acquisition using each capability's own contract."""
     config = config_mod.load([cap.source_config_key])
     source = _cdp_source(config, cap.source_config_key)
     store = Cache(config.cache_path)
@@ -1359,8 +1365,7 @@ def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
         if not result.complete:
             raise CliError(
                 INCOMPLETE_RESULT,
-                "collection VA capacity scope is incomplete; the previous "
-                "cache is retained",
+                f"{scope_name} scope is incomplete; the previous cache is retained",
             )
         records = cap.sort_records(result.records)
         fetched_at = _now().isoformat()
@@ -1392,6 +1397,12 @@ def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
         snapshot_meta("cache", snapshot, stale, len(records), len(records), False),
     )
     return EXIT_OK
+
+
+def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
+    return _refresh_complete_collection_list(
+        collection_va_capacity.COLLECTION_VA_CAPACITY, "collection VA capacity"
+    )
 
 
 def cmd_collection_va_capacity_list(args: argparse.Namespace) -> int:
@@ -1452,59 +1463,6 @@ def _network_config_cached(
     return cached, records
 
 
-def _refresh_network_config(
-    args: argparse.Namespace, cap: network_config.NetworkConfigCapability
-) -> int:
-    config = config_mod.load([cap.source_config_key])
-    source = _cdp_source(config, cap.source_config_key)
-    store = Cache(config.cache_path)
-    ns = namespace(cap.name, cap.default_scope, source.kind)
-    with store.refresh_lock():
-        with inquiry_session(config_file=config_mod.config_path()) as session:
-            result = collect_mod.collect_scope(
-                cap,
-                session.transport(cap),
-                cap.default_scope,
-                progress=_progress,
-            )
-        if not result.complete:
-            raise CliError(
-                INCOMPLETE_RESULT,
-                "collection network configuration scope is incomplete; the previous "
-                "cache is retained",
-            )
-        records = cap.sort_records(result.records)
-        fetched_at = _now().isoformat()
-        snapshot = SnapshotMeta(
-            namespace=ns,
-            capability=cap.name,
-            scope=cap.default_scope,
-            source_kind=source.kind,
-            snapshot_id=hashlib.sha256(canonical(records).encode()).hexdigest(),
-            dataset_id=None,
-            simulated=False,
-            backend_complete=True,
-            dataset_complete=True,
-            fetched_at=fetched_at,
-            loaded_at=_now().isoformat(),
-            source_observed_from=None,
-            source_observed_to=None,
-            row_count=len(records),
-        )
-        collect_mod.remaining_seconds(result.deadline)
-        store.publish(
-            snapshot,
-            [(index, canonical(record)) for index, record in enumerate(records, 1)],
-        )
-    print(f"refresh: published {len(records)} rows to {ns}", file=sys.stderr)
-    stale = is_stale(snapshot, config.ttl_hours, _now())
-    _emit(
-        {"namespace": ns, "published": True, "row_count": len(records)},
-        snapshot_meta("cache", snapshot, stale, len(records), len(records), False),
-    )
-    return EXIT_OK
-
-
 def _list_network_config(
     args: argparse.Namespace, cap: network_config.NetworkConfigCapability
 ) -> int:
@@ -1545,7 +1503,9 @@ def cmd_collection_clearing_system_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_collection_clearing_system(args: argparse.Namespace) -> int:
-    return _refresh_network_config(args, network_config.CLEARING_SYSTEM)
+    return _refresh_complete_collection_list(
+        network_config.CLEARING_SYSTEM, "collection network configuration"
+    )
 
 
 def cmd_collection_card_template_list(args: argparse.Namespace) -> int:
@@ -1553,7 +1513,9 @@ def cmd_collection_card_template_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_collection_card_template(args: argparse.Namespace) -> int:
-    return _refresh_network_config(args, network_config.CARD_TEMPLATE)
+    return _refresh_complete_collection_list(
+        network_config.CARD_TEMPLATE, "collection network configuration"
+    )
 
 
 def cmd_describe(args: argparse.Namespace) -> int:
