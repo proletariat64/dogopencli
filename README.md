@@ -13,12 +13,12 @@ WSL 用户应使用 Linux 磁盘目录。
 ### 1. 安装
 
 从 [Releases](https://github.com/proletariat64/dogopencli/releases) 下载 wheel，
-在虚拟环境中安装。以下以 v0.1.12 为例，在下载目录执行：
+在虚拟环境中安装。以下以 v0.1.13 为例，在下载目录执行：
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install ./dogopencli-0.1.12-py3-none-any.whl
+python -m pip install ./dogopencli-0.1.13-py3-none-any.whl
 dogopencli --version
 ```
 
