@@ -73,38 +73,42 @@ class RuleListCapability:
         self.name = f"payment.rules.{key}.list"
         self.source_config_key = f"payment_rules_{key}"
         self.contract = EndpointContract(
-            method="POST" if self.peer else "GET",
+            method="POST" if self.is_same_bank_transfer else "GET",
             host="ifundboss.alipay.com"
-            if self.peer
+            if self.is_same_bank_transfer
             else "ifundcontrolprodops.alipay.com",
             path=self.endpoint,
             page_size=1000,
-            one_based=self.peer,
+            one_based=self.is_same_bank_transfer,
             allowed_body_keys=frozenset({self.page_key, "pageSize"}),
-            fixed_body_values=((self.page_key, int(self.peer)), ("pageSize", 1000)),
+            fixed_body_values=((self.page_key, self.first_page), ("pageSize", 1000)),
         )
 
     @property
-    def peer(self) -> bool:
+    def is_same_bank_transfer(self) -> bool:
         return self.slug == "same-bank-transfer"
 
     @property
+    def first_page(self) -> int:
+        return 1 if self.is_same_bank_transfer else 0
+
+    @property
     def page_key(self) -> str:
-        return "pageNum" if self.peer else "pageNo"
+        return "pageNum" if self.is_same_bank_transfer else "pageNo"
 
     @property
     def command_path(self) -> str:
         return f"payment rules {self.slug}"
 
     def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
-        if scope != "all" or page_num != int(self.peer) or page_size != 1000:
+        if scope != "all" or page_num != self.first_page or page_size != 1000:
             raise CliError(
                 REQUEST_NOT_ALLOWED, "only the verified first page is allowed"
             )
-        return {self.page_key: int(self.peer), "pageSize": 1000}
+        return {self.page_key: self.first_page, "pageSize": 1000}
 
     def request_filters(self, body: dict[str, Any]) -> dict[str, list[str]]:
-        if body != self.page_body("all", int(self.peer), 1000):
+        if body != self.page_body("all", self.first_page, 1000):
             raise CliError(REQUEST_NOT_ALLOWED, "backend rule filters disabled")
         return {}
 
@@ -121,7 +125,7 @@ class RuleListCapability:
         identity = row.get(self.id_field)
         valid = (
             type(identity) is int and identity >= 0
-            if self.peer
+            if self.is_same_bank_transfer
             else isinstance(identity, str) and bool(identity.strip())
         )
         if not valid:
@@ -149,21 +153,23 @@ class RuleListCapability:
 
     def parse_page(self, body: bytes) -> ParsedPage:
         document = success_document(body)
-        data = document.get("resultObj" if self.peer else "data")
+        data = document.get("resultObj" if self.is_same_bank_transfer else "data")
         if not isinstance(data, dict):
             raise CliError(INVALID_RESPONSE, "missing rule page")
-        if self.peer and data.get("success") is not True:
+        if self.is_same_bank_transfer and data.get("success") is not True:
             raise CliError(INVALID_RESPONSE, "invalid nested rule success")
-        pages_key = "totalPages" if self.peer else "totalPageNo"
+        pages_key = "totalPages" if self.is_same_bank_transfer else "totalPageNo"
         for key in (self.page_key, "pageSize", "totalCount", pages_key):
             if type(data.get(key)) is not int or data[key] < 0:
                 raise CliError(INVALID_RESPONSE, f"invalid rule pagination {key}")
         rows = data.get(
-            "payoutBookDecisionRuleVOList" if self.peer else "businessDataList"
+            "payoutBookDecisionRuleVOList"
+            if self.is_same_bank_transfer
+            else "businessDataList"
         )
         if (
             not isinstance(rows, list)
-            or data[self.page_key] != int(self.peer)
+            or data[self.page_key] != self.first_page
             or data["pageSize"] != 1000
         ):
             raise CliError(INVALID_RESPONSE, "invalid rule list or pagination echo")
@@ -177,9 +183,9 @@ class RuleListCapability:
         if len({self.identity_key(row) for row in rows}) != len(rows):
             raise CliError(INCOMPLETE_RESULT, "duplicate rule identities")
         pages = 1 if rows else 0
-        if self.peer and data[pages_key] != pages:
+        if self.is_same_bank_transfer and data[pages_key] != pages:
             raise CliError(INVALID_RESPONSE, "rule page count mismatch")
-        return ParsedPage(rows, int(self.peer), 1000, total, pages)
+        return ParsedPage(rows, self.first_page, 1000, total, pages)
 
 
 SAME_BANK_TRANSFER = RuleListCapability(

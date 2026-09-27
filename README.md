@@ -311,6 +311,12 @@ path = "/absolute/path/to/channel-dataset"
 | `CACHE_ERROR` / `IO_ERROR` | 检查本地权限、磁盘和支持的文件系统 |
 | `INTERNAL_ERROR` | 保留 stderr 与错误关联号，提交脱敏问题报告 |
 
+## 未完成的外部验收依赖
+
+- 付款 Channel 真实全量 UAT 仍待后端分页故障修复（[#10](https://github.com/proletariat64/dogopencli/issues/10)）；离线替代集不代表生产全量。
+- 认证 UAT 的 `logout` 范围仍需单独确认；当前规则查询验收复用已有会话，未执行登出。
+- launcher 安全参数变更后的完整生产连接复验仍待完成：用当前默认参数执行 `dogopencli login`，再执行 `dogopencli refresh payment cost`，验证应用会话和采集。此前独立空 profile 的真实 Chrome 检查只证明启用沙箱、未开放通配 Origin 时原生 CDP 可连接，且不可信 Origin 被拒绝；已有会话上的查询成功不能替代该流程。
+
 ## 开发与文档
 
 在仓库根目录安装开发依赖并运行检查。仓库开发命令统一使用 `rtk`：

@@ -81,3 +81,28 @@ correlation contract, corrected the adversarial expectation and passed all seven
 focused bank-filter regressions. Independent re-review found no remaining issues.
 The final wheel and source distribution built successfully; installation into a
 separate environment passed 16 offline help/describe/excluded-command checks.
+
+
+## PR #60 external review follow-up
+
+Greptile passed for the initial `7d62456` head. Kimi's findings were checked
+against code, the previous README and the complete issue comments:
+
+| Finding | Decision |
+| --- | --- |
+| Frozen contracts absent from issues | Incorrect as stated: full contracts were posted before implementation on #55–#58 at 01:46 UTC on 2026-09-27. The issue bodies and unchecked completion lists were stale; synchronized those with the existing contract comments and PR evidence, keeping the issues open until merge. |
+| README rewrite exceeds scope | The user separately requested the complete rewrite. It remains authorized. |
+| Two outstanding external UAT dependencies dropped | Confirmed. Restored logout UAT scope confirmation and the default-launcher login → payment-cost-refresh production re-verification. Existing-session rule queries and empty-profile CDP smoke do not close those items. |
+| `peer` hides capability and pagination meaning | Renamed to `is_same_bank_transfer`; introduced explicit `first_page` instead of converting a boolean to a page number. The verified same-bank contract remains one coherent variant; no configurable combinations or new enum are needed. |
+| Shared help groups depend on tuple position | Bound ownership to the `same-bank-transfer` slug, independent of capability ordering. |
+| Collection validation delegation | Retained the small adapter for shared cached validation. A new Protocol would not improve behavior or remove the need for collection validation. |
+| Description branches | Retained the four small capability-specific schema branches; no additional abstraction is justified by this batch. |
+
+Before the refactor, 21 boundary/identity/request-contract tests passed. The 12
+public list-help, refresh-help and describe documents are byte-equivalent after
+canonical serialization; reversing the capability tuple keeps group ownership
+unchanged. This follow-up does not change endpoints, query semantics or public
+schemas, and does not perform login/logout or production mutations.
+
+Final follow-up verification: all 234 payment-rule/help tests passed; Ruff lint
+and format, focused `ty`, doc-guard and its nine self-tests passed.

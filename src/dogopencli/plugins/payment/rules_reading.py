@@ -185,7 +185,7 @@ def refresh_node(cap: RuleListCapability) -> BizNode:
 
 def groups(cap: RuleListCapability) -> tuple[BizNode, ...]:
     nodes = (BizNode(("payment", "rules", cap.slug), f"Payment {cap.slug} inquiries."),)
-    if cap is CAPABILITIES[0]:
+    if cap.slug == "same-bank-transfer":
         nodes += (
             BizNode(("payment", "rules"), "Read-only payment rule configurations."),
             BizNode(
@@ -213,7 +213,7 @@ def description(node: BizNode) -> dict[str, Any]:
         properties[field]["items"] = {"type": "string"}
     if cap.slug == "bank-switch":
         properties = {"fundNavigationNodeSwitchRequirementVOList": bank_schema()}
-    elif cap.peer:
+    elif cap.is_same_bank_transfer:
         properties.update(
             {
                 "priority": observed(
@@ -255,7 +255,7 @@ def description(node: BizNode) -> dict[str, Any]:
                 "integer", "Raw timestamp if present; unit/timezone unverified."
             )
     properties[cap.id_field] = {
-        "type": "integer" if cap.peer else "string",
+        "type": "integer" if cap.is_same_bank_transfer else "string",
         "description": "Unique raw row identity. Numeric order for same-bank; "
         "lexical order for string identities. No version merging.",
     }
@@ -287,7 +287,7 @@ def description(node: BizNode) -> dict[str, Any]:
                 "cached": "Offline; TTL defaults to 72h. Inspect fetched_at/stale.",
                 "live": "Complete acquisition; never writes cache or falls back.",
                 "refresh": f"refresh {cap.command_path}; "
-                f"{cap.page_key}={int(cap.peer)}/pageSize=1000 only. "
+                f"{cap.page_key}={cap.first_page}/pageSize=1000 only. "
                 "Atomic complete publication; every failure retains old data.",
             },
             "quality": [
