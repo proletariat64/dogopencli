@@ -1,440 +1,342 @@
 # Dogopencli
 
-将产品运营网站的查询能力转为 Python CLI，供单机单人使用。v0.1.0 的既定范围聚焦付款产品；v0.1.4 增加收款交易成本，v0.1.6 增加收款 SLA 配置，v0.1.7 增加收款 VA 规则查询，v0.1.8 增加收款 VA 容量监控，v0.1.10 增加收款清算系统与卡模板配置查询。所有业务操作仅查询，不创建、修改或审批任何生产配置。
+把产品运营平台的付款与收款查询带到终端。Dogopencli 面向单人、单机使用，
+提供离线缓存查询、显式实时查询，以及适合脚本和 Agent 读取的 JSON 帮助与数据描述。
+所有生产业务操作仅查询；登录管理专用本地浏览器，刷新写入本地快照。
 
-Channel 后端故障期间使用显式离线替代源推进工程；正式 CDP 架构保持，真实 Channel 全量验收在后端修复后进行（见[规格 Issue #1](https://github.com/proletariat64/dogopencli/issues/1)、[ADR 0005](docs/adr/0005-channel-snapshot-source.md)）。Cost/SLA/VA 规则查询走真实 CDP 路径。
+## 快速开始
 
-## 安装
+需要 Python 3.10+。实时查询还需要 Google Chrome、运营平台访问权限及人工 SSO 登录；
+缓存查询、帮助和数据描述可以离线使用。缓存应存放在本地 Linux 文件系统上，
+WSL 用户应使用 Linux 磁盘目录。
 
-需要 Python 3.10+：
+### 1. 安装
+
+从 [Releases](https://github.com/proletariat64/dogopencli/releases) 下载 wheel，
+在虚拟环境中安装。以下以 v0.1.12 为例，在下载目录执行：
 
 ```bash
-pip install -e .
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install ./dogopencli-0.1.12-py3-none-any.whl
+dogopencli --version
 ```
 
-配置默认位于 `~/.config/dogopencli/config.toml`（认证与查询共用：显式 `--config-dir`〔认证命令〕优先，其次 `DOGOPENCLI_CONFIG_DIR`、`DOGOPENCLI_CONFIG`；文件变量可指定自定义文件名），缓存默认 `~/.local/share/dogopencli/cache.sqlite3`（可用配置键 `cache.path`、`cache.ttl_hours` 调整，新鲜度默认 72 小时）。最小配置：
+也可以在仓库根目录安装源码：
+
+```bash
+python -m pip install -e .
+```
+
+### 2. 配置一个查询来源
+
+创建 `~/.config/dogopencli/config.toml`，先添加需要使用的能力。例如账户隔离规则：
+
+```toml
+[sources.collection_account_isolation]
+kind = "cdp"
+```
+
+`cdp` 表示通过专用 Chrome 会话执行已验证的查询。其他能力的配置键见下表；
+无需一次配置所有来源。
+
+### 3. 登录、刷新、查询
+
+```bash
+dogopencli login
+dogopencli auth check
+dogopencli refresh collection account-isolation
+dogopencli collection account-isolation list --require-fresh --require-complete
+```
+
+`login` 打开可见 Chrome，等待人工完成 SSO，随后切回无头模式并复验会话。
+默认等待 600 秒，可用 `--timeout-seconds` 调整。`auth check` 只检查现有会话，
+不会启动或修复浏览器。
+
+之后可直接读取缓存，或明确要求实时查询：
+
+```bash
+dogopencli collection account-isolation list --currency GBP --all
+dogopencli collection account-isolation list --live --all
+```
+
+示例中的币种、业务代码与 ID 应替换为实际返回值；示例筛选结果可以为空。
+
+## 可以查询什么
+
+下表命令均省略 `dogopencli` 前缀。配置键对应 `[sources.<键>]`，
+除付款渠道的离线替代源外，使用 `kind = "cdp"`。
+
+| 能力 | 查询命令 | 刷新命令 | 配置键 |
+| --- | --- | --- | --- |
+| 付款渠道 | `payment channel list` | `refresh payment channel` | `payment_channel` |
+| 付款交易成本 | `payment cost list` | `refresh payment cost` | `payment_cost` |
+| 付款 SLA 基线 | `payment sla baselines list` / `get --id ID` | `refresh payment sla` | `payment_sla` |
+| 同行转账规则 | `payment rules same-bank-transfer list` | `refresh payment rules same-bank-transfer` | `payment_rules_same_bank_transfer` |
+| 降本规则 | `payment rules cost-reduction list` | `refresh payment rules cost-reduction` | `payment_rules_cost_reduction` |
+| 重试规则 | `payment rules retry list` | `refresh payment rules retry` | `payment_rules_retry` |
+| 银存切换规则 | `payment rules bank-switch list` | `refresh payment rules bank-switch` | `payment_rules_bank_switch` |
+| 收款交易成本 | `collection cost list` | `refresh collection cost` | `collection_cost` |
+| 收款 SLA 配置 | `collection sla configs list` / `get --id ID` | `refresh collection sla` | `collection_sla` |
+| 收款 VA 规则 | `collection va rules list` / `get --id ID` | `refresh collection va` | `collection_va` |
+| 收款 VA 容量 | `collection va capacity list` | `refresh collection va capacity` | `collection_va_capacity` |
+| 收款清算系统 | `collection clearing-system list` | `refresh collection clearing-system` | `collection_clearing_system` |
+| 收款卡模板 | `collection card-template list` | `refresh collection card-template` | `collection_card_template` |
+| 收款账户隔离规则 | `collection account-isolation list` | `refresh collection account-isolation` | `collection_account_isolation` |
+
+只有表中标注 `get` 的能力提供独立详情。详情 ID 来自对应列表；VA 规则使用
+`vaRuleId`，付款 SLA 与收款 SLA 使用 `id`。列表摘要不能代替详情。
+
+付款成本固定查询 `FUND_OUT_CHANNEL_TRANS_FEE`，收款成本固定查询
+`FUND_IN_CHANNEL_TRANS_FEE`。这些是成本配置，不是实际交易费用。
+SLA 是配置目标，不是观测到账耗时。
+
+银行账户 VA 规则是独立对象，因完整分页验证失败仍未实现，见
+[#52 与阻塞证据](docs/research/general/2026-09-27-collection-bank-va-rule-blocker.md)。
+VA 费用、VA 池、实体账户、余额及生产变更操作不在当前范围。
+
+付款 flow 规则的真实详情存在身份不一致，#54 暂未交付，也未提供 list-only 替代；
+见[复核证据](docs/research/payment/2026-09-27-payment-flow-rule-blocker.md)。PTR 单据查询尚未实现。
+
+## 缓存、实时查询与刷新
+
+| 操作 | 数据来源 | 是否更新本地缓存 |
+| --- | --- | --- |
+| 普通 `list` / `get` | 已发布的 SQLite 快照；不联网、不启动浏览器 | 否 |
+| 查询加 `--live` | 当前 CDP 会话；失败不回退缓存 | 否 |
+| `refresh …` | 配置的 CDP 或渠道 snapshot 来源 | 是，原子发布 |
+| `help` / `describe` | 随安装包发布的命令与字段说明 | 否，也不读取配置或缓存 |
+
+没有缓存时普通查询返回 `CACHE_MISS`。缓存默认有效期为 72 小时；默认允许读取旧数据，
+但会标记 `stale`。需要时加 `--require-fresh` 或 `--require-complete`，不会因此自动刷新。
+各能力及来源的快照相互隔离。
+
+刷新通常只在完整校验通过后替换快照，失败保留旧数据。**VA 规则详情拒绝是一个例外**：
+若后端明确拒绝单条详情，刷新可以发布真实列表行与 `detail=null` 的部分快照，
+标记 `dataset_complete=false`，再以 `INCOMPLETE_RESULT` 失败退出。
+此时旧详情可能被替换；`--require-complete` 会拒绝该快照，缺详情的 `get` 也会失败。
+其他采集错误仍保留旧快照。详见 [ADR 0010](docs/adr/0010-collection-va-partial-detail-tolerance.md)。
+
+显示分页不等于后端采集分页。收款成本、VA 规则、清算系统、卡模板及账户隔离规则
+以及上述四项付款规则使用各自验证过的单页采集契约；超过 1000 条或覆盖校验失败会明确报错，不猜测下一页。
+VA 容量采用已验证的多页采集与最终总数校验。`--limit` 不会放宽这些完整性要求。
+
+账户隔离采集拒绝仅在后端筛选场景观察到的 null 列表／全零分页响应，避免把未知状态
+发布为空快照；正确回显页码、页大小及零总数的空数组可以接受。见
+[账户隔离契约](docs/research/general/2026-09-27-collection-account-isolation-contract.md)。
+
+## 常用查询方式
+
+所有列表默认输出 JSON，显示前 100 行，偏移量为 0。
+
+| 选项 | 用途 |
+| --- | --- |
+| `--limit N --offset N` | 显示窗口；limit 必须为正整数，offset 为非负整数 |
+| `--all` | 显示全部匹配行；与显式 `--limit` / `--offset` 冲突 |
+| `--fields id,currency` | 仅保留指定顶层字段，保留选中的完整嵌套值和质量 metadata |
+| `--format table` | 以表格阅读；默认 `--format json` |
+| `--live` | 显式实时查询，不写缓存 |
+| `--require-fresh` | 拒绝超过 TTL 的缓存 |
+| `--require-complete` | 要求来源完整；VA 规则还要求详情完整 |
+
+```bash
+dogopencli collection sla configs list --currency USD --currency EUR --region US --all
+dogopencli collection sla configs get --id CONFIG_ID
+dogopencli collection va rules get --id VA_RULE_ID --live
+dogopencli collection va capacity list --va-rule-id RULE_ID
+dogopencli collection clearing-system list --currency GBP --format table
+dogopencli collection card-template list --template-id TEMPLATE_ID --live
+dogopencli collection account-isolation list --all --fields id,currency
+```
+
+### 收款筛选
+
+以下筛选在缓存与实时查询中均使用本地精确字符串匹配：同字段重复值取 OR，
+不同字段取 AND，区分大小写，`*` 按字面值处理。空值或纯空白参数会被拒绝，
+有效值不裁剪、不标准化，缺失或 null 字段不会匹配。先筛选、排序，再应用显示窗口和投影。
+
+| 列表 | 筛选参数 |
+| --- | --- |
+| SLA 配置 | `--business-line`、`--entity`、`--currency`、`--region` |
+| VA 容量 | `--va-rule-id`、`--bank-va-rule-id` |
+| 清算系统 | `--bank-location`、`--currency`、`--system-type`、`--system-name`、`--status` |
+| 卡模板 | `--bank-location`、`--currency`、`--bank`、`--template-name`、`--template-id`、`--status` |
+| 账户隔离规则 | `--opening-rule-id`、`--business-line`、`--business-region`、`--customer-group`、`--scene-code`、`--collection-region`、`--currency`、`--transaction-type` |
+
+收款成本与 VA 规则列表没有领域筛选。收款刷新不接受筛选条件。
+账户隔离的 `customerTags` 和 `currency` 可以包含逗号，需传入完整字符串，CLI 不拆分成员。
+VA 容量的行身份是 `ruleId`；`--bank-va-rule-id` 匹配 `bankAccountVaId`，不是查询银行账户规则详情。
+容量预警状态没有已验证的筛选选项。
+
+付款 Channel、Cost 和 SLA 筛选的缓存与实时语义有所不同，以对应 `help` / `describe` 为准。
+实时付款 Cost/SLA 每字段只接受单值；付款 SLA 的 `--biz-legal-entity` 仅支持实时透传，
+其独立筛选效果未验证，缓存模式拒绝该参数。付款 Channel 默认范围为 `EXTERNAL`，
+`--payout-type` 还支持 `LIQUIDITY`、`MANUAL`、`SETTLEMENT`。
+
+### 付款规则筛选
+
+四项规则在缓存和实时模式下都先完整采集，再本地筛选；同字段 OR、跨字段 AND，
+区分大小写、保留空格、`*` 按字面匹配，空白参数拒绝。刷新不接受筛选。
+
+| 列表 | 筛选参数 |
+| --- | --- |
+| 同行转账 | `--bank`、`--status` |
+| 降本 | `--name`、`--business-line`、`--currency`、`--market`、`--status`、`--entity`、`--obo`、`--fvt` |
+| 重试 | `--name`、`--status`、`--communication-mode`、`--integration-mode`、`--entity`、`--business-line`、`--bank`、`--currency`、`--region`、`--bank-account`、`--clearing-network` |
+| 银存切换 | `--source-account`、`--source-network`、`--status`、`--target-account`、`--target-network` |
+
+降本的主体/OBO/FVT、重试的主体/业务线/银行/币种/地区/银行账户/清算网络，
+按原始字符串数组的成员精确匹配，不拆分逗号。OBO/FVT 不是布尔开关。
+银存切换要求嵌套条件在同一适用条件、同一规则内成立，目标账户和网络必须属于同一目标；
+返回整个来源节点，保留未匹配的子规则。降本列表是组摘要，不代表完整历史版本。
+
+```bash
+dogopencli refresh payment rules retry
+dogopencli payment rules retry list --currency USD --currency EUR --all
+dogopencli payment rules bank-switch list --source-account SOURCE_ACCOUNT --all
+dogopencli describe payment rules cost-reduction list --format text
+```
+
+以上命令需先配置对应 `sources.payment_rules_*` 的 `kind = "cdp"`。
+具体字段映射和证据见 `describe` 与[查询契约](docs/research/payment/2026-09-27-payment-rules-contract.md)。
+
+## 帮助与导航
+
+```bash
+dogopencli
+dogopencli help collection
+dogopencli help collection account-isolation list
+dogopencli collection account-isolation list --help
+dogopencli help collection account-isolation list --format text
+dogopencli describe collection account-isolation list --format text
+```
+
+无参数入口和分组命令提供逐层导航；叶子命令直接执行操作，需要帮助时加 `--help`
+或使用 `help <路径>`。帮助默认 JSON，人工阅读可用 `--format text`。
+
+### Data helper
+
+`describe <查询路径>` 提供 JSON Schema、字段说明、来源证据和读取指引，不查询业务数据。
+帮助输出使用 `help_version`；描述输出包含 `describe_version`、`schema_version`、
+`capability`、`data_schema`、`read_guide` 和 `query_help`。两者直接返回文档对象，
+不使用业务查询的 `data/meta/error` envelope。
+
+Agent 或脚本应先读取 `help` 确认参数，再用 `describe` 判断字段含义。Schema 中
+`x-evidence` 区分已验证、仅观察和未知事实；`x-observed-values` 不是封闭枚举。
+保留缺失、null、空字符串、空数组及原始数值精度，不推断未验证的金额倍率、时间单位或跨域关联。
+更完整的领域区别见 [CONTEXT.md](CONTEXT.md)。
+
+## 读取查询结果
+
+JSON 业务结果使用 `data`、`meta`、`error`。先检查退出码和 `error`，再使用数据。
+
+| Metadata | 如何理解 |
+| --- | --- |
+| `source` / `backend` | 读取方式 `cache/live` 与来源类型 `snapshot/cdp` 是两个维度 |
+| `fetched_at` / `stale` | 采集时间与缓存新鲜度；新鲜不等于完整 |
+| `complete` / `dataset_complete` | 来源覆盖与数据集完整性；VA 详情拒绝、渠道替代集需分别解释 |
+| `simulated` | 是否属于显式替代数据；不能把替代集当作已验证生产全量 |
+| `matched_total` / `returned_count` / `has_more` | 当前可用来源中的匹配数与显示窗口，不证明生产覆盖 |
+| `loaded_at` / `source_observed_from` / `source_observed_to` | 导入时间与原始观察时间；重新导入不会让旧观察变新 |
+
+`--fields` 不删除质量 metadata。投影后的数据可能缺少 schema 中的必填字段，
+应作为部分记录处理。`seqid` 是本地位置，不是跨快照身份；不同能力的 ID 也不是通用 join key。
+
+业务查询和刷新退出码：`0` 成功、`1` 运行失败、`2` 参数错误、`130` 用户中断。
+允许的部分结果也可能退出 `0`，因此需要检查质量字段或指定 `--require-complete`。
+认证命令使用独立的 `output_version` envelope，参数和运行错误均退出 `1`。
+
+## 配置与本地会话
+
+| 内容 | 默认位置或值 |
+| --- | --- |
+| 配置 | `~/.config/dogopencli/config.toml` |
+| 缓存 | `~/.local/share/dogopencli/cache.sqlite3` |
+| 专用 Chrome profile | `~/.local/share/dogopencli/chrome/` |
+| CDP 端口 | `9222` |
+| 缓存 TTL | `72` 小时 |
+
+配置路径优先级为：认证命令显式 `--config-dir`、`DOGOPENCLI_CONFIG_DIR`、
+`DOGOPENCLI_CONFIG`、默认路径。前两者指定目录，`DOGOPENCLI_CONFIG` 指定文件。
+
+可选缓存配置如下；路径请使用本机的实际绝对路径：
+
+```toml
+[cache]
+path = "/home/YOUR_USER/.local/share/dogopencli/cache.sqlite3"
+ttl_hours = 72
+```
+
+缓存依赖 SQLite WAL、共享内存及 POSIX 文件锁，不支持 Windows DrvFS/9p 或网络文件系统。
+并发刷新返回 `LOCKED`，不会抢占活跃锁。专用 profile 同一时刻由一个 Chrome 进程持有；
+不要与日常浏览器共用 profile，也不要使用 CDP 端口 9330–9340。
+
+```bash
+dogopencli logout
+```
+
+`logout` 清理并验证专用本地认证，不删除业务缓存，也不撤销公司全局 SSO。
+Cookie、令牌、profile、私有快照及生产原始响应不得提交到 Git。
+
+### 付款渠道的离线替代源
+
+付款 Channel 的生产全量验收仍受后端分页问题阻塞，见
+[Issue #10](https://github.com/proletariat64/dogopencli/issues/10)。可显式使用已整理的私有数据集：
 
 ```toml
 [sources.payment_channel]
 kind = "snapshot"
-path = "/path/to/dataset"    # 显式离线整理集；后端修复后改为 kind = "cdp"
-
-[sources.payment_cost]
-kind = "cdp"
-
-[sources.payment_sla]
-kind = "cdp"
-
-[sources.collection_cost]
-kind = "cdp"
-
-[sources.collection_sla]
-kind = "cdp"
-
-[sources.collection_va]
-kind = "cdp"
-
-[sources.collection_va_capacity]
-kind = "cdp"
-
-[sources.collection_clearing_system]
-kind = "cdp"
-
-[sources.collection_card_template]
-kind = "cdp"
+path = "/absolute/path/to/channel-dataset"
 ```
 
-配置示例见被 Git 忽略的 `tmp/channel-2026-09-11/source.toml`；整理集为私有数据，不随 Git 分发。
+运行 `dogopencli refresh payment channel` 导入后，普通查询只读缓存。
+数据集不随仓库分发，仅覆盖 `EXTERNAL`，不支持 `--live`，也不证明生产全量；
+完整性标记保留这些限制。切回 `kind = "cdp"` 时移除 snapshot 专用的 `dataset_id`，
+显式刷新并验证覆盖，不会自动回退。来源类型、路径或显式数据集身份变化后需重新刷新。
+见 [ADR 0005](docs/adr/0005-channel-snapshot-source.md)。
 
-## 帮助与导航
+## 故障处理
 
-帮助为 DI 风格的渐进式导航（[规格 Issue #13](https://github.com/proletariat64/dogopencli/issues/13)），已替代旧的 argparse 文本默认帮助。无参数、`--help`/`-h`、`help` 均返回同一份 `help_version=1` JSON 文档并退出 0；每层只列直属子命令，叶子给出完整调用契约（必填项、默认值、choices、约束、操作影响、输出、错误码、示例与下一步）。帮助全程离线：不读取配置、缓存、浏览器或网络。
-
-```bash
-dogopencli                                   # Agent：根 JSON 导航（children：payment/collection/refresh/describe/auth/login/logout）
-dogopencli help payment channel list         # 逐层钻取到叶子契约
-dogopencli payment sla baselines get --help  # PATH --help 等价于 help PATH
-dogopencli --format text                     # 人工：同一份文档的可读文本（任意节点可加 --format text）
-```
-
-裸叶子保持执行语义：`dogopencli payment channel list` 仍执行缓存查询，`login`/`logout`/`auth check` 仍执行认证动作；只有无 handler 的命令路径才自动显示帮助。帮助 `--format` 只接受 `json|text`（业务执行格式不变，查询仍 `json|table`）。错误归属不变：根/业务导航参数错误为业务 JSON `INVALID_ARGUMENT` 退出 2，认证路径参数错误为认证 `invalid_arguments` 退出 1。
-
-`cache.path` 仅支持具备可靠 SQLite WAL/共享内存与 POSIX `flock` 语义的本地 Linux 文件系统，推荐 WSL Linux 磁盘上的默认目录。Windows DrvFS/9p 挂载及网络文件系统不在缓存支持范围；无法启用 WAL 时明确失败，不降级为回滚日志。升级前若缓存位于这些挂载上，请改到支持的本地路径并重新刷新；旧库的来源路径列会自动迁移。
-
-## Data helper
-
-Data helper v1 提供随程序发布的 schema、字段说明和读取指引（[规格 #16](https://github.com/proletariat64/dogopencli/issues/16)）。无需配置、缓存或登录；不读取业务数据、不联网、不启动浏览器、不初始化或迁移 SQLite。同一安装版本、同一目标的输出确定，不随本机快照变化。
-
-先从查询帮助的 `next` 找到描述入口，再读取描述、核对参数，最后执行已有查询：
-
-```bash
-dogopencli describe                          # 支持的描述路径导航
-dogopencli describe payment channel list
-dogopencli describe payment cost list
-dogopencli describe payment cost list --format text  # 人工阅读 schema、字段说明和读取指引
-dogopencli describe payment sla baselines list
-dogopencli describe payment sla baselines get
-dogopencli describe collection cost list
-dogopencli describe collection sla configs get
-dogopencli describe collection va rules get
-dogopencli describe collection va capacity list
-dogopencli help payment cost list            # 参数的权威契约
-dogopencli payment cost list --all --fields itemId,costRateConfigList
-dogopencli payment sla baselines list --all --fields id
-dogopencli payment sla baselines get --id BASELINE_ID
-```
-
-`BASELINE_ID` 是合成占位符，替换为列表实际返回的 `id`。SLA 列表和详情分别是数组与对象；详情须独立读取，不能以列表行代替。缓存列表与详情由一次 SLA refresh 一起发布，live 详情是独立查询。
-
-成功描述直接返回 JSON 对象，固定键如下；它本身不使用业务 `data/meta/error` envelope：
-
-| 键 | v1 类型与含义 |
+| 错误码 | 建议操作 |
 | --- | --- |
-| `describe_version` | 整数 `1`，helper 文档协议版本 |
-| `capability` | 字符串：`payment.channel.list`、`payment.cost.list`、`payment.sla.baselines.list`、`payment.sla.baselines.get`、`collection.cost.list`、`collection.sla.configs.list`、`collection.sla.configs.get`、`collection.va.rules.list`、`collection.va.rules.get` 、`collection.va.capacity.list`、`collection.clearing_system.list` 或 `collection.card_template.list` |
-| `schema_version` | 整数 `1`，该查询能力的数据描述版本 |
-| `data_schema` | JSON Schema 对象，`$schema` 为 `https://json-schema.org/draft/2020-12/schema`；描述成功且未投影的业务 `data`，不是数据库表或整个 envelope |
-| `read_guide` | 对象，包含下面的读取规则及证据词汇 |
-| `query_help` | 对应 `dogopencli help <查询路径>` 字符串，参数以此帮助为准 |
-
-各领域 schema 与读取指引由对应插件提供，随查询命令一起注册；核心只组装描述文档与通用输出说明。schema 和读取指引的注解词汇共用一份定义，分别以 `dimensions` 映射和 `aspects` 列表呈现同一组证据维度。
-
-付款 `read_guide` 的领域键与公共键为：`parameter_contract`、`options`（直接复用查询帮助）、`filters`、`filter_semantics`、`envelope`、`metadata`、`access_modes`、`quality`、`projection`、`pagination`、`identifiers`、`interpretation`、`annotations`、`errors`、`exit_codes`、`examples`、`evolution`、`filter_notes`；SLA 另有 `list_to_detail`（`steps` 与 `meaning`）。每个 `filters` 条目有 `flag`、`request_field`、`record_field`；无法映射的记录字段为 JSON `null`。`metadata` 按实际 `meta` 字段名解释语义，`exit_codes` 使用字符串键。
-
-兼容演进可在同一版本增加字段或注解，消费者须允许未知键；不兼容 helper 形状变更提升 `describe_version`，不兼容能力 schema 变更提升 `schema_version`。这两个版本不改变业务 envelope 或 `help_version`。描述执行默认输出 JSON（也可显式 `--format json`）；`--format text` 将同一份完整文档渲染为缩进文本，保留嵌套字段、注解和读取指引。描述帮助仍支持 JSON/text。未知目标、认证/refresh 目标或查询参数（如描述后的 `--live`）返回业务 JSON `INVALID_ARGUMENT`，退出 2；不会执行目标查询或认证。
-
-字段说明位于 schema 的 `description`、`properties`、`items` 和 `$defs`，嵌套 Money/Ratio 通过 `$ref` 引用。只对已验证事实施加类型、必填或枚举约束；未知扩展保持开放。以下注解不是 JSON Schema 验证断言：
-
-| 注解 | 解释 |
-| --- | --- |
-| `x-evidence` | 独立给出 `type`、`presence`、`nullability`、`unit`、`meaning` 的证据状态 |
-| 状态值 | `verified` 已验证；`observed` 仅观察到、不作保证；`unknown` 未解决；`not_applicable` 该维度不适用 |
-| `x-observed-type` | 观察到的 JSON 类型，不限制其他类型或 null |
-| `x-observed-values` | 非穷尽观察值，不是封闭 enum；查询参数 choices 仍以帮助为准 |
-| `x-unit` | 仅明确验证时给出单位名；不执行转换 |
-| `x-annotation-vocabulary` | schema 内的注解词汇定义；`read_guide.annotations` 同时提供解释 |
-
-缺失、null、空字符串和空数组须分别保留，不能据此推断 false、零或能力不支持；只观察到空数组不能推定元素结构。保留数值精度及金额字符串，区分交易币种与成本币种，不能仅凭 `cent` 除以 100。未验证比例缩放、时间单位和枚举含义保持未知；SLA 两个成功时效字段明确标注已验证的 `seconds`，仍保留原始字符串。渠道成本配置不是实际收费/总支出，产品 SLA 基线不是观测到账耗时。
-
-`seqid` 是本地位置，不跨快照稳定；Channel `abilityId` 不保证全局唯一，Cost `itemId` 不是渠道 ID；没有通用跨域 join key 或已验证的一对一关系。账户别名和账号分别解释，Cost 的 `--bank-account` 映射 `bankAccountAliasName`，不接受“全账号”的语义替换。
-
-列表默认只显示 100 行；`--all` 读取全部匹配行，与显式 `--limit`/`--offset` 冲突。`--fields` 选择顶层字段并保留选中的完整嵌套值，可能删除标识字段；应按部分数据解释，不能仅因不满足未投影 schema 的必填项而拒绝。投影保留全部质量 metadata。缓存同字段多值 OR、不同字段 AND；live Cost/SLA 每字段单值，Channel 标量筛选单值、已验证数组筛选允许重复。SLA `--biz-legal-entity` 仅列表 live 透传，其独立筛选效果未验证、无对应列表字段，缓存使用报参数错误。
-
-查询时检查退出码与 `error`，再解释 `meta`：`source`（cache/live）和 `backend`（snapshot/cdp）独立；`snapshot_id`/`dataset_id` 标识内容，不提供历史查询或跨域同步快照。`fetched_at`、`loaded_at`、`source_observed_from/to` 区分观察、采集和导入时间，导入不使旧观测变新。`stale` 与 `complete` 独立；`matched_total`/`returned_count`/`has_more` 仅说明当前可用来源的匹配与显示窗口。`complete` 是来源覆盖，`dataset_complete` 可以只表示整理集完整；Channel snapshot 的 `simulated=true`、EXTERNAL 范围不能证明生产全量，即使 `has_more=false` 或返回空列表。`--require-fresh` 拒绝过期缓存，`--require-complete` 检查来源覆盖；VA 规则查询还拒绝 `dataset_complete=false` 的详情拒绝快照。默认缓存读不会隐式刷新，显式 refresh 才发布快照，`--live` 不更新缓存；describe 不执行其中任何操作。
-
-## 登录与认证
-
-认证命令移植自 DI（基线 commit `8eb163c6d140554ca167bd50349a85ca224ac342`），独立运行不依赖已安装 DI；使用专用 Chrome profile（`~/.local/share/dogopencli/chrome/`）与 CDP 端口 9222，输出 `output_version` envelope，详见 [ADR 0004](docs/adr/0004-cli-runtime-boundaries.md)：
-
-```bash
-dogopencli login                # 人工 SSO（headed，默认等待 600 秒，--timeout-seconds 覆盖），完成后切回 headless 复验
-dogopencli auth check           # 只读检查现有会话，不启动或修复浏览器
-dogopencli logout               # 仅清理并验证专用本地认证；不撤销公司全局 SSO，不删业务缓存
-```
-
-## 刷新与查询
-
-普通查询只读本地 SQLite 缓存，不隐式联网、不启动浏览器；缓存缺失明确失败。显式 refresh 才访问来源并原子发布缓存；VA 规则详情被后端明确拒绝时可发布不完整快照并返回 `INCOMPLETE_RESULT`，其余失败保留旧快照。snapshot 查询不读取源 manifest 或数据文件，导入后源文件暂时不可用也能查缓存。缓存记录导入来源路径和 dataset_id；改路径或显式身份后必须刷新，同路径文件内容的变化在显式刷新时校验。旧缓存缺少来源路径时需要刷新一次：
-
-```bash
-dogopencli refresh payment channel    # snapshot：导入配置指向的整理集；cdp：真实采集
-dogopencli refresh payment cost
-dogopencli refresh payment sla        # 全列表 + 逐条详情一起原子发布
-dogopencli refresh collection cost
-dogopencli refresh collection sla
-dogopencli refresh collection va          # VA 规则
-dogopencli refresh collection va capacity # VA 容量
-
-dogopencli payment channel list       # 默认场景 EXTERNAL，--payout-type 可选 LIQUIDITY/MANUAL/SETTLEMENT
-dogopencli payment cost list          # 固定 FUND_OUT_CHANNEL_TRANS_FEE
-dogopencli payment sla baselines list
-dogopencli payment sla baselines get --id ID
-dogopencli collection cost list
-dogopencli collection sla configs list
-dogopencli collection va rules list
-dogopencli collection va capacity list
-```
-
-Channel 的 live 查询还会按已验证字段进行本地精确筛选，避免后端忽略条件时透出不匹配行；Cost/SLA 保持已验证的后端筛选语义。实时 SLA 详情的 complete 指所请求 ID 的详情，`meta.query` 标明 ID，成功获取时满足 freshness/completeness 要求。refresh 的 `meta.source=cache` 表示刚发布的本地快照。
-
-Channel 单轮 CDP 采集中，同 `abilityId` 不同内容会阻止发布完整缓存；live 保留各版本但标记 `complete=false`。离线整理集仍可保留跨轮版本：manifest 的 `source_pages_complete` 独立校验各轮源分页，失败页使其为 false，不影响整理集自身的 `dataset_complete`，也不把 `backend_complete` 提升为 true。
-
-公共查询参数：`--format json|table`、`--fields`、`--limit`/`--offset`/`--all`、`--live`、`--require-fresh`、`--require-complete`。默认 JSON envelope 为 `data`/`meta`/`error`；`meta` 始终携带 source、backend、simulated、complete、dataset_complete、stale、fetched_at/loaded_at、来源观察时间等质量标记，`--fields` 只裁剪数据不删质量信息。完整参数与契约见[规格 Issue #1](https://github.com/proletariat64/dogopencli/issues/1)。
-
-## 来源切换与恢复
-
-- Channel 后端修复后：把 `[sources.payment_channel]` 改为 `kind = "cdp"`，显式 `refresh payment channel` 验证当前全量后再使用；验证不通过则显式改回 `"snapshot"`。切换到 cdp 时删除仅适用于 snapshot 的 `dataset_id`，否则返回配置错误。不会自动切换。
-- snapshot 与 cdp 缓存按命名空间隔离，切换来源不会读到另一来源的旧缓存；配置 `dataset_id` 与缓存不一致时明确失败并要求刷新。
-- 并发刷新冲突返回 LOCKED，稍后重试即可。刷新使用进程持有的文件锁，崩溃或重启后自动释放，磁盘上的锁文件可保留；不按年龄抢占活跃锁。读者始终只见完整旧快照或新快照。
-
-## 常见错误码与处置
-
-| 错误码 | 含义与处置 |
-| --- | --- |
-| CACHE_MISS | 无缓存或来源身份不一致；运行对应 `refresh payment …` |
-| CACHE_STALE | 快照超过 TTL；刷新，或去掉 `--require-fresh` 显式使用过期数据 |
-| INCOMPLETE_RESULT | 来源覆盖或详情完整性不足；VA 规则部分刷新可能已发布快照，需检查返回计数和 `dataset_complete`。VA 规则缺详情的 `get` 不返回列表行 |
-| AUTH_REQUIRED | 会话失效；运行 `dogopencli login` |
-| BROWSER_UNAVAILABLE | 专用浏览器不可达；运行 `dogopencli login` 恢复。连接的 Chrome 必须属于专用 profile；无法证明归属时拒绝复用或退出。Chrome 默认启用沙箱，不开放通配 WebSocket Origin，CLI 原生连接不发送 Origin 头；启动失败时检查 Chrome 日志，不自动关闭沙箱 |
-| LOCKED | 另一刷新、SQLite 锁竞争或浏览器生命周期操作进行中；稍后重试 |
-| CACHE_ERROR / IO_ERROR | 缓存数据库或本地文件操作失败；检查文件权限、磁盘和数据库，不按锁竞争处理 |
-| INTERNAL_ERROR | 未预期的业务命令异常；错误关联号同时出现在 envelope 与 stderr，stderr 附异常类型及函数/行号。排查时保留 stderr；不输出异常文本、源代码行或局部变量 |
-| SOURCE_SCOPE_UNAVAILABLE | 替代集仅覆盖 EXTERNAL；其他场景无数据，不伪造空列表 |
-| LIVE_SOURCE_UNAVAILABLE | snapshot 来源不支持 `--live`；切换到 cdp 或改用缓存 |
-| REQUEST_NOT_ALLOWED | 请求不在只读允许清单；属于防护行为，不开放任意请求入口 |
-
-业务查询与 refresh 退出码：0 成功（含允许的部分/空列表）、1 运行失败、2 参数错误、130 用户中断；认证命令：0 成功/帮助/版本、1 参数或运行失败、130 中断。
-
-## 收款交易成本查询
-
-[Issue #21](https://github.com/proletariat64/dogopencli/issues/21) 在 [ADR 0002](docs/adr/0002-payment-v010-scope.md) 的付款版本范围之外增加独立后续里程碑；不修改历史 v0.1.0 范围。配置 `[sources.collection_cost] kind = "cdp"` 后使用：
-
-```bash
-dogopencli help collection cost list
-dogopencli describe collection cost list
-dogopencli refresh collection cost
-dogopencli collection cost list --require-fresh --require-complete
-dogopencli collection cost list --live --all
-```
-
-固定 `FUND_IN_CHANNEL_TRANS_FEE`，无领域筛选、任意类型、详情或计算费用参数。默认只读独立缓存；`--live` 不写缓存、不回退旧数据。`refresh` 仅在结果完整时原子替换本地快照，生产业务始终只读。JSON/table、顶层字段投影和展示分页沿用公共约定。
-
-采集只发送已验证的 `pageNo=0,pageSize=1000`。总数超过容量、重复 ID、截断或元数据异常都明确失败并保留旧缓存；`INCOMPLETE_RESULT` 不能通过去掉 `--require-complete` 绕过，不切换小页或扩大容量。成功且总数为零时允许省略列表，null 或非零总数缺列表则失败。1000 不是服务端上限保证。
-
-收款 schema 独立标注观察证据与未知含义；保留原始嵌套费率、精确小数、单位、业务时间和未知扩展，不推导实际交易费用。VA 费用、VA 池/实体账户、签约及单据不在此次实现范围；VA 规则由下文独立能力提供。
+| `CONFIG_ERROR` | 检查配置文件路径、对应 source 节和来源类型 |
+| `CACHE_MISS` | 执行该能力的刷新命令；来源身份改变也需要刷新 |
+| `CACHE_STALE` | 刷新，或明确允许旧数据后移除 `--require-fresh` |
+| `INCOMPLETE_RESULT` | 检查覆盖或详情拒绝；VA 规则刷新可能已发布部分快照 |
+| `AUTH_REQUIRED` / `BROWSER_UNAVAILABLE` | 执行 `login` 恢复专用会话；启动失败时检查 Chrome 日志 |
+| `LOCKED` | 等待当前刷新或浏览器操作结束后重试 |
+| `INVALID_RESPONSE` | 后端响应不符合已验证契约；保留错误信息并排查，勿视为空结果 |
+| `SOURCE_SCOPE_UNAVAILABLE` / `LIVE_SOURCE_UNAVAILABLE` | 检查渠道替代集的范围及实时查询限制 |
+| `REQUEST_NOT_ALLOWED` | 请求超出已验证查询允许清单，需要核查实现与契约 |
+| `CACHE_ERROR` / `IO_ERROR` | 检查本地权限、磁盘和支持的文件系统 |
+| `INTERNAL_ERROR` | 保留 stderr 与错误关联号，提交脱敏问题报告 |
 
 ## 未完成的外部验收依赖
 
-安全参数变更后已用独立空 profile、CDP 9228 的真实 Chrome 验证：启用沙箱、不添加 `--remote-allow-origins` 时，无 Origin 的原生 CDP 连接成功执行 `1+1`；携带不可信 Origin 的连接被 HTTP 403 拒绝。本地证据目录为 `tmp/chrome-secure-smoke-tiwgh41d/` 与 `tmp/chrome-origin-check-gwlhhvs6/`（不随 Git 分发）。该检查仅覆盖连接通路。
+- 付款 Channel 真实全量 UAT 仍待后端分页故障修复（[#10](https://github.com/proletariat64/dogopencli/issues/10)）；离线替代集不代表生产全量。
+- 认证 UAT 的 `logout` 范围仍需单独确认；当前规则查询验收复用已有会话，未执行登出。
+- launcher 安全参数变更后的完整生产连接复验仍待完成：用当前默认参数执行 `dogopencli login`，再执行 `dogopencli refresh payment cost`，验证应用会话和采集。此前独立空 profile 的真实 Chrome 检查只证明启用沙箱、未开放通配 Origin 时原生 CDP 可连接，且不可信 Origin 被拒绝；已有会话上的查询成功不能替代该流程。
 
-- Channel 真实全量 UAT：待后端故障修复后执行（Issue #10），当前替代集明确标记 backend_complete=false，不代表生产全量。
-- 认证 UAT 的 logout 范围仍需单独确认；Cost、SLA 和 VA 规则的生产只读 UAT 已分别记录在 [Cost 验收](docs/research/general/2026-09-26-collection-cost-argument-uat.md)、[SLA 验收](docs/research/general/2026-09-26-collection-sla-implementation-uat.md)和 [VA 规则验收](docs/research/general/2026-09-26-collection-va-rule-implementation-uat.md)。
-- launcher 安全参数变更后的生产连接复验仍待完成：使用当前默认参数执行 `dogopencli login`，随后执行 `dogopencli refresh payment cost`，验证应用会话与采集；上述空 profile 检查不替代此项 UAT。
+## 开发与文档
 
-## 文档入口
-
-- [文档索引](docs/README.md)：通用发现、付款产品发现及协作约定。
-- [仓库目录与命名规范](docs/agents/documentation.md)：新增代码、测试或文档时遵循。
-- [贡献指南](AGENTS.md)：只读边界、技术参考与开发约束。
-- [数据准备状态](docs/research/payment/2026-09-11-channel-snapshot-preparation.md)：3834 行真实派生 Channel 替代集的整理与审计；配套[离线数据整理工具](scripts/prepare_channel_snapshot.py)。
-
-## 校验
-
-从仓库根目录运行，命令中的 RTK 前缀遵循本机协作约定：
+在仓库根目录安装开发依赖并运行检查。仓库开发命令统一使用 `rtk`：
 
 ```bash
-rtk proxy .venv/bin/python -m pytest -q
+rtk proxy python -m pip install -e '.[dev]'
+rtk pytest -q
 rtk proxy ruff check .
 rtk proxy ruff format --check .
-rtk proxy make doc-guard
-rtk proxy make test-doc-guard
+rtk proxy make doc-guard test-doc-guard
 ```
 
-Make 目标分别为 `make doc-guard`、`make test-doc-guard`；doc-guard 使用 Python 3.10+ 标准库，无需安装项目依赖。校验不连接生产、浏览器或知识库，也不改写文档。
+业务插件位于 `src/dogopencli/plugins/payment/` 与 `src/dogopencli/plugins/collection/`；
+认证、受限传输、缓存和输出由共享模块提供。测试使用公开 CLI、假 CDP 与临时 SQLite。
+生产验收保持查询范围，并使用私有缓存。
 
-### Collection SLA configurations
+- [文档索引](docs/README.md)：契约、研究、验收与架构决策。
+- [领域词汇](CONTEXT.md)：付款、收款、VA 规则与账户对象的区别。
+- [贡献约定](AGENTS.md)：代码、测试、浏览器及研究工作流。
+- [GitHub Issues](https://github.com/proletariat64/dogopencli/issues)：需求、规格与缺陷。
+- [Releases](https://github.com/proletariat64/dogopencli/releases)：安装包与版本记录。
 
-[Issue #27](https://github.com/proletariat64/dogopencli/issues/27) adds a separate
-collection SLA configuration scope:
-
-```bash
-dogopencli help collection sla configs list
-dogopencli describe collection sla configs get
-dogopencli refresh collection sla
-dogopencli collection sla configs list --all --require-complete
-dogopencli collection sla configs get --id CONFIG_ID
-dogopencli collection sla configs get --id CONFIG_ID --live
-```
-
-Replace `CONFIG_ID` with a returned string `slaConfigId`. Default reads are
-entirely offline; live inquiries never publish or silently fall back. Refresh
-validates the full list and every actual detail before replacing the isolated
-`collection.sla.configs.list:configs:cdp` snapshot. Any failure preserves the old
-snapshot. `endToEndSla` and `ipayInnerSla` remain seconds; `holidayLimit` retains
-both complete arrays. Raw business timestamps and unknown extensions are kept.
-These are configuration targets, not measured transaction performance.
-
-The acquisition uses verified `pageNo=0,pageSize=1000`; overflow, duplicates,
-invalid metadata and incomplete detail fail without speculative paging. Null
-live details are errors, not proof of missing records. Backend snapshot isolation
-is not guaranteed; shared list/detail fields must agree. List and detail are
-separate raw objects.
-
-List accepts repeatable `--business-line` (`businessCategory`), `--entity`
-(`legalEntityCode`), `--currency` (`creditorCurrency`) and `--region`
-(`creditorRegion`). Both cached and live queries match exact case-sensitive
-literal values locally: repeated values of one field use OR, different fields
-use AND. Values are not trimmed or normalized; empty/whitespace-only values
-are rejected. A literal `*` is not a wildcard; missing/null fields do not match.
-Live always acquires the complete unfiltered list, then filters, sorts by ID and
-applies the display window. Filtering does not change source completeness or
-freshness. No independent backend business-category filtering is claimed.
-Refresh stays unfiltered; get selects only by ID.
-
-```bash
-dogopencli collection sla configs list --currency USD --currency EUR --region US --all
-dogopencli collection sla configs list --entity ENTITY_CODE --business-line BUSINESS_CODE --live
-```
-
-Use actual returned entity/business codes in place of the example values.
-
-### Collection VA rules
-
-[Issue #31](https://github.com/proletariat64/dogopencli/issues/31) specifies a
-separate collection VA rule scope, implemented under
-[Issue #32](https://github.com/proletariat64/dogopencli/issues/32). Configure
-`[sources.collection_va] kind = "cdp"`, then:
-
-```bash
-dogopencli help collection va rules list
-dogopencli describe collection va rules get
-dogopencli refresh collection va
-dogopencli collection va rules list --all --require-complete
-dogopencli collection va rules get --id VA_RULE_ID
-dogopencli collection va rules get --id VA_RULE_ID --live
-```
-
-Replace `VA_RULE_ID` with a returned string `vaRuleId`. Default reads are
-entirely offline; live inquiries never publish or silently fall back. Refresh
-validates the complete list and every true detail — the requested ID and all
-eight shared business fields must agree — before atomically replacing the
-isolated `collection.va.rules.list:rules:cdp` snapshot. Any failure except one
-preserves the old snapshot: when the backend explicitly refuses a single detail
-(`success=false`), that rule still publishes with its real list row and a null
-`detail`, the snapshot is marked `dataset_complete=false`, and the command then
-fails with `INCOMPLETE_RESULT` naming how many details were refused instead of
-reporting success ([ADR 0010](docs/adr/0010-collection-va-partial-detail-tolerance.md)).
-`vaRuleId` is the VA rule identity; `bankRuleId` references a
-distinct bank-account VA rule object and is never accepted as a VA rule ID. The
-related bank-account rule detail (`bankAccountVaRule`) is out of scope and
-never queried or merged.
-
-The acquisition is one verified one-based `pageNo=1,pageSize=1000` request;
-overflow, duplicates, invalid metadata or truncation fail with
-`INCOMPLETE_RESULT` instead of speculative paging. 1000 rows is an observed
-capacity at the current scale, not a server-side guarantee; no historical count
-is hardcoded. A null or invalid live detail (`resultObj=null`) is
-`INVALID_RESPONSE`, not proof of a missing record; only a confirmed absent ID
-in a complete local snapshot is `NOT_FOUND`. `--require-complete` additionally
-rejects a snapshot with refused details, and `get` on such a rule is
-`INCOMPLETE_RESULT` — the rule exists, so its list row is never returned in
-place of the detail.
-
-List rows and true details stay distinct raw objects. List `countries` and
-detail `creditAreas` keep their different names and are never merged or
-equated. `vaWarningInfo` is optional; its contact details never enter fixtures,
-logs or docs. The list exposes no filters; get selects only by ID. Stable-ID
-sorting precedes display windows: ASCII digit IDs sort numerically with the
-original string as tie-breaker, other IDs lexically afterward; stored string
-IDs never change.
-
-### Collection VA capacity
-
-[Issue #36](https://github.com/proletariat64/dogopencli/issues/36) specifies the
-collection VA capacity monitoring scope, implemented under
-[Issue #38](https://github.com/proletariat64/dogopencli/issues/38) after the
-contract verification in
-[Issue #37](https://github.com/proletariat64/dogopencli/issues/37). Configure
-`[sources.collection_va_capacity] kind = "cdp"`, then:
-
-```bash
-dogopencli help collection va capacity list
-dogopencli describe collection va capacity list
-dogopencli refresh collection va capacity
-dogopencli collection va capacity list --all --require-complete
-dogopencli collection va capacity list --va-rule-id RULE_ID
-dogopencli collection va capacity list --bank-va-rule-id BANK_RULE_ID --live
-```
-
-Each row is one VA rule's capacity/warning projection; `ruleId` is the row
-identity. `id`, `bankAccountVaId` and `accountNo` are not unique and are never
-accepted as the identity; `--bank-va-rule-id` matches the `bankAccountVaId`
-field. Filters are local exact matches over the acquired scope. The UI warning
-state is not exposed: rows carry no warning-state field and the server
-classification is volatile and not derivable from row counters.
-
-Refresh pages the verified endpoint at `pageSize=1000` until the first short
-page and publishes atomically only after the final converged `totalCount`, the
-collected row count and unique `ruleId`s agree; interim page totals are
-backend running estimates and are never trusted. Duplicate or drifting
-identities, changed totals, malformed pages and every other failure preserve
-the previous snapshot. Bare `refresh collection va` still refreshes VA rules.
-Capacity counters are live values: check `meta.fetched_at`/`stale` and refresh
-or use `--live` before acting on them. See
-[ADR 0011](docs/adr/0011-collection-va-capacity.md).
-
-
-## 收款清算系统与卡模板配置
-
-[清算系统规格 #41](https://github.com/proletariat64/dogopencli/issues/41) 与
-[卡模板规格 #45](https://github.com/proletariat64/dogopencli/issues/45) 增加两个独立配置列表：
-
-```bash
-dogopencli refresh collection clearing-system
-dogopencli collection clearing-system list --currency GBP --system-type ACH --all
-dogopencli collection clearing-system list --system-name NETWORK_NAME --status VALID
-dogopencli refresh collection card-template
-dogopencli collection card-template list --bank BANK_CODE --template-name TEMPLATE_NAME
-dogopencli collection card-template list --template-id TEMPLATE_ID --live
-dogopencli help collection clearing-system list
-dogopencli describe collection card-template list
-```
-
-清算系统筛选：`--bank-location`、`--currency`、`--system-type`、`--system-name`、`--status`。
-卡模板筛选：`--bank-location`、`--currency`、`--bank`、`--template-name`、`--template-id`、`--status`。
-全部为本地精确字符串匹配：区分大小写、同字段重复 OR、跨字段 AND；`*` 是字面值；
-空白值拒绝，合法值不做标准化。`--system-name` 对应 `clearingNetworkId`；
-`--template-name` 对应 `templateName`，不是后端请求键 `cardTemplateName`。
-
-两项均支持既有八个通用选项：`--limit`、`--offset`、`--all`、`--live`、
-`--require-fresh`、`--require-complete`、`--format json|table` 和 `--fields`。
-默认离线读取、100 行、offset 0、JSON、共享 72h TTL；live 不写缓存、不回退。
-刷新不接受筛选，独立使用 `collection.clearing_system.list:all:cdp` 与
-`collection.card_template.list:all:cdp` 快照。
-
-采集仅允许第 1 页、pageSize=1000，要求行数等于总数且 ID 唯一。超出 1000 或不完整
-即失败并保留旧快照；不自动翻页，因为实际越界页会回到第 1 页，且清算系统小页
-扫描出现重复。ID 保留字符串、按字典序排序后再展示。关联对象查询、详情和导出
-不在范围；卡模板列表的 `cardTemplateItemList` 目前观察为空，不能声称完整详情。
-成本/速度等级保留原值，不推导费用或 SLA；时间戳单位和时区未验证。
-
-契约证据：[清算系统](docs/research/general/2026-09-27-collection-clearing-system-contract.md)、
-[卡模板](docs/research/general/2026-09-27-collection-card-template-contract.md)。
-
-## Collection account-isolation configurations
-
-[Issue #51](https://github.com/proletariat64/dogopencli/issues/51) adds inquiry-only
-account-isolation opening-rule configurations. Configure
-`[sources.collection_account_isolation] kind = "cdp"`, then:
-
-```bash
-dogopencli refresh collection account-isolation
-dogopencli collection account-isolation list --all --require-complete
-dogopencli collection account-isolation list --currency GBP --collection-region GB
-dogopencli collection account-isolation list --opening-rule-id RULE_ID --live
-dogopencli help collection account-isolation list
-dogopencli describe collection account-isolation list
-```
-
-Use an actual returned string ID for RULE_ID. Filters: `--opening-rule-id`,
-`--business-line`, `--business-region`, `--customer-group`, `--scene-code`,
-`--collection-region`, `--currency`, `--transaction-type`. Each repeats with OR;
-different fields combine with AND. Matching is exact, case-sensitive and local.
-Customer tags and currency can contain commas: supply the entire returned string,
-not one member. Asterisk is literal; null/missing fields never match. Empty or
-whitespace-only values reject; accepted values are never trimmed or normalized.
-
-Common list options retain their existing meanings: `--limit`, `--offset`,
-`--all`, `--live`, `--require-fresh`, `--require-complete`, `--format json|table`
-and `--fields`. Default reads are offline, 100 rows, JSON and shared 72h TTL.
-Refresh accepts no filters and publishes only a complete validated acquisition
-to `collection.account_isolation.list:all:cdp`; failures preserve the old cache.
-Live neither writes cache nor falls back. Only one unfiltered page at size 1000
-is verified; overflow fails. Filters precede lexical string-ID sorting, windows
-and projection. Unknown fields and original values remain intact.
-
-This list has no detail/get, joins or relationship traversal. Timestamp units
-and timezone remain unverified. See the
-[contract](docs/research/general/2026-09-27-collection-account-isolation-contract.md).
-Bank-account VA rules are a distinct capability: [#52](https://github.com/proletariat64/dogopencli/issues/52)
-remains unimplemented because [complete pagination still fails](docs/research/general/2026-09-27-collection-bank-va-rule-blocker.md).
+契约与 UAT 报告记录特定日期、账号权限下的验证结果；生产行为变化后需要重新验证。

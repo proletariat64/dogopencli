@@ -16,6 +16,8 @@
 - [收款清算系统规格 #41](https://github.com/proletariat64/dogopencli/issues/41)：独立列表、五项本地筛选、原子刷新。
 - [收款卡模板规格 #45](https://github.com/proletariat64/dogopencli/issues/45)：独立列表、六项本地筛选、原子刷新。
 
+- [付款规则总规格 #59](https://github.com/proletariat64/dogopencli/issues/59)：#55–#58 四项列表实施；#54 流量规则详情身份不一致，仍阻塞。
+
 ## 研究报告
 
 以下报告各自记录观察日期；运行态仅代表当时账号可见的页面和已验证请求，不保证后续版本、权限或数据不变。
@@ -46,6 +48,10 @@
 | General | [Collection architecture refactor UAT](research/general/2026-09-27-collection-architecture-refactor-uat.md) | Six collection capabilities, 2,010 assertions, all cached SLA/VA details, expected VA refusal behavior and cache isolation |
 | General | [清算系统与卡模板审查核验](research/general/2026-09-27-collection-network-config-review.md) | Qoder 六项建议逐项处理、Greptile 状态和刷新流程去重验证（PR #49） |
 | Payment | [付款产品设计与运行态发现](research/payment/2026-09-08-payment-operations.md) | 产品模型、27 个菜单、查询字段、接口证据、权限限制和 CLI 候选范围 |
+
+- [付款规则查询契约](research/payment/2026-09-27-payment-rules-contract.md)：四项独立采集、全部筛选、嵌套关联和证据边界。
+- [付款规则实施与验收](research/payment/2026-09-27-payment-rules-implementation-uat.md)：424 项生产／私有缓存断言、全部参数与合成失败覆盖。
+- [付款流量规则阻塞](research/payment/2026-09-27-payment-flow-rule-blocker.md)：真实详情身份不一致的重复验证（#54）。
 
 ## 查询契约补充
 
@@ -80,6 +86,8 @@
 
 - [ADR 0012：收款网络配置快照](adr/0012-collection-network-configurations.md)：独立缓存、单页完整采集、本地筛选与范围边界。
 - [ADR 0013: Account isolation](adr/0013-collection-account-isolation.md): independent source, verified envelope and whole-string filtering.
+
+- [ADR 0014：付款规则列表边界](adr/0014-payment-rule-list-boundaries.md)：完整首批采集、银存切换来源节点与关联筛选、flow 阻塞。
 
 ## 协作规范
 
