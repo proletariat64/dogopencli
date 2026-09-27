@@ -400,3 +400,41 @@ dogopencli describe collection card-template list
 
 契约证据：[清算系统](docs/research/general/2026-09-27-collection-clearing-system-contract.md)、
 [卡模板](docs/research/general/2026-09-27-collection-card-template-contract.md)。
+
+## Collection account-isolation configurations
+
+[Issue #51](https://github.com/proletariat64/dogopencli/issues/51) adds inquiry-only
+account-isolation opening-rule configurations. Configure
+`[sources.collection_account_isolation] kind = "cdp"`, then:
+
+```bash
+dogopencli refresh collection account-isolation
+dogopencli collection account-isolation list --all --require-complete
+dogopencli collection account-isolation list --currency GBP --collection-region GB
+dogopencli collection account-isolation list --opening-rule-id RULE_ID --live
+dogopencli help collection account-isolation list
+dogopencli describe collection account-isolation list
+```
+
+Use an actual returned string ID for RULE_ID. Filters: `--opening-rule-id`,
+`--business-line`, `--business-region`, `--customer-group`, `--scene-code`,
+`--collection-region`, `--currency`, `--transaction-type`. Each repeats with OR;
+different fields combine with AND. Matching is exact, case-sensitive and local.
+Customer tags and currency can contain commas: supply the entire returned string,
+not one member. Asterisk is literal; null/missing fields never match. Empty or
+whitespace-only values reject; accepted values are never trimmed or normalized.
+
+Common list options retain their existing meanings: `--limit`, `--offset`,
+`--all`, `--live`, `--require-fresh`, `--require-complete`, `--format json|table`
+and `--fields`. Default reads are offline, 100 rows, JSON and shared 72h TTL.
+Refresh accepts no filters and publishes only a complete validated acquisition
+to `collection.account_isolation.list:all:cdp`; failures preserve the old cache.
+Live neither writes cache nor falls back. Only one unfiltered page at size 1000
+is verified; overflow fails. Filters precede lexical string-ID sorting, windows
+and projection. Unknown fields and original values remain intact.
+
+This list has no detail/get, joins or relationship traversal. Timestamp units
+and timezone remain unverified. See the
+[contract](docs/research/general/2026-09-27-collection-account-isolation-contract.md).
+Bank-account VA rules are a distinct capability: [#52](https://github.com/proletariat64/dogopencli/issues/52)
+remains unimplemented because [complete pagination still fails](docs/research/general/2026-09-27-collection-bank-va-rule-blocker.md).

@@ -1,9 +1,8 @@
 """Verified collection network configuration snapshots (issues #41/#45)."""
 
 from dataclasses import dataclass, field
-from typing import Any
 
-from ...errors import INCOMPLETE_RESULT, INVALID_RESPONSE, REQUEST_NOT_ALLOWED, CliError
+from ...errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
 from ...helpspec import (
     ALL,
     CACHE_FLAGS,
@@ -23,23 +22,13 @@ from ...helpspec import (
 )
 from .. import EndpointContract, ParsedPage
 from ..envelope import success_document
+from .configuration import ERRORS, ConfigurationListCapability, validate_row
 
 PAGE_SIZE = 1000
 
 
-def validate_row(row: Any) -> None:
-    if (
-        not isinstance(row, dict)
-        or not isinstance(row.get("id"), str)
-        or not row["id"].strip()
-    ):
-        raise CliError(
-            INVALID_RESPONSE, "configuration row requires nonempty string id"
-        )
-
-
 @dataclass
-class NetworkConfigCapability:
+class NetworkConfigCapability(ConfigurationListCapability):
     slug: str
     title: str
     endpoint: str
@@ -64,35 +53,6 @@ class NetworkConfigCapability:
             allowed_body_keys=frozenset({"pageNo", "pageSize"}),
             fixed_body_values=(("pageNo", 1), ("pageSize", PAGE_SIZE)),
         )
-
-    def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
-        if scope != self.default_scope or page_num != 1 or page_size != PAGE_SIZE:
-            raise CliError(
-                REQUEST_NOT_ALLOWED, "only the verified first page is allowed"
-            )
-        return {"pageNo": 1, "pageSize": PAGE_SIZE}
-
-    def request_filters(self, body: dict[str, Any]) -> dict[str, list[str]]:
-        if body != {"pageNo": 1, "pageSize": PAGE_SIZE}:
-            raise CliError(
-                REQUEST_NOT_ALLOWED, "backend configuration filters disabled"
-            )
-        return {}
-
-    def filter_records(
-        self, records: list[dict[str, Any]], filters: dict[str, list[str]]
-    ) -> list[dict[str, Any]]:
-        return [
-            row
-            for row in records
-            if all(row.get(field) in values for field, values in filters.items())
-        ]
-
-    def sort_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return sorted(records, key=lambda row: row["id"])
-
-    def identity_key(self, record: dict[str, Any]) -> str:
-        return record["id"]
 
     def parse_page(self, body: bytes) -> ParsedPage:
         document = success_document(body)
@@ -167,20 +127,6 @@ CARD_TEMPLATE = NetworkConfigCapability(
     ),
 )
 CAPABILITIES = (CLEARING_SYSTEM, CARD_TEMPLATE)
-
-ERRORS = (
-    "INVALID_ARGUMENT",
-    "CONFIG_ERROR",
-    "CACHE_MISS",
-    "CACHE_STALE",
-    "INCOMPLETE_RESULT",
-    "AUTH_REQUIRED",
-    "BROWSER_UNAVAILABLE",
-    "LOCKED",
-    "TIMEOUT",
-    "BUSINESS_QUERY_FAILED",
-    "INVALID_RESPONSE",
-)
 
 
 def list_node(cap: NetworkConfigCapability) -> BizNode:

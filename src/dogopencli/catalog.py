@@ -180,7 +180,7 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
     ),
     ("collection",): BizNode(
         ("collection",),
-        "Read-only collection cost, SLA and VA queries.",
+        "Read-only collection cost, SLA, VA and network configuration queries.",
         next=("dogopencli help collection cost",),
     ),
     ("collection", "sla"): BizNode(

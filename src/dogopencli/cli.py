@@ -39,7 +39,12 @@ from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
 from .plugins import get_capability
-from .plugins.collection import network_config, va_rule_inquiry
+from .plugins.collection import (
+    account_isolation,
+    configuration,
+    network_config,
+    va_rule_inquiry,
+)
 from .plugins.collection import sla as collection_sla
 from .plugins.collection import va_capacity as collection_va_capacity
 from .plugins.collection import va_rule as collection_va
@@ -1221,6 +1226,7 @@ def _refresh_complete_collection_list(
     cap: (
         collection_va_capacity.CollectionVaCapacityCapability
         | network_config.NetworkConfigCapability
+        | account_isolation.AccountIsolationCapability
     ),
     scope_name: str,
 ) -> int:
@@ -1308,11 +1314,12 @@ def cmd_collection_va_capacity_list(args: argparse.Namespace) -> int:
     return _emit_window(args, cap, window, meta, fields)
 
 
-def _network_config_cached(
+def _collection_config_cached(
     args: argparse.Namespace,
     config: config_mod.Config,
     source: config_mod.SourceConfig,
-    cap: network_config.NetworkConfigCapability,
+    cap: network_config.NetworkConfigCapability
+    | account_isolation.AccountIsolationCapability,
 ) -> tuple[CachedQuery, list[dict[str, Any]]]:
     cached = read_cached_query(
         config,
@@ -1325,14 +1332,16 @@ def _network_config_cached(
         now=_now(),
     )
     return cached, cached.validated_records(
-        network_config.validate_row,
+        configuration.validate_row,
         lambda record: record["id"],
-        coverage_error="cached network configuration coverage is invalid",
+        coverage_error=f"cached {cap.name} coverage is invalid",
     )
 
 
-def _list_network_config(
-    args: argparse.Namespace, cap: network_config.NetworkConfigCapability
+def _list_collection_config(
+    args: argparse.Namespace,
+    cap: network_config.NetworkConfigCapability
+    | account_isolation.AccountIsolationCapability,
 ) -> int:
     limit, offset, fields = _display_options(args)
     filters: dict[str, list[str]] = {}
@@ -1350,16 +1359,14 @@ def _list_network_config(
                 cap, session.transport(cap), cap.default_scope
             )
         if not result.complete:
-            raise CliError(
-                INCOMPLETE_RESULT, "collection network configuration list is incomplete"
-            )
+            raise CliError(INCOMPLETE_RESULT, f"{cap.name} is incomplete")
         records = cap.sort_records(cap.filter_records(result.records, filters))
         window = records[offset:] if args.all else records[offset : offset + limit]
         meta = _live_meta(
             source, cap.default_scope, True, len(records), len(window), offset
         )
     else:
-        cached, records = _network_config_cached(args, config, source, cap)
+        cached, records = _collection_config_cached(args, config, source, cap)
         records = cap.sort_records(cap.filter_records(records, filters))
         window = records[offset:] if args.all else records[offset : offset + limit]
         meta = cached.meta(len(records), len(window), offset=offset)
@@ -1367,7 +1374,17 @@ def _list_network_config(
 
 
 def cmd_collection_clearing_system_list(args: argparse.Namespace) -> int:
-    return _list_network_config(args, network_config.CLEARING_SYSTEM)
+    return _list_collection_config(args, network_config.CLEARING_SYSTEM)
+
+
+def cmd_collection_account_isolation_list(args: argparse.Namespace) -> int:
+    return _list_collection_config(args, account_isolation.ACCOUNT_ISOLATION)
+
+
+def cmd_refresh_collection_account_isolation(args: argparse.Namespace) -> int:
+    return _refresh_complete_collection_list(
+        account_isolation.ACCOUNT_ISOLATION, "account-isolation configuration"
+    )
 
 
 def cmd_refresh_collection_clearing_system(args: argparse.Namespace) -> int:
@@ -1377,7 +1394,7 @@ def cmd_refresh_collection_clearing_system(args: argparse.Namespace) -> int:
 
 
 def cmd_collection_card_template_list(args: argparse.Namespace) -> int:
-    return _list_network_config(args, network_config.CARD_TEMPLATE)
+    return _list_collection_config(args, network_config.CARD_TEMPLATE)
 
 
 def cmd_refresh_collection_card_template(args: argparse.Namespace) -> int:

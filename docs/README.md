@@ -49,6 +49,11 @@
 
 ## 查询契约补充
 
+- [Account-isolation contract](research/general/2026-09-27-collection-account-isolation-contract.md): verified complete acquisition and eight local whole-string filters (#51).
+- [Account-isolation acceptance](research/general/2026-09-27-collection-account-isolation-uat.md): 16 options, 315 production/private-cache assertions and synthetic failure coverage.
+- [Account-isolation review](research/general/2026-09-27-collection-account-isolation-review.md): review decisions, conservative empty handling and regression checks.
+- [Bank-account VA rule blocker](research/general/2026-09-27-collection-bank-va-rule-blocker.md): pagination failure reproduced at multiple supported sizes; #52 remains blocked.
+
 - [付款渠道列表](research/payment/2026-09-08-channel-query-contract.md)：多选筛选、动态字典、响应及页码回退规则。
 - [渠道成本列表](research/payment/2026-09-08-cost-query-contract.md)：共享成本范围、查询字段、计费结构及分页重叠限制。
 - [产品 SLA 基线列表与详情](research/payment/2026-09-08-sla-query-contracts.md)：请求、分页、响应和时效语义。
@@ -74,6 +79,7 @@
 - [ADR 0011：收款 VA 容量监控](adr/0011-collection-va-capacity.md)：多页采集与收敛 totalCount、ruleId 行身份、两项本地筛选、预警状态不暴露及空范围/失败包络边界。
 
 - [ADR 0012：收款网络配置快照](adr/0012-collection-network-configurations.md)：独立缓存、单页完整采集、本地筛选与范围边界。
+- [ADR 0013: Account isolation](adr/0013-collection-account-isolation.md): independent source, verified envelope and whole-string filtering.
 
 ## 协作规范
 
