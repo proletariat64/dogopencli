@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import sys
 import traceback
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -38,7 +39,7 @@ from .helpspec import BizNode, add_options
 from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
-from .plugins import get_capability
+from .plugins import Capability, get_capability
 from .plugins.collection import (
     account_isolation,
     network_config,
@@ -47,6 +48,8 @@ from .plugins.collection import (
 from .plugins.collection import sla as collection_sla
 from .plugins.collection import va_capacity as collection_va_capacity
 from .plugins.collection import va_rule as collection_va
+from .plugins.payment import ptr as payment_ptr
+from .plugins.payment import ptr_orders as payment_ptr_orders
 from .plugins.payment import rules as payment_rules
 from .plugins.payment.channel import assign_seqids
 from .plugins.payment.sla import SLA_DETAIL, detail_body
@@ -1222,12 +1225,30 @@ def _collection_va_capacity_cached(
     )
 
 
+def _collect_complete_scope(
+    cap: Capability,
+    transport: Any,
+    scope: str,
+    *,
+    progress: Callable[[int, int], None] | None = None,
+) -> collect_mod.CollectedScope:
+    if isinstance(cap, payment_ptr_orders.OrdersCapability):
+        return payment_ptr_orders.collect_stable(
+            cap, transport, scope, progress=progress
+        )
+    if isinstance(cap, payment_ptr.PtrListCapability):
+        return payment_ptr.collect_stable(cap, transport, scope, progress=progress)
+    return collect_mod.collect_scope(cap, transport, scope, progress=progress)
+
+
 def _refresh_complete_list(
     cap: (
         collection_va_capacity.CollectionVaCapacityCapability
         | network_config.NetworkConfigCapability
         | account_isolation.AccountIsolationCapability
         | payment_rules.RuleListCapability
+        | payment_ptr.PtrListCapability
+        | payment_ptr_orders.OrdersCapability
     ),
     scope_name: str,
 ) -> int:
@@ -1238,7 +1259,7 @@ def _refresh_complete_list(
     ns = namespace(cap.name, cap.default_scope, source.kind)
     with store.refresh_lock():
         with inquiry_session(config_file=config_mod.config_path()) as session:
-            result = collect_mod.collect_scope(
+            result = _collect_complete_scope(
                 cap,
                 session.transport(cap),
                 cap.default_scope,
@@ -1321,14 +1342,20 @@ def _configuration_cached(
     source: config_mod.SourceConfig,
     cap: network_config.NetworkConfigCapability
     | account_isolation.AccountIsolationCapability
-    | payment_rules.RuleListCapability,
+    | payment_rules.RuleListCapability
+    | payment_ptr.PtrListCapability
+    | payment_ptr_orders.OrdersCapability,
 ) -> tuple[CachedQuery, list[dict[str, Any]]]:
     cached = read_cached_query(
         config,
         source,
         cap.name,
         cap.default_scope,
-        refresh_command=f"refresh {cap.command_path}",
+        refresh_command=(
+            cap.refresh_command
+            if isinstance(cap, payment_ptr_orders.OrdersCapability)
+            else f"refresh {cap.command_path}"
+        ),
         require_fresh=args.require_fresh,
         require_complete=args.require_complete,
         now=_now(),
@@ -1344,7 +1371,9 @@ def _list_configuration(
     args: argparse.Namespace,
     cap: network_config.NetworkConfigCapability
     | account_isolation.AccountIsolationCapability
-    | payment_rules.RuleListCapability,
+    | payment_rules.RuleListCapability
+    | payment_ptr.PtrListCapability
+    | payment_ptr_orders.OrdersCapability,
 ) -> int:
     limit, offset, fields = _display_options(args)
     filters: dict[str, list[str]] = {}
@@ -1358,7 +1387,7 @@ def _list_configuration(
     source = _cdp_source(config, cap.source_config_key)
     if args.live:
         with inquiry_session(config_file=config_mod.config_path()) as session:
-            result = collect_mod.collect_scope(
+            result = _collect_complete_scope(
                 cap, session.transport(cap), cap.default_scope
             )
         if not result.complete:
@@ -1404,6 +1433,24 @@ def cmd_refresh_collection_card_template(args: argparse.Namespace) -> int:
     return _refresh_complete_list(
         network_config.CARD_TEMPLATE, "collection network configuration"
     )
+
+
+def cmd_payment_ptr_orders_list(args: argparse.Namespace) -> int:
+    cap = payment_ptr_orders.bind_window(args.updated_from, args.updated_to)
+    return _list_configuration(args, cap)
+
+
+def cmd_refresh_payment_ptr_orders(args: argparse.Namespace) -> int:
+    cap = payment_ptr_orders.bind_window(args.updated_from, args.updated_to)
+    return _refresh_complete_list(cap, "outflow PTR order interval")
+
+
+def cmd_payment_ptr_cases_list(args: argparse.Namespace) -> int:
+    return _list_configuration(args, payment_ptr.CASES)
+
+
+def cmd_refresh_payment_ptr_cases(args: argparse.Namespace) -> int:
+    return _refresh_complete_list(payment_ptr.CASES, "outflow PTR case library")
 
 
 def cmd_payment_rules_same_bank_transfer_list(args: argparse.Namespace) -> int:

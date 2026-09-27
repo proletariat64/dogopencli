@@ -1,0 +1,421 @@
+"""Existing outflow PTR orders within an explicit updated-time interval."""
+
+import math
+import re
+from collections.abc import Callable
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from typing import TYPE_CHECKING, Any
+
+from ...errors import (
+    EXIT_USAGE,
+    INCOMPLETE_RESULT,
+    INVALID_ARGUMENT,
+    INVALID_RESPONSE,
+    REQUEST_NOT_ALLOWED,
+    CliError,
+)
+from .. import EndpointContract, ParsedPage
+from ..envelope import success_document
+from . import ptr
+
+if TYPE_CHECKING:
+    from ...collect import CollectedScope
+
+WINDOW_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+WINDOW_PATTERN = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+08:00"
+)
+
+
+STRINGS = frozenset(
+    {
+        "ptrOrderId",
+        "caseId",
+        "caseName",
+        "caseType",
+        "allocateOrderId",
+        "finNetId",
+        "bizRequestId",
+        "creditorAccountAliasName",
+        "creditorCurrency",
+        "obo",
+        "fvt",
+        "referenceObo",
+        "purposeCode",
+        "orderStatus",
+        "verifyStatus",
+        "ptrFinalResult",
+        "failureReason",
+        "verifyFvtResult",
+        "verifyOboResult",
+        "verifyReferenceOboResult",
+        "spentTime",
+        "spentTimeInfoSource",
+        "transactionRateRef",
+    }
+)
+TIMESTAMPS = frozenset(
+    {
+        "gmtModified",
+        "gmtCreate",
+        "bizRequestTime",
+        "lastVerificationDt",
+        "allocatePayoutTime",
+    }
+)
+BASELINE = frozenset(
+    {
+        "clearingSystemName",
+        "debtorAccountAliasName",
+        "financialInstCode",
+        "regulatoryRequiredObo",
+        "supportFvt",
+        "supportObo",
+        "supportReferenceObo",
+        "integrationMode",
+        "communicationMode",
+    }
+)
+BASELINE_KEY = "productionTrialRunFundOutAbilityVO"
+MONEY_STRINGS = frozenset({"currency", "currencyCode", "currencyValue"})
+MONEY_INTS = frozenset({"cent", "centFactor"})
+
+
+def _number(value: Any) -> bool:
+    return (
+        value is None
+        or type(value) is int
+        or type(value) is float
+        and math.isfinite(value)
+        or isinstance(value, Decimal)
+        and value.is_finite()
+    )
+
+
+def _project(row: Any) -> dict[str, Any]:
+    if (
+        not isinstance(row, dict)
+        or not isinstance(row.get("ptrOrderId"), str)
+        or not row["ptrOrderId"].strip()
+        or type(row.get("gmtModified")) is not int
+    ):
+        raise CliError(
+            INVALID_RESPONSE,
+            "PTR order requires an identity and modification timestamp",
+        )
+    if not isinstance(row.get(BASELINE_KEY), dict):
+        raise CliError(
+            INVALID_RESPONSE, "PTR order requires an outflow baseline object"
+        )
+    result: dict[str, Any] = {}
+    for key in STRINGS | TIMESTAMPS | {"transactionRate"}:
+        if key not in row:
+            continue
+        value = row[key]
+        valid = (
+            _number(value)
+            if key == "transactionRate"
+            else value is None or type(value) is (str if key in STRINGS else int)
+        )
+        if not valid:
+            raise CliError(INVALID_RESPONSE, "invalid PTR order field type")
+        result[key] = value
+    baseline = {k: v for k, v in row[BASELINE_KEY].items() if k in BASELINE}
+    if any(v is not None and type(v) is not str for v in baseline.values()):
+        raise CliError(INVALID_RESPONSE, "invalid PTR order baseline field type")
+    result[BASELINE_KEY] = baseline
+    for key in ("debtorAmount", "returnAmount"):
+        if key not in row:
+            continue
+        money = row[key]
+        if money is None:
+            result[key] = None
+            continue
+        if not isinstance(money, dict):
+            raise CliError(INVALID_RESPONSE, "invalid PTR order money object")
+        selected = {
+            k: v
+            for k, v in money.items()
+            if k in MONEY_STRINGS | MONEY_INTS | {"amount"}
+        }
+        for field, value in selected.items():
+            valid = (
+                _number(value)
+                if field == "amount"
+                else value is None
+                or type(value) is (str if field in MONEY_STRINGS else int)
+            )
+            if not valid:
+                raise CliError(INVALID_RESPONSE, "invalid PTR order money field type")
+        result[key] = selected
+    return result
+
+
+@dataclass
+class OrdersCapability:
+    updated_from: str | None = None
+    updated_to: str | None = None
+    start_ms: int | None = None
+    end_ms: int | None = None
+    native_begin: str | None = None
+    native_end: str | None = None
+
+    slug = "orders"
+    name = "payment.ptr.orders.list"
+    source_config_key = "payment_ptr_orders"
+    command_path = "payment ptr orders"
+    id_field = "ptrOrderId"
+    table_columns: tuple[str, ...] = (
+        "ptrOrderId",
+        "caseId",
+        "orderStatus",
+        "verifyStatus",
+        "ptrFinalResult",
+        "gmtModified",
+    )
+    filters = (
+        ("id", "ptrOrderId"),
+        ("case-id", "caseId"),
+        ("channel", f"{BASELINE_KEY}.financialInstCode"),
+        ("debtor-account", f"{BASELINE_KEY}.debtorAccountAliasName"),
+        ("debtor-currency", "debtorAmount.currencyCode"),
+        ("creditor-currency", "creditorCurrency"),
+        ("clearing-system", f"{BASELINE_KEY}.clearingSystemName"),
+        ("order-status", "orderStatus"),
+        ("verify-status", "verifyStatus"),
+        ("final-result", "ptrFinalResult"),
+    )
+
+    def parse_page(self, body: bytes) -> ParsedPage:
+        self._require_window()
+        data = success_document(body)
+        if (
+            any(
+                type(data.get(k)) is not int or data[k] < 0
+                for k in ("pageNo", "pageSize", "totalCount")
+            )
+            or data["pageNo"] != 0
+            or data["pageSize"] != 500
+        ):
+            raise CliError(INVALID_RESPONSE, "invalid PTR order pagination echo")
+        rows = data.get("resultDataList")
+        if not isinstance(rows, list):
+            raise CliError(INVALID_RESPONSE, "missing PTR order list")
+        total = data["totalCount"]
+        if total > 500 or total != len(rows):
+            raise CliError(
+                INCOMPLETE_RESULT,
+                "PTR order window exceeds verified full-page coverage",
+            )
+        projected = [_project(row) for row in rows]
+        assert self.start_ms is not None and self.end_ms is not None
+        if any(
+            not self.start_ms - 1000 <= row["gmtModified"] <= self.end_ms + 1000
+            for row in projected
+        ):
+            raise CliError(
+                INVALID_RESPONSE, "PTR order falls outside the acquisition window"
+            )
+        if len({row["ptrOrderId"] for row in projected}) != len(projected):
+            raise CliError(INCOMPLETE_RESULT, "duplicate PTR order identities")
+        return ParsedPage(projected, 0, 500, total, 1 if total else 0)
+
+    def validate_row(self, row: Any) -> None:
+        self._require_window()
+        if _project(row) != row:
+            raise CliError(
+                INVALID_RESPONSE, "PTR cached order contains unapproved fields"
+            )
+        assert self.start_ms is not None and self.end_ms is not None
+        if not self.start_ms <= row["gmtModified"] < self.end_ms:
+            raise CliError(
+                INVALID_RESPONSE, "PTR cached order falls outside the requested window"
+            )
+
+    @property
+    def data_schema(self) -> dict[str, Any]:
+        properties: dict[str, Any] = {
+            key: {"type": ["string", "null"]} for key in sorted(STRINGS)
+        }
+        properties.update(
+            {key: {"type": ["integer", "null"]} for key in sorted(TIMESTAMPS)}
+        )
+        properties["ptrOrderId"] = {"type": "string", "minLength": 1, "pattern": r"\S"}
+        properties["gmtModified"] = {"type": "integer"}
+        properties["transactionRate"] = {"type": ["number", "null"]}
+        properties[BASELINE_KEY] = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                key: {"type": ["string", "null"]} for key in sorted(BASELINE)
+            },
+        }
+        money: dict[str, Any] = {
+            key: {"type": ["string", "null"]} for key in sorted(MONEY_STRINGS)
+        }
+        money.update({key: {"type": ["integer", "null"]} for key in sorted(MONEY_INTS)})
+        money["amount"] = {"type": ["number", "null"]}
+        for key in ("debtorAmount", "returnAmount"):
+            properties[key] = {
+                "type": ["object", "null"],
+                "additionalProperties": False,
+                "properties": money,
+            }
+        return {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["ptrOrderId", "gmtModified", BASELINE_KEY],
+                "properties": properties,
+            },
+        }
+
+    def request_filters(self, body: dict[str, Any]) -> dict[str, list[str]]:
+        if any(
+            type(body.get(key)) is not int for key in ("pageNo", "pageSize")
+        ) or body != self.page_body(self.default_scope, 0, 500):
+            raise CliError(
+                REQUEST_NOT_ALLOWED, "only the bound PTR order request is allowed"
+            )
+        return {}
+
+    def identity_key(self, record: dict[str, Any]) -> str:
+        return record["ptrOrderId"]
+
+    def sort_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sorted(records, key=self.identity_key)
+
+    def filter_records(
+        self, records: list[dict[str, Any]], filters: dict[str, list[str]]
+    ) -> list[dict[str, Any]]:
+        allowed = {field for _, field in self.filters}
+        if any(
+            field not in allowed
+            or not isinstance(values, list)
+            or not values
+            or any(not isinstance(v, str) or not v.strip() for v in values)
+            for field, values in filters.items()
+        ):
+            raise CliError(INVALID_ARGUMENT, "invalid PTR order exact-match filter")
+
+        def matches(row: dict[str, Any]) -> bool:
+            for path, values in filters.items():
+                value: Any = row
+                for part in path.split("."):
+                    value = value.get(part) if isinstance(value, dict) else None
+                if not isinstance(value, str) or value not in values:
+                    return False
+            return True
+
+        return [row for row in records if matches(row)]
+
+    @property
+    def refresh_command(self) -> str:
+        self._require_window()
+        return (
+            "refresh payment ptr orders "
+            f"--updated-from {self.updated_from} --updated-to {self.updated_to}"
+        )
+
+    @property
+    def default_scope(self) -> str:
+        self._require_window()
+        return f"updated:{self.updated_from}:{self.updated_to}"
+
+    def _require_window(self) -> None:
+        if self.start_ms is None or self.end_ms is None:
+            raise CliError(REQUEST_NOT_ALLOWED, "PTR order window must be bound")
+
+    @property
+    def contract(self) -> EndpointContract:
+        self._require_window()
+        assert self.native_begin is not None and self.native_end is not None
+        return EndpointContract(
+            method="GET",
+            host="iglobalfundcontrol.alipay.com",
+            path="/api/ptr/manage/query.json",
+            page_size=500,
+            one_based=False,
+            allowed_body_keys=frozenset(
+                {"pageNo", "pageSize", "modifiedTimeBegin", "modifiedTimeEnd"}
+            ),
+            fixed_body_values=(
+                ("pageNo", 0),
+                ("pageSize", 500),
+                ("modifiedTimeBegin", self.native_begin),
+                ("modifiedTimeEnd", self.native_end),
+            ),
+        )
+
+    def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
+        if (
+            scope != self.default_scope
+            or type(page_num) is not int
+            or page_num != 0
+            or type(page_size) is not int
+            or page_size != 500
+        ):
+            raise CliError(
+                REQUEST_NOT_ALLOWED, "only the bound PTR order page is allowed"
+            )
+        return dict(self.contract.fixed_body_values)
+
+
+def bind_window(from_value: str, to_value: str) -> OrdersCapability:
+    values = (from_value, to_value)
+    if any(not isinstance(v, str) or not WINDOW_PATTERN.fullmatch(v) for v in values):
+        raise CliError(
+            INVALID_ARGUMENT,
+            "updated bounds require YYYY-MM-DDTHH:MM:SS+08:00",
+            exit_code=EXIT_USAGE,
+        )
+    try:
+        start, end = (datetime.strptime(v, WINDOW_FORMAT) for v in values)
+        if not start < end or end - start > timedelta(days=31):
+            raise ValueError("invalid span")
+        if end > datetime.now(timezone.utc):
+            raise ValueError("future cutoff")
+        begin = (start - timedelta(seconds=1)).isoformat(sep=" ", timespec="seconds")[
+            :-6
+        ]
+        finish = (end + timedelta(seconds=1)).isoformat(sep=" ", timespec="seconds")[
+            :-6
+        ]
+    except (ValueError, OverflowError) as error:
+        raise CliError(
+            INVALID_ARGUMENT,
+            "updated bounds must be valid, ordered, at most 31 days and not future",
+            exit_code=EXIT_USAGE,
+        ) from error
+    return OrdersCapability(
+        from_value,
+        to_value,
+        int(start.timestamp()) * 1000,
+        int(end.timestamp()) * 1000,
+        begin,
+        finish,
+    )
+
+
+ORDERS = OrdersCapability()
+
+
+def collect_stable(
+    capability: OrdersCapability,
+    transport: Any,
+    scope: str,
+    *,
+    progress: Callable[[int, int], None] | None = None,
+) -> "CollectedScope":
+    """Prove the entire padded scope stable before trimming to the public window."""
+    result = ptr.collect_stable(capability, transport, scope, progress=progress)
+    assert capability.start_ms is not None and capability.end_ms is not None
+    rows = [
+        row
+        for row in result.records
+        if capability.start_ms <= row["gmtModified"] < capability.end_ms
+    ]
+    return replace(result, records=rows, total_count=len(rows))

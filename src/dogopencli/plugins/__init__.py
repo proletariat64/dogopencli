@@ -51,10 +51,18 @@ class ParsedPage:
 class Capability(Protocol):
     name: str
     source_config_key: str
-    default_scope: str
-    contract: EndpointContract
     id_field: str
     table_columns: tuple[str, ...]
+
+    @property
+    def default_scope(self) -> str:
+        """Acquisition/cache scope selected by the capability."""
+        ...
+
+    @property
+    def contract(self) -> EndpointContract:
+        """Read-only request contract, possibly bound to an explicit scope."""
+        ...
 
     def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
         """Request body for one collection page of a full scope."""
@@ -177,11 +185,34 @@ def _load_builtins() -> None:
     )
     from .collection.va_rule import REFRESH_NODE as va_refresh
     from .collection.va_rule_reading import description as va_rule_description
-    from .payment import rules, rules_reading
+    from .payment import (
+        ptr,
+        ptr_orders,
+        ptr_orders_reading,
+        ptr_reading,
+        rules,
+        rules_reading,
+    )
     from .payment.channel import CHANNEL_CAPABILITY, CHANNEL_LIST_NODE
     from .payment.cost import COST_CAPABILITY, COST_LIST_NODE
     from .payment.reading import description
     from .payment.sla import SLA_CAPABILITY, SLA_GET_NODE, SLA_LIST_NODE
+
+    register(
+        ptr.CASES,
+        commands=(ptr_reading.LIST_NODE,),
+        refresh_commands=(ptr_reading.REFRESH_NODE,),
+        groups=ptr_reading.GROUPS,
+        description=ptr_reading.description,
+    )
+
+    register(
+        ptr_orders.ORDERS,
+        commands=(ptr_orders_reading.LIST_NODE,),
+        refresh_commands=(ptr_orders_reading.REFRESH_NODE,),
+        groups=ptr_orders_reading.GROUPS,
+        description=ptr_orders_reading.description,
+    )
 
     for rule_cap in rules.CAPABILITIES:
         register(

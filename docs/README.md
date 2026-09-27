@@ -17,6 +17,7 @@
 - [收款卡模板规格 #45](https://github.com/proletariat64/dogopencli/issues/45)：独立列表、六项本地筛选、原子刷新。
 
 - [付款规则总规格 #59](https://github.com/proletariat64/dogopencli/issues/59)：#55–#58 四项列表实施；#54 流量规则详情身份不一致，仍阻塞。
+- [付款 PTR 总规格 #61](https://github.com/proletariat64/dogopencli/issues/61)：七类独立查询子规格；用例 #63 与有界单据 #64 已冻结，其他资源仍保留生产契约缺口。
 
 ## 研究报告
 
@@ -52,6 +53,15 @@
 - [付款规则查询契约](research/payment/2026-09-27-payment-rules-contract.md)：四项独立采集、全部筛选、嵌套关联和证据边界。
 - [付款规则实施与验收](research/payment/2026-09-27-payment-rules-implementation-uat.md)：424 项生产／私有缓存断言、全部参数与合成失败覆盖。
 - [付款流量规则阻塞](research/payment/2026-09-27-payment-flow-rule-blocker.md)：真实详情身份不一致的重复验证（#54）。
+- [付款 PTR 研究与 Graphify/wiki 交叉核验](research/payment/2026-09-27-payment-ptr-research.md)：七类查询对象、术语与状态纠正、候选命令及生产契约验证缺口；初始研究阶段浏览器不可用，后续证据见下方。
+- [付款 PTR 原生契约发现与实施阻塞](research/payment/2026-09-27-payment-ptr-contract-discovery.md)：七个列表接口及首屏结构已观察；后续导航 reset/timeout 阻止分页、详情及完整范围验证。
+- [PTR 用例与账户库契约](research/payment/2026-09-27-payment-ptr-cases-accounts-contract.md)：用例完整采集、字段投影、筛选；账户库方向隔离仍待证明。
+- [PTR 有界单据契约](research/payment/2026-09-27-payment-ptr-orders-contract.md)：UTC+8 更新时间、两端各多取一秒与精确本地区间、完整首批采集。
+- [PTR 用例实施与验证](research/payment/2026-09-27-payment-ptr-implementation-validation.md)：公共参数 SIT/UAT 映射、独立审查及网络恢复后的私有缓存验收。
+- [PTR 网络总览缺口](research/payment/2026-09-27-payment-ptr-networks-contract-gap.md)：嵌套子记录计数及完整采集超时。
+- [PTR 巡检契约调查](research/payment/2026-09-27-payment-ptr-patrol-contract.md)：规则/批次证据、方向与日期边界限制。
+- [PTR 自动化批次调查](research/payment/2026-09-27-payment-ptr-automation-contract.md)：有界分页、详情边界、方向与时区缺口。
+
 
 ## 查询契约补充
 
