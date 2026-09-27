@@ -76,6 +76,8 @@ dogopencli collection account-isolation list --live --all
 | 降本规则 | `payment rules cost-reduction list` | `refresh payment rules cost-reduction` | `payment_rules_cost_reduction` |
 | 重试规则 | `payment rules retry list` | `refresh payment rules retry` | `payment_rules_retry` |
 | 银存切换规则 | `payment rules bank-switch list` | `refresh payment rules bank-switch` | `payment_rules_bank_switch` |
+| PTR 用例 | `payment ptr cases list` | `refresh payment ptr cases` | `payment_ptr_cases` |
+| PTR 单据 | `payment ptr orders list`（必填更新时间范围） | `refresh payment ptr orders`（同范围） | `payment_ptr_orders` |
 | 收款交易成本 | `collection cost list` | `refresh collection cost` | `collection_cost` |
 | 收款 SLA 配置 | `collection sla configs list` / `get --id ID` | `refresh collection sla` | `collection_sla` |
 | 收款 VA 规则 | `collection va rules list` / `get --id ID` | `refresh collection va` | `collection_va` |
@@ -96,7 +98,8 @@ SLA 是配置目标，不是观测到账耗时。
 VA 费用、VA 池、实体账户、余额及生产变更操作不在当前范围。
 
 付款 flow 规则的真实详情存在身份不一致，#54 暂未交付，也未提供 list-only 替代；
-见[复核证据](docs/research/payment/2026-09-27-payment-flow-rule-blocker.md)。PTR 单据查询尚未实现。
+见[复核证据](docs/research/payment/2026-09-27-payment-flow-rule-blocker.md)。PTR 当前实现流出用例库和有界单据查询；
+网络总览、账户库、巡检规则及两类批次尚未通过各自契约门槛，未注册命令。
 
 ## 缓存、实时查询与刷新
 
@@ -172,6 +175,60 @@ VA 容量的行身份是 `ruleId`；`--bank-va-rule-id` 匹配 `bankAccountVaId`
 实时付款 Cost/SLA 每字段只接受单值；付款 SLA 的 `--biz-legal-entity` 仅支持实时透传，
 其独立筛选效果未验证，缓存模式拒绝该参数。付款 Channel 默认范围为 `EXTERNAL`，
 `--payout-type` 还支持 `LIQUIDITY`、`MANUAL`、`SETTLEMENT`。
+
+### PTR 用例
+
+PTR 指生产仿真验证。本命令只读已有流出用例，不发起试跑或修改结果。
+
+```toml
+[sources.payment_ptr_cases]
+kind = "cdp"
+```
+
+```bash
+dogopencli refresh payment ptr cases
+dogopencli payment ptr cases list --case-type NEGATIVE --all
+dogopencli payment ptr cases list --channel CHANNEL --debtor-currency USD --live
+dogopencli describe payment ptr cases list --format text
+```
+
+支持用例 ID/名称/类型、渠道、付款账户别名、付款/收款币种、清算网络、
+OBO/FVT 输入、能力基线 ID、收款账户别名的精确本地筛选。
+同项重复 OR、不同项 AND；字符串大小写敏感，空值不匹配，不展开通配符。
+默认离线，`--live` 不发布缓存且不回退。
+
+每次采集固定读取两次 5,000 条容量的首批结果；两次必须完整、身份唯一且保留字段一致。
+总量超过容量、截断、重复或漂移均报错，刷新失败保留旧缓存。
+范围为当前接口可见流出用例库，不保证删除记录或版本历史；`--all` 仅展开该范围。
+默认 72h TTL 是缓存策略，不表示验证摘要能保持 72h 最新。
+
+只保留[契约字段清单](docs/research/payment/2026-09-27-payment-ptr-cases-accounts-contract.md)，
+省略个人信息、IBAN/BIC、操作人、自由文本及未知字段；详情 `get` 暂缓。
+`verifyResult` 表示测试验证结果，预期拒绝也可能通过，不等于付款成功。
+
+### PTR 单据
+
+配置 `sources.payment_ptr_orders` 的 `kind = "cdp"`。刷新与查询都必须提供
+`--updated-from`、`--updated-to`，格式严格为 `YYYY-MM-DDTHH:MM:SS+08:00`。
+范围按 `gmtModified` 毫秒时间戳计算，包含起点、排除终点，最多 31 天，终点不得晚于当前时间。
+
+```bash
+dogopencli refresh payment ptr orders \
+  --updated-from 2026-09-01T00:00:00+08:00 --updated-to 2026-09-02T00:00:00+08:00
+dogopencli payment ptr orders list \
+  --updated-from 2026-09-01T00:00:00+08:00 --updated-to 2026-09-02T00:00:00+08:00 \
+  --verify-status VERIFIED --all
+```
+
+不同时间范围使用独立缓存；`--all` 不扩大范围。采集会在两端各多查询一秒，
+要求两次完整首批结果一致、总量不超过 500 条，再精确排除多取的记录。
+超过容量请缩小时间范围，不回退到已发现不可靠的服务端分页。
+仅保存每个范围最近一次成功快照，不自动删除历史范围；72h TTL 不保证动态单据保持最新。
+
+支持 PTR ID、用例 ID、渠道、付款账户别名、付款/收款币种、清算网络、
+支付状态、验证状态和最终结果的精确本地筛选。三种状态分别保留，不推导 PASS/FAIL。
+已知个人信息字段省略，但 `failureReason` 是保留的原始运营失败文本，不能保证其中不含个人信息。
+真实详情 `get` 暂缓；[完整契约](docs/research/payment/2026-09-27-payment-ptr-orders-contract.md)。
 
 ### 付款规则筛选
 

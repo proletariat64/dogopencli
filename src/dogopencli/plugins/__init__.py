@@ -8,9 +8,12 @@ modifying the core layers.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from ..helpspec import BizNode
+
+if TYPE_CHECKING:
+    from ..collect import CollectedScope
 
 
 @dataclass(frozen=True)
@@ -51,10 +54,18 @@ class ParsedPage:
 class Capability(Protocol):
     name: str
     source_config_key: str
-    default_scope: str
-    contract: EndpointContract
     id_field: str
     table_columns: tuple[str, ...]
+
+    @property
+    def default_scope(self) -> str:
+        """Acquisition/cache scope selected by the capability."""
+        ...
+
+    @property
+    def contract(self) -> EndpointContract:
+        """Read-only request contract, possibly bound to an explicit scope."""
+        ...
 
     def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
         """Request body for one collection page of a full scope."""
@@ -84,7 +95,42 @@ class Capability(Protocol):
         ...
 
 
+class ConfigurationCapability(Capability, Protocol):
+    """Complete lists with declared local filters and cached-row validation."""
+
+    @property
+    def command_path(self) -> str: ...
+
+    @property
+    def filters(self) -> tuple[tuple[str, str], ...]: ...
+
+    def validate_row(self, row: Any) -> None: ...
+
+
+_CollectedCapability = TypeVar(
+    "_CollectedCapability", bound=Capability, contravariant=True
+)
+_RegisteredCapability = TypeVar("_RegisteredCapability", bound=Capability)
+
+
+class ScopeCollector(Protocol[_CollectedCapability]):
+    """A registered domain acquisition policy using shared bounded transport."""
+
+    def __call__(
+        self,
+        capability: _CollectedCapability,
+        transport: Any,
+        scope: str,
+        *,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> "CollectedScope": ...
+
+
 _REGISTRY: dict[str, Capability] = {}
+# Registration checks each callback against its capability type. Lookup is by
+# capability name, while invocation always uses the caller's bound instance.
+_COLLECTORS: dict[str, ScopeCollector[Any]] = {}
+_REFRESH_HINTS: dict[str, Callable[[Any], str]] = {}
 _COMMANDS: dict[str, tuple[BizNode, ...]] = {}
 _REFRESH_COMMANDS: dict[str, tuple[BizNode, ...]] = {}
 _GROUPS: dict[str, tuple[BizNode, ...]] = {}
@@ -92,20 +138,52 @@ _DESCRIPTIONS: dict[tuple[str, ...], Callable[[BizNode], dict[str, Any]]] = {}
 
 
 def register(
-    capability: Capability,
+    capability: _RegisteredCapability,
     *,
     commands: tuple[BizNode, ...] = (),
     refresh_commands: tuple[BizNode, ...] = (),
     groups: tuple[BizNode, ...] = (),
     description: Callable[[BizNode], dict[str, Any]] | None = None,
+    collector: ScopeCollector[_RegisteredCapability] | None = None,
+    refresh_hint: Callable[[_RegisteredCapability], str] | None = None,
 ) -> None:
     _REGISTRY[capability.name] = capability
+    if collector is None:
+        _COLLECTORS.pop(capability.name, None)
+    else:
+        _COLLECTORS[capability.name] = collector
+    if refresh_hint is None:
+        _REFRESH_HINTS.pop(capability.name, None)
+    else:
+        _REFRESH_HINTS[capability.name] = refresh_hint
     _COMMANDS[capability.name] = commands
     _REFRESH_COMMANDS[capability.name] = refresh_commands
     _GROUPS[capability.name] = groups
     if description is not None:
         for node in commands:
             _DESCRIPTIONS[node.path] = description
+
+
+def collect_complete_scope(
+    capability: Capability,
+    transport: Any,
+    scope: str,
+    *,
+    progress: Callable[[int, int], None] | None = None,
+) -> "CollectedScope":
+    """Use the registered policy, preserving the caller's exact bound scope."""
+    from ..collect import collect_scope
+
+    collector = _COLLECTORS.get(capability.name, collect_scope)
+    return collector(capability, transport, scope, progress=progress)
+
+
+def refresh_command(capability: ConfigurationCapability) -> str:
+    """Return a runnable refresh hint for the actual acquisition scope."""
+    hint = _REFRESH_HINTS.get(capability.name)
+    return (
+        hint(capability) if hint is not None else f"refresh {capability.command_path}"
+    )
 
 
 def command_nodes() -> tuple[BizNode, ...]:
@@ -177,11 +255,37 @@ def _load_builtins() -> None:
     )
     from .collection.va_rule import REFRESH_NODE as va_refresh
     from .collection.va_rule_reading import description as va_rule_description
-    from .payment import rules, rules_reading
+    from .payment import (
+        ptr,
+        ptr_orders,
+        ptr_orders_reading,
+        ptr_reading,
+        rules,
+        rules_reading,
+    )
     from .payment.channel import CHANNEL_CAPABILITY, CHANNEL_LIST_NODE
     from .payment.cost import COST_CAPABILITY, COST_LIST_NODE
     from .payment.reading import description
     from .payment.sla import SLA_CAPABILITY, SLA_GET_NODE, SLA_LIST_NODE
+
+    register(
+        ptr.CASES,
+        commands=(ptr_reading.LIST_NODE,),
+        refresh_commands=(ptr_reading.REFRESH_NODE,),
+        groups=ptr_reading.GROUPS,
+        description=ptr_reading.description,
+        collector=ptr.collect_stable,
+    )
+
+    register(
+        ptr_orders.ORDERS,
+        commands=(ptr_orders_reading.LIST_NODE,),
+        refresh_commands=(ptr_orders_reading.REFRESH_NODE,),
+        groups=ptr_orders_reading.GROUPS,
+        description=ptr_orders_reading.description,
+        collector=ptr_orders.collect_stable,
+        refresh_hint=lambda capability: capability.refresh_command,
+    )
 
     for rule_cap in rules.CAPABILITIES:
         register(

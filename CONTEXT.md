@@ -34,6 +34,21 @@ _Avoid_: 将 SLA 基线与实际到账耗时作为同义词。
 **付款单据（Payment Order）**：记录实际付款业务处理的单据；与关联调拨单、银行处理记录及 PTR 单据分别识别。
 _Avoid_: 将不同层次单号合并为无类型的通用单号。
 
+**PTR（Production Trial Run，生产仿真验证）**：通过生产环境的受控试跑验证产品能力。
+_Avoid_: Payment Transfer Routing、Payment Transfer Request；将 PTR 仅解释为上线前测试。
+
+**PTR 用例（PTR Case）**：定义试跑输入及其关联流出能力基线的测试配置，
+可附带最近一次验证摘要；与一次试跑产生的 PTR 单据分别识别。
+_Avoid_: 将用例 ID、能力基线 ID 和关联付款单 ID 合并；将用例查询称为执行试跑。
+
+**PTR 单据（PTR Order）**：记录一次试跑及其支付状态、验证进度和最终测试结论的对象，
+可关联用例、调拨单和金融网络。
+_Avoid_: 将已核验视为通过，或用支付失败推导测试失败；将不同关联单号当作 PTR 单据 ID。
+
+**PTR 验证结果（PTR Verification Result）**：判断实际行为是否满足测试预期的结果；
+预期拒绝的负向用例也可能通过验证。
+_Avoid_: 将已核验状态或测试通过等同于付款成功。
+
 **收款交易成本配置（Collection Transaction-Cost Configuration）**：描述收款渠道交易费用的适用条件、计费方式及费率的配置记录；不同于已发生交易的实际费用，也不同于 VA 账户费用配置。
 _Avoid_: 将收款交易成本配置简称为实际收款费用，或与 VA 费用混用。
 
