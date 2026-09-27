@@ -81,7 +81,8 @@ def description(node: BizNode) -> dict[str, Any]:
                 "was always zero; it is not a reliable page count.",
                 "Confirmed filtered empty shape: success=true, data has null "
                 "businessDataList and all four pagination fields zero. "
-                "Unfiltered empty production scope remains synthetic-only.",
+                "This filtered-only shape is rejected during unfiltered acquisition; "
+                "a correctly echoed empty array is accepted synthetically.",
                 "Backend customerTags/currency queries returned broader matches; "
                 "CLI deliberately uses local whole-string equality, including commas.",
                 "Unknown fields/nesting and missing/null/zero/empty remain raw. "

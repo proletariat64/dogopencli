@@ -178,11 +178,40 @@ def test_scope_boundaries_and_no_next_page(run_cli, envelope, setup, size):
     )
 
 
-def test_verified_null_zero_empty_replaces_snapshot(run_cli, envelope, setup):
-    seed(run_cli, setup)
+@pytest.mark.parametrize("live", [False, True])
+@pytest.mark.parametrize("populated", [False, True])
+def test_unverified_null_zero_empty_never_publishes(
+    run_cli, envelope, setup, live, populated
+):
+    old = seed(run_cli, setup) if populated else None
     setup.state.business_script.append(page([], businessDataList=None, pageSize=0))
-    assert refresh(run_cli)[0] == 0
-    assert envelope(listing(run_cli)[1])["data"] == []
+    result = listing(run_cli, "--live") if live else refresh(run_cli)
+    assert result[0] == 1
+    assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
+    if populated:
+        assert listing(run_cli)[1] == old
+    else:
+        assert envelope(listing(run_cli)[1])["error"]["code"] == "CACHE_MISS"
+
+
+@pytest.mark.parametrize("corruption", ["row_count", "duplicate"])
+def test_corrupt_cached_scope_identifies_capability(
+    run_cli, envelope, setup, corruption
+):
+    import sqlite3
+
+    seed(run_cli, setup)
+    with sqlite3.connect(setup.cache_path) as db:
+        db.execute("UPDATE snapshots SET row_count = 2")
+        if corruption == "duplicate":
+            db.execute(
+                "INSERT INTO records SELECT namespace, seqid + 1, body FROM records"
+            )
+    code, out, _ = listing(run_cli)
+    assert code == 1
+    error = envelope(out)["error"]
+    assert error["code"] == "INCOMPLETE_RESULT"
+    assert "collection.account_isolation.list" in error["message"]
 
 
 @pytest.mark.parametrize(

@@ -68,7 +68,7 @@ truncation, more than 1000 records, exactly 1000 records, unfiltered empty scope
 missing optional fields, leading-zero identities, large integer-like strings,
 lock contention, timeout or interruption. Named SIT cases cover these without
 altering production or authentication: `test_scope_boundaries_and_no_next_page`,
-`test_verified_null_zero_empty_replaces_snapshot`,
+`test_unverified_null_zero_empty_never_publishes` (review correction),
 `test_bad_acquisition_preserves_old_cache`,
 `test_invalid_envelope_never_publishes_or_leaks`,
 `test_failures_lock_auth_browser_timeout_interrupt`,
@@ -104,3 +104,12 @@ Specification: 0 findings against #51 plus its frozen contract and #52's
 explicit completeness gate. The graph covers the new plugin and SIT file;
 dynamic CLI test coverage was verified from the tests, not inferred solely
 from graph edges.
+
+## Review follow-up
+
+The acceptance run above predates the PR review correction. Null-list/all-zero
+responses now fail unfiltered acquisition and preserve the prior snapshot;
+filtered production evidence cannot establish unfiltered emptiness. See the
+[review validation](2026-09-27-collection-account-isolation-review.md) for the
+current focused checks. The production UAT and full-suite counts above remain
+historical results, not claims that those runs were repeated after review.

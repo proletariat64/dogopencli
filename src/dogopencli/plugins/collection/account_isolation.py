@@ -1,8 +1,6 @@
 """Verified account-isolation configuration inquiry (issue #51)."""
 
-from typing import Any
-
-from ...errors import INCOMPLETE_RESULT, INVALID_RESPONSE, REQUEST_NOT_ALLOWED, CliError
+from ...errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
 from ...helpspec import (
     ALL,
     CACHE_FLAGS,
@@ -22,10 +20,11 @@ from ...helpspec import (
 )
 from .. import EndpointContract, ParsedPage
 from ..envelope import success_document
-from .network_config import ERRORS, validate_row
+from .configuration import ERRORS, ConfigurationListCapability, validate_row
 
 
-class AccountIsolationCapability:
+class AccountIsolationCapability(ConfigurationListCapability):
+    request_filter_error = "backend isolation filters disabled"
     name = "collection.account_isolation.list"
     slug = "account-isolation"
     title = "collection account-isolation configuration"
@@ -53,33 +52,6 @@ class AccountIsolationCapability:
         fixed_body_values=(("pageNo", 0), ("pageSize", 1000)),
     )
 
-    def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
-        if scope != self.default_scope or page_num != 0 or page_size != 1000:
-            raise CliError(
-                REQUEST_NOT_ALLOWED, "only the verified first page is allowed"
-            )
-        return {"pageNo": 0, "pageSize": 1000}
-
-    def request_filters(self, body: dict[str, Any]) -> dict[str, list[str]]:
-        if body != {"pageNo": 0, "pageSize": 1000}:
-            raise CliError(REQUEST_NOT_ALLOWED, "backend isolation filters disabled")
-        return {}
-
-    def filter_records(
-        self, records: list[dict[str, Any]], filters: dict[str, list[str]]
-    ) -> list[dict[str, Any]]:
-        return [
-            row
-            for row in records
-            if all(row.get(field) in values for field, values in filters.items())
-        ]
-
-    def sort_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return sorted(records, key=lambda row: row["id"])
-
-    def identity_key(self, record: dict[str, Any]) -> str:
-        return record["id"]
-
     def parse_page(self, body: bytes) -> ParsedPage:
         document = success_document(body)
         data = document.get("data")
@@ -90,12 +62,6 @@ class AccountIsolationCapability:
                 raise CliError(INVALID_RESPONSE, f"invalid isolation pagination {key}")
         rows = data.get("businessDataList")
         number, size, total = data["pageNo"], data["pageSize"], data["totalCount"]
-        if (
-            "businessDataList" in data
-            and rows is None
-            and number == size == total == data["totalPageNo"] == 0
-        ):
-            return ParsedPage([], 0, 1000, 0, 0)
         if not isinstance(rows, list) or number != 0 or size != 1000:
             raise CliError(
                 INVALID_RESPONSE, "invalid isolation list or pagination echo"

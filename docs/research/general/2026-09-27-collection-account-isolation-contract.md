@@ -63,11 +63,13 @@ without publication. No speculative next page or alternative page-size fallback.
 
 Two independent nonmatching filters (numeric-string id and sceneCode) returned
 success=true, data.businessDataList=null and all four pagination fields zero.
-Only that exact explicit null/zero empty shape is normalized to an empty page
-at requested size 1000; missing list/data or contradictory metadata fail.
-A conventional empty array with correct request echoes and zero total is also
-accepted. An unfiltered empty production scope was unavailable; its application
-of these empty shapes is synthetic-only, not claimed as production observation.
+Review correction (2026-09-27): filtered evidence does not establish the meaning
+of that shape on the unfiltered acquisition path. Reject null/zero responses
+with INVALID_RESPONSE and preserve any prior snapshot. This supersedes the
+original normalization rule. Missing list/data or contradictory metadata also
+fail. A conventional empty array with correct request echoes and zero total
+is accepted. An unfiltered empty production scope was unavailable; empty-array
+acceptance remains synthetic-only, not a production observation.
 
 ## Frozen filter semantics and source
 
