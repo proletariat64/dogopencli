@@ -28,6 +28,22 @@ account and patrol libraries were not admitted as shared configuration scopes.
 The five other resource commands remain unregistered with evidence gaps recorded
 on #62 and #65–#68. This work does not close the parent roadmap.
 
+## Open detail-research follow-up
+
+Issue #64 calls real `get` a priority verification candidate. Order-detail
+research was **not attempted**: there is no observed failed identity check,
+permission rejection or other detail-test result. The frozen contract explicitly
+keeps this delivery list-only; successful list UAT does not resolve that
+research-process gap or establish detail availability.
+
+The [order research follow-up](2026-09-27-payment-ptr-orders-contract.md#open-priority-follow-up-native-order-detail)
+tracks the required priority investigation before any `get` proposal: observe
+the actual native read-only action, verify the PTR identity and version/time,
+freeze permission, privacy and nested-completeness behavior, then validate the
+combined list/detail publication contract. No detail endpoint or `get` command
+is registered. This documentation clarification makes no new production or
+test claim and leaves the existing list-only contract unchanged.
+
 ## Production evidence versus CLI UAT
 
 Native inquiry research established 3,292 unique cases and equal full reads at
@@ -111,22 +127,50 @@ Ruff check and formatting pass; documentation guard passes. A wheel built and
 installed into an independent temporary virtual environment passed offline list
 help, refresh help and describe from outside the repository.
 
-An ephemeral `ty` check of all four new modules passes. Checking all changed
-application files reproduces 27 pre-existing diagnostics in CLI/registry,
-verified against the original HEAD; no new diagnostics remain. No typechecker
+An ephemeral `ty` check of all five PTR modules passes. After review refactoring,
+changed CLI/registry files report 26 diagnostics from the same pre-existing
+type mismatches (original implementation: 27). Narrower helper signatures
+consolidate the VA-capacity diagnostic at its caller; no new underlying type
+defect was introduced, as independently checked against the baseline. No typechecker
 configuration or project dependency was introduced.
 
-Final full regression: **1,293 tests and 23 subtests passed** in 803.79 seconds.
+Initial full regression: **1,293 tests and 23 subtests passed** in 803.79 seconds.
+Post-review full regression: **1,294 tests and 23 subtests passed** in 817.17
+seconds. Targeted PTR tests passed 145 and the new registry-policy regression
+passed independently. Ruff, formatting, documentation guard, five PTR-module
+type checks and rebuilt installed-wheel smoke also pass after refactoring.
 The final wheel was rebuilt after both resources were implemented; independent
 installed help and describe smoke checks passed for cases and orders.
 
 ## Independent review
 
-Standards axis: no documented-standard violations. One low-priority judgement:
-case and order local filter matching repeats the same small loop. It remains
-resource-local in this slice; a future shared matcher could prevent divergence.
-Spec axis: no implementation defect or scope creep. Acquisition, parsing, CLI
+Standards axis after the review follow-up: no documented-standard violations
+or remaining actionable smells. The initially noted repeated filter matching
+is now shared with the monetary projection and schema.
+Spec axis: the implementation review found no defect or scope creep against
+the frozen list-only contracts. The subsequent review identified the open
+priority order-detail research gap documented above. Acquisition, parsing, CLI
 integration and tests received independent review; order reading metadata had a
 separate independent reviewer because the main spec reviewer authored that file.
 The initial production CLI UAT finding was resolved by successful private-cache
 runs after network restoration; native research and CLI acceptance remain distinct.
+
+## PR #69 review follow-up
+
+The external review was checked against source behavior and the frozen specs.
+Greptile reported no actionable findings for `8a7e39d`.
+
+| Finding | Disposition |
+| --- | --- |
+| Payment unit-test directory | Moved both PTR suites unchanged under `tests/unit/plugins/payment/`. |
+| Core dispatch on PTR classes; ad-hoc refresh hint | Replaced the CLI switches with typed registered collector and refresh-hint hooks. The registry passes the actual bound instance, preserving order dates. Existing plugins retain the shared default collector and refresh hint. |
+| Readonly `Capability` scope/contract properties | Retained: consumers read these values; structural typing accepts both ordinary attributes and computed properties. No plugin inherits protocol descriptors at runtime. This was not a behavior defect. |
+| Repeated filter/money logic and vague allowlists | Extracted shared domain helpers in `ptr_common.py`; renamed case/order retained-field allowlists. A differential check of 92 projection/filter inputs against the prior commit preserved outputs and exact errors; schemas also matched. |
+| Repeated identity/sort methods | Retained trivial resource-local methods: they expose different typed identity fields. A new inheritance hierarchy would add indirection without useful behavior reuse. |
+| Discarded `remaining_seconds` value | Retained and commented: the function raises `TIMEOUT` when the original shared budget has expired. Its return value is unnecessary at this guard. Existing budget regression tests still pass. |
+| Prioritized order-detail investigation | Accepted as an open research-process gap; explicitly recorded as not attempted, rather than failed verification or denied permission. No `get` implementation or new production claim. |
+
+An additional registry test proves a differently named capability can supply its
+own collector and refresh hint, receives the runtime bound scope and progress,
+and returns to the normal single acquisition when replaced without overrides.
+The final independent standards/spec reviews found no new implementation issue.

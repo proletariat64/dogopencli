@@ -8,9 +8,12 @@ modifying the core layers.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from ..helpspec import BizNode
+
+if TYPE_CHECKING:
+    from ..collect import CollectedScope
 
 
 @dataclass(frozen=True)
@@ -92,7 +95,42 @@ class Capability(Protocol):
         ...
 
 
+class ConfigurationCapability(Capability, Protocol):
+    """Complete lists with declared local filters and cached-row validation."""
+
+    @property
+    def command_path(self) -> str: ...
+
+    @property
+    def filters(self) -> tuple[tuple[str, str], ...]: ...
+
+    def validate_row(self, row: Any) -> None: ...
+
+
+_CollectedCapability = TypeVar(
+    "_CollectedCapability", bound=Capability, contravariant=True
+)
+_RegisteredCapability = TypeVar("_RegisteredCapability", bound=Capability)
+
+
+class ScopeCollector(Protocol[_CollectedCapability]):
+    """A registered domain acquisition policy using shared bounded transport."""
+
+    def __call__(
+        self,
+        capability: _CollectedCapability,
+        transport: Any,
+        scope: str,
+        *,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> "CollectedScope": ...
+
+
 _REGISTRY: dict[str, Capability] = {}
+# Registration checks each callback against its capability type. Lookup is by
+# capability name, while invocation always uses the caller's bound instance.
+_COLLECTORS: dict[str, ScopeCollector[Any]] = {}
+_REFRESH_HINTS: dict[str, Callable[[Any], str]] = {}
 _COMMANDS: dict[str, tuple[BizNode, ...]] = {}
 _REFRESH_COMMANDS: dict[str, tuple[BizNode, ...]] = {}
 _GROUPS: dict[str, tuple[BizNode, ...]] = {}
@@ -100,20 +138,52 @@ _DESCRIPTIONS: dict[tuple[str, ...], Callable[[BizNode], dict[str, Any]]] = {}
 
 
 def register(
-    capability: Capability,
+    capability: _RegisteredCapability,
     *,
     commands: tuple[BizNode, ...] = (),
     refresh_commands: tuple[BizNode, ...] = (),
     groups: tuple[BizNode, ...] = (),
     description: Callable[[BizNode], dict[str, Any]] | None = None,
+    collector: ScopeCollector[_RegisteredCapability] | None = None,
+    refresh_hint: Callable[[_RegisteredCapability], str] | None = None,
 ) -> None:
     _REGISTRY[capability.name] = capability
+    if collector is None:
+        _COLLECTORS.pop(capability.name, None)
+    else:
+        _COLLECTORS[capability.name] = collector
+    if refresh_hint is None:
+        _REFRESH_HINTS.pop(capability.name, None)
+    else:
+        _REFRESH_HINTS[capability.name] = refresh_hint
     _COMMANDS[capability.name] = commands
     _REFRESH_COMMANDS[capability.name] = refresh_commands
     _GROUPS[capability.name] = groups
     if description is not None:
         for node in commands:
             _DESCRIPTIONS[node.path] = description
+
+
+def collect_complete_scope(
+    capability: Capability,
+    transport: Any,
+    scope: str,
+    *,
+    progress: Callable[[int, int], None] | None = None,
+) -> "CollectedScope":
+    """Use the registered policy, preserving the caller's exact bound scope."""
+    from ..collect import collect_scope
+
+    collector = _COLLECTORS.get(capability.name, collect_scope)
+    return collector(capability, transport, scope, progress=progress)
+
+
+def refresh_command(capability: ConfigurationCapability) -> str:
+    """Return a runnable refresh hint for the actual acquisition scope."""
+    hint = _REFRESH_HINTS.get(capability.name)
+    return (
+        hint(capability) if hint is not None else f"refresh {capability.command_path}"
+    )
 
 
 def command_nodes() -> tuple[BizNode, ...]:
@@ -204,6 +274,7 @@ def _load_builtins() -> None:
         refresh_commands=(ptr_reading.REFRESH_NODE,),
         groups=ptr_reading.GROUPS,
         description=ptr_reading.description,
+        collector=ptr.collect_stable,
     )
 
     register(
@@ -212,6 +283,8 @@ def _load_builtins() -> None:
         refresh_commands=(ptr_orders_reading.REFRESH_NODE,),
         groups=ptr_orders_reading.GROUPS,
         description=ptr_orders_reading.description,
+        collector=ptr_orders.collect_stable,
+        refresh_hint=lambda capability: capability.refresh_command,
     )
 
     for rule_cap in rules.CAPABILITIES:

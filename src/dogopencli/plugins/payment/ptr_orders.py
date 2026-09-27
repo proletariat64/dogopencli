@@ -1,11 +1,9 @@
 """Existing outflow PTR orders within an explicit updated-time interval."""
 
-import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from ...errors import (
@@ -19,6 +17,7 @@ from ...errors import (
 from .. import EndpointContract, ParsedPage
 from ..envelope import success_document
 from . import ptr
+from .ptr_common import filter_exact, is_nullable_number, money_schema, project_money
 
 if TYPE_CHECKING:
     from ...collect import CollectedScope
@@ -29,7 +28,7 @@ WINDOW_PATTERN = re.compile(
 )
 
 
-STRINGS = frozenset(
+ORDER_STRING_FIELDS = frozenset(
     {
         "ptrOrderId",
         "caseId",
@@ -56,7 +55,7 @@ STRINGS = frozenset(
         "transactionRateRef",
     }
 )
-TIMESTAMPS = frozenset(
+ORDER_TIMESTAMP_FIELDS = frozenset(
     {
         "gmtModified",
         "gmtCreate",
@@ -65,7 +64,7 @@ TIMESTAMPS = frozenset(
         "allocatePayoutTime",
     }
 )
-BASELINE = frozenset(
+ORDER_BASELINE_STRING_FIELDS = frozenset(
     {
         "clearingSystemName",
         "debtorAccountAliasName",
@@ -79,19 +78,6 @@ BASELINE = frozenset(
     }
 )
 BASELINE_KEY = "productionTrialRunFundOutAbilityVO"
-MONEY_STRINGS = frozenset({"currency", "currencyCode", "currencyValue"})
-MONEY_INTS = frozenset({"cent", "centFactor"})
-
-
-def _number(value: Any) -> bool:
-    return (
-        value is None
-        or type(value) is int
-        or type(value) is float
-        and math.isfinite(value)
-        or isinstance(value, Decimal)
-        and value.is_finite()
-    )
 
 
 def _project(row: Any) -> dict[str, Any]:
@@ -110,46 +96,30 @@ def _project(row: Any) -> dict[str, Any]:
             INVALID_RESPONSE, "PTR order requires an outflow baseline object"
         )
     result: dict[str, Any] = {}
-    for key in STRINGS | TIMESTAMPS | {"transactionRate"}:
+    for key in ORDER_STRING_FIELDS | ORDER_TIMESTAMP_FIELDS | {"transactionRate"}:
         if key not in row:
             continue
         value = row[key]
         valid = (
-            _number(value)
+            is_nullable_number(value)
             if key == "transactionRate"
-            else value is None or type(value) is (str if key in STRINGS else int)
+            else value is None
+            or type(value) is (str if key in ORDER_STRING_FIELDS else int)
         )
         if not valid:
             raise CliError(INVALID_RESPONSE, "invalid PTR order field type")
         result[key] = value
-    baseline = {k: v for k, v in row[BASELINE_KEY].items() if k in BASELINE}
+    baseline = {
+        k: v for k, v in row[BASELINE_KEY].items() if k in ORDER_BASELINE_STRING_FIELDS
+    }
     if any(v is not None and type(v) is not str for v in baseline.values()):
         raise CliError(INVALID_RESPONSE, "invalid PTR order baseline field type")
     result[BASELINE_KEY] = baseline
     for key in ("debtorAmount", "returnAmount"):
-        if key not in row:
-            continue
-        money = row[key]
-        if money is None:
-            result[key] = None
-            continue
-        if not isinstance(money, dict):
-            raise CliError(INVALID_RESPONSE, "invalid PTR order money object")
-        selected = {
-            k: v
-            for k, v in money.items()
-            if k in MONEY_STRINGS | MONEY_INTS | {"amount"}
-        }
-        for field, value in selected.items():
-            valid = (
-                _number(value)
-                if field == "amount"
-                else value is None
-                or type(value) is (str if field in MONEY_STRINGS else int)
+        if key in row:
+            result[key] = project_money(
+                row[key], error_prefix="invalid PTR order money"
             )
-            if not valid:
-                raise CliError(INVALID_RESPONSE, "invalid PTR order money field type")
-        result[key] = selected
     return result
 
 
@@ -237,10 +207,13 @@ class OrdersCapability:
     @property
     def data_schema(self) -> dict[str, Any]:
         properties: dict[str, Any] = {
-            key: {"type": ["string", "null"]} for key in sorted(STRINGS)
+            key: {"type": ["string", "null"]} for key in sorted(ORDER_STRING_FIELDS)
         }
         properties.update(
-            {key: {"type": ["integer", "null"]} for key in sorted(TIMESTAMPS)}
+            {
+                key: {"type": ["integer", "null"]}
+                for key in sorted(ORDER_TIMESTAMP_FIELDS)
+            }
         )
         properties["ptrOrderId"] = {"type": "string", "minLength": 1, "pattern": r"\S"}
         properties["gmtModified"] = {"type": "integer"}
@@ -249,20 +222,12 @@ class OrdersCapability:
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                key: {"type": ["string", "null"]} for key in sorted(BASELINE)
+                key: {"type": ["string", "null"]}
+                for key in sorted(ORDER_BASELINE_STRING_FIELDS)
             },
         }
-        money: dict[str, Any] = {
-            key: {"type": ["string", "null"]} for key in sorted(MONEY_STRINGS)
-        }
-        money.update({key: {"type": ["integer", "null"]} for key in sorted(MONEY_INTS)})
-        money["amount"] = {"type": ["number", "null"]}
         for key in ("debtorAmount", "returnAmount"):
-            properties[key] = {
-                "type": ["object", "null"],
-                "additionalProperties": False,
-                "properties": money,
-            }
+            properties[key] = money_schema()
         return {
             "type": "array",
             "items": {
@@ -291,26 +256,12 @@ class OrdersCapability:
     def filter_records(
         self, records: list[dict[str, Any]], filters: dict[str, list[str]]
     ) -> list[dict[str, Any]]:
-        allowed = {field for _, field in self.filters}
-        if any(
-            field not in allowed
-            or not isinstance(values, list)
-            or not values
-            or any(not isinstance(v, str) or not v.strip() for v in values)
-            for field, values in filters.items()
-        ):
-            raise CliError(INVALID_ARGUMENT, "invalid PTR order exact-match filter")
-
-        def matches(row: dict[str, Any]) -> bool:
-            for path, values in filters.items():
-                value: Any = row
-                for part in path.split("."):
-                    value = value.get(part) if isinstance(value, dict) else None
-                if not isinstance(value, str) or value not in values:
-                    return False
-            return True
-
-        return [row for row in records if matches(row)]
+        return filter_exact(
+            records,
+            filters,
+            allowed_fields={field for _, field in self.filters},
+            error_message="invalid PTR order exact-match filter",
+        )
 
     @property
     def refresh_command(self) -> str:

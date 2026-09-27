@@ -1,14 +1,11 @@
 """Verified outflow PTR case library; retain only the inquiry projection."""
 
-import math
 from collections.abc import Callable
 from dataclasses import replace
-from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from ...errors import (
     INCOMPLETE_RESULT,
-    INVALID_ARGUMENT,
     INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
     CliError,
@@ -16,12 +13,13 @@ from ...errors import (
 from ...jsonutil import canonical
 from .. import EndpointContract, ParsedPage
 from ..envelope import success_document
+from .ptr_common import filter_exact, money_schema, project_money
 
 if TYPE_CHECKING:
     from ...collect import CollectedScope
     from .. import Capability
 
-STRINGS = frozenset(
+CASE_STRING_FIELDS = frozenset(
     {
         "id",
         "baselineId",
@@ -38,8 +36,8 @@ STRINGS = frozenset(
         "verifyFundOutOrderId",
     }
 )
-TIMESTAMPS = frozenset({"gmtCreate", "gmtModified", "verifyTime"})
-BASELINE = frozenset(
+CASE_TIMESTAMP_FIELDS = frozenset({"gmtCreate", "gmtModified", "verifyTime"})
+CASE_BASELINE_STRING_FIELDS = frozenset(
     {
         "clearingSystemName",
         "communicationMode",
@@ -54,8 +52,6 @@ BASELINE = frozenset(
         "supportReferenceObo",
     }
 )
-MONEY_STRINGS = frozenset({"currency", "currencyCode", "currencyValue"})
-MONEY_INTS = frozenset({"cent", "centFactor"})
 
 
 def _optional(value: Any, expected: type) -> bool:
@@ -72,51 +68,27 @@ def _project(row: Any) -> dict[str, Any]:
     if not isinstance(row.get("fundOutAbilityBaselineVO"), dict):
         raise CliError(INVALID_RESPONSE, "PTR case requires an outflow baseline object")
     result: dict[str, Any] = {}
-    for key in STRINGS | TIMESTAMPS | {"verifyResult"}:
+    for key in CASE_STRING_FIELDS | CASE_TIMESTAMP_FIELDS | {"verifyResult"}:
         if key not in row:
             continue
-        expected = str if key in STRINGS else int if key in TIMESTAMPS else bool
+        expected = (
+            str
+            if key in CASE_STRING_FIELDS
+            else int
+            if key in CASE_TIMESTAMP_FIELDS
+            else bool
+        )
         if not _optional(row[key], expected):
             raise CliError(INVALID_RESPONSE, "invalid PTR case field type")
         result[key] = row[key]
     baseline = row["fundOutAbilityBaselineVO"]
-    selected = {k: v for k, v in baseline.items() if k in BASELINE}
+    selected = {k: v for k, v in baseline.items() if k in CASE_BASELINE_STRING_FIELDS}
     if any(not _optional(v, str) for v in selected.values()):
         raise CliError(INVALID_RESPONSE, "invalid PTR baseline field type")
     result["fundOutAbilityBaselineVO"] = selected
     for key in ("creditorAmount", "debtorAmount"):
-        if key not in row:
-            continue
-        money = row[key]
-        if money is None:
-            result[key] = None
-            continue
-        if not isinstance(money, dict):
-            raise CliError(INVALID_RESPONSE, "invalid PTR money object")
-        selected = {
-            k: v
-            for k, v in money.items()
-            if k in MONEY_STRINGS | MONEY_INTS | {"amount"}
-        }
-        for field, value in selected.items():
-            if value is None:
-                continue
-            valid = (
-                _optional(value, str)
-                if field in MONEY_STRINGS
-                else _optional(value, int)
-                if field in MONEY_INTS
-                else (
-                    type(value) is int
-                    or type(value) is float
-                    and math.isfinite(value)
-                    or isinstance(value, Decimal)
-                    and value.is_finite()
-                )
-            )
-            if not valid:
-                raise CliError(INVALID_RESPONSE, "invalid PTR money field type")
-        result[key] = selected
+        if key in row:
+            result[key] = project_money(row[key], error_prefix="invalid PTR money")
     return result
 
 
@@ -163,10 +135,13 @@ class PtrListCapability:
     @property
     def data_schema(self) -> dict[str, Any]:
         properties: dict[str, Any] = {
-            key: {"type": ["string", "null"]} for key in sorted(STRINGS)
+            key: {"type": ["string", "null"]} for key in sorted(CASE_STRING_FIELDS)
         }
         properties.update(
-            {key: {"type": ["integer", "null"]} for key in sorted(TIMESTAMPS)}
+            {
+                key: {"type": ["integer", "null"]}
+                for key in sorted(CASE_TIMESTAMP_FIELDS)
+            }
         )
         properties["id"] = {"type": "string", "minLength": 1, "pattern": r"\S"}
         properties["verifyResult"] = {"type": ["boolean", "null"]}
@@ -174,22 +149,12 @@ class PtrListCapability:
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                key: {"type": ["string", "null"]} for key in sorted(BASELINE)
+                key: {"type": ["string", "null"]}
+                for key in sorted(CASE_BASELINE_STRING_FIELDS)
             },
         }
-        money_properties: dict[str, Any] = {
-            key: {"type": ["string", "null"]} for key in sorted(MONEY_STRINGS)
-        }
-        money_properties.update(
-            {key: {"type": ["integer", "null"]} for key in sorted(MONEY_INTS)}
-        )
-        money_properties["amount"] = {"type": ["number", "null"]}
         for key in ("creditorAmount", "debtorAmount"):
-            properties[key] = {
-                "type": ["object", "null"],
-                "additionalProperties": False,
-                "properties": money_properties,
-            }
+            properties[key] = money_schema()
         return {
             "type": "array",
             "items": {
@@ -235,26 +200,12 @@ class PtrListCapability:
     def filter_records(
         self, records: list[dict[str, Any]], filters: dict[str, list[str]]
     ) -> list[dict[str, Any]]:
-        allowed = {field for _, field in self.filters}
-        if any(
-            field not in allowed
-            or not isinstance(values, list)
-            or not values
-            or any(not isinstance(v, str) or not v.strip() for v in values)
-            for field, values in filters.items()
-        ):
-            raise CliError(INVALID_ARGUMENT, "invalid PTR exact-match filter")
-
-        def matches(row: dict[str, Any]) -> bool:
-            for path, values in filters.items():
-                value: Any = row
-                for part in path.split("."):
-                    value = value.get(part) if isinstance(value, dict) else None
-                if not isinstance(value, str) or value not in values:
-                    return False
-            return True
-
-        return [row for row in records if matches(row)]
+        return filter_exact(
+            records,
+            filters,
+            allowed_fields={field for _, field in self.filters},
+            error_message="invalid PTR exact-match filter",
+        )
 
     def parse_page(self, body: bytes) -> ParsedPage:
         data = success_document(body)
@@ -301,6 +252,7 @@ def collect_stable(
         budget_seconds=remaining_seconds(first.deadline),
         progress=progress,
     )
+    # Guard the original shared deadline; this call raises on expiry.
     remaining_seconds(first.deadline)
     if (
         not first.complete

@@ -9,7 +9,6 @@ import argparse
 import hashlib
 import sys
 import traceback
-from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -39,7 +38,13 @@ from .helpspec import BizNode, add_options
 from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
-from .plugins import Capability, get_capability
+from .plugins import (
+    Capability,
+    ConfigurationCapability,
+    collect_complete_scope,
+    get_capability,
+    refresh_command,
+)
 from .plugins.collection import (
     account_isolation,
     network_config,
@@ -1225,31 +1230,8 @@ def _collection_va_capacity_cached(
     )
 
 
-def _collect_complete_scope(
-    cap: Capability,
-    transport: Any,
-    scope: str,
-    *,
-    progress: Callable[[int, int], None] | None = None,
-) -> collect_mod.CollectedScope:
-    if isinstance(cap, payment_ptr_orders.OrdersCapability):
-        return payment_ptr_orders.collect_stable(
-            cap, transport, scope, progress=progress
-        )
-    if isinstance(cap, payment_ptr.PtrListCapability):
-        return payment_ptr.collect_stable(cap, transport, scope, progress=progress)
-    return collect_mod.collect_scope(cap, transport, scope, progress=progress)
-
-
 def _refresh_complete_list(
-    cap: (
-        collection_va_capacity.CollectionVaCapacityCapability
-        | network_config.NetworkConfigCapability
-        | account_isolation.AccountIsolationCapability
-        | payment_rules.RuleListCapability
-        | payment_ptr.PtrListCapability
-        | payment_ptr_orders.OrdersCapability
-    ),
+    cap: Capability,
     scope_name: str,
 ) -> int:
     """Publish one complete acquisition using each capability's own contract."""
@@ -1259,7 +1241,7 @@ def _refresh_complete_list(
     ns = namespace(cap.name, cap.default_scope, source.kind)
     with store.refresh_lock():
         with inquiry_session(config_file=config_mod.config_path()) as session:
-            result = _collect_complete_scope(
+            result = collect_complete_scope(
                 cap,
                 session.transport(cap),
                 cap.default_scope,
@@ -1340,22 +1322,14 @@ def _configuration_cached(
     args: argparse.Namespace,
     config: config_mod.Config,
     source: config_mod.SourceConfig,
-    cap: network_config.NetworkConfigCapability
-    | account_isolation.AccountIsolationCapability
-    | payment_rules.RuleListCapability
-    | payment_ptr.PtrListCapability
-    | payment_ptr_orders.OrdersCapability,
+    cap: ConfigurationCapability,
 ) -> tuple[CachedQuery, list[dict[str, Any]]]:
     cached = read_cached_query(
         config,
         source,
         cap.name,
         cap.default_scope,
-        refresh_command=(
-            cap.refresh_command
-            if isinstance(cap, payment_ptr_orders.OrdersCapability)
-            else f"refresh {cap.command_path}"
-        ),
+        refresh_command=refresh_command(cap),
         require_fresh=args.require_fresh,
         require_complete=args.require_complete,
         now=_now(),
@@ -1369,11 +1343,7 @@ def _configuration_cached(
 
 def _list_configuration(
     args: argparse.Namespace,
-    cap: network_config.NetworkConfigCapability
-    | account_isolation.AccountIsolationCapability
-    | payment_rules.RuleListCapability
-    | payment_ptr.PtrListCapability
-    | payment_ptr_orders.OrdersCapability,
+    cap: ConfigurationCapability,
 ) -> int:
     limit, offset, fields = _display_options(args)
     filters: dict[str, list[str]] = {}
@@ -1387,7 +1357,7 @@ def _list_configuration(
     source = _cdp_source(config, cap.source_config_key)
     if args.live:
         with inquiry_session(config_file=config_mod.config_path()) as session:
-            result = _collect_complete_scope(
+            result = collect_complete_scope(
                 cap, session.transport(cap), cap.default_scope
             )
         if not result.complete:

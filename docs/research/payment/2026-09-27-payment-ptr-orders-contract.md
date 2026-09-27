@@ -16,7 +16,9 @@ than treating page traversal as complete.
 Exact equality at a second boundary remains unobserved: all 104 sampled
 modification timestamps contain fractional milliseconds. Do not silently claim
 inclusive or exclusive equality from the experiments below. `get` was not
-investigated and remains deferred.
+investigated and remains deferred. No order-detail inquiry or identity/permission
+test was attempted in this research; the deferral is not evidence of a failed
+detail test, permission denial or unavailable endpoint.
 
 ## Native request and deployed-source evidence
 
@@ -263,7 +265,7 @@ text requirement, not a claim to scrub personal information from arbitrary text.
 | Verification progress | Include `--verify-status` -> `verifyStatus` |
 | Final result | Include `--final-result` -> `ptrFinalResult` |
 | Batch association | Defer: no batch ID observed |
-| Real details | Defer `get`: independent identity, completeness and permission contract not verified; list remains a summary |
+| Real details | Defer `get`: not investigated or attempted; identity, completeness and permission remain untested. List remains a summary; priority follow-up below is open |
 
 All ten business filters are whole-value case-sensitive local string matches;
 repeated values of one field OR, distinct fields AND. No trimming, wildcards or
@@ -281,3 +283,26 @@ Business failure/authentication/permission envelopes were not induced; use
 sanitized synthetic fixtures and shared transport failure handling. Successful
 narrow empty time queries returned total zero and an empty list. That proves a
 filtered empty interval, not an entirely empty production resource.
+
+
+## Open priority follow-up: native order detail
+
+Issue #64 identifies real `get` as a priority verification candidate:
+“真实 get 作为优先验证候选：核对 PTR 对象及 ID、版本/时间”.
+The [frozen list-only contract](https://github.com/proletariat64/dogopencli/issues/64#issuecomment-5852953383)
+explicitly defers `get`; it does not establish that the priority investigation
+was performed. This remains an open research-process gap even though the
+bounded list implementation and its UAT have separate evidence.
+
+Before proposing any order `get`, prioritize inquiry-only inspection of an
+actual native detail action. Record its observed request contract and confirm
+that the returned PTR object and `ptrOrderId` match the requested order, with
+version/time semantics, permission/error handling, field retention and any
+nested pagination accounted for. Do not infer detail permission from the list
+or from ordinary payment-order endpoints. If details are included later,
+freeze the full list/detail publication unit and failure-preservation behavior,
+then add identity/privacy/atomicity tests and private-cache production UAT.
+
+Until that work is completed, keep `get` and detail endpoints unregistered.
+Do not describe list summaries as details. No production detail inquiry was
+performed as part of this documentation clarification.
