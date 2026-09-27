@@ -41,13 +41,13 @@ from .jsonutil import canonical, parse
 from .plugins import get_capability
 from .plugins.collection import (
     account_isolation,
-    configuration,
     network_config,
     va_rule_inquiry,
 )
 from .plugins.collection import sla as collection_sla
 from .plugins.collection import va_capacity as collection_va_capacity
 from .plugins.collection import va_rule as collection_va
+from .plugins.payment import rules as payment_rules
 from .plugins.payment.channel import assign_seqids
 from .plugins.payment.sla import SLA_DETAIL, detail_body
 from .plugins.payment.sla import parse_detail as parse_payment_sla_detail
@@ -1222,11 +1222,12 @@ def _collection_va_capacity_cached(
     )
 
 
-def _refresh_complete_collection_list(
+def _refresh_complete_list(
     cap: (
         collection_va_capacity.CollectionVaCapacityCapability
         | network_config.NetworkConfigCapability
         | account_isolation.AccountIsolationCapability
+        | payment_rules.RuleListCapability
     ),
     scope_name: str,
 ) -> int:
@@ -1281,7 +1282,7 @@ def _refresh_complete_collection_list(
 
 
 def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
-    return _refresh_complete_collection_list(
+    return _refresh_complete_list(
         collection_va_capacity.COLLECTION_VA_CAPACITY, "collection VA capacity"
     )
 
@@ -1314,34 +1315,36 @@ def cmd_collection_va_capacity_list(args: argparse.Namespace) -> int:
     return _emit_window(args, cap, window, meta, fields)
 
 
-def _collection_config_cached(
+def _configuration_cached(
     args: argparse.Namespace,
     config: config_mod.Config,
     source: config_mod.SourceConfig,
     cap: network_config.NetworkConfigCapability
-    | account_isolation.AccountIsolationCapability,
+    | account_isolation.AccountIsolationCapability
+    | payment_rules.RuleListCapability,
 ) -> tuple[CachedQuery, list[dict[str, Any]]]:
     cached = read_cached_query(
         config,
         source,
         cap.name,
         cap.default_scope,
-        refresh_command=f"refresh collection {cap.slug}",
+        refresh_command=f"refresh {cap.command_path}",
         require_fresh=args.require_fresh,
         require_complete=args.require_complete,
         now=_now(),
     )
     return cached, cached.validated_records(
-        configuration.validate_row,
-        lambda record: record["id"],
+        cap.validate_row,
+        cap.identity_key,
         coverage_error=f"cached {cap.name} coverage is invalid",
     )
 
 
-def _list_collection_config(
+def _list_configuration(
     args: argparse.Namespace,
     cap: network_config.NetworkConfigCapability
-    | account_isolation.AccountIsolationCapability,
+    | account_isolation.AccountIsolationCapability
+    | payment_rules.RuleListCapability,
 ) -> int:
     limit, offset, fields = _display_options(args)
     filters: dict[str, list[str]] = {}
@@ -1366,7 +1369,7 @@ def _list_collection_config(
             source, cap.default_scope, True, len(records), len(window), offset
         )
     else:
-        cached, records = _collection_config_cached(args, config, source, cap)
+        cached, records = _configuration_cached(args, config, source, cap)
         records = cap.sort_records(cap.filter_records(records, filters))
         window = records[offset:] if args.all else records[offset : offset + limit]
         meta = cached.meta(len(records), len(window), offset=offset)
@@ -1374,33 +1377,65 @@ def _list_collection_config(
 
 
 def cmd_collection_clearing_system_list(args: argparse.Namespace) -> int:
-    return _list_collection_config(args, network_config.CLEARING_SYSTEM)
+    return _list_configuration(args, network_config.CLEARING_SYSTEM)
 
 
 def cmd_collection_account_isolation_list(args: argparse.Namespace) -> int:
-    return _list_collection_config(args, account_isolation.ACCOUNT_ISOLATION)
+    return _list_configuration(args, account_isolation.ACCOUNT_ISOLATION)
 
 
 def cmd_refresh_collection_account_isolation(args: argparse.Namespace) -> int:
-    return _refresh_complete_collection_list(
+    return _refresh_complete_list(
         account_isolation.ACCOUNT_ISOLATION, "account-isolation configuration"
     )
 
 
 def cmd_refresh_collection_clearing_system(args: argparse.Namespace) -> int:
-    return _refresh_complete_collection_list(
+    return _refresh_complete_list(
         network_config.CLEARING_SYSTEM, "collection network configuration"
     )
 
 
 def cmd_collection_card_template_list(args: argparse.Namespace) -> int:
-    return _list_collection_config(args, network_config.CARD_TEMPLATE)
+    return _list_configuration(args, network_config.CARD_TEMPLATE)
 
 
 def cmd_refresh_collection_card_template(args: argparse.Namespace) -> int:
-    return _refresh_complete_collection_list(
+    return _refresh_complete_list(
         network_config.CARD_TEMPLATE, "collection network configuration"
     )
+
+
+def cmd_payment_rules_same_bank_transfer_list(args: argparse.Namespace) -> int:
+    return _list_configuration(args, payment_rules.SAME_BANK_TRANSFER)
+
+
+def cmd_refresh_payment_rules_same_bank_transfer(args: argparse.Namespace) -> int:
+    return _refresh_complete_list(payment_rules.SAME_BANK_TRANSFER, "same-bank rules")
+
+
+def cmd_payment_rules_cost_reduction_list(args: argparse.Namespace) -> int:
+    return _list_configuration(args, payment_rules.COST_REDUCTION)
+
+
+def cmd_refresh_payment_rules_cost_reduction(args: argparse.Namespace) -> int:
+    return _refresh_complete_list(payment_rules.COST_REDUCTION, "cost-reduction rules")
+
+
+def cmd_payment_rules_retry_list(args: argparse.Namespace) -> int:
+    return _list_configuration(args, payment_rules.RETRY)
+
+
+def cmd_refresh_payment_rules_retry(args: argparse.Namespace) -> int:
+    return _refresh_complete_list(payment_rules.RETRY, "retry rules")
+
+
+def cmd_payment_rules_bank_switch_list(args: argparse.Namespace) -> int:
+    return _list_configuration(args, payment_rules.BANK_SWITCH)
+
+
+def cmd_refresh_payment_rules_bank_switch(args: argparse.Namespace) -> int:
+    return _refresh_complete_list(payment_rules.BANK_SWITCH, "bank-switch source nodes")
 
 
 def cmd_describe(args: argparse.Namespace) -> int:

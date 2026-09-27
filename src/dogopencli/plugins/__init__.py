@@ -177,10 +177,20 @@ def _load_builtins() -> None:
     )
     from .collection.va_rule import REFRESH_NODE as va_refresh
     from .collection.va_rule_reading import description as va_rule_description
+    from .payment import rules, rules_reading
     from .payment.channel import CHANNEL_CAPABILITY, CHANNEL_LIST_NODE
     from .payment.cost import COST_CAPABILITY, COST_LIST_NODE
     from .payment.reading import description
     from .payment.sla import SLA_CAPABILITY, SLA_GET_NODE, SLA_LIST_NODE
+
+    for rule_cap in rules.CAPABILITIES:
+        register(
+            rule_cap,
+            commands=(rules_reading.list_node(rule_cap),),
+            refresh_commands=(rules_reading.refresh_node(rule_cap),),
+            groups=rules_reading.groups(rule_cap),
+            description=rules_reading.description,
+        )
 
     # Refresh navigation predates query discovery and has a different order.
     # Reserve its slots so moving declarations does not reorder public help.

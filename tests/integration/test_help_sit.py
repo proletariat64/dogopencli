@@ -45,13 +45,13 @@ GROUPS = [
 
 GROUP_CHILDREN = {
     (): ROOT_CHILDREN,
-    ("payment",): ["channel", "cost", "sla"],
+    ("payment",): ["rules", "channel", "cost", "sla"],
     ("payment", "channel"): ["list"],
     ("payment", "cost"): ["list"],
     ("payment", "sla"): ["baselines"],
     ("payment", "sla", "baselines"): ["list", "get"],
     ("refresh",): ["payment", "collection"],
-    ("refresh", "payment"): ["channel", "cost", "sla"],
+    ("refresh", "payment"): ["rules", "channel", "cost", "sla"],
     ("collection",): [
         "clearing-system",
         "card-template",

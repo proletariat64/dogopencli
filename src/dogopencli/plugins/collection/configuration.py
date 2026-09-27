@@ -18,9 +18,18 @@ def validate_row(row: Any) -> None:
 
 
 class ConfigurationListCapability:
+    slug: str
     contract: EndpointContract
     default_scope = "all"
     request_filter_error = "backend configuration filters disabled"
+
+    @property
+    def command_path(self) -> str:
+        return f"collection {self.slug}"
+
+    @staticmethod
+    def validate_row(row: Any) -> None:
+        validate_row(row)
 
     def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
         if (

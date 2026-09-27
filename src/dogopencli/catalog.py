@@ -135,7 +135,7 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
     ),
     ("payment",): BizNode(
         ("payment",),
-        "Payment product queries: channels, costs, and SLA baselines.",
+        "Payment product queries: channels, costs, SLA baselines and rules.",
         examples=("dogopencli payment channel list",),
         next=("dogopencli help payment channel",),
     ),
