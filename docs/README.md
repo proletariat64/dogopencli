@@ -26,6 +26,7 @@
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
 | General | [运营平台访问与通用发现](research/general/2026-09-08-platform-access.md) | CDP、登录、聚合应用结构、查询协议、只读约束与技术参考 |
+| General | [FX 查询插件交接背景](research/general/2026-09-09-fx-handoff.md) | SIM 历史观察、FX 领域边界、查询插件候选范围与未验证事项；尚未实施 |
 | General | [DI 渐进式帮助参考](research/general/2026-09-12-cli-help-reference.md) | 无参数入口、JSON/text、逐层导航与 dogopencli 帮助差距 |
 | General | [CLI 帮助验收矩阵](research/general/2026-09-12-cli-help-acceptance-matrix.md) | 全部 20 条命令路径的验收规范、20 次探针 before 基线与 Task 4 覆盖清单 |
 | General | [收款成本全参数 UAT](research/general/2026-09-26-collection-cost-argument-uat.md) | 84 个 CLI 验收用例；全部选项、帮助/描述、边界与错误组合，区分生产查询和本地状态检查 |
@@ -52,6 +53,8 @@
 
 - [付款规则查询契约](research/payment/2026-09-27-payment-rules-contract.md)：四项独立采集、全部筛选、嵌套关联和证据边界。
 - [付款规则实施与验收](research/payment/2026-09-27-payment-rules-implementation-uat.md)：424 项生产／私有缓存断言、全部参数与合成失败覆盖。
+- [已发布 v0.1.13 付款规则 UAT](research/payment/2026-09-27-payment-rules-v0113-uat.md)：隔离安装的发布产物、424 项断言与缓存不变证明。
+- [Issues 52–59 发布验收状态](research/general/2026-09-27-issues-52-59-uat.md)：547 项成功断言、延期能力拒绝检查与历史阻塞的证据边界。
 - [付款流量规则阻塞](research/payment/2026-09-27-payment-flow-rule-blocker.md)：真实详情身份不一致的重复验证（#54）。
 - [付款 PTR 研究与 Graphify/wiki 交叉核验](research/payment/2026-09-27-payment-ptr-research.md)：七类查询对象、术语与状态纠正、候选命令及生产契约验证缺口；初始研究阶段浏览器不可用，后续证据见下方。
 - [付款 PTR 原生契约发现与实施阻塞](research/payment/2026-09-27-payment-ptr-contract-discovery.md)：七个列表接口及首屏结构已观察；后续导航 reset/timeout 阻止分页、详情及完整范围验证。
