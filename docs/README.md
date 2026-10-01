@@ -29,6 +29,10 @@
 | --- | --- | --- |
 | General | [运营平台访问与通用发现](research/general/2026-09-08-platform-access.md) | CDP、登录、聚合应用结构、查询协议、只读约束与技术参考 |
 | General | [Liquidity v0.2.1 live probes](research/general/2026-10-01-liquidity-live-probes.md) | All 134 draft leaves audited; scoped timings, decoded payload sizes, sampled schemas, pagination defects, permission gaps and actual SQLite measurements |
+| General | [Liquidity UAT 执行记录](research/general/2026-10-01-liquidity-uat.md) | 6,328 CASE；原始失败 1,062 条，区分脚本误判、前置阻塞及实际异常；验收未通过 |
+| General | [银行账户列表后端数量异常](research/general/2026-10-01-cash-accounts-backend-count-bug.md) | count 3691、实际 3690；界面短页定位与单页 5000 复现证据 |
+| General | [Cash 与 Forecast 分页配置验证](research/general/2026-10-01-cash-forecast-page-sizes.md) | accounts 5000；waterlevels、intraday、adjustments 1000；cashflows 不带分页参数 |
+| General | [分页能力后续事项](research/general/2026-10-01-pagination-followups.md) | 大页失败后缩小分页待实现；各查询独立页宽已按后续要求配置 |
 | General | [FX 查询插件交接背景](research/general/2026-09-09-fx-handoff.md) | SIM 历史观察、FX 领域边界、查询插件候选范围与未验证事项；尚未实施 |
 | General | [DI 渐进式帮助参考](research/general/2026-09-12-cli-help-reference.md) | 无参数入口、JSON/text、逐层导航与 dogopencli 帮助差距 |
 | General | [CLI 帮助验收矩阵](research/general/2026-09-12-cli-help-acceptance-matrix.md) | 全部 20 条命令路径的验收规范、20 次探针 before 基线与 Task 4 覆盖清单 |

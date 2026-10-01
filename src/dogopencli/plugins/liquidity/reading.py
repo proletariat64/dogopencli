@@ -64,6 +64,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             "$." + ".".join(variant.total) if variant.total is not None else None
         ),
         "pagination": variant.pagination,
+        "page_size": variant.page_size if variant.paged_request else None,
     }
     variants = []
     for item in leaf.variants:
@@ -79,6 +80,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     if item.total
                     else None,
                     "pagination": item.pagination,
+                    "page_size": item.page_size if item.paged_request else None,
                 },
                 "data_schema": _field_schema(
                     VARIANT_SAMPLED_FIELDS.get(item.name, {}).get(

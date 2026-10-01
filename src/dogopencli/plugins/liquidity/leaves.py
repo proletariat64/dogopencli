@@ -60,8 +60,8 @@ from .spec import (
 
 VERIFIED_DATE = "2026-10-01"
 _PAGE_ECHO_NOTE = (
-    "Pagination: verified rowStart/pageSize=10 offset collection against the"
-    " reported total; any changed total, identity conflict or coverage gap"
+    "Pagination: rowStart offset collection at the leaf's configured page size"
+    " against the reported total; any changed total, identity conflict or coverage gap"
     " fails acquisition and preserves the previous cache."
 )
 _SINGLE_NOTE = (
@@ -136,6 +136,7 @@ CASH_WATERLEVELS = ListSpec(
     total=("data", "totalCount"),
     identity=("aliasName", "currency"),
     profile=PROFILE_HISTORY,
+    page_size=1000,
     scope_options=(_account("Account alias whose water levels to acquire."),),
     filters=(("currency", "currency"),),
     table_columns=("aliasName", "currency", "valueDate", "curAvlBal", "timeZone"),
@@ -158,6 +159,7 @@ CASH_STATEMENTS_INTRADAY = ListSpec(
     total=("data", "totalCount"),
     identity=("bankTransNo",),
     profile=PROFILE_DATED,
+    page_size=1000,
     series_field="valueDate",
     template={"tntInstId": TENANT},
     scope_options=(
@@ -196,6 +198,7 @@ FORECAST_ADJUSTMENTS = ListSpec(
     total=("result", "count"),
     identity=("id",),
     profile=PROFILE_HISTORY,
+    page_size=1000,
     vo_field="bankCashForecastAdjustmentQueryVO",
     template={
         "tntInstId": TENANT,
@@ -225,9 +228,10 @@ FORECAST_CASHFLOWS = ListSpec(
     total=None,
     pagination=PAGE_SINGLE,
     paged_request=False,
-    identity=("bankAccountNo", "originalBizNo", "expectValueDate", "fundDirection"),
+    identity=(),
     profile=PROFILE_DATED,
-    series_field="expectValueDate",
+    series_field="expectValueDateTime",
+    series_format="%Y%m%d%H%M",
     vo_field="cashFlowDataQueryVO",
     template={
         "tntInstId": TENANT,
@@ -256,12 +260,17 @@ FORECAST_CASHFLOWS = ListSpec(
         "bankAccountAliasName",
         "fundDirection",
         "amountStr",
-        "expectValueDate",
+        "expectValueDateTime",
     ),
     notes=(
         "No reported total exists; the single response is the complete"
         " scoped set. Record schema is live-verified on a populated"
         " previous-day scope.",
+        "Value Date uses expectValueDateTime (YYYYMMDDHHmm), as in the native"
+        " UI; queries and retention compare its calendar day without a"
+        " timezone conversion. No native unique key is established: all row"
+        " occurrences are preserved within a response; overlapping captures"
+        " match identical content by occurrence count.",
         _NULL_NOTE,
     ),
 )
@@ -1168,8 +1177,9 @@ CASH_ACCOUNTS = ListSpec(
     envelope=ENV_RESULT_FLAG,
     container=("result", "bankAccountPropertyVOList"),
     total=("count",),
-    identity=("id",),
+    identity=("aliasName", "currency"),
     profile=PROFILE_SNAPSHOT,
+    page_size=5000,
     vo_field="bankAccountQueryVO",
     template={
         "tntInstId": TENANT,
@@ -1195,6 +1205,11 @@ CASH_ACCOUNTS = ListSpec(
     notes=(
         "The wallet flag stays at its verified false; wallet membership is"
         " not established and no wallet filter is exposed.",
+        "Account list identity uses aliasName and currency; the observed id"
+        " is shared by different accounts and cannot identify list rows.",
+        "Incomplete account lists return available rows with INCOMPLETE_RESULT"
+        " and a nonzero exit; refresh retains the previous complete cache."
+        " --require-complete rejects partial live data.",
         _PAGE_ECHO_NOTE,
         _NULL_NOTE,
     ),

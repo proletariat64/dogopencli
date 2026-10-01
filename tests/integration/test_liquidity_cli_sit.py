@@ -375,8 +375,7 @@ def test_kind_in_help_and_describe(setup, run_cli):
 
 def test_accounts_result_flag_family_end_to_end(setup, run_cli):
     rows = [
-        {"id": f"A{i:03d}", "aliasName": f"ALIAS{i:03d}", "currency": "USD"}
-        for i in range(15)
+        {"id": "0", "aliasName": f"ALIAS{i:03d}", "currency": "USD"} for i in range(15)
     ]
 
     def answer(payload, index):
@@ -387,7 +386,7 @@ def test_accounts_result_flag_family_end_to_end(setup, run_cli):
                 "resultFlag": True,
                 "result": {
                     "bankAccountPropertyVOList": rows[
-                        vo["rowStart"] : vo["rowStart"] + 10
+                        vo["rowStart"] : vo["rowStart"] + vo["pageSize"]
                     ]
                 },
                 "count": 15,
@@ -400,13 +399,244 @@ def test_accounts_result_flag_family_end_to_end(setup, run_cli):
     request = setup.state.business_requests[0]
     assert request["wallet"] is False
     assert json.loads(request["bankAccountQueryVO"])["rowStart"] == 0
+    assert json.loads(request["bankAccountQueryVO"])["pageSize"] == 5000
     code, out, _ = run_cli(["liquidity", "cash", "accounts", "list", "--limit", "3"])
     assert code == 0
     envelope = parse(out)
     assert envelope["meta"]["kind"] == "reference"
     assert envelope["meta"]["reported_total"] == 15
-    assert [row["id"] for row in envelope["data"]] == ["A000", "A001", "A002"]
+    assert [row["aliasName"] for row in envelope["data"]] == [
+        "ALIAS000",
+        "ALIAS001",
+        "ALIAS002",
+    ]
     assert envelope["meta"]["has_more"] is True
+
+
+@pytest.mark.parametrize(
+    "extra", [[], ["--limit", "1"], ["--fields", "aliasName"], ["--format", "table"]]
+)
+def test_accounts_partial_live_warns_returns_rows_and_fails(setup, run_cli, extra):
+    rows = [{"id": "0", "aliasName": f"A{i}", "currency": "USD"} for i in range(2)]
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {
+            "resultFlag": True,
+            "result": {"bankAccountPropertyVOList": rows},
+            "count": 3,
+        },
+    }
+    before = setup.cache_path.read_bytes() if setup.cache_path.exists() else None
+    code, out, err = run_cli(
+        ["liquidity", "cash", "accounts", "list", "--live", *extra]
+    )
+    assert code == 1
+    assert "warning: INCOMPLETE_RESULT" in err
+    assert "collected 2, reported 3" in err
+    if "table" in extra:
+        assert "A0" in out
+    else:
+        envelope = parse(out)
+        assert envelope["error"]["code"] == "INCOMPLETE_RESULT"
+        assert envelope["meta"]["complete"] is False
+        assert envelope["meta"]["reported_total"] == 3
+        assert envelope["meta"]["collected_total"] == 2
+        assert envelope["meta"]["warnings"][0]["code"] == "INCOMPLETE_RESULT"
+        assert len(envelope["data"]) == (1 if "--limit" in extra else 2)
+        if "--fields" in extra:
+            assert envelope["data"] == [{"aliasName": "A0"}, {"aliasName": "A1"}]
+    assert (
+        setup.cache_path.read_bytes() if setup.cache_path.exists() else None
+    ) == before
+    code, out, err = run_cli(
+        ["liquidity", "cash", "accounts", "list", "--live", "--require-complete"]
+    )
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    assert parse(out)["data"] is None
+
+
+def test_accounts_partial_refresh_returns_rows_and_preserves_cache(setup, run_cli):
+    old_rows = [{"id": "0", "aliasName": "OLD", "currency": "USD"}]
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {
+            "resultFlag": True,
+            "result": {"bankAccountPropertyVOList": old_rows},
+            "count": 1,
+        },
+    }
+    code, _, _ = run_cli(["refresh", "liquidity", "cash", "accounts"])
+    assert code == 0
+    before = setup.cache_path.read_bytes()
+    new_rows = [{"id": "0", "aliasName": "NEW", "currency": "USD"}]
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {
+            "resultFlag": True,
+            "result": {"bankAccountPropertyVOList": new_rows},
+            "count": 2,
+        },
+    }
+    code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
+    assert code == 1
+    assert "warning: INCOMPLETE_RESULT" in err
+    envelope = parse(out)
+    assert envelope["data"] == new_rows
+    assert envelope["error"]["code"] == "INCOMPLETE_RESULT"
+    assert envelope["meta"]["complete"] is False
+    assert envelope["meta"]["published"] is False
+    assert envelope["meta"]["source"] == "live"
+    assert setup.cache_path.read_bytes() == before
+    code, out, _ = run_cli(["liquidity", "cash", "accounts", "list"])
+    assert code == 0
+    assert parse(out)["data"] == old_rows
+
+
+@pytest.mark.parametrize(
+    ("path", "scope", "response"),
+    [
+        (
+            ["cash", "waterlevels"],
+            ["--account", "A1"],
+            {"success": True, "data": {"data": [], "totalCount": 0}},
+        ),
+        (
+            ["cash", "statements", "intraday"],
+            [
+                "--account",
+                "A1",
+                "--currency",
+                "USD",
+                "--from-date",
+                "20260930",
+                "--to-date",
+                "20260930",
+            ],
+            {"success": True, "data": {"data": [], "totalCount": 0}},
+        ),
+        (
+            ["forecast", "cashflows"],
+            [
+                "--account",
+                "A1",
+                "--currency",
+                "USD",
+                "--from-date",
+                "20260930",
+                "--to-date",
+                "20260930",
+            ],
+            {"resultFlag": True, "result": {"bankAccountCashFlowVOList": []}},
+        ),
+    ],
+)
+def test_cash_forecast_empty_refresh_then_offline_parameters(
+    setup, run_cli, path, scope, response
+):
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": response,
+    }
+    code, out, err = run_cli(["refresh", "liquidity", *path, *scope])
+    assert code == 0, err
+    assert parse(out)["data"]["row_count"] == 0
+    before = len(setup.state.transports)
+    for flags in [
+        [],
+        ["--all", "--require-complete", "--require-fresh"],
+        ["--limit", "1"],
+        ["--offset", "1"],
+        ["--fields", "currency"],
+    ]:
+        code, out, err = run_cli(["liquidity", *path, "list", *scope, *flags])
+        assert code == 0, err
+        doc = parse(out)
+        assert doc["data"] == []
+        assert doc["meta"]["complete"] is True
+        assert doc["meta"]["matched_total"] == 0
+    code, out, err = run_cli(["liquidity", *path, "list", *scope, "--format", "table"])
+    assert code == 0 and out.strip(), err
+    assert len(setup.state.transports) == before
+
+
+@pytest.mark.parametrize(
+    "path", [["cash", "statements", "intraday"], ["forecast", "cashflows"]]
+)
+@pytest.mark.parametrize("prefix", [["liquidity"], ["refresh", "liquidity"]])
+def test_invalid_cash_forecast_calendar_date_never_opens_browser(
+    setup, run_cli, path, prefix
+):
+    args = [*prefix, *path]
+    if prefix == ["liquidity"]:
+        args.append("list")
+    args += [
+        "--account",
+        "A1",
+        "--currency",
+        "USD",
+        "--from-date",
+        "20260230",
+        "--to-date",
+        "20260930",
+    ]
+    code, out, _ = run_cli(args)
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert setup.state.transports == []
+
+
+def test_cashflows_native_time_and_duplicate_occurrences_end_to_end(setup, run_cli):
+    row = {
+        "bankAccountNo": "N1",
+        "bankAccountAliasName": "A1",
+        "currency": "USD",
+        "originalBizNo": "",
+        "expectValueDate": "",
+        "expectValueDateTime": "202609302359",
+        "fundDirection": "Credit",
+        "amountStr": "1.00",
+    }
+    rows = [row, dict(row), {**row, "amountStr": "2.00"}]
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {"resultFlag": True, "result": {"bankAccountCashFlowVOList": rows}},
+    }
+    scope = [
+        "--account",
+        "A1",
+        "--currency",
+        "USD",
+        "--from-date",
+        "20260930",
+        "--to-date",
+        "20260930",
+    ]
+    base = ["liquidity", "forecast", "cashflows", "list"]
+    code, out, err = run_cli([*base, *scope, "--live", "--all", "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["data"] == rows
+    for start in ["20260929", "20260930"]:
+        refresh_scope = [*scope]
+        refresh_scope[refresh_scope.index("--from-date") + 1] = start
+        code, out, err = run_cli(
+            ["refresh", "liquidity", "forecast", "cashflows", *refresh_scope]
+        )
+        assert code == 0, err
+        assert parse(out)["data"]["row_count"] == 3
+    before = len(setup.state.transports)
+    code, out, err = run_cli([*base, *scope, "--all", "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["data"] == rows  # not 2 from deduplication, or 6 from overlap
+    code, out, err = run_cli([*base, *scope, "--offset", "1", "--limit", "1"])
+    assert code == 0, err
+    assert parse(out)["data"] == rows[1:2]
+    code, out, err = run_cli([*base, *scope, "--fields", "expectValueDateTime"])
+    assert code == 0, err
+    assert parse(out)["data"] == [{"expectValueDateTime": "202609302359"}] * 3
+    code, out, err = run_cli([*base, *scope, "--format", "table"])
+    assert code == 0 and "expectValueDateTime" in out, err
+    assert len(setup.state.transports) == before
 
 
 def test_table_format_renders(setup, run_cli):

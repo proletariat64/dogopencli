@@ -1,7 +1,7 @@
 """Bounded liquidity acquisition: strict rowStart-offset and single-response.
 
-Offset leaves follow the verified pagination: request rowStart 0, 10, 20,
-... at the verified page size; the reported total must stay fixed, page
+Offset leaves follow the verified pagination: increment rowStart by the
+leaf's configured page size; the reported total must stay fixed, page
 arrivals must keep typed identities consistent, and completeness requires
 the unique identity count to equal the fixed total. Observed overlapping
 pages therefore refuse publication instead of fabricating coverage; the
@@ -72,12 +72,17 @@ def _collect_offset(
     deadline: float,
     progress: Callable[[int, int], None] | None,
 ) -> CollectedScope:
+    if not capability.descriptor.identity:
+        raise CliError(
+            INVALID_RESPONSE, "offset acquisition requires a native identity"
+        )
     seen: dict[tuple[str, ...], str] = {}
     ordered: list[dict[str, Any]] = []
     expected_total: int | None = None
     arrivals = 0
     pages = 0
     row_start = 0
+    page_size = capability.descriptor.page_size
     while True:
         if time.monotonic() >= deadline:
             raise CliError(TIMEOUT, "collection budget exhausted", retryable=True)
@@ -92,17 +97,16 @@ def _collect_offset(
         page_total = reported
         if expected_total is None:
             expected_total = page_total
-            if page_total > collect_mod.MAX_PAGES * spec.PAGE_SIZE:
+            if page_total > collect_mod.MAX_PAGES * page_size:
                 raise CliError(
                     TIMEOUT,
-                    f"page budget exceeded: {page_total} rows at"
-                    f" {spec.PAGE_SIZE} per page",
+                    f"page budget exceeded: {page_total} rows at {page_size} per page",
                     retryable=True,
                 )
         elif page_total != expected_total:
             raise CliError(INVALID_RESPONSE, "backend total changed during collection")
         assert expected_total is not None  # reconciled on every page above
-        if len(rows) > spec.PAGE_SIZE:
+        if len(rows) > page_size:
             raise CliError(
                 INVALID_RESPONSE, "page returned more rows than the verified page size"
             )
@@ -117,10 +121,10 @@ def _collect_offset(
         arrivals += len(rows)
         _merge_page(capability, seen, ordered, rows)
         if progress is not None:
-            progress(pages, max(-(-expected_total // spec.PAGE_SIZE), pages))
-        if arrivals >= expected_total:
+            progress(pages, max(-(-expected_total // page_size), pages))
+        if row_start + page_size >= expected_total:
             break
-        row_start += len(rows)
+        row_start += page_size
     collect_mod.remaining_seconds(deadline)
     assert expected_total is not None
     complete = arrivals == expected_total == len(ordered)
@@ -128,7 +132,7 @@ def _collect_offset(
         records=ordered,
         complete=complete,
         total_count=expected_total,
-        page_size=spec.PAGE_SIZE,
+        page_size=page_size,
         pages=pages,
         rebuilt=False,
         deadline=deadline,
@@ -149,7 +153,10 @@ def _collect_single(
     rows, total = capability.parse_rows(response.body)
     seen: dict[tuple[str, ...], str] = {}
     ordered: list[dict[str, Any]] = []
-    _merge_page(capability, seen, ordered, rows)
+    if capability.descriptor.identity:
+        _merge_page(capability, seen, ordered, rows)
+    else:
+        ordered = rows
     if total is not None and total != len(ordered):
         # A reported total the single response does not cover can never be
         # normalized into an empty or partial complete dataset.
@@ -163,7 +170,7 @@ def _collect_single(
         records=ordered,
         complete=complete,
         total_count=total if total is not None else len(ordered),
-        page_size=spec.PAGE_SIZE,
+        page_size=capability.descriptor.page_size,
         pages=1,
         rebuilt=False,
         deadline=deadline,

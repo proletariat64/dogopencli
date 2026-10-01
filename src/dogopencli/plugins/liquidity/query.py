@@ -10,6 +10,7 @@ never a misleading empty result or NOT_FOUND.
 
 import argparse
 import sys
+from collections import Counter
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
@@ -21,6 +22,7 @@ from ...errors import (
     BUSINESS_QUERY_FAILED,
     CACHE_MISS,
     CACHE_STALE,
+    EXIT_FAILURE,
     EXIT_OK,
     EXIT_USAGE,
     INCOMPLETE_RESULT,
@@ -88,14 +90,15 @@ def _emit_window(
     window: list[dict[str, Any]],
     meta: dict[str, Any],
     fields: list[str] | None,
+    error: dict[str, Any] | None = None,
 ) -> int:
     window = _project(window, fields)
     if args.format == "table":
         selected = tuple(fields) if fields is not None else columns
         sys.stdout.write(render_table(window, selected, meta) + "\n")
     else:
-        emit(window, meta)
-    return EXIT_OK
+        emit(window, meta, error)
+    return EXIT_FAILURE if error is not None else EXIT_OK
 
 
 def _emit_object(
@@ -206,13 +209,21 @@ def run_list(args: argparse.Namespace) -> int:
     rows: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
     capability = leaf.capability(variant)
+    occurrences_seen: Counter[tuple[str, ...]] = Counter()
     for entry in selected:
+        occurrences: Counter[tuple[str, ...]] = Counter()
         for record in capture_store.read_capture(store, entry):
             identity = capability.identity_key(record)
+            if not variant.identity:
+                occurrences[identity] += 1
+                if occurrences[identity] > occurrences_seen[identity]:
+                    rows.append(record)
+                continue
             if identity in seen:
                 continue
             seen.add(identity)
             rows.append(record)
+        occurrences_seen |= occurrences
     if variant.profile == spec_mod.PROFILE_DATED:
         window_from, window_to = resolved.window
         assert window_from is not None and window_to is not None
@@ -302,10 +313,24 @@ def _run_list_live(
                 f"live: collected page {done}/{total}", file=sys.stderr
             ),
         )
+    incomplete_error: dict[str, Any] | None = None
+    if not result.complete and variant.path == ("cash", "accounts"):
+        message = (
+            "cash accounts list is incomplete"
+            f" (collected {len(result.records)}, reported {result.total_count});"
+            " the cache is not updated"
+        )
+        print(f"warning: {INCOMPLETE_RESULT}: {message}", file=sys.stderr)
+        incomplete_error = {
+            "code": INCOMPLETE_RESULT,
+            "message": message,
+            "retryable": False,
+        }
     if args.require_complete and not result.complete:
         raise CliError(
             INCOMPLETE_RESULT,
-            "live collection did not cover the complete scope",
+            "live collection did not cover the complete scope"
+            f" (collected {len(result.records)}, reported {result.total_count})",
         )
     rows = _sort_rows(variant, _match(result.records, filters), now().isoformat())
     matched_total = len(rows)
@@ -335,7 +360,12 @@ def _run_list_live(
         "returned_count": len(window),
         "has_more": offset + len(window) < matched_total,
     }
-    return _emit_window(args, variant.table_columns, window, meta, fields)
+    if incomplete_error is not None:
+        meta["warnings"] = [incomplete_error]
+        meta["collected_total"] = len(result.records)
+    return _emit_window(
+        args, variant.table_columns, window, meta, fields, incomplete_error
+    )
 
 
 def run_detail(args: argparse.Namespace) -> int:

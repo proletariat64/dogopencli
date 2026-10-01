@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -14,6 +15,7 @@ from dogopencli.plugins.liquidity.capability import (
 from dogopencli.plugins.liquidity.collect import collect_liquidity_scope
 from dogopencli.plugins.liquidity.leaves import (
     CASH_ACCOUNTS,
+    FORECAST_CASHFLOWS,
     INVESTMENT_HOLDINGS,
     INVESTMENT_PRODUCTS,
 )
@@ -100,11 +102,36 @@ def test_overlapping_pages_are_incomplete_never_deduplicated_to_success():
 def test_conflicting_identity_content_is_a_hard_failure():
     def rows(body):
         if body["rowStart"] == 0:
-            return [holding(1, amount="10.00")]
+            return [holding(i) for i in range(10)]
         return [holding(1, amount="99.99")]
 
     with pytest.raises(CliError, match="conflicting content"):
-        collect(rows, 2)
+        collect(rows, 11)
+
+
+def test_short_page_keeps_the_verified_offset_stride():
+    def rows(body):
+        if body["rowStart"] == 0:
+            return [holding(i) for i in range(9)]
+        return [holding(i) for i in range(9, 19)]
+
+    transport, result = collect(rows, 19)
+    assert [body["rowStart"] for body in transport.requests] == [0, 10]
+    assert result.complete
+    assert len(result.records) == 19
+
+
+def test_short_page_missing_source_row_remains_incomplete():
+    transport, result = collect(
+        lambda body: [
+            holding(i) for i in range(body["rowStart"], body["rowStart"] + 9)
+        ],
+        20,
+    )
+    assert [body["rowStart"] for body in transport.requests] == [0, 10]
+    assert not result.complete
+    assert result.total_count == 20
+    assert len(result.records) == 18
 
 
 def test_changed_total_is_a_hard_failure():
@@ -157,12 +184,12 @@ def test_single_response_with_uncovered_total_is_incomplete():
 
 
 def test_result_flag_offset_leaf_uses_vo_offsets():
-    accounts = LiquidityListCapability(CASH_ACCOUNTS)
+    accounts = LiquidityListCapability(replace(CASH_ACCOUNTS, page_size=10))
 
     def answer(body):
         vo = json.loads(body["bankAccountQueryVO"])
         rows = [
-            {"id": f"A{i:03d}", "currency": "USD"}
+            {"id": "0", "aliasName": f"A{i:03d}", "currency": "USD"}
             for i in range(vo["rowStart"], min(vo["rowStart"] + 10, 15))
         ]
         return {
@@ -176,3 +203,80 @@ def test_result_flag_offset_leaf_uses_vo_offsets():
     assert result.complete
     assert len(result.records) == 15
     assert fake.requests[0]["wallet"] is False
+    assert [
+        json.loads(body["bankAccountQueryVO"])["rowStart"] for body in fake.requests
+    ] == [0, 10]
+
+
+def test_accounts_large_page_keeps_backend_shortfall_incomplete():
+    rows = [{"id": "0", "aliasName": f"A{i}", "currency": "USD"} for i in range(3690)]
+    fake = FakeQueryTransport(
+        lambda body: {
+            "resultFlag": True,
+            "result": {"bankAccountPropertyVOList": rows},
+            "count": 3691,
+        }
+    )
+    result = collect_liquidity_scope(LiquidityListCapability(CASH_ACCOUNTS), fake, "")
+    assert not result.complete
+    assert len(result.records) == 3690
+    assert result.total_count == 3691
+    assert result.pages == 1
+    assert result.page_size == 5000
+    assert json.loads(fake.requests[0]["bankAccountQueryVO"])["pageSize"] == 5000
+
+
+def test_large_page_uses_its_own_offset_stride():
+    capability = LiquidityListCapability(replace(INVESTMENT_HOLDINGS, page_size=1000))
+    fake = FakeQueryTransport(
+        lambda body: holdings_page(
+            [
+                holding(i)
+                for i in range(body["rowStart"], min(body["rowStart"] + 1000, 1201))
+            ],
+            1201,
+        )
+    )
+    result = collect_liquidity_scope(capability, fake, "")
+    assert result.complete
+    assert result.page_size == 1000
+    assert [body["rowStart"] for body in fake.requests] == [0, 1000]
+
+
+def test_accounts_alias_conflict_still_rejects_collection():
+    rows = [
+        {"id": "0", "aliasName": "A1", "currency": "USD", "accountNo": "N1"},
+        {"id": "0", "aliasName": "A1", "currency": "USD", "accountNo": "N2"},
+    ]
+    fake = FakeQueryTransport(
+        lambda body: {
+            "resultFlag": True,
+            "result": {"bankAccountPropertyVOList": rows},
+            "count": 2,
+        }
+    )
+    with pytest.raises(CliError, match="conflicting content"):
+        collect_liquidity_scope(LiquidityListCapability(CASH_ACCOUNTS), fake, "")
+
+
+def test_cashflows_preserve_identical_rows_without_a_native_key():
+    row = {
+        "bankAccountNo": "A1",
+        "originalBizNo": "",
+        "expectValueDate": "",
+        "expectValueDateTime": "202609302359",
+        "fundDirection": "Credit",
+    }
+    rows = [row, dict(row), {**row, "amountStr": "2.00"}]
+    fake = FakeQueryTransport(
+        lambda body: {
+            "resultFlag": True,
+            "result": {"bankAccountCashFlowVOList": rows},
+        }
+    )
+    result = collect_liquidity_scope(
+        LiquidityListCapability(FORECAST_CASHFLOWS), fake, ""
+    )
+    assert result.complete
+    assert result.total_count == 3
+    assert result.records == rows
