@@ -33,7 +33,9 @@ def run_refresh_list(args: argparse.Namespace) -> int:
     config = load_config()
     store = Cache(config.cache_path)
     with store.refresh_lock():
-        with inquiry_session(config_file=config_mod.config_path()) as session:
+        with inquiry_session(
+            config_file=config_mod.config_path(), startup_url=capability.page_url
+        ) as session:
             result = collect_liquidity_scope(
                 capability,
                 session.transport(capability),
@@ -124,7 +126,9 @@ def run_refresh_detail(args: argparse.Namespace) -> int:
     config = load_config()
     store = Cache(config.cache_path)
     with store.refresh_lock():
-        with inquiry_session(config_file=config_mod.config_path()) as session:
+        with inquiry_session(
+            config_file=config_mod.config_path(), startup_url=leaf.capability.page_url
+        ) as session:
             payload = fetch_detail(session.transport(leaf.capability), leaf, values)
         fetched_at = now().isoformat()
         snapshot = detail_store.upsert_detail(

@@ -1,6 +1,6 @@
 # Dogopencli
 
-把产品运营平台的付款与收款查询带到终端。Dogopencli 面向单人、单机使用，
+把产品运营平台的付款、收款与流动性查询带到终端。Dogopencli 面向单人、单机使用，
 提供离线缓存查询、显式实时查询，以及适合脚本和 Agent 读取的 JSON 帮助与数据描述。
 所有生产业务操作仅查询；登录管理专用本地浏览器，刷新写入本地快照。
 
@@ -95,11 +95,96 @@ SLA 是配置目标，不是观测到账耗时。
 
 银行账户 VA 规则是独立对象，因完整分页验证失败仍未实现，见
 [#52 与阻塞证据](docs/research/general/2026-09-27-collection-bank-va-rule-blocker.md)。
-VA 费用、VA 池、实体账户、余额及生产变更操作不在当前范围。
+收款 VA 费用、VA 池、实体账户、余额及生产变更操作不在当前范围。
 
 付款 flow 规则的真实详情存在身份不一致，#54 暂未交付，也未提供 list-only 替代；
 见[复核证据](docs/research/payment/2026-09-27-payment-flow-rule-blocker.md)。PTR 当前实现流出用例库和有界单据查询；
 网络总览、账户库、巡检规则及两类批次尚未通过各自契约门槛，未注册命令。
+
+## 流动性查询（当前源码分支）
+
+[#72](https://github.com/proletariat64/dogopencli/issues/72) 已实现 60 个查询叶子：
+28 settings、25 runtimes、7 reference；另有 76 个延期叶子可通过帮助发现，
+执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。生产逐叶 UAT 和发布仍待完成；
+安装源码可使用本节命令，不表示上述 v0.1.15 wheel 已包含它们。
+
+```toml
+[sources.liquidity]
+kind = "cdp"
+```
+
+```bash
+dogopencli help liquidity --format text
+dogopencli auth check --domain liquidity
+dogopencli refresh liquidity investment holdings --date 20261001
+dogopencli liquidity investment holdings list --date 20261001
+dogopencli refresh liquidity investment holdings detail get --investment-no HOLDING_ID
+dogopencli liquidity investment holdings get --investment-no HOLDING_ID
+dogopencli liquidity investment returns list --basis cash \
+  --from-date 20260930 --to-date 20260930
+dogopencli describe liquidity investment returns list
+```
+
+日期与身份须替换为实际查询范围和原生 ID；查询默认离线，`--live` 不写缓存。
+列表刷新与详情刷新独立：`refresh liquidity <资源>` 仅刷新列表，
+`refresh liquidity <资源> detail get|history` 仅刷新指定原生详情；后者必填身份见叶子帮助。
+缺失或被驱逐的缓存给出明确错误/刷新提示；不会用列表摘要代替详情或推断源对象不存在。
+每个叶子跨范围/采集保留最多 1,000,000 条主记录；时序驱逐会警告并报告保留范围，
+非时序超限拒绝刷新。新鲜度按所读采集/详情自己的时间判断，不证明源业务数据年龄。
+
+以下省略 `dogopencli liquidity` 前缀；`returns list` 包含 accrual/cash 两个来源，
+参数和逐变体契约以 `help` / `describe` 为准。
+
+| 资源 | 已实现动作 |
+| --- | --- |
+| `cash accounts` | `list` |
+| `cash statements intraday` | `list` |
+| `cash waterlevels` | `list` |
+| `forecast adjustments` | `list` |
+| `forecast cashflows` | `list` |
+| `investment benchmarks` | `list` |
+| `investment compound-ledger` | `list`, `get` |
+| `investment holdings` | `list`, `get` |
+| `investment interest-rates` | `list` |
+| `investment products` | `list`, `get`, `history` |
+| `investment returns` | `list` |
+| `investment strategies` | `list`, `get` |
+| `investment transactions` | `list`, `get` |
+| `ledger accounts` | `list` |
+| `ledger balances` | `list` |
+| `ledger customers` | `list`, `get` |
+| `network account-capabilities` | `list`, `get` |
+| `network bank-baselines` | `list`, `get` |
+| `operations asset-trades` | `list` |
+| `operations decisions` | `get`, `history` |
+| `operations forwards` | `list`, `get` |
+| `operations prefunds` | `list`, `get` |
+| `operations transfers` | `get` |
+| `pricing client-prices` | `list` |
+| `pricing cost-prices` | `list` |
+| `pricing factor-values` | `list` |
+| `pricing strategies` | `list` |
+| `reference banks` | `list` |
+| `reference business-lines` | `list` |
+| `reference calendars` | `list` |
+| `reference entities` | `list` |
+| `risk metrics` | `list` |
+| `risk sla` | `get` |
+| `risk thresholds` | `list`, `get` |
+| `rules action-mapping` | `list` |
+| `rules forecast` | `list` |
+| `rules funding` | `list` |
+| `rules fx-settlement` | `list` |
+| `rules notification` | `list`, `get` |
+| `rules operation` | `list`, `get` |
+| `rules realtime` | `list`, `get` |
+| `rules transfer` | `get` |
+| `rules waterlevel` | `list`, `get` |
+
+重叠分页、无总数或尚未证明分页的列表保持延期（如 balances、forecast results、
+risk sla、transfer rules、quote-groups、decisions、transfers）；独立验证过的详情不受此影响。
+[证据与未验证事项](docs/research/general/2026-10-01-liquidity-live-probes.md)，
+[缓存决策](docs/adr/0016-liquidity-independent-list-and-detail-caches.md)。
 
 ## 缓存、实时查询与刷新
 
@@ -386,7 +471,8 @@ rtk proxy ruff format --check .
 rtk proxy make doc-guard test-doc-guard
 ```
 
-业务插件位于 `src/dogopencli/plugins/payment/` 与 `src/dogopencli/plugins/collection/`；
+业务插件位于 `src/dogopencli/plugins/payment/`、`src/dogopencli/plugins/collection/`
+与 `src/dogopencli/plugins/liquidity/`；
 认证、受限传输、缓存和输出由共享模块提供。测试使用公开 CLI、假 CDP 与临时 SQLite。
 生产验收保持查询范围，并使用私有缓存。
 

@@ -183,8 +183,9 @@ def test_detail_body_typed_identity():
     )
     # The verified POST detail request carries no tntInstId.
     assert capability.detail_body({"id": "100014"}) == {"id": 100014}
-    with pytest.raises(CliError, match="integer"):
-        capability.detail_body({"id": "abc"})
+    for invalid in ("abc", "²"):
+        with pytest.raises(CliError, match="integer"):
+            capability.detail_body({"id": invalid})
     with pytest.raises(CliError):
         capability.detail_body({})
 
@@ -208,6 +209,9 @@ def test_parse_detail_echo_validation():
     wrong = json.dumps({"success": True, "data": {"orderId": "H2"}})
     with pytest.raises(CliError, match="does not match"):
         capability.parse_detail(wrong.encode(), {"investment_no": "H1"})
+    missing = json.dumps({"success": True, "data": {"amount": "1.5"}})
+    with pytest.raises(CliError, match="does not match"):
+        capability.parse_detail(missing.encode(), {"investment_no": "H1"})
 
 
 def test_parse_detail_list_payload_echoes_each_row():

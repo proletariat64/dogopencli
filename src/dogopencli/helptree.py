@@ -174,9 +174,8 @@ def _scan(tokens: list[str], *, explicit_help: bool) -> _Route:
             if token in ("--help", "-h") and route.help_position is None:
                 route.help_position = index
             if token == "--version" and route.version_position is None:
-                # A leaf that declares its own --version option (the ledger
-                # customer detail's native compound identity) keeps it; the
-                # global version action only applies elsewhere.
+                # Declared leaf options take precedence over the global
+                # version action, just as other option values stay local.
                 declares_version = node is not None and any(
                     option.flag == "--version" for option in node.options
                 )

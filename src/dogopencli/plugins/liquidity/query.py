@@ -10,6 +10,7 @@ never a misleading empty result or NOT_FOUND.
 
 import argparse
 import sys
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -17,11 +18,14 @@ from ... import config as config_mod
 from ...cache import Cache
 from ...cached_query import is_stale
 from ...errors import (
+    BUSINESS_QUERY_FAILED,
     CACHE_MISS,
     CACHE_STALE,
     EXIT_OK,
     EXIT_USAGE,
     INCOMPLETE_RESULT,
+    INVALID_ARGUMENT,
+    UNSUPPORTED_CAPABILITY,
     CliError,
 )
 from ...inquiry import inquiry_session
@@ -40,28 +44,28 @@ from .leaves import DEFERRED_BY_PATH, DetailLeaf, ListLeaf, detail_leaf, list_le
 def _display_options(args: argparse.Namespace) -> tuple[int, int, list[str] | None]:
     if args.all and (args.limit is not None or args.offset is not None):
         raise CliError(
-            "INVALID_ARGUMENT",
+            INVALID_ARGUMENT,
             "--all conflicts with explicit --limit/--offset",
             exit_code=EXIT_USAGE,
         )
     limit = 100 if args.limit is None else args.limit
     if limit <= 0:
         raise CliError(
-            "INVALID_ARGUMENT",
+            INVALID_ARGUMENT,
             "--limit must be a positive integer",
             exit_code=EXIT_USAGE,
         )
     offset = 0 if args.offset is None else args.offset
     if offset < 0:
         raise CliError(
-            "INVALID_ARGUMENT", "--offset must not be negative", exit_code=EXIT_USAGE
+            INVALID_ARGUMENT, "--offset must not be negative", exit_code=EXIT_USAGE
         )
     fields: list[str] | None = None
     if args.fields is not None:
         fields = [name.strip() for name in args.fields.split(",") if name.strip()]
         if not fields:
             raise CliError(
-                "INVALID_ARGUMENT",
+                INVALID_ARGUMENT,
                 "--fields must name at least one field",
                 exit_code=EXIT_USAGE,
             )
@@ -112,13 +116,15 @@ def _emit_object(
     return EXIT_OK
 
 
-def _local_filters(args: argparse.Namespace, leaf: ListLeaf) -> dict[str, list[str]]:
+def _local_filters(
+    args: argparse.Namespace, variant: spec_mod.ListSpec
+) -> dict[str, list[str]]:
     filters: dict[str, list[str]] = {}
-    for flag, field in leaf.variants[0].filters:
+    for flag, field in variant.filters:
         values = getattr(args, flag, [])
         if any(not value.strip() for value in values):
             raise CliError(
-                "INVALID_ARGUMENT",
+                INVALID_ARGUMENT,
                 f"--{flag.replace('_', '-')} must be nonempty",
                 exit_code=EXIT_USAGE,
             )
@@ -138,10 +144,8 @@ def _match(
 
 
 def _sort_rows(
-    leaf: ListLeaf, records: list[dict[str, Any]], fetched_at: str
+    variant: spec_mod.ListSpec, records: list[dict[str, Any]], fetched_at: str
 ) -> list[dict[str, Any]]:
-    variant = leaf.variants[0]
-
     def key(record: dict[str, Any]) -> tuple[str, ...]:
         identity = tuple(canonical(record.get(field)) for field in variant.identity)
         if variant.profile == spec_mod.PROFILE_DATED:
@@ -167,10 +171,10 @@ def _coverage_meta(entries: list[capture_store.CaptureEntry]) -> list[dict[str, 
 
 def run_list(args: argparse.Namespace) -> int:
     leaf = list_leaf(args.command_path[1:-1])
-    variant = leaf.variants[0]
     limit, offset, fields = _display_options(args)
     resolved = leaf.resolve(provided(args, scope_flags(leaf)))
-    filters = _local_filters(args, leaf)
+    variant = resolved.spec
+    filters = _local_filters(args, variant)
     config = load_config()
     if args.live:
         return _run_list_live(
@@ -227,7 +231,7 @@ def run_list(args: argparse.Namespace) -> int:
             f"cached capture is older than {config.ttl_hours:g} hours"
             f" (fetched_at {latest.fetched_at})",
         )
-    rows = _sort_rows(leaf, _match(rows, filters), latest.fetched_at)
+    rows = _sort_rows(variant, _match(rows, filters), latest.fetched_at)
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
     reported = sum(entry.reported_total or entry.row_count for entry in selected)
@@ -287,7 +291,9 @@ def _run_list_live(
 ) -> int:
     variant = resolved.spec
     capability = leaf.capability(variant)
-    with inquiry_session(config_file=config_mod.config_path()) as session:
+    with inquiry_session(
+        config_file=config_mod.config_path(), startup_url=capability.page_url
+    ) as session:
         result = collect_liquidity_scope(
             capability,
             session.transport(capability),
@@ -301,7 +307,7 @@ def _run_list_live(
             INCOMPLETE_RESULT,
             "live collection did not cover the complete scope",
         )
-    rows = _sort_rows(leaf, _match(result.records, filters), now().isoformat())
+    rows = _sort_rows(variant, _match(result.records, filters), now().isoformat())
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
     meta = {
@@ -343,13 +349,15 @@ def run_detail(args: argparse.Namespace) -> int:
         fields = [name.strip() for name in args.fields.split(",") if name.strip()]
         if not fields:
             raise CliError(
-                "INVALID_ARGUMENT",
+                INVALID_ARGUMENT,
                 "--fields must name at least one field",
                 exit_code=EXIT_USAGE,
             )
     config = load_config()
     if args.live:
-        with inquiry_session(config_file=config_mod.config_path()) as session:
+        with inquiry_session(
+            config_file=config_mod.config_path(), startup_url=leaf.capability.page_url
+        ) as session:
             payload = fetch_detail(session.transport(leaf.capability), leaf, values)
         meta = {
             "source": "live",
@@ -381,19 +389,21 @@ def run_detail(args: argparse.Namespace) -> int:
     )
     if snapshot is None:
         raise CliError(CACHE_MISS, f"no cached liquidity details; {hint}")
-    stale = is_stale(snapshot, config.ttl_hours, now())
-    if args.require_fresh and stale:
-        raise CliError(
-            CACHE_STALE,
-            f"cached details are older than {config.ttl_hours:g} hours"
-            f" (fetched_at {snapshot.fetched_at})",
-        )
     stored = detail_store.read_details(store, detail.name).get(key)
     if stored is None:
         raise CliError(
             CACHE_MISS,
             "no cached native detail for this identity (the object may still"
             f" exist at the source); {hint}",
+        )
+    stale = is_stale(
+        replace(snapshot, fetched_at=stored.fetched_at), config.ttl_hours, now()
+    )
+    if args.require_fresh and stale:
+        raise CliError(
+            CACHE_STALE,
+            f"cached details are older than {config.ttl_hours:g} hours"
+            f" (fetched_at {stored.fetched_at})",
         )
     meta = {
         "source": "cache",
@@ -404,7 +414,7 @@ def run_detail(args: argparse.Namespace) -> int:
         "identity": dict(values),
         "snapshot_id": snapshot.snapshot_id,
         "dataset_id": None,
-        "fetched_at": snapshot.fetched_at,
+        "fetched_at": stored.fetched_at,
         "detail_fetched_at": stored.fetched_at,
         "loaded_at": None,
         "stale": stale,
@@ -426,7 +436,7 @@ def fetch_detail(
         leaf.capability, transport, leaf.capability.detail_body(values)
     )
     if is_business_refusal(response.body):
-        raise CliError("BUSINESS_QUERY_FAILED", "backend reported a business failure")
+        raise CliError(BUSINESS_QUERY_FAILED, "backend reported a business failure")
     return leaf.capability.parse_detail(response.body, values)
 
 
@@ -434,6 +444,6 @@ def run_unsupported(args: argparse.Namespace) -> int:
     leaf = DEFERRED_BY_PATH.get(args.command_path[1:])
     reason = leaf.reason if leaf is not None else "unsupported liquidity leaf"
     raise CliError(
-        "UNSUPPORTED_CAPABILITY",
+        UNSUPPORTED_CAPABILITY,
         f"{' '.join(args.command_path)} is deferred: {reason}",
     )

@@ -2707,3 +2707,10 @@ def group_nodes() -> tuple[BizNode, ...]:
         for depth in range(1, len(leaf.path)):
             add_query_group(leaf.path[:depth])
     return tuple(groups.values())
+
+
+class UnsupportedLeafHandle:
+    """Registry handle for a deferred leaf; no inquiry contract."""
+
+    def __init__(self, node: BizNode) -> None:
+        self.name = "liquidity." + ".".join(node.path[1:]) + ".unsupported"

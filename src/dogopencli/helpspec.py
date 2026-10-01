@@ -100,9 +100,8 @@ class BizNode:
     effects: dict[str, Any] = field(default_factory=lambda: dict(NO_EFFECTS))
     effects_variants: tuple[dict[str, Any], ...] = ()
     output: dict[str, Any] = field(default_factory=lambda: dict(GROUP_OUTPUT))
-    # Mandatory business kind for liquidity leaves (issue #71): exactly one
-    # of runtimes | settings | reference; None for pre-existing capabilities
-    # and infrastructure nodes.
+    # Optional business classification; plugins own their vocabulary and
+    # decide which leaves require it. Infrastructure nodes leave it unset.
     kind: str | None = None
     errors: tuple[str, ...] = ("INVALID_ARGUMENT",)
     examples: tuple[str, ...] = ()

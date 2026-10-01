@@ -12,7 +12,7 @@ from typing import Any
 from ...annotations import schema_annotations
 from ...helpspec import BizNode
 from . import spec
-from .fields import SAMPLED_FIELDS
+from .fields import SAMPLED_FIELDS, VARIANT_SAMPLED_FIELDS
 from .leaves import DEFERRED_BY_PATH, DETAIL_LEAVES
 
 
@@ -65,11 +65,46 @@ def _list_description(node: BizNode) -> dict[str, Any]:
         ),
         "pagination": variant.pagination,
     }
+    variants = []
+    for item in leaf.variants:
+        variants.append(
+            {
+                "request": {
+                    "method": item.method,
+                    "path": item.endpoint,
+                    "encoding": item.encoding,
+                    "envelope": item.envelope,
+                    "record_container": "$." + ".".join(item.container),
+                    "reported_total": "$." + ".".join(item.total)
+                    if item.total
+                    else None,
+                    "pagination": item.pagination,
+                },
+                "data_schema": _field_schema(
+                    VARIANT_SAMPLED_FIELDS.get(item.name, {}).get(
+                        item.endpoint, SAMPLED_FIELDS.get(item.name, {})
+                    )
+                ),
+                "selectors": {
+                    option.flag: option.match
+                    for option in item.scope_options
+                    if option.match
+                },
+                "identity": list(item.identity),
+                "series_time": item.series_field,
+                "scope_defaults": {
+                    option.flag: option.default
+                    for option in item.scope_options
+                    if option.default is not None
+                },
+            }
+        )
     return {
         "schema_version": 1,
         "data_schema": _field_schema(SAMPLED_FIELDS.get(capability, {})),
         "read_guide": {
             **_source_guide(capability, contract),
+            "variants": variants,
             "kind": variant.kind,
             "offline_profile": variant.profile,
             "identity": list(variant.identity),

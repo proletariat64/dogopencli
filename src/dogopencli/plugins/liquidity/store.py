@@ -243,6 +243,29 @@ def series_value(
     return fetched_at
 
 
+def _owning_variant(list_spec: spec.ListSpec, entry: CaptureEntry) -> spec.ListSpec:
+    """Use the retained capture's selector, not the refreshing variant."""
+    from .capability import decode_scope
+    from .leaves import LIST_LEAVES
+
+    leaf = LIST_LEAVES.get(list_spec.path)
+    if leaf is None or len(leaf.variants) == 1:
+        return list_spec
+    scope = decode_scope(entry.scope)
+    candidates = [
+        variant
+        for variant in leaf.variants
+        if all(
+            scope.get(option.field) == option.match
+            for option in variant.scope_options
+            if option.match
+        )
+    ]
+    if len(candidates) != 1:
+        raise _invalid("retained capture variant is unknown; refresh rejected")
+    return candidates[0]
+
+
 def _identity_of(list_spec: spec.ListSpec, record: dict[str, Any]) -> str:
     parts: list[str] = []
     for field_name in list_spec.identity:
@@ -355,6 +378,14 @@ def plan_capture_publish(
         dropped_namespaces=dropped_namespaces,
     )
     if profile == spec.PROFILE_SNAPSHOT:
+        total = sum(entry.row_count for entry in kept) + new_entry.row_count
+        if total > cap:
+            raise CliError(
+                INVALID_ARGUMENT,
+                f"{list_spec.leaf} holds {total} records across scopes, above the"
+                f" {cap} record retention cap; refresh rejected and the"
+                " previous cache is retained",
+            )
         plan.index = IndexData(captures=[*kept, new_entry])
         return plan
     # Time-series leaf: enforce the per-leaf cap with deterministic
@@ -408,13 +439,14 @@ def plan_capture_publish(
             stored_rows = pending_rows[victim.namespace]
         else:
             stored_rows = store.read(victim.namespace)[1]
+        victim_spec = _owning_variant(list_spec, victim)
         decoded: list[tuple[str, str, int, str]] = []
         for seqid, body in stored_rows:
             record = parse(body)
             decoded.append(
                 (
-                    series_value(list_spec, record, victim.fetched_at),
-                    _identity_of(list_spec, record),
+                    series_value(victim_spec, record, victim.fetched_at),
+                    _identity_of(victim_spec, record),
                     seqid,
                     body,
                 )

@@ -238,3 +238,58 @@ def test_detail_store_upsert_and_cap(tmp_path):
     assert detail_store.read_details(store, name)["investment_no=H1"].detail == {
         "orderId": "H1+"
     }
+
+
+def test_snapshot_cap_counts_all_scopes_and_preserves_cache(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    rows = [{"accountNo": "A"}, {"accountNo": "B"}]
+    plan = capture_store.plan_capture_publish(
+        store, CASH_ACCOUNTS, "scope-a", (None, None), rows, 2, T1, T1, cap=3
+    )
+    capture_store.commit_plan(store, CASH_ACCOUNTS.name, plan, T1)
+    before = capture_store.read_index(store, CASH_ACCOUNTS.name)
+    with pytest.raises(CliError, match="across scopes"):
+        capture_store.plan_capture_publish(
+            store, CASH_ACCOUNTS, "scope-b", (None, None), rows, 2, T2, T2, cap=3
+        )
+    assert capture_store.read_index(store, CASH_ACCOUNTS.name) == before
+    # Same-scope replacement does not double-count the prior generation.
+    capture_store.plan_capture_publish(
+        store, CASH_ACCOUNTS, "scope-a", (None, None), rows, 2, T2, T2, cap=3
+    )
+
+
+@pytest.mark.parametrize("first_basis", ["accrual", "cash"])
+def test_retention_splits_capture_with_its_own_return_variant(tmp_path, first_basis):
+    from dogopencli.plugins.liquidity.leaves import list_leaf
+
+    cache = Cache(tmp_path / "cache.sqlite3")
+    leaf = list_leaf(("investment", "returns"))
+    second_basis = "cash" if first_basis == "accrual" else "accrual"
+    for basis, day, fetched in (
+        (first_basis, "20260929", T1),
+        (second_basis, "20260930", T2),
+    ):
+        resolved = leaf.resolve({"basis": basis, "from_date": day, "to_date": day})
+        rows = (
+            [{"investmentNo": f"H{i}", "transactionDate": day} for i in range(2)]
+            if basis == "accrual"
+            else [{"transactionId": f"T{i}", "settlementDate": day} for i in range(2)]
+        )
+        plan = capture_store.plan_capture_publish(
+            cache,
+            resolved.spec,
+            resolved.scope_key,
+            resolved.window,
+            rows,
+            2,
+            fetched,
+            fetched,
+            cap=3,
+        )
+        capture_store.commit_plan(cache, resolved.spec.name, plan, fetched)
+    assert plan.eviction.dropped == 1
+    index = capture_store.read_index(cache, resolved.spec.name)
+    assert sum(entry.row_count for entry in index.captures) == 3
+    older = next(entry for entry in index.captures if entry.fetched_at == T1)
+    assert len(capture_store.read_capture(cache, older)) == 1

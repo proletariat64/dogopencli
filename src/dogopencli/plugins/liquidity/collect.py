@@ -13,6 +13,7 @@ routes like cash flows and metrics). A present reported total must equal
 the row count. There is no invented offset collection.
 """
 
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -36,14 +37,10 @@ def collect_liquidity_scope(
     budget = (
         collect_mod.REFRESH_BUDGET_SECONDS if budget_seconds is None else budget_seconds
     )
-    deadline = collect_mod._monotonic() + budget
-    if capability_spec(capability).pagination == spec.PAGE_SINGLE:
+    deadline = time.monotonic() + budget
+    if capability.descriptor.pagination == spec.PAGE_SINGLE:
         return _collect_single(capability, transport, scope, deadline, progress)
     return _collect_offset(capability, transport, scope, deadline, progress)
-
-
-def capability_spec(capability: LiquidityListCapability) -> spec.ListSpec:
-    return capability._spec  # noqa: SLF001 - same plugin, deliberate seam
 
 
 def _merge_page(
@@ -82,7 +79,7 @@ def _collect_offset(
     pages = 0
     row_start = 0
     while True:
-        if collect_mod._monotonic() >= deadline:
+        if time.monotonic() >= deadline:
             raise CliError(TIMEOUT, "collection budget exhausted", retryable=True)
         body = capability.page_body(scope, row_start)
         response = collect_mod.execute_bounded(capability, transport, body, deadline)
@@ -145,7 +142,7 @@ def _collect_single(
     deadline: float,
     progress: Callable[[int, int], None] | None,
 ) -> CollectedScope:
-    if collect_mod._monotonic() >= deadline:
+    if time.monotonic() >= deadline:
         raise CliError(TIMEOUT, "collection budget exhausted", retryable=True)
     body = capability.page_body(scope, 0)
     response = collect_mod.execute_bounded(capability, transport, body, deadline)

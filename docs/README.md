@@ -2,7 +2,7 @@
 
 ## 产品规格
 
-- [Liquidity v0.2.1 inquiry specification (GitHub Issue #71)](https://github.com/proletariat64/dogopencli/issues/71): every business leaf has a kind; bounded live evidence, unresolved contracts and release gates. Specification only; liquidity is not implemented.
+- [Liquidity v0.2.1 inquiry specification (GitHub Issue #71)](https://github.com/proletariat64/dogopencli/issues/71): every business leaf has a kind; bounded live evidence, unresolved contracts and release gates. Verified inquiry slice implemented on the current source branch (#72); deferred leaves remain unsupported, and per-leaf production UAT/release are pending.
 
 - [v0.1.0 付款只读 CLI 规格（GitHub Issue #1）](https://github.com/proletariat64/dogopencli/issues/1)：已发布，标签 `ready-for-agent`；公开 CLI＋假 CDP 为 SIT，生产只读验收为 UAT。
 - [DI 风格渐进式 CLI 帮助（GitHub Issue #13）](https://github.com/proletariat64/dogopencli/issues/13)：计划与规格已发布，标签 `ready-for-agent`；无参数导航、JSON/text、完整命令目录及离线帮助验收，尚未实现。

@@ -51,7 +51,9 @@ class InquirySession:
 
 
 @contextmanager
-def inquiry_session(*, config_file: Path) -> Iterator[InquirySession]:
+def inquiry_session(
+    *, config_file: Path, startup_url: str | None = None
+) -> Iterator[InquirySession]:
     """Check an existing session and release targets before its shared lock.
 
     ExitStack also releases earlier resources if auth or later transport setup
@@ -62,8 +64,8 @@ def inquiry_session(*, config_file: Path) -> Iterator[InquirySession]:
             environment = resolve_environment(config_file=config_file)
             control = acquire_browser_control(environment.profile, shared=True)
             resources.callback(control.release)
-            check_authentication(environment)
+            check_authentication(environment, startup_url=startup_url)
             cdp = make_transport(environment.cdp_url)
         except AuthError as error:
             raise _map_auth_error(error) from error
-        yield InquirySession(cdp, environment.startup_url, resources)
+        yield InquirySession(cdp, startup_url or environment.startup_url, resources)

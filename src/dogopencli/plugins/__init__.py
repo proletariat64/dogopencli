@@ -419,19 +419,12 @@ def _load_builtins() -> None:
     for deferred in liquidity_leaves.DEFERRED:
         node = liquidity_leaves.unsupported_node(deferred)
         register(
-            _UnsupportedLiquidityLeaf(node),
+            liquidity_leaves.UnsupportedLeafHandle(node),
             commands=(node,),
             groups=(),
             description=liquidity_reading.description,
         )
     _GROUPS["liquidity"] = liquidity_leaves.group_nodes()
-
-
-class _UnsupportedLiquidityLeaf:
-    """Registry handle for a deferred leaf; it has no inquiry contract."""
-
-    def __init__(self, node: BizNode) -> None:
-        self.name = "liquidity." + ".".join(node.path[1:]) + ".unsupported"
 
 
 _load_builtins()

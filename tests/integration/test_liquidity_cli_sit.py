@@ -23,7 +23,7 @@ LIQUIDITY_URL = "https://iliquidity.alipay.com/GUAPW3SG/menu/PortfolioMgmt"
 def route_probes(state: FakeBrowser, liquidity_sequence: tuple[str, ...] = ()) -> None:
     """Answer each probe by the URL its target was created with.
 
-    The session setup probes the payment entry; liquidity origin checks,
+    The session setup probes the liquidity entry; origin checks,
     query-page settles and re-probes all target the liquidity entry. A
     scripted liquidity sequence overrides the default liquidity answer.
     """
@@ -117,9 +117,8 @@ def seed_holdings(run_cli, setup, total=12, day="20261001"):
 def test_refresh_then_offline_list_with_kind_and_origin(setup, run_cli):
     rows = seed_holdings(run_cli, setup)
     created = [url for transport in setup.state.transports for url in transport.created]
-    # Session setup probes the payment entry; liquidity business queries route
-    # to the liquidity application entry (ADR 0015).
-    assert PAYMENT_URL in created
+    # Session setup verifies only the requested liquidity origin (ADR 0015).
+    assert PAYMENT_URL not in created
     assert LIQUIDITY_URL in created
     code, out, err = run_cli(
         ["liquidity", "investment", "holdings", "list", "--date", "20261001"]
@@ -427,3 +426,128 @@ def test_table_format_renders(setup, run_cli):
     assert code == 0
     assert "kind" not in out.splitlines()[0] or True
     assert "H0000" in out
+
+
+def test_offline_cash_returns_uses_cash_identity_and_time(setup, run_cli):
+    from dogopencli.cache import Cache
+    from dogopencli.plugins.liquidity import store as captures
+    from dogopencli.plugins.liquidity.leaves import list_leaf
+
+    leaf = list_leaf(("investment", "returns"))
+    resolved = leaf.resolve(
+        {"basis": "cash", "from_date": "20261001", "to_date": "20261001"}
+    )
+    rows = [{"transactionId": "T1", "settlementDate": "20261001"}]
+    cache = Cache(setup.cache_path)
+    plan = captures.plan_capture_publish(
+        cache,
+        resolved.spec,
+        resolved.scope_key,
+        resolved.window,
+        rows,
+        1,
+        "2026-10-01T00:00:00+00:00",
+        "2026-10-01T00:00:00+00:00",
+    )
+    captures.commit_plan(cache, resolved.spec.name, plan, "2026-10-01T00:00:00+00:00")
+    code, out, err = run_cli(
+        [
+            "liquidity",
+            "investment",
+            "returns",
+            "list",
+            "--basis",
+            "cash",
+            "--from-date",
+            "20261001",
+            "--to-date",
+            "20261001",
+        ]
+    )
+    assert code == 0, err
+    assert parse(out)["data"] == rows
+    assert not setup.state.transports
+    code, out, err = run_cli(["describe", "liquidity", "investment", "returns", "list"])
+    assert code == 0, err
+    assert "/cashBaseList.json" in out and "transactionId" in out
+
+
+def test_detail_freshness_is_per_object_not_latest_upsert(setup, run_cli):
+    from dogopencli.cache import Cache
+    from dogopencli.plugins.liquidity import details
+    from dogopencli.plugins.liquidity.common import now
+    from dogopencli.plugins.liquidity.leaves import detail_leaf
+
+    cache = Cache(setup.cache_path)
+    leaf = detail_leaf(("investment", "holdings", "get"))
+    old = "2000-01-01T00:00:00+00:00"
+    fresh = now().isoformat()
+    details.upsert_detail(
+        cache,
+        leaf.spec.name,
+        details.detail_key({"investment_no": "A"}),
+        {"orderId": "A"},
+        old,
+        old,
+    )
+    details.upsert_detail(
+        cache,
+        leaf.spec.name,
+        details.detail_key({"investment_no": "B"}),
+        {"orderId": "B"},
+        fresh,
+        fresh,
+    )
+    args = ["liquidity", "investment", "holdings", "get", "--investment-no", "A"]
+    code, out, err = run_cli(args)
+    assert code == 0, err
+    assert parse(out)["meta"]["fetched_at"] == old
+    assert parse(out)["meta"]["stale"] is True
+    code, out, _ = run_cli([*args, "--require-fresh"])
+    assert code == 1 and parse(out)["error"]["code"] == "CACHE_STALE"
+
+
+def test_declared_customer_version_is_not_global_version(setup, run_cli):
+    code, out, _ = run_cli(
+        [
+            "liquidity",
+            "ledger",
+            "customers",
+            "get",
+            "--customer-no",
+            "C1",
+            "--version",
+            "1",
+        ]
+    )
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert not setup.state.transports
+
+
+def test_liquidity_does_not_require_payment_auth(setup, run_cli):
+    def route(browser):
+        url = browser.transports[-1].created[-1]
+        return SSO_URL if url == PAYMENT_URL else LIQUIDITY_URL
+
+    setup.state.href = route
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {"success": True, "data": {"data": [holding(1)], "totalCount": 1}},
+    }
+    code, out, err = run_cli(
+        [
+            "liquidity",
+            "investment",
+            "holdings",
+            "list",
+            "--live",
+            "--date",
+            "20261001",
+        ]
+    )
+    assert code == 0, err
+    assert parse(out)["data"][0]["investmentNo"] == "H0001"
+    assert all(
+        PAYMENT_URL not in transport.created for transport in setup.state.transports
+    )

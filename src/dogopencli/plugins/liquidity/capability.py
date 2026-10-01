@@ -137,6 +137,11 @@ class LiquidityListCapability:
         self._body_keys = frozenset(body_keys)
 
     @property
+    def descriptor(self) -> spec.ListSpec:
+        """Verified contract descriptor used by acquisition."""
+        return self._spec
+
+    @property
     def name(self) -> str:
         return self._spec.name
 
@@ -267,7 +272,12 @@ class LiquidityDetailCapability:
                     raise _usage(
                         f"--{option.flag.replace('_', '-')} must be an integer",
                     )
-                body[option.field] = int(raw)
+                try:
+                    body[option.field] = int(raw)
+                except ValueError as error:
+                    raise _usage(
+                        f"--{option.flag.replace('_', '-')} must be an integer",
+                    ) from error
             else:
                 body[option.field] = raw
         if self._spec.sends_tenant:
@@ -276,6 +286,7 @@ class LiquidityDetailCapability:
 
     def parse_detail(self, body: bytes, values: dict[str, str]) -> Any:
         """Genuine native detail with typed identity echo validation."""
+        request_identity = self.detail_body(values)
         node = envelope_document(body, self._spec.envelope)
         detail = dig(node, self._spec.container)
         if self._spec.container_list:
@@ -289,9 +300,7 @@ class LiquidityDetailCapability:
                     (o for o in self._spec.identity if o.echo == echo_field), None
                 )
                 if option is not None:
-                    expected: Any = values[option.flag]
-                    if option.kind == "int":
-                        expected = int(expected)
+                    expected: Any = request_identity[option.field]
                     for row in detail:
                         if row.get(echo_field) != expected:
                             raise _invalid("detail identity does not match the request")
@@ -301,10 +310,8 @@ class LiquidityDetailCapability:
         for option in self._spec.identity:
             if option.echo is None:
                 continue
-            expected = values[option.flag]
-            if option.kind == "int":
-                expected = str(int(expected))
+            expected = request_identity[option.field]
             actual = detail.get(option.echo)
-            if actual is not None and str(actual) != str(expected):
+            if actual is None or str(actual) != str(expected):
                 raise _invalid("detail identity does not match the request")
         return detail
