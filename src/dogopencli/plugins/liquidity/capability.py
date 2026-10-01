@@ -165,7 +165,7 @@ class LiquidityListCapability:
             method=self._spec.method,
             host=spec.HOST,
             path=self._spec.endpoint,
-            page_size=spec.PAGE_SIZE,
+            page_size=self._spec.page_size,
             one_based=False,
             allowed_body_keys=self._body_keys,
             encoding=(
@@ -174,10 +174,12 @@ class LiquidityListCapability:
         )
 
     def page_body(
-        self, scope: str, row_start: int, page_size: int = spec.PAGE_SIZE
+        self, scope: str, row_start: int, page_size: int | None = None
     ) -> dict[str, Any]:
         """One verified request body for the offset starting at row_start."""
         values = decode_scope(scope)
+        if page_size is None:
+            page_size = self._spec.page_size
         body = dict(self._spec.template)
         if self._spec.vo_field is not None:
             vo = dict(body.pop(self._spec.vo_field, {}))

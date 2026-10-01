@@ -60,8 +60,8 @@ from .spec import (
 
 VERIFIED_DATE = "2026-10-01"
 _PAGE_ECHO_NOTE = (
-    "Pagination: verified rowStart/pageSize=10 offset collection against the"
-    " reported total; any changed total, identity conflict or coverage gap"
+    "Pagination: rowStart offset collection at the leaf's configured page size"
+    " against the reported total; any changed total, identity conflict or coverage gap"
     " fails acquisition and preserves the previous cache."
 )
 _SINGLE_NOTE = (
@@ -136,6 +136,7 @@ CASH_WATERLEVELS = ListSpec(
     total=("data", "totalCount"),
     identity=("aliasName", "currency"),
     profile=PROFILE_HISTORY,
+    page_size=1000,
     scope_options=(_account("Account alias whose water levels to acquire."),),
     filters=(("currency", "currency"),),
     table_columns=("aliasName", "currency", "valueDate", "curAvlBal", "timeZone"),
@@ -158,6 +159,7 @@ CASH_STATEMENTS_INTRADAY = ListSpec(
     total=("data", "totalCount"),
     identity=("bankTransNo",),
     profile=PROFILE_DATED,
+    page_size=1000,
     series_field="valueDate",
     template={"tntInstId": TENANT},
     scope_options=(
@@ -196,6 +198,7 @@ FORECAST_ADJUSTMENTS = ListSpec(
     total=("result", "count"),
     identity=("id",),
     profile=PROFILE_HISTORY,
+    page_size=1000,
     vo_field="bankCashForecastAdjustmentQueryVO",
     template={
         "tntInstId": TENANT,
@@ -1176,6 +1179,7 @@ CASH_ACCOUNTS = ListSpec(
     total=("count",),
     identity=("aliasName", "currency"),
     profile=PROFILE_SNAPSHOT,
+    page_size=5000,
     vo_field="bankAccountQueryVO",
     template={
         "tntInstId": TENANT,
@@ -1203,6 +1207,9 @@ CASH_ACCOUNTS = ListSpec(
         " not established and no wallet filter is exposed.",
         "Account list identity uses aliasName and currency; the observed id"
         " is shared by different accounts and cannot identify list rows.",
+        "Incomplete account lists return available rows with INCOMPLETE_RESULT"
+        " and a nonzero exit; refresh retains the previous complete cache."
+        " --require-complete rejects partial live data.",
         _PAGE_ECHO_NOTE,
         _NULL_NOTE,
     ),

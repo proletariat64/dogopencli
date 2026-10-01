@@ -15,7 +15,7 @@ from typing import Any
 
 from ... import config as config_mod
 from ...cache import Cache
-from ...errors import EXIT_OK, INCOMPLETE_RESULT, CliError
+from ...errors import EXIT_FAILURE, EXIT_OK, INCOMPLETE_RESULT, CliError
 from ...inquiry import inquiry_session
 from . import details as detail_store
 from . import store as capture_store
@@ -45,6 +45,42 @@ def run_refresh_list(args: argparse.Namespace) -> int:
                 ),
             )
         if not result.complete:
+            if variant.path == ("cash", "accounts"):
+                message = (
+                    f"{variant.leaf} acquisition is incomplete (collected"
+                    f" {len(result.records)}, reported {result.total_count});"
+                    " returning available rows; the previous cache is retained"
+                )
+                error = {
+                    "code": INCOMPLETE_RESULT,
+                    "message": message,
+                    "retryable": False,
+                }
+                print(f"warning: {INCOMPLETE_RESULT}: {message}", file=sys.stderr)
+                emit(
+                    result.records,
+                    {
+                        "source": "live",
+                        "backend": "cdp",
+                        "kind": variant.kind,
+                        "simulated": False,
+                        "capability": variant.name,
+                        "scope": resolved.scope_key,
+                        "fetched_at": now().isoformat(),
+                        "loaded_at": None,
+                        "snapshot_id": None,
+                        "complete": False,
+                        "published": False,
+                        "reported_total": result.total_count,
+                        "collected_total": len(result.records),
+                        "matched_total": len(result.records),
+                        "returned_count": len(result.records),
+                        "has_more": False,
+                        "warnings": [error],
+                    },
+                    error,
+                )
+                return EXIT_FAILURE
             raise CliError(
                 INCOMPLETE_RESULT,
                 f"{variant.leaf} acquisition is incomplete (collected"

@@ -117,7 +117,8 @@ def test_vo_query_body_keeps_json_string_shape():
     assert body["wallet"] is False
     assert body["tntInstId"] == "GUAPW3SG"
     vo = json.loads(body["bankAccountQueryVO"])
-    assert vo == {"tntInstId": "GUAPW3SG", "rowStart": 10, "pageSize": 10}
+    assert vo == {"tntInstId": "GUAPW3SG", "rowStart": 10, "pageSize": 5000}
+    assert capability.contract.page_size == 5000
 
 
 def test_virtual_option_never_reaches_the_wire():

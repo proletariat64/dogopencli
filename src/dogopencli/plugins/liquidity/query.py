@@ -22,6 +22,7 @@ from ...errors import (
     BUSINESS_QUERY_FAILED,
     CACHE_MISS,
     CACHE_STALE,
+    EXIT_FAILURE,
     EXIT_OK,
     EXIT_USAGE,
     INCOMPLETE_RESULT,
@@ -89,14 +90,15 @@ def _emit_window(
     window: list[dict[str, Any]],
     meta: dict[str, Any],
     fields: list[str] | None,
+    error: dict[str, Any] | None = None,
 ) -> int:
     window = _project(window, fields)
     if args.format == "table":
         selected = tuple(fields) if fields is not None else columns
         sys.stdout.write(render_table(window, selected, meta) + "\n")
     else:
-        emit(window, meta)
-    return EXIT_OK
+        emit(window, meta, error)
+    return EXIT_FAILURE if error is not None else EXIT_OK
 
 
 def _emit_object(
@@ -311,6 +313,19 @@ def _run_list_live(
                 f"live: collected page {done}/{total}", file=sys.stderr
             ),
         )
+    incomplete_error: dict[str, Any] | None = None
+    if not result.complete and variant.path == ("cash", "accounts"):
+        message = (
+            "cash accounts list is incomplete"
+            f" (collected {len(result.records)}, reported {result.total_count});"
+            " the cache is not updated"
+        )
+        print(f"warning: {INCOMPLETE_RESULT}: {message}", file=sys.stderr)
+        incomplete_error = {
+            "code": INCOMPLETE_RESULT,
+            "message": message,
+            "retryable": False,
+        }
     if args.require_complete and not result.complete:
         raise CliError(
             INCOMPLETE_RESULT,
@@ -345,7 +360,12 @@ def _run_list_live(
         "returned_count": len(window),
         "has_more": offset + len(window) < matched_total,
     }
-    return _emit_window(args, variant.table_columns, window, meta, fields)
+    if incomplete_error is not None:
+        meta["warnings"] = [incomplete_error]
+        meta["collected_total"] = len(result.records)
+    return _emit_window(
+        args, variant.table_columns, window, meta, fields, incomplete_error
+    )
 
 
 def run_detail(args: argparse.Namespace) -> int:

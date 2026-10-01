@@ -386,7 +386,7 @@ def test_accounts_result_flag_family_end_to_end(setup, run_cli):
                 "resultFlag": True,
                 "result": {
                     "bankAccountPropertyVOList": rows[
-                        vo["rowStart"] : vo["rowStart"] + 10
+                        vo["rowStart"] : vo["rowStart"] + vo["pageSize"]
                     ]
                 },
                 "count": 15,
@@ -399,6 +399,7 @@ def test_accounts_result_flag_family_end_to_end(setup, run_cli):
     request = setup.state.business_requests[0]
     assert request["wallet"] is False
     assert json.loads(request["bankAccountQueryVO"])["rowStart"] == 0
+    assert json.loads(request["bankAccountQueryVO"])["pageSize"] == 5000
     code, out, _ = run_cli(["liquidity", "cash", "accounts", "list", "--limit", "3"])
     assert code == 0
     envelope = parse(out)
@@ -410,6 +411,86 @@ def test_accounts_result_flag_family_end_to_end(setup, run_cli):
         "ALIAS002",
     ]
     assert envelope["meta"]["has_more"] is True
+
+
+@pytest.mark.parametrize(
+    "extra", [[], ["--limit", "1"], ["--fields", "aliasName"], ["--format", "table"]]
+)
+def test_accounts_partial_live_warns_returns_rows_and_fails(setup, run_cli, extra):
+    rows = [{"id": "0", "aliasName": f"A{i}", "currency": "USD"} for i in range(2)]
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {
+            "resultFlag": True,
+            "result": {"bankAccountPropertyVOList": rows},
+            "count": 3,
+        },
+    }
+    before = setup.cache_path.read_bytes() if setup.cache_path.exists() else None
+    code, out, err = run_cli(
+        ["liquidity", "cash", "accounts", "list", "--live", *extra]
+    )
+    assert code == 1
+    assert "warning: INCOMPLETE_RESULT" in err
+    assert "collected 2, reported 3" in err
+    if "table" in extra:
+        assert "A0" in out
+    else:
+        envelope = parse(out)
+        assert envelope["error"]["code"] == "INCOMPLETE_RESULT"
+        assert envelope["meta"]["complete"] is False
+        assert envelope["meta"]["reported_total"] == 3
+        assert envelope["meta"]["collected_total"] == 2
+        assert envelope["meta"]["warnings"][0]["code"] == "INCOMPLETE_RESULT"
+        assert len(envelope["data"]) == (1 if "--limit" in extra else 2)
+        if "--fields" in extra:
+            assert envelope["data"] == [{"aliasName": "A0"}, {"aliasName": "A1"}]
+    assert (
+        setup.cache_path.read_bytes() if setup.cache_path.exists() else None
+    ) == before
+    code, out, err = run_cli(
+        ["liquidity", "cash", "accounts", "list", "--live", "--require-complete"]
+    )
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    assert parse(out)["data"] is None
+
+
+def test_accounts_partial_refresh_returns_rows_and_preserves_cache(setup, run_cli):
+    old_rows = [{"id": "0", "aliasName": "OLD", "currency": "USD"}]
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {
+            "resultFlag": True,
+            "result": {"bankAccountPropertyVOList": old_rows},
+            "count": 1,
+        },
+    }
+    code, _, _ = run_cli(["refresh", "liquidity", "cash", "accounts"])
+    assert code == 0
+    before = setup.cache_path.read_bytes()
+    new_rows = [{"id": "0", "aliasName": "NEW", "currency": "USD"}]
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {
+            "resultFlag": True,
+            "result": {"bankAccountPropertyVOList": new_rows},
+            "count": 2,
+        },
+    }
+    code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
+    assert code == 1
+    assert "warning: INCOMPLETE_RESULT" in err
+    envelope = parse(out)
+    assert envelope["data"] == new_rows
+    assert envelope["error"]["code"] == "INCOMPLETE_RESULT"
+    assert envelope["meta"]["complete"] is False
+    assert envelope["meta"]["published"] is False
+    assert envelope["meta"]["source"] == "live"
+    assert setup.cache_path.read_bytes() == before
+    code, out, _ = run_cli(["liquidity", "cash", "accounts", "list"])
+    assert code == 0
+    assert parse(out)["data"] == old_rows
 
 
 @pytest.mark.parametrize(

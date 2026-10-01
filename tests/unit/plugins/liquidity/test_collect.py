@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -183,7 +184,7 @@ def test_single_response_with_uncovered_total_is_incomplete():
 
 
 def test_result_flag_offset_leaf_uses_vo_offsets():
-    accounts = LiquidityListCapability(CASH_ACCOUNTS)
+    accounts = LiquidityListCapability(replace(CASH_ACCOUNTS, page_size=10))
 
     def answer(body):
         vo = json.loads(body["bankAccountQueryVO"])
@@ -202,6 +203,44 @@ def test_result_flag_offset_leaf_uses_vo_offsets():
     assert result.complete
     assert len(result.records) == 15
     assert fake.requests[0]["wallet"] is False
+    assert [
+        json.loads(body["bankAccountQueryVO"])["rowStart"] for body in fake.requests
+    ] == [0, 10]
+
+
+def test_accounts_large_page_keeps_backend_shortfall_incomplete():
+    rows = [{"id": "0", "aliasName": f"A{i}", "currency": "USD"} for i in range(3690)]
+    fake = FakeQueryTransport(
+        lambda body: {
+            "resultFlag": True,
+            "result": {"bankAccountPropertyVOList": rows},
+            "count": 3691,
+        }
+    )
+    result = collect_liquidity_scope(LiquidityListCapability(CASH_ACCOUNTS), fake, "")
+    assert not result.complete
+    assert len(result.records) == 3690
+    assert result.total_count == 3691
+    assert result.pages == 1
+    assert result.page_size == 5000
+    assert json.loads(fake.requests[0]["bankAccountQueryVO"])["pageSize"] == 5000
+
+
+def test_large_page_uses_its_own_offset_stride():
+    capability = LiquidityListCapability(replace(INVESTMENT_HOLDINGS, page_size=1000))
+    fake = FakeQueryTransport(
+        lambda body: holdings_page(
+            [
+                holding(i)
+                for i in range(body["rowStart"], min(body["rowStart"] + 1000, 1201))
+            ],
+            1201,
+        )
+    )
+    result = collect_liquidity_scope(capability, fake, "")
+    assert result.complete
+    assert result.page_size == 1000
+    assert [body["rowStart"] for body in fake.requests] == [0, 1000]
 
 
 def test_accounts_alias_conflict_still_rejects_collection():

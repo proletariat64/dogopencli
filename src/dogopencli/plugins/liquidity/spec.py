@@ -39,7 +39,7 @@ ENC_FORM = "form"
 
 TENANT = "GUAPW3SG"
 HOST = "iliquidity.alipay.com"
-PAGE_SIZE = 10  # the verified page size of every 2026-10-01 observation
+PAGE_SIZE = 10  # default for leaves without a larger verified request width
 
 # Product retention cap per liquidity business leaf (ADR 0017): primary
 # business records across that leaf's retained dates, captures and filter
@@ -103,6 +103,8 @@ class ListSpec:
     # False for verified requests without pagination fields (metrics,
     # cash flows): the single response is the whole scoped set.
     paged_request: bool = True
+    # Per-leaf request width, based on verified inquiry responses.
+    page_size: int = PAGE_SIZE
 
     @property
     def leaf(self) -> str:
