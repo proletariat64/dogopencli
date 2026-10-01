@@ -2,6 +2,8 @@
 
 ## 产品规格
 
+- [Liquidity v0.2.1 inquiry specification (GitHub Issue #71)](https://github.com/proletariat64/dogopencli/issues/71): every business leaf has a kind; bounded live evidence, unresolved contracts and release gates. Specification only; liquidity is not implemented.
+
 - [v0.1.0 付款只读 CLI 规格（GitHub Issue #1）](https://github.com/proletariat64/dogopencli/issues/1)：已发布，标签 `ready-for-agent`；公开 CLI＋假 CDP 为 SIT，生产只读验收为 UAT。
 - [DI 风格渐进式 CLI 帮助（GitHub Issue #13）](https://github.com/proletariat64/dogopencli/issues/13)：计划与规格已发布，标签 `ready-for-agent`；无参数导航、JSON/text、完整命令目录及离线帮助验收，尚未实现。
 
@@ -26,6 +28,7 @@
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
 | General | [运营平台访问与通用发现](research/general/2026-09-08-platform-access.md) | CDP、登录、聚合应用结构、查询协议、只读约束与技术参考 |
+| General | [Liquidity v0.2.1 live probes](research/general/2026-10-01-liquidity-live-probes.md) | All 134 draft leaves audited; scoped timings, decoded payload sizes, sampled schemas, pagination defects, permission gaps and actual SQLite measurements |
 | General | [FX 查询插件交接背景](research/general/2026-09-09-fx-handoff.md) | SIM 历史观察、FX 领域边界、查询插件候选范围与未验证事项；尚未实施 |
 | General | [DI 渐进式帮助参考](research/general/2026-09-12-cli-help-reference.md) | 无参数入口、JSON/text、逐层导航与 dogopencli 帮助差距 |
 | General | [CLI 帮助验收矩阵](research/general/2026-09-12-cli-help-acceptance-matrix.md) | 全部 20 条命令路径的验收规范、20 次探针 before 基线与 Task 4 覆盖清单 |
@@ -101,6 +104,10 @@
 - [ADR 0013: Account isolation](adr/0013-collection-account-isolation.md): independent source, verified envelope and whole-string filtering.
 
 - [ADR 0014：付款规则列表边界](adr/0014-payment-rule-list-boundaries.md)：完整首批采集、银存切换来源节点与关联筛选、flow 阻塞。
+
+- [ADR 0015: Peer domain plugins and shared auth](adr/0015-peer-domain-plugins-and-shared-auth.md): payment, collection and liquidity share core CDP/OAuth while declaring independent origins.
+- [ADR 0016: Liquidity list and detail caches](adr/0016-liquidity-independent-list-and-detail-caches.md): independent explicit acquisition; genuine native details and existing incomplete-result policy.
+- [ADR 0017: Liquidity retention cap](adr/0017-liquidity-one-million-record-retention.md): 1,000,000 records per leaf; oldest-first time-series eviction with warning and truthful retained coverage.
 
 ## 协作规范
 
