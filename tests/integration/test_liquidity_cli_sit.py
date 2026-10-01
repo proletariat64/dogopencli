@@ -874,6 +874,36 @@ def test_require_fresh_covers_every_contributing_capture(setup, run_cli):
     assert parse(out)["error"]["code"] == "CACHE_STALE"
 
 
+def test_expired_capture_contributing_nothing_keeps_result_fresh(setup, run_cli):
+    from dogopencli.plugins.liquidity.common import now
+
+    expired = (now() - timedelta(hours=100)).isoformat()  # beyond the 72h ttl
+    fresh = now().isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (
+                ("20260930", "20261001"),
+                [_returns_row("T1", "20261001", "OLD")],
+                expired,
+            ),
+            (
+                ("20261001", "20261001"),
+                [_returns_row("T1", "20261001", "NEW")],
+                fresh,
+            ),
+        ],
+    )
+    query = [*RETURNS_QUERY, "--from-date", "20261001", "--to-date", "20261001"]
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == 0, err
+    envelope = parse(out)
+    # The expired capture is retained and covers the window, but every row it
+    # holds is superseded, so it contributes nothing to the reported result.
+    assert [row["interestIncome"] for row in envelope["data"]] == ["NEW"]
+    assert envelope["meta"]["stale"] is False
+
+
 def test_integer_detail_identity_spellings_share_one_cache_entry(setup, run_cli):
     setup.state.business_handler = lambda payload, index: {
         "status": 200,

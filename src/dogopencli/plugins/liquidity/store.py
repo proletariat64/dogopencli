@@ -299,6 +299,7 @@ class _RankedRecord:
     namespace: str
     series: str
     identity: str
+    fetched_at: str
     seqid: int
     body: str
 
@@ -391,11 +392,11 @@ def plan_capture_publish(
     kept: list[CaptureEntry] = []
     dropped_namespaces: list[str] = []
     for entry in existing.captures:
-        same_scope = entry.scope == scope
-        same_window = entry.window_from == window_from and entry.window_to == window_to
-        if profile == spec.PROFILE_SNAPSHOT and same_scope:
-            dropped_namespaces.append(entry.namespace)
-        elif profile == spec.PROFILE_DATED and same_scope and same_window:
+        # Replacement is namespace identity. Retention narrows a trimmed
+        # capture's indexed window, so its window no longer names the
+        # acquisition it stands for, and matching on the window would leave
+        # two index entries pointing at one namespace.
+        if entry.namespace == entry_ns:
             dropped_namespaces.append(entry.namespace)
         else:
             kept.append(entry)
@@ -480,12 +481,21 @@ def plan_capture_publish(
                     namespace=entry.namespace,
                     series=series_value(entry_spec, record, entry.fetched_at),
                     identity=_identity_of(entry_spec, record),
+                    fetched_at=entry.fetched_at,
                     seqid=seqid,
                     body=body,
                 )
             )
+    # Acquisition time breaks identity ties: an older copy of one record must
+    # evict before the newer correction of it, whatever their namespaces.
     ranked.sort(
-        key=lambda item: (item.series, item.identity, item.namespace, item.seqid)
+        key=lambda item: (
+            item.series,
+            item.identity,
+            item.fetched_at,
+            item.namespace,
+            item.seqid,
+        )
     )
     evicted_records = ranked[:excess]
     surviving = ranked[excess:]

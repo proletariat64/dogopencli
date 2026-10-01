@@ -416,6 +416,40 @@ def test_clean_day_boundary_keeps_its_own_coverage(tmp_path):
     assert covered
 
 
+def test_trimmed_capture_is_replaced_by_its_own_window_refresh(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    day = [holding(index, "20260929") for index in (1, 2, 3)]
+    first = publish_dated(store, ("20260929", "20260929"), day, T1, cap=2)
+    trimmed = first.index.captures[0]
+    assert trimmed.window_from == "20260930"
+    publish_dated(store, ("20260929", "20260929"), [holding(7, "20260929")], T2)
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    assert index is not None
+    # One namespace, one index entry: refreshing the acquisition window
+    # replaces the trimmed capture instead of leaving a second entry whose
+    # indexed row count no longer matches the stored snapshot.
+    assert [entry.namespace for entry in index.captures] == [trimmed.namespace]
+    rows = capture_store.read_capture(store, index.captures[0])
+    assert [row["investmentNo"] for row in rows] == ["H007"]
+
+
+def test_eviction_prefers_the_newer_correction_of_one_record(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    stale = {"investmentNo": "H001", "valueDate": "20260930", "amount": "OLD"}
+    corrected = {"investmentNo": "H001", "valueDate": "20260930", "amount": "NEW"}
+    # The older capture's namespace sorts after the newer one's, so a
+    # namespace tie-break would evict the correction and keep the stale copy.
+    publish_dated(store, ("20260930", "20261001"), [stale], T1, cap=1)
+    plan = publish_dated(store, ("20260929", "20260930"), [corrected], T2, cap=1)
+    assert plan.eviction is not None and plan.eviction.dropped == 1
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    assert index is not None
+    rows = []
+    for entry in index.captures:
+        rows.extend(capture_store.read_capture(store, entry))
+    assert [row["amount"] for row in rows] == ["NEW"]
+
+
 def test_detail_key_canonicalizes_integer_identities():
     from dogopencli.plugins.liquidity.leaves import detail_leaf
 

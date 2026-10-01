@@ -136,14 +136,14 @@ def _local_filters(
     return filters
 
 
+def _matches(record: dict[str, Any], filters: dict[str, list[str]]) -> bool:
+    return all(record.get(field) in values for field, values in filters.items())
+
+
 def _match(
     records: list[dict[str, Any]], filters: dict[str, list[str]]
 ) -> list[dict[str, Any]]:
-    return [
-        record
-        for record in records
-        if all(record.get(field) in values for field, values in filters.items())
-    ]
+    return [record for record in records if _matches(record, filters)]
 
 
 def _sort_rows(
@@ -206,7 +206,7 @@ def run_list(args: argparse.Namespace) -> int:
             "retained coverage does not cover the requested window (missing"
             " or evicted); " + refresh_hint,
         )
-    rows: list[dict[str, Any]] = []
+    pairs: list[tuple[capture_store.CaptureEntry, dict[str, Any]]] = []
     seen: set[tuple[str, ...]] = set()
     capability = leaf.capability(variant)
     occurrences_seen: Counter[tuple[str, ...]] = Counter()
@@ -221,30 +221,40 @@ def run_list(args: argparse.Namespace) -> int:
             if not variant.identity:
                 occurrences[identity] += 1
                 if occurrences[identity] > occurrences_seen[identity]:
-                    rows.append(record)
+                    pairs.append((entry, record))
                 continue
             if identity in seen:
                 continue
             seen.add(identity)
-            rows.append(record)
+            pairs.append((entry, record))
         occurrences_seen |= occurrences
     if variant.profile == spec_mod.PROFILE_DATED:
         window_from, window_to = resolved.window
         assert window_from is not None and window_to is not None
-        rows = [
-            record
-            for record in rows
+        pairs = [
+            (entry, record)
+            for entry, record in pairs
             if window_from
             <= capture_store.series_value(variant, record, "")
             <= window_to
         ]
-    latest = max(selected, key=lambda entry: entry.fetched_at)
+    kept_pairs = [
+        (entry, record) for entry, record in pairs if _matches(record, filters)
+    ]
+    rows = [record for _, record in kept_pairs]
+    # Freshness follows the rows actually reported. A capture whose records
+    # were all superseded, or all fell outside the requested window and the
+    # local filters, contributes nothing: it must neither vouch for the
+    # result nor taint it.
+    contributing = {entry.namespace for entry, _ in kept_pairs}
+    contributors = [
+        entry for entry in selected if entry.namespace in contributing
+    ] or list(selected)
+    latest = max(contributors, key=lambda entry: entry.fetched_at)
     current = now()
-    # Freshness covers every capture contributing rows: one recently refreshed
-    # day must not vouch for older days merged into the same result.
     stale_entries = [
         entry
-        for entry in selected
+        for entry in contributors
         if is_stale(_capture_meta_view(entry), config.ttl_hours, current)
     ]
     stale = bool(stale_entries)
@@ -255,7 +265,7 @@ def run_list(args: argparse.Namespace) -> int:
             f"cached capture is older than {config.ttl_hours:g} hours"
             f" (fetched_at {oldest.fetched_at})",
         )
-    rows = _sort_rows(variant, _match(rows, filters), latest.fetched_at)
+    rows = _sort_rows(variant, rows, latest.fetched_at)
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
     reported = sum(entry.reported_total or entry.row_count for entry in selected)
