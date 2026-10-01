@@ -18,16 +18,20 @@ def test_every_executable_is_discoverable_and_dispatches(run_cli, monkeypatch):
         for node in command_nodes()
     )
     for node in leaves:
-        assert callable(getattr(cli, node.handler))
+        handler = node.handler
+        assert handler is not None
+        assert callable(getattr(cli, handler))
         assert NODES[node.path[:-1]].children.count((node.path[-1], node.summary)) == 1
         calls = []
         monkeypatch.setattr(
-            cli, node.handler, lambda args, calls=calls: calls.append(args) or 0
+            cli, handler, lambda args, calls=calls: calls.append(args) or 0
         )
         argv = list(node.path)
         for option in node.options:
             if option.required:
-                argv.extend((option.flag, "synthetic"))
+                # Choice-restricted options need a declared value.
+                value = option.choices[0] if option.choices else "synthetic"
+                argv.extend((option.flag, value))
         assert run_cli(argv) == (0, "", "")
         assert len(calls) == 1
 
@@ -46,7 +50,10 @@ def test_new_leaf_only_needs_its_declaration():
         (BizNode(("payment",), "Duplicate"), "duplicate"),
         (BizNode(("missing", "leaf"), "Orphan", handler="run"), "missing parent"),
         (BizNode(("empty",), "No handler or children"), "either group or executable"),
-        (BizNode(("bad",), "Bad handler", handler=True), "invalid handler"),
+        (
+            BizNode(("bad",), "Bad handler", handler=True),  # type: ignore[arg-type]
+            "invalid handler",
+        ),
     ],
 )
 def test_reject_inconsistent_declarations(extra, message):

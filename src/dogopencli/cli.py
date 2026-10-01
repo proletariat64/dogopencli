@@ -10,7 +10,8 @@ import hashlib
 import sys
 import traceback
 from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
+from typing import Any, NoReturn
 from uuid import uuid4
 
 from . import collect as collect_mod
@@ -182,7 +183,13 @@ def _refresh_channel_snapshot(
     config: config_mod.Config,
     source: config_mod.SourceConfig,
 ) -> int:
-    dataset = load_dataset(source.path, capability.name, source.dataset_id)
+    # _snapshot_source validated kind == snapshot, which requires a path.
+    if source.path is None:
+        raise CliError(
+            CONFIG_ERROR, "snapshot source requires a path", exit_code=EXIT_USAGE
+        )
+    dataset_path: Path = source.path
+    dataset = load_dataset(dataset_path, capability.name, source.dataset_id)
     if args.payout_type != dataset.scope:
         raise CliError(
             SOURCE_SCOPE_UNAVAILABLE,
@@ -270,7 +277,7 @@ def _refresh_channel_snapshot(
             source_observed_from=dataset.source_observed_from,
             source_observed_to=dataset.source_observed_to,
             row_count=dataset.row_count,
-            source_path=str(source.path.expanduser().resolve()),
+            source_path=str(dataset_path.expanduser().resolve()),
         )
         store.publish(snapshot, keyed)
     print(
@@ -1455,6 +1462,36 @@ def cmd_refresh_payment_rules_bank_switch(args: argparse.Namespace) -> int:
     return _refresh_complete_list(payment_rules.BANK_SWITCH, "bank-switch source nodes")
 
 
+def cmd_liquidity_list(args: argparse.Namespace) -> int:
+    from .plugins.liquidity.query import run_list
+
+    return run_list(args)
+
+
+def cmd_liquidity_detail(args: argparse.Namespace) -> int:
+    from .plugins.liquidity.query import run_detail
+
+    return run_detail(args)
+
+
+def cmd_refresh_liquidity_list(args: argparse.Namespace) -> int:
+    from .plugins.liquidity.refresh import run_refresh_list
+
+    return run_refresh_list(args)
+
+
+def cmd_refresh_liquidity_detail(args: argparse.Namespace) -> int:
+    from .plugins.liquidity.refresh import run_refresh_detail
+
+    return run_refresh_detail(args)
+
+
+def cmd_liquidity_unsupported(args: argparse.Namespace) -> int:
+    from .plugins.liquidity.query import run_unsupported
+
+    return run_unsupported(args)
+
+
 def cmd_describe(args: argparse.Namespace) -> int:
     from .describe import describe, render_text
 
@@ -1470,7 +1507,7 @@ def cmd_describe(args: argparse.Namespace) -> int:
 class _BusinessParser(argparse.ArgumentParser):
     """Report syntax errors through the business protocol, without argparse IO."""
 
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> NoReturn:
         raise _argument_error(message)
 
 
@@ -1492,6 +1529,11 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
         return _emit_error(error)
     if node.path[0] == "describe":
         args.describe_path = node.path[1:]
+    # Generic plugin handlers resolve their leaf from the command path.
+    args.command_path = node.path
+    # business_entry only routes executable nodes, so handler is bound.
+    if node.handler is None:
+        return _emit_error(_argument_error("command is not executable"))
     handler = globals()[node.handler]
     try:
         return handler(args)

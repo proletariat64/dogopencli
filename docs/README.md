@@ -109,6 +109,8 @@
 - [ADR 0016: Liquidity list and detail caches](adr/0016-liquidity-independent-list-and-detail-caches.md): independent explicit acquisition; genuine native details and existing incomplete-result policy.
 - [ADR 0017: Liquidity retention cap](adr/0017-liquidity-one-million-record-retention.md): 1,000,000 records per leaf; oldest-first time-series eviction with warning and truthful retained coverage.
 
+- [ADR 0018: Liquidity capture store and retention implementation](adr/0018-liquidity-capture-store-and-retention.md): index/capture namespaces, snapshot/history/dated profiles and atomic eviction.
+
 ## 协作规范
 
 - [仓库目录与命名](agents/documentation.md)：Python 代码、测试及文档的目录约定。

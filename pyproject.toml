@@ -41,3 +41,5 @@ select = ["E", "F", "I", "UP", "B"]
 "tests/integration/channel_pages_probe.py" = ["E501"]
 "tests/test_doc_guard.py" = ["E501"]
 "tests/test_prepare_channel_snapshot.py" = ["E741"]
+# Generated sampled-field evidence: native field names exceed the limit.
+"src/dogopencli/plugins/liquidity/fields.py" = ["E501"]

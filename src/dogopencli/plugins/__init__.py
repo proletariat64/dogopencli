@@ -8,7 +8,7 @@ modifying the core layers.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 
 from ..helpspec import BizNode
 
@@ -40,6 +40,11 @@ class EndpointContract:
     # interim totals, and let only the final converged total validate
     # completeness. False keeps the verified fixed-total contract.
     running_total: bool = False
+    # Wire encoding of the validated body: ``json`` posts a JSON body,
+    # ``form`` posts application/x-www-form-urlencoded, ``query`` serializes
+    # into the URL query. GET always uses ``query`` regardless of this
+    # declaration; the default ``json`` preserves existing POST contracts.
+    encoding: str = "json"
 
 
 @dataclass(frozen=True)
@@ -51,11 +56,34 @@ class ParsedPage:
     total_pages: int
 
 
+class TransportCapability(Protocol):
+    """The narrow transport-facing seam: one named, allowlisted endpoint.
+
+    Detail inquiries are single allowlisted requests without pagination,
+    filters or sorting; they still pass the same default-deny validation.
+    """
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def contract(self) -> EndpointContract: ...
+
+
 class Capability(Protocol):
-    name: str
-    source_config_key: str
-    id_field: str
-    table_columns: tuple[str, ...]
+    # Read-only protocol properties accept both attributes and properties on
+    # the implementing class, frozen or not.
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def source_config_key(self) -> str: ...
+
+    @property
+    def id_field(self) -> str: ...
+
+    @property
+    def table_columns(self) -> tuple[str, ...]: ...
 
     @property
     def default_scope(self) -> str:
@@ -107,10 +135,23 @@ class ConfigurationCapability(Capability, Protocol):
     def validate_row(self, row: Any) -> None: ...
 
 
+class NamedCapability(Protocol):
+    """The registration seam: the registry stores and indexes by name.
+
+    Peer plugins register capability objects narrower than the full
+    acquisition protocol (single-request details, deferred discovery
+    handles); shared mechanics that need more receive the concrete type
+    from their own caller.
+    """
+
+    @property
+    def name(self) -> str: ...
+
+
 _CollectedCapability = TypeVar(
     "_CollectedCapability", bound=Capability, contravariant=True
 )
-_RegisteredCapability = TypeVar("_RegisteredCapability", bound=Capability)
+_RegisteredCapability = TypeVar("_RegisteredCapability", bound=NamedCapability)
 
 
 class ScopeCollector(Protocol[_CollectedCapability]):
@@ -126,7 +167,7 @@ class ScopeCollector(Protocol[_CollectedCapability]):
     ) -> "CollectedScope": ...
 
 
-_REGISTRY: dict[str, Capability] = {}
+_REGISTRY: dict[str, NamedCapability] = {}
 # Registration checks each callback against its capability type. Lookup is by
 # capability name, while invocation always uses the caller's bound instance.
 _COLLECTORS: dict[str, ScopeCollector[Any]] = {}
@@ -144,7 +185,7 @@ def register(
     refresh_commands: tuple[BizNode, ...] = (),
     groups: tuple[BizNode, ...] = (),
     description: Callable[[BizNode], dict[str, Any]] | None = None,
-    collector: ScopeCollector[_RegisteredCapability] | None = None,
+    collector: ScopeCollector[Any] | None = None,
     refresh_hint: Callable[[_RegisteredCapability], str] | None = None,
 ) -> None:
     _REGISTRY[capability.name] = capability
@@ -204,7 +245,8 @@ def get_description(node: BizNode) -> dict[str, Any]:
 
 
 def get_capability(name: str) -> Capability:
-    return _REGISTRY[name]
+    """Full acquisition capability; only valid for complete-list plugins."""
+    return cast(Capability, _REGISTRY[name])
 
 
 def _load_builtins() -> None:
@@ -352,6 +394,44 @@ def _load_builtins() -> None:
         groups=(isolation_group,),
         description=isolation_description,
     )
+
+    from .liquidity import leaves as liquidity_leaves
+    from .liquidity import reading as liquidity_reading
+
+    # Peer liquidity plugin (ADR 0015): verified leaves plus deferred
+    # discovery; the liquidity origin/auth routing lives in the capability.
+    for leaf in liquidity_leaves.LIST_LEAVES.values():
+        register(
+            leaf.capability(leaf.variants[0]),
+            commands=(liquidity_leaves.list_query_node(leaf),),
+            refresh_commands=(liquidity_leaves.refresh_list_node(leaf),),
+            groups=(),
+            description=liquidity_reading.description,
+        )
+    for leaf in liquidity_leaves.DETAIL_LEAVES.values():
+        register(
+            leaf.capability,
+            commands=(liquidity_leaves.detail_query_node(leaf),),
+            refresh_commands=(liquidity_leaves.refresh_detail_node(leaf),),
+            groups=(),
+            description=liquidity_reading.description,
+        )
+    for deferred in liquidity_leaves.DEFERRED:
+        node = liquidity_leaves.unsupported_node(deferred)
+        register(
+            _UnsupportedLiquidityLeaf(node),
+            commands=(node,),
+            groups=(),
+            description=liquidity_reading.description,
+        )
+    _GROUPS["liquidity"] = liquidity_leaves.group_nodes()
+
+
+class _UnsupportedLiquidityLeaf:
+    """Registry handle for a deferred leaf; it has no inquiry contract."""
+
+    def __init__(self, node: BizNode) -> None:
+        self.name = "liquidity." + ".".join(node.path[1:]) + ".unsupported"
 
 
 _load_builtins()

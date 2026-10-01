@@ -93,6 +93,8 @@ def _validate_detail(detail: Any) -> None:
 
 def parse_detail(body: bytes, identity: str) -> dict[str, Any]:
     detail = success_document(body).get("resultData")
+    if not isinstance(detail, dict):
+        raise CliError(INVALID_RESPONSE, "SLA detail payload is not an object")
     _validate_detail(detail)
     if detail["slaConfigId"] != identity:
         raise CliError(INVALID_RESPONSE, "detail slaConfigId does not match request")

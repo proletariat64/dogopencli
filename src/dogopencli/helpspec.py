@@ -11,7 +11,7 @@ Normative source: docs/research/general/2026-09-12-cli-help-acceptance-matrix.md
 
 import argparse
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, NoReturn
 
 HELP_VERSION = 1
 HELP_FORMATS = ("json", "text")
@@ -100,6 +100,10 @@ class BizNode:
     effects: dict[str, Any] = field(default_factory=lambda: dict(NO_EFFECTS))
     effects_variants: tuple[dict[str, Any], ...] = ()
     output: dict[str, Any] = field(default_factory=lambda: dict(GROUP_OUTPUT))
+    # Mandatory business kind for liquidity leaves (issue #71): exactly one
+    # of runtimes | settings | reference; None for pre-existing capabilities
+    # and infrastructure nodes.
+    kind: str | None = None
     errors: tuple[str, ...] = ("INVALID_ARGUMENT",)
     examples: tuple[str, ...] = ()
     next: tuple[str, ...] = ()
@@ -206,7 +210,7 @@ def add_options(
 class HelpParser(argparse.ArgumentParser):
     """Validate help syntax without printing or exiting the public CLI."""
 
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> NoReturn:
         raise ValueError(message)
 
 
@@ -253,6 +257,8 @@ def document(node: BizNode) -> dict[str, Any]:
     doc["help_version"] = HELP_VERSION
     doc["command"] = "dogopencli" + "".join(" " + part for part in node.path)
     doc["summary"] = node.summary
+    if node.kind is not None:
+        doc["kind"] = node.kind
     doc["arguments"] = []
     doc["options"] = [_describe(option) for option in node.options]
     doc["constraints"] = list(node.constraints)

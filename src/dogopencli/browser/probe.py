@@ -71,40 +71,18 @@ def browser_mode(version: dict[str, Any]) -> str | None:
     return "headless" if "HeadlessChrome/" in user_agent else "headed"
 
 
-def check_authentication(
-    environment: BrowserEnvironment, *, timeout: float = 15.0
-) -> dict[str, Any]:
-    """Probe the dedicated browser and return a verified auth verdict.
+def probe_entry(transport: Any, startup_url: str, *, timeout: float = 15.0) -> str:
+    """Classify one application entry navigation; return its settled origin.
 
-    Success requires the payment entry navigation to settle on the payment
-    application origin. Failures raise ``AuthError`` with the stable
-    classifications above; launcher guidance rides in the details so callers
-    can point at ``dogopencli login`` for recovery.
+    Shared by the full authentication probe and the per-origin checks peer
+    plugins need (ADR 0015): a healthy session for one origin never proves
+    another origin's authorization. Raises ``AuthError`` with the stable
+    classifications; success returns the verified final origin.
     """
-    guidance = ["dogopencli login"]
-    details = {"cdp_url": environment.cdp_url, "launch_command": guidance}
-    transport = make_transport(environment.cdp_url)
+    details: dict[str, Any] = {"startup_url": startup_url}
+    expected_origin = url_origin(startup_url)
     try:
-        version = transport.version()
-    except CdpError as exc:
-        raise AuthError(
-            BROWSER_UNAVAILABLE,
-            f"CDP endpoint unreachable at {environment.cdp_url}: {exc}; "
-            "run dogopencli login to start or restore the dedicated Chrome",
-            details=details,
-        ) from exc
-    mode = browser_mode(version)
-    if mode is None:
-        raise AuthError(
-            BROWSER_UNAVAILABLE,
-            "CDP /json/version did not provide a User-Agent; browser mode is unknown",
-            details=details,
-        )
-    expected_origin = url_origin(environment.startup_url)
-    try:
-        final_href = probe_final_url(
-            transport, environment.startup_url, timeout=timeout
-        )
+        final_href = probe_final_url(transport, startup_url, timeout=timeout)
     except BrowserLoss as exc:
         raise AuthError(
             BROWSER_UNAVAILABLE,
@@ -127,8 +105,8 @@ def check_authentication(
     if is_login_landing(final_href):
         raise AuthError(
             AUTH_REQUIRED,
-            "the payment application entry redirected to a login page; the "
-            "dedicated authentication is expired or missing",
+            f"the application entry {startup_url} redirected to a login page; "
+            "the dedicated authentication is expired or missing",
             details={
                 **details,
                 "reason": "auth_redirect",
@@ -138,7 +116,7 @@ def check_authentication(
     if final_origin != expected_origin:
         raise AuthError(
             SERVICE_FAILURE,
-            "the payment application probe settled on unexpected origin "
+            "the application probe settled on unexpected origin "
             f"{final_origin}; the authentication verdict is inconclusive",
             details={
                 **details,
@@ -147,6 +125,46 @@ def check_authentication(
                 "final_origin": final_origin,
             },
         )
+    return final_origin
+
+
+def check_authentication(
+    environment: BrowserEnvironment,
+    *,
+    startup_url: str | None = None,
+    timeout: float = 15.0,
+) -> dict[str, Any]:
+    """Probe the dedicated browser and return a verified auth verdict.
+
+    Success requires the entry navigation to settle on the application
+    origin. The default entry is the shared environment startup URL
+    (payment); callers checking a peer plugin's authorization pass that
+    plugin's entry so the verdict names the domain actually checked.
+    Failures raise ``AuthError`` with the stable classifications above;
+    launcher guidance rides in the details so callers can point at
+    ``dogopencli login`` for recovery.
+    """
+    entry_url = environment.startup_url if startup_url is None else startup_url
+    guidance = ["dogopencli login"]
+    details = {"cdp_url": environment.cdp_url, "launch_command": guidance}
+    transport = make_transport(environment.cdp_url)
+    try:
+        version = transport.version()
+    except CdpError as exc:
+        raise AuthError(
+            BROWSER_UNAVAILABLE,
+            f"CDP endpoint unreachable at {environment.cdp_url}: {exc}; "
+            "run dogopencli login to start or restore the dedicated Chrome",
+            details=details,
+        ) from exc
+    mode = browser_mode(version)
+    if mode is None:
+        raise AuthError(
+            BROWSER_UNAVAILABLE,
+            "CDP /json/version did not provide a User-Agent; browser mode is unknown",
+            details=details,
+        )
+    final_origin = probe_entry(transport, entry_url, timeout=timeout)
     return {
         "authenticated": True,
         "healthy": True,
@@ -155,7 +173,7 @@ def check_authentication(
         "browser": version.get("Browser"),
         "mode": mode,
         "probe": {
-            "startup_url": environment.startup_url,
+            "startup_url": entry_url,
             "final_origin": final_origin,
             "authenticated": True,
         },

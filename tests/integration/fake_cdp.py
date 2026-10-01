@@ -175,18 +175,22 @@ class FakeBrowser:
         *,
         running: bool = True,
         mode: str = "headless",
-        href: str = PAYMENT_URL,
+        href: Any = PAYMENT_URL,
     ) -> None:
         self.running = running
         self.mode = mode
-        self.href = href
-        self.hrefs: list = []  # scripted per-probe hrefs; callables see self
+        # A callable href routes each probe by state (e.g. by target URL).
+        self.href: Any = href
+        self.hrefs: list[Any] = []  # scripted per-probe hrefs; callables see self
         self.launches: list[str] = []
         self.fail_modes: set[str] = set()
         self.probe_error = False
         self.href_flip: tuple[int, str] | None = None  # late JS redirect script
         self.transports: list[FakeTransport] = []
         self.cookie = "ctoken=FAKE-CTOKEN-SECRET; unrelated=1"
+        # Logout SIT cookie surface (see seed_cookies below).
+        self.cookies: list[dict] = []
+        self.deleted_cookies: list[dict] = []
         self.business_requests: list[dict] = []
         self.business_script: deque = deque()
         self.business_handler: Callable[[dict, int], Any] | None = None
@@ -202,7 +206,8 @@ class FakeBrowser:
     def next_href(self) -> str:
         href = self.hrefs.pop(0) if self.hrefs else self.href
         if callable(href):
-            return href(self)
+            resolved: Any = href(self)
+            return resolved
         return href
 
     def transport(self, cdp_url: str) -> FakeTransport:

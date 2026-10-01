@@ -1,0 +1,173 @@
+"""Bounded liquidity acquisition: strict rowStart-offset and single-response.
+
+Offset leaves follow the verified pagination: request rowStart 0, 10, 20,
+... at the verified page size; the reported total must stay fixed, page
+arrivals must keep typed identities consistent, and completeness requires
+the unique identity count to equal the fixed total. Observed overlapping
+pages therefore refuse publication instead of fabricating coverage; the
+leaves where overlap was measured stay deferred in the catalog.
+
+Single-response leaves issue exactly the one verified request: routes that
+return their whole scoped set in one response (products; no-pagination
+routes like cash flows and metrics). A present reported total must equal
+the row count. There is no invented offset collection.
+"""
+
+from collections.abc import Callable
+from typing import Any
+
+from ... import collect as collect_mod
+from ...collect import CollectedScope
+from ...errors import INVALID_RESPONSE, TIMEOUT, CliError
+from ...jsonutil import canonical
+from . import spec
+from .capability import LiquidityListCapability
+
+
+def collect_liquidity_scope(
+    capability: LiquidityListCapability,
+    transport: Any,
+    scope: str,
+    *,
+    budget_seconds: float | None = None,
+    progress: Callable[[int, int], None] | None = None,
+) -> CollectedScope:
+    """Collect one liquidity scope with its declared pagination style."""
+    budget = (
+        collect_mod.REFRESH_BUDGET_SECONDS if budget_seconds is None else budget_seconds
+    )
+    deadline = collect_mod._monotonic() + budget
+    if capability_spec(capability).pagination == spec.PAGE_SINGLE:
+        return _collect_single(capability, transport, scope, deadline, progress)
+    return _collect_offset(capability, transport, scope, deadline, progress)
+
+
+def capability_spec(capability: LiquidityListCapability) -> spec.ListSpec:
+    return capability._spec  # noqa: SLF001 - same plugin, deliberate seam
+
+
+def _merge_page(
+    capability: LiquidityListCapability,
+    seen: dict[tuple[str, ...], str],
+    ordered: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
+) -> None:
+    """First-seen content wins; an identity conflict is a hard failure."""
+    for record in rows:
+        record_id = capability.identity_key(record)
+        content = canonical(record)
+        previous = seen.get(record_id)
+        if previous is not None:
+            if previous != content:
+                raise CliError(
+                    INVALID_RESPONSE,
+                    f"conflicting content for record id {record_id}",
+                )
+            continue
+        seen[record_id] = content
+        ordered.append(record)
+
+
+def _collect_offset(
+    capability: LiquidityListCapability,
+    transport: Any,
+    scope: str,
+    deadline: float,
+    progress: Callable[[int, int], None] | None,
+) -> CollectedScope:
+    seen: dict[tuple[str, ...], str] = {}
+    ordered: list[dict[str, Any]] = []
+    expected_total: int | None = None
+    arrivals = 0
+    pages = 0
+    row_start = 0
+    while True:
+        if collect_mod._monotonic() >= deadline:
+            raise CliError(TIMEOUT, "collection budget exhausted", retryable=True)
+        body = capability.page_body(scope, row_start)
+        response = collect_mod.execute_bounded(capability, transport, body, deadline)
+        rows, reported = capability.parse_rows(response.body)
+        if reported is None:
+            raise CliError(
+                INVALID_RESPONSE,
+                "offset acquisition requires a reported total",
+            )
+        page_total = reported
+        if expected_total is None:
+            expected_total = page_total
+            if page_total > collect_mod.MAX_PAGES * spec.PAGE_SIZE:
+                raise CliError(
+                    TIMEOUT,
+                    f"page budget exceeded: {page_total} rows at"
+                    f" {spec.PAGE_SIZE} per page",
+                    retryable=True,
+                )
+        elif page_total != expected_total:
+            raise CliError(INVALID_RESPONSE, "backend total changed during collection")
+        assert expected_total is not None  # reconciled on every page above
+        if len(rows) > spec.PAGE_SIZE:
+            raise CliError(
+                INVALID_RESPONSE, "page returned more rows than the verified page size"
+            )
+        pages += 1
+        if pages > collect_mod.MAX_PAGES:
+            raise CliError(TIMEOUT, "page budget exceeded", retryable=True)
+        if not rows and arrivals < expected_total:
+            raise CliError(
+                INVALID_RESPONSE,
+                "collection made no progress: empty page before the total",
+            )
+        arrivals += len(rows)
+        _merge_page(capability, seen, ordered, rows)
+        if progress is not None:
+            progress(pages, max(-(-expected_total // spec.PAGE_SIZE), pages))
+        if arrivals >= expected_total:
+            break
+        row_start += len(rows)
+    collect_mod.remaining_seconds(deadline)
+    assert expected_total is not None
+    complete = arrivals == expected_total == len(ordered)
+    return CollectedScope(
+        records=ordered,
+        complete=complete,
+        total_count=expected_total,
+        page_size=spec.PAGE_SIZE,
+        pages=pages,
+        rebuilt=False,
+        deadline=deadline,
+    )
+
+
+def _collect_single(
+    capability: LiquidityListCapability,
+    transport: Any,
+    scope: str,
+    deadline: float,
+    progress: Callable[[int, int], None] | None,
+) -> CollectedScope:
+    if collect_mod._monotonic() >= deadline:
+        raise CliError(TIMEOUT, "collection budget exhausted", retryable=True)
+    body = capability.page_body(scope, 0)
+    response = collect_mod.execute_bounded(capability, transport, body, deadline)
+    rows, total = capability.parse_rows(response.body)
+    seen: dict[tuple[str, ...], str] = {}
+    ordered: list[dict[str, Any]] = []
+    _merge_page(capability, seen, ordered, rows)
+    if total is not None and total != len(ordered):
+        # A reported total the single response does not cover can never be
+        # normalized into an empty or partial complete dataset.
+        complete = False
+    else:
+        complete = True
+    if progress is not None:
+        progress(1, 1)
+    collect_mod.remaining_seconds(deadline)
+    return CollectedScope(
+        records=ordered,
+        complete=complete,
+        total_count=total if total is not None else len(ordered),
+        page_size=spec.PAGE_SIZE,
+        pages=1,
+        rebuilt=False,
+        deadline=deadline,
+    )

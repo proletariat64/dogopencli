@@ -9,7 +9,7 @@ every parse failure becomes ``invalid_arguments`` for the auth envelope.
 import argparse
 import math
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NoReturn
 
 from ..browser.errors import invalid
 
@@ -120,7 +120,17 @@ COMMANDS = (
     CommandSpec(
         ("auth", "check"),
         "Bounded verified-authentication probe of the dedicated browser "
-        "environment; never launches, switches, or repairs Chrome.",
+        "environment; never launches, switches, or repairs Chrome. The "
+        "verdict names the domain actually checked; one domain's session "
+        "does not prove another domain's authorization.",
+        options=(
+            _option(
+                "domain",
+                "Application domain to probe; the verdict applies to this domain only.",
+                choices=("payment", "liquidity"),
+                default="payment",
+            ),
+        ),
         effects={
             "mutates": False,
             "network": True,
@@ -194,7 +204,7 @@ class Parser(argparse.ArgumentParser):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(add_help=False, allow_abbrev=False, **kwargs)
 
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> NoReturn:
         raise invalid(message)
 
 

@@ -70,7 +70,12 @@ def resolve_config_dir(explicit: str | None) -> Path:
 def dispatch(spec: CommandSpec, args: argparse.Namespace) -> Result:
     environment = environment_mod.resolve_environment(config_file=args.config_file)
     if spec.handler == "auth.check":
-        return Result(check_authentication(environment))
+        domain = getattr(args, "domain", None) or "payment"
+        try:
+            startup_url = environment_mod.STARTUP_URLS[domain]
+        except KeyError as exc:
+            raise invalid(f"unknown auth check domain: {domain}") from exc
+        return Result(check_authentication(environment, startup_url=startup_url))
     if spec.handler == "login":
         return Result(login(environment, timeout_seconds=args.timeout_seconds))
     if spec.handler == "logout":

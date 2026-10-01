@@ -18,6 +18,9 @@ from time import monotonic, sleep
 
 from .errors import LOCKED, CliError
 
+# SQLite lock messages matched when sqlite_errorcode is unavailable.
+_SQLITE_LOCKED_MESSAGES = ("database is locked", "database table is locked")
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS snapshots (
     namespace TEXT PRIMARY KEY,
@@ -100,10 +103,7 @@ def _sqlite_errors(method):
                 getattr(sqlite3, "SQLITE_LOCKED", 6),
             )
             # Python 3.10 does not expose sqlite_errorcode.
-            locked = locked or str(error) in (
-                "database is locked",
-                "database table is locked",
-            )
+            locked = locked or str(error) in _SQLITE_LOCKED_MESSAGES
             raise CliError(
                 LOCKED if locked else "CACHE_ERROR",
                 "cache is busy; retry later"
@@ -144,7 +144,7 @@ class Cache:
                         except sqlite3.OperationalError as error:
                             code = getattr(error, "sqlite_errorcode", 0) & 0xFF
                             busy = code == getattr(sqlite3, "SQLITE_BUSY", 5) or (
-                                code == 0 and str(error) == "database is locked"
+                                code == 0 and str(error) in _SQLITE_LOCKED_MESSAGES
                             )
                             remaining = deadline - monotonic()
                             if not busy or remaining <= 0:
@@ -263,40 +263,58 @@ class Cache:
     @_sqlite_errors
     def publish(self, meta: SnapshotMeta, records: Iterable[tuple[int, str]]) -> None:
         """Atomically replace the namespace snapshot; failures keep the old one."""
+        self.publish_many(((meta, records),))
+
+    @_sqlite_errors
+    def publish_many(
+        self,
+        writes: Iterable[tuple[SnapshotMeta, Iterable[tuple[int, str]]]],
+        deletes: Iterable[str] = (),
+    ) -> None:
+        """Atomically replace several namespaces and drop others.
+
+        Liquidity list/detail acquisition publishes a capture, its leaf
+        index and any retention eviction as one transaction (ADR 0016/0017):
+        readers only ever see the complete old or the complete new state.
+        """
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
-            connection.execute(
-                "DELETE FROM records WHERE namespace = ?", (meta.namespace,)
-            )
-            connection.execute(
-                "DELETE FROM snapshots WHERE namespace = ?", (meta.namespace,)
-            )
-            connection.execute(
-                "INSERT INTO snapshots VALUES"
-                " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    meta.namespace,
-                    meta.capability,
-                    meta.scope,
-                    meta.source_kind,
-                    meta.snapshot_id,
-                    meta.dataset_id,
-                    int(meta.simulated),
-                    int(meta.backend_complete),
-                    int(meta.dataset_complete),
-                    meta.fetched_at,
-                    meta.loaded_at,
-                    meta.source_observed_from,
-                    meta.source_observed_to,
-                    meta.row_count,
-                    meta.source_path,
-                ),
-            )
-            connection.executemany(
-                "INSERT INTO records (namespace, seqid, body) VALUES (?, ?, ?)",
-                ((meta.namespace, seqid, body) for seqid, body in records),
-            )
+            for name in deletes:
+                connection.execute("DELETE FROM records WHERE namespace = ?", (name,))
+                connection.execute("DELETE FROM snapshots WHERE namespace = ?", (name,))
+            for meta, records in writes:
+                connection.execute(
+                    "DELETE FROM records WHERE namespace = ?", (meta.namespace,)
+                )
+                connection.execute(
+                    "DELETE FROM snapshots WHERE namespace = ?", (meta.namespace,)
+                )
+                connection.execute(
+                    "INSERT INTO snapshots VALUES"
+                    " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        meta.namespace,
+                        meta.capability,
+                        meta.scope,
+                        meta.source_kind,
+                        meta.snapshot_id,
+                        meta.dataset_id,
+                        int(meta.simulated),
+                        int(meta.backend_complete),
+                        int(meta.dataset_complete),
+                        meta.fetched_at,
+                        meta.loaded_at,
+                        meta.source_observed_from,
+                        meta.source_observed_to,
+                        meta.row_count,
+                        meta.source_path,
+                    ),
+                )
+                connection.executemany(
+                    "INSERT INTO records (namespace, seqid, body) VALUES (?, ?, ?)",
+                    ((meta.namespace, seqid, body) for seqid, body in records),
+                )
             connection.execute("COMMIT")
         except BaseException:
             if connection.in_transaction:
