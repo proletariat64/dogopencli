@@ -7,6 +7,7 @@ retention metadata, deferred discovery and auth expiry. All data synthetic.
 """
 
 import json
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -715,7 +716,7 @@ def test_detail_freshness_is_per_object_not_latest_upsert(setup, run_cli):
     details.upsert_detail(
         cache,
         leaf.spec.name,
-        details.detail_key({"investment_no": "A"}),
+        details.detail_key({"investment_no": "A"}, leaf.spec.identity),
         {"orderId": "A"},
         old,
         old,
@@ -723,7 +724,7 @@ def test_detail_freshness_is_per_object_not_latest_upsert(setup, run_cli):
     details.upsert_detail(
         cache,
         leaf.spec.name,
-        details.detail_key({"investment_no": "B"}),
+        details.detail_key({"investment_no": "B"}, leaf.spec.identity),
         {"orderId": "B"},
         fresh,
         fresh,
@@ -781,3 +782,118 @@ def test_liquidity_does_not_require_payment_auth(setup, run_cli):
     assert all(
         PAYMENT_URL not in transport.created for transport in setup.state.transports
     )
+
+
+def _seed_returns_captures(setup, captures):
+    """Publish dated cash-return captures with explicit fetch times."""
+    from dogopencli.cache import Cache
+    from dogopencli.plugins.liquidity import store as capture_store
+    from dogopencli.plugins.liquidity.leaves import list_leaf
+
+    leaf = list_leaf(("investment", "returns"))
+    store = Cache(setup.cache_path)
+    for window, rows, fetched_at in captures:
+        resolved = leaf.resolve(
+            {"basis": "cash", "from_date": window[0], "to_date": window[1]}
+        )
+        plan = capture_store.plan_capture_publish(
+            store,
+            resolved.spec,
+            resolved.scope_key,
+            resolved.window,
+            rows,
+            len(rows),
+            fetched_at,
+            fetched_at,
+        )
+        capture_store.commit_plan(store, resolved.spec.name, plan, fetched_at)
+
+
+def _returns_row(identity, day, income):
+    return {
+        "transactionId": identity,
+        "settlementDate": day,
+        "interestIncome": income,
+        "currency": "USD",
+    }
+
+
+RETURNS_QUERY = [
+    "liquidity",
+    "investment",
+    "returns",
+    "list",
+    "--basis",
+    "cash",
+    "--all",
+]
+
+
+def test_overlapping_captures_resolve_to_the_newest_value(setup, run_cli):
+    from dogopencli.plugins.liquidity.common import now
+
+    recent = (now() - timedelta(hours=1)).isoformat()
+    newest = now().isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (("20260930", "20261001"), [_returns_row("T1", "20261001", "OLD")], recent),
+            (("20261001", "20261001"), [_returns_row("T1", "20261001", "NEW")], newest),
+        ],
+    )
+    code, out, err = run_cli(
+        [*RETURNS_QUERY, "--from-date", "20261001", "--to-date", "20261001"]
+    )
+    assert code == 0, err
+    data = parse(out)["data"]
+    # One identity, two retained captures: the later acquisition wins.
+    assert [row["interestIncome"] for row in data] == ["NEW"]
+
+
+def test_require_fresh_covers_every_contributing_capture(setup, run_cli):
+    from dogopencli.plugins.liquidity.common import now
+
+    expired = (now() - timedelta(hours=100)).isoformat()  # beyond the 72h ttl
+    fresh = now().isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (("20260930", "20260930"), [_returns_row("T1", "20260930", "1")], expired),
+            (("20261001", "20261001"), [_returns_row("T2", "20261001", "2")], fresh),
+        ],
+    )
+    query = [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20261001"]
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    envelope = parse(out)
+    assert [row["transactionId"] for row in envelope["data"]] == ["T1", "T2"]
+    # A freshly refreshed day does not vouch for the expired one it merged with.
+    assert envelope["meta"]["stale"] is True
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_STALE"
+
+
+def test_integer_detail_identity_spellings_share_one_cache_entry(setup, run_cli):
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {"success": True, "data": {"id": payload["id"], "name": "SVC"}},
+    }
+    refresh = [
+        "refresh",
+        "liquidity",
+        "network",
+        "account-capabilities",
+        "detail",
+        "get",
+        "--id",
+        "007",
+    ]
+    code, out, err = run_cli(refresh)
+    assert code == 0, err
+    assert setup.state.business_requests[0]["id"] == 7
+    code, out, err = run_cli(
+        ["liquidity", "network", "account-capabilities", "get", "--id", "7"]
+    )
+    assert code == 0, err
+    assert parse(out)["data"]["id"] == 7

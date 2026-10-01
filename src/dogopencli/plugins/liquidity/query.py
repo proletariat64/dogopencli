@@ -210,7 +210,11 @@ def run_list(args: argparse.Namespace) -> int:
     seen: set[tuple[str, ...]] = set()
     capability = leaf.capability(variant)
     occurrences_seen: Counter[tuple[str, ...]] = Counter()
-    for entry in selected:
+    # Newest acquisition first: when retained captures overlap, a later
+    # corrected value must win over the older capture of the same identity.
+    for entry in sorted(
+        selected, key=lambda item: (item.fetched_at, item.namespace), reverse=True
+    ):
         occurrences: Counter[tuple[str, ...]] = Counter()
         for record in capture_store.read_capture(store, entry):
             identity = capability.identity_key(record)
@@ -235,12 +239,21 @@ def run_list(args: argparse.Namespace) -> int:
             <= window_to
         ]
     latest = max(selected, key=lambda entry: entry.fetched_at)
-    stale = is_stale(_capture_meta_view(latest), config.ttl_hours, now())
+    current = now()
+    # Freshness covers every capture contributing rows: one recently refreshed
+    # day must not vouch for older days merged into the same result.
+    stale_entries = [
+        entry
+        for entry in selected
+        if is_stale(_capture_meta_view(entry), config.ttl_hours, current)
+    ]
+    stale = bool(stale_entries)
     if args.require_fresh and stale:
+        oldest = min(stale_entries, key=lambda entry: entry.fetched_at)
         raise CliError(
             CACHE_STALE,
             f"cached capture is older than {config.ttl_hours:g} hours"
-            f" (fetched_at {latest.fetched_at})",
+            f" (fetched_at {oldest.fetched_at})",
         )
     rows = _sort_rows(variant, _match(rows, filters), latest.fetched_at)
     matched_total = len(rows)
@@ -408,7 +421,7 @@ def run_detail(args: argparse.Namespace) -> int:
         return _emit_object(args, detail.table_columns, payload, meta, fields)
     store = Cache(config.cache_path)
     snapshot = detail_store.read_detail_snapshot(store, detail.name)
-    key = detail_store.detail_key(values)
+    key = detail_store.detail_key(values, detail.identity)
     hint = (
         f"run: dogopencli refresh liquidity {' '.join(detail.path)} detail"
         f" {detail.action} "

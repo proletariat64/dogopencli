@@ -292,6 +292,50 @@ def _identity_of(list_spec: spec.ListSpec, record: dict[str, Any]) -> str:
     return "|".join(parts)
 
 
+@dataclass(frozen=True)
+class _RankedRecord:
+    """One retained record ranked on its own capture's verified series axis."""
+
+    namespace: str
+    series: str
+    identity: str
+    seqid: int
+    body: str
+
+
+def _eviction_record(
+    entry: CaptureEntry, dropped: int, *, partial: bool
+) -> dict[str, Any]:
+    return {
+        "namespace": entry.namespace,
+        "window_from": entry.window_from,
+        "window_to": entry.window_to,
+        "dropped_records": dropped,
+        "partial": partial,
+    }
+
+
+def _retained_window_from(
+    profile: str,
+    entry: CaptureEntry,
+    remaining: list[_RankedRecord],
+    lost: list[_RankedRecord],
+) -> str | None:
+    """First day this capture still covers in full.
+
+    Retention ranks records, so one day can lose some records and keep others.
+    Reporting that day as covered would call a partial day complete, so
+    coverage starts the next day instead and the boundary day stays missing
+    coverage rather than a misleadingly short result.
+    """
+    if profile != spec.PROFILE_DATED:
+        return entry.window_from
+    first = min(item.series for item in remaining)
+    if any(item.series == first for item in lost):
+        return _next_day_like(first)
+    return first
+
+
 @dataclass
 class PublishPlan:
     """Everything one refresh must commit atomically."""
@@ -419,118 +463,101 @@ def plan_capture_publish(
                 " previous cache is retained"
             )
     excess = total - cap
-    ordered = sorted(
-        entries,
-        key=lambda entry: (entry.window_to or entry.fetched_at, entry.namespace),
-    )
-    dropped = 0
-    retained_from: str | None = None
-    tie_break: str | None = None
-    evicted: list[dict[str, Any]] = []
-    survivors: list[CaptureEntry] = list(ordered)
-    for victim in list(ordered):
-        if excess <= 0:
-            break
-        if victim.row_count <= excess:
-            excess -= victim.row_count
-            dropped += victim.row_count
-            survivors.remove(victim)
-            if victim.namespace != entry_ns:
-                plan.dropped_namespaces.append(victim.namespace)
-            else:
-                plan.capture_records = []
-            evicted.append(
-                {
-                    "namespace": victim.namespace,
-                    "window_from": victim.window_from,
-                    "window_to": victim.window_to,
-                    "dropped_records": victim.row_count,
-                    "partial": False,
-                }
-            )
-            continue
-        # Split the boundary capture: drop exactly the oldest excess records
-        # by (series time, identity, position) and keep the newest rest.
-        if victim.namespace in pending_rows:
-            stored_rows = pending_rows[victim.namespace]
-        else:
-            stored_rows = store.read(victim.namespace)[1]
-        victim_spec = _owning_variant(list_spec, victim)
-        decoded: list[tuple[str, str, int, str]] = []
+    # Retention is record-granular (ADR 0017): overlapping captures cannot be
+    # ranked as wholes without discarding newer records, so every retained
+    # record is decoded with its own capture's variant and ranked on the
+    # verified series axis with a stable identity tie-breaker.
+    ranked: list[_RankedRecord] = []
+    for entry in entries:
+        stored_rows = pending_rows.get(entry.namespace)
+        if stored_rows is None:
+            stored_rows = store.read(entry.namespace)[1]
+        entry_spec = _owning_variant(list_spec, entry)
         for seqid, body in stored_rows:
             record = parse(body)
-            decoded.append(
-                (
-                    series_value(victim_spec, record, victim.fetched_at),
-                    _identity_of(victim_spec, record),
-                    seqid,
-                    body,
+            ranked.append(
+                _RankedRecord(
+                    namespace=entry.namespace,
+                    series=series_value(entry_spec, record, entry.fetched_at),
+                    identity=_identity_of(entry_spec, record),
+                    seqid=seqid,
+                    body=body,
                 )
             )
-        decoded.sort(key=lambda item: (item[0], item[1], item[2]))
-        keep = decoded[excess:]
-        dropped += excess
-        retained_from = keep[0][0]
-        tie_break = keep[0][1]
-        survivors.remove(victim)
+    ranked.sort(
+        key=lambda item: (item.series, item.identity, item.namespace, item.seqid)
+    )
+    evicted_records = ranked[:excess]
+    surviving = ranked[excess:]
+    kept_rows: dict[str, list[_RankedRecord]] = {}
+    for item in surviving:
+        kept_rows.setdefault(item.namespace, []).append(item)
+    lost_rows: dict[str, list[_RankedRecord]] = {}
+    for item in evicted_records:
+        lost_rows.setdefault(item.namespace, []).append(item)
+
+    survivors: list[CaptureEntry] = []
+    evicted: list[dict[str, Any]] = []
+    for entry in entries:
+        remaining = kept_rows.get(entry.namespace, [])
+        lost = lost_rows.get(entry.namespace, [])
+        if not remaining:
+            if entry.namespace != entry_ns:
+                plan.dropped_namespaces.append(entry.namespace)
+            else:
+                plan.capture_records = []
+            if lost:
+                evicted.append(_eviction_record(entry, len(lost), partial=False))
+            continue
+        if not lost:
+            survivors.append(entry)
+            continue
+        remaining.sort(key=lambda item: item.seqid)
+        bodies = [item.body for item in remaining]
         trimmed_entry = CaptureEntry(
-            namespace=victim.namespace,
-            scope=victim.scope,
-            window_from=retained_from
-            if profile == spec.PROFILE_DATED
-            else victim.window_from,
-            window_to=victim.window_to,
-            profile=victim.profile,
-            fetched_at=victim.fetched_at,
-            row_count=len(keep),
-            reported_total=victim.reported_total,
-            snapshot_id=hashlib.sha256(
-                canonical([item[3] for item in keep]).encode()
-            ).hexdigest(),
-            kind=victim.kind,
-            source_origin=victim.source_origin,
-            tenant=victim.tenant,
+            namespace=entry.namespace,
+            scope=entry.scope,
+            window_from=_retained_window_from(profile, entry, remaining, lost),
+            window_to=entry.window_to,
+            profile=entry.profile,
+            fetched_at=entry.fetched_at,
+            row_count=len(remaining),
+            reported_total=entry.reported_total,
+            snapshot_id=hashlib.sha256(canonical(bodies).encode()).hexdigest(),
+            kind=entry.kind,
+            source_origin=entry.source_origin,
+            tenant=entry.tenant,
         )
-        survivors.append(trimmed_entry)
         trimmed_meta = SnapshotMeta(
-            namespace=victim.namespace,
+            namespace=entry.namespace,
             capability=list_spec.name,
-            scope=victim.scope,
+            scope=entry.scope,
             source_kind=SOURCE_KIND,
             snapshot_id=trimmed_entry.snapshot_id,
             dataset_id=None,
             simulated=False,
             backend_complete=True,
             dataset_complete=True,
-            fetched_at=victim.fetched_at,
+            fetched_at=entry.fetched_at,
             loaded_at=loaded_at,
             source_observed_from=trimmed_entry.window_from,
             source_observed_to=trimmed_entry.window_to,
-            row_count=len(keep),
+            row_count=len(remaining),
         )
-        trimmed_records = [(index, item[3]) for index, item in enumerate(keep, 1)]
-        if victim.namespace == entry_ns:
+        trimmed_records = [(index, body) for index, body in enumerate(bodies, 1)]
+        if entry.namespace == entry_ns:
             plan.capture_meta = trimmed_meta
             plan.capture_records = trimmed_records
         else:
-            plan.trimmed[victim.namespace] = (trimmed_meta, trimmed_records)
-        evicted.append(
-            {
-                "namespace": victim.namespace,
-                "window_from": victim.window_from,
-                "window_to": victim.window_to,
-                "dropped_records": excess,
-                "partial": True,
-            }
-        )
-        excess = 0
-    retained = sum(entry.row_count for entry in survivors)
+            plan.trimmed[entry.namespace] = (trimmed_meta, trimmed_records)
+        survivors.append(trimmed_entry)
+        evicted.append(_eviction_record(entry, len(lost), partial=True))
     plan.index = IndexData(captures=survivors)
     plan.eviction = EvictionReport(
-        dropped=dropped,
-        retained=retained,
-        retained_from=retained_from,
-        tie_break=tie_break,
+        dropped=len(evicted_records),
+        retained=len(surviving),
+        retained_from=surviving[0].series if surviving else None,
+        tie_break=surviving[0].identity if surviving else None,
         evicted=tuple(evicted),
     )
     return plan

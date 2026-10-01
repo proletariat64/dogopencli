@@ -171,7 +171,7 @@ def run_refresh_detail(args: argparse.Namespace) -> int:
         snapshot = detail_store.upsert_detail(
             store,
             detail.name,
-            detail_store.detail_key(values),
+            detail_store.detail_key(values, detail.identity),
             payload,
             fetched_at,
             now().isoformat(),

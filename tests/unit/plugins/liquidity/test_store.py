@@ -366,3 +366,63 @@ def test_retention_splits_capture_with_its_own_return_variant(tmp_path, first_ba
     assert sum(entry.row_count for entry in index.captures) == 3
     older = next(entry for entry in index.captures if entry.fetched_at == T1)
     assert len(capture_store.read_capture(cache, older)) == 1
+
+
+def test_eviction_keeps_newer_records_from_overlapping_captures(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    wide = [holding(1, "20260929"), holding(2, "20260930"), holding(3, "20261001")]
+    publish_dated(store, ("20260929", "20261001"), wide, T1, cap=3)
+    plan = publish_dated(
+        store, ("20260930", "20260930"), [holding(9, "20260930")], T2, cap=3
+    )
+    assert plan.eviction is not None and plan.eviction.dropped == 1
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    assert index is not None
+    rows = []
+    for entry in index.captures:
+        rows.extend(capture_store.read_capture(store, entry))
+    # Retention ranks records, not captures: the oldest record evicts and the
+    # newer same-day acquisition survives even though its capture is shorter.
+    assert {row["investmentNo"] for row in rows} == {"H002", "H003", "H009"}
+
+
+def test_partial_day_eviction_does_not_claim_full_coverage(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    day = [holding(index, "20260929") for index in (1, 2, 3)]
+    plan = publish_dated(store, ("20260929", "20260929"), day, T1, cap=2)
+    assert plan.eviction is not None and plan.eviction.dropped == 1
+    entry = plan.index.captures[0]
+    assert entry.row_count == 2
+    # The day lost records, so coverage starts the next day instead of
+    # reporting a partial day as complete.
+    assert entry.window_from == "20260930"
+    _, covered = capture_store.select_captures(
+        plan.index, INVESTMENT_HOLDINGS, "", ("20260929", "20260929")
+    )
+    assert not covered
+
+
+def test_clean_day_boundary_keeps_its_own_coverage(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    rows = [holding(1, "20260929"), holding(2, "20260930"), holding(3, "20260930")]
+    plan = publish_dated(store, ("20260929", "20260930"), rows, T1, cap=2)
+    assert plan.eviction is not None and plan.eviction.retained_from == "20260930"
+    entry = plan.index.captures[0]
+    # Whole days evicted: the first fully retained day still counts as covered.
+    assert entry.window_from == "20260930"
+    _, covered = capture_store.select_captures(
+        plan.index, INVESTMENT_HOLDINGS, "", ("20260930", "20260930")
+    )
+    assert covered
+
+
+def test_detail_key_canonicalizes_integer_identities():
+    from dogopencli.plugins.liquidity.leaves import detail_leaf
+
+    typed = detail_leaf(("network", "account-capabilities", "get")).spec.identity
+    assert detail_store.detail_key({"id": "007"}, typed) == "id=7"
+    assert detail_store.detail_key({"id": "7"}, typed) == "id=7"
+    textual = detail_leaf(("investment", "holdings", "get")).spec.identity
+    assert detail_store.detail_key({"investment_no": "007"}, textual) == (
+        "investment_no=007"
+    )
