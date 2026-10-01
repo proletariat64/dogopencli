@@ -1,5 +1,7 @@
 """Capture store and the 1,000,000-record retention policy (ADR 0017)."""
 
+from dataclasses import replace
+
 import pytest
 
 from dogopencli.cache import Cache
@@ -9,13 +11,84 @@ from dogopencli.plugins.liquidity import spec as spec_mod
 from dogopencli.plugins.liquidity import store as capture_store
 from dogopencli.plugins.liquidity.leaves import (
     CASH_ACCOUNTS,
+    CASH_STATEMENTS_INTRADAY,
+    CASH_WATERLEVELS,
     FORECAST_ADJUSTMENTS,
+    FORECAST_CASHFLOWS,
     INVESTMENT_HOLDINGS,
 )
 
 T1 = "2026-10-01T00:00:00+00:00"
 T2 = "2026-10-02T00:00:00+00:00"
 T3 = "2026-10-03T00:00:00+00:00"
+
+
+@pytest.mark.parametrize(
+    "list_spec",
+    [CASH_ACCOUNTS, CASH_WATERLEVELS, CASH_STATEMENTS_INTRADAY, FORECAST_CASHFLOWS],
+)
+def test_empty_capture_has_a_snapshot_and_retained_coverage(tmp_path, list_spec):
+    store = Cache(tmp_path / "cache.sqlite3")
+    window = ("20260930", "20260930") if list_spec.profile == "dated" else (None, None)
+    for at in [T1, T2]:
+        plan = capture_store.plan_capture_publish(
+            store, list_spec, "scope", window, [], 0, at, at
+        )
+        capture_store.commit_plan(store, list_spec.name, plan, at)
+    index = capture_store.read_index(store, list_spec.name)
+    selected, covered = capture_store.select_captures(index, list_spec, "scope", window)
+    assert covered
+    assert len(selected) == 1
+    assert selected[0].fetched_at == T2
+    assert capture_store.read_capture(store, selected[0]) == []
+    assert store.current(selected[0].namespace).row_count == 0
+
+
+def test_capture_rejects_snapshot_count_mismatch(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    plan = capture_store.plan_capture_publish(
+        store, CASH_WATERLEVELS, "", (None, None), [], 0, T1, T1
+    )
+    capture_store.commit_plan(store, CASH_WATERLEVELS.name, plan, T1)
+    store.publish(replace(plan.capture_meta, row_count=1), [])
+    with pytest.raises(CliError, match="coverage is invalid"):
+        capture_store.read_capture(store, plan.index.captures[0])
+
+
+def test_cashflow_retention_uses_native_datetime_day(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    rows = [
+        {"expectValueDate": "", "expectValueDateTime": "202609292359"},
+        {"expectValueDate": "", "expectValueDateTime": "202609300001"},
+    ]
+    plan = capture_store.plan_capture_publish(
+        store, FORECAST_CASHFLOWS, "", ("20260929", "20260930"), rows, 2, T1, T1, cap=1
+    )
+    capture_store.commit_plan(store, FORECAST_CASHFLOWS.name, plan, T1)
+    assert plan.eviction.retained_from == "20260930"
+    entry = plan.index.captures[0]
+    assert entry.window_from == "20260930"
+    assert capture_store.read_capture(store, entry) == rows[1:]
+    assert not capture_store.select_captures(
+        plan.index, FORECAST_CASHFLOWS, "", ("20260929", "20260930")
+    )[1]
+
+
+@pytest.mark.parametrize("value", ["", "202602301200", "202609302460", "20269301200"])
+def test_cashflow_invalid_native_time_rejects_publication(tmp_path, value):
+    store = Cache(tmp_path / "cache.sqlite3")
+    with pytest.raises(CliError, match="series time"):
+        capture_store.plan_capture_publish(
+            store,
+            FORECAST_CASHFLOWS,
+            "",
+            ("20260930", "20260930"),
+            [{"expectValueDateTime": value}],
+            1,
+            T1,
+            T1,
+        )
+    assert capture_store.read_index(store, FORECAST_CASHFLOWS.name) is None
 
 
 def holding(index, day):

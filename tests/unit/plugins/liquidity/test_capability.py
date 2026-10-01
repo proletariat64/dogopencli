@@ -70,6 +70,14 @@ def test_scope_values_required_choices_and_dates():
             "YYYYMMDD",
         ),
         (
+            {"book_type": "INNER", "from_date": "20260230", "to_date": "20260930"},
+            "valid YYYYMMDD",
+        ),
+        (
+            {"book_type": "INNER", "from_date": "20260901", "to_date": "20261301"},
+            "valid YYYYMMDD",
+        ),
+        (
             {"book_type": "INNER", "from_date": "20260930", "to_date": "20260901"},
             "after its end",
         ),
@@ -147,7 +155,11 @@ def test_parse_rows_envelope_and_total_validation():
         json.dumps(
             {
                 "resultFlag": True,
-                "result": {"bankAccountPropertyVOList": [{"id": "A1"}]},
+                "result": {
+                    "bankAccountPropertyVOList": [
+                        {"id": "0", "aliasName": "A1", "currency": "USD"}
+                    ]
+                },
                 "count": 1,
             }
         ).encode()

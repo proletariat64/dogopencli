@@ -10,6 +10,7 @@ origin through the declared application entry (ADR 0015).
 
 import json
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 from ...browser.environment import LIQUIDITY_STARTUP_URL
@@ -96,10 +97,15 @@ def scope_values(
                 raise _usage(
                     f"--{option.flag.replace('_', '-')} must be nonempty",
                 )
-            if option.date and (len(text) != 8 or not text.isdigit()):
-                raise _usage(
-                    f"--{option.flag.replace('_', '-')} must be YYYYMMDD",
-                )
+            if option.date:
+                try:
+                    if len(text) != 8 or not text.isascii() or not text.isdigit():
+                        raise ValueError
+                    datetime.strptime(text, "%Y%m%d")
+                except ValueError as error:
+                    raise _usage(
+                        f"--{option.flag.replace('_', '-')} must be a valid YYYYMMDD",
+                    ) from error
             value = [text] if option.list_of_one else text
         if option.choices:
             values = value if isinstance(value, list) else [value]
@@ -211,6 +217,10 @@ class LiquidityListCapability:
 
     def identity_key(self, record: dict[str, Any]) -> tuple[str, ...]:
         """Typed identity: every declared field must be present and atomic."""
+        if not self._spec.identity:
+            # Content matching is not a business identity. Callers preserve
+            # the multiplicity of identical rows within each acquisition.
+            return (canonical(record),)
         key: list[str] = []
         for field in self._spec.identity:
             value = record.get(field)

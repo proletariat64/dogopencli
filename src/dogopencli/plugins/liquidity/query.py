@@ -10,6 +10,7 @@ never a misleading empty result or NOT_FOUND.
 
 import argparse
 import sys
+from collections import Counter
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
@@ -206,13 +207,21 @@ def run_list(args: argparse.Namespace) -> int:
     rows: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
     capability = leaf.capability(variant)
+    occurrences_seen: Counter[tuple[str, ...]] = Counter()
     for entry in selected:
+        occurrences: Counter[tuple[str, ...]] = Counter()
         for record in capture_store.read_capture(store, entry):
             identity = capability.identity_key(record)
+            if not variant.identity:
+                occurrences[identity] += 1
+                if occurrences[identity] > occurrences_seen[identity]:
+                    rows.append(record)
+                continue
             if identity in seen:
                 continue
             seen.add(identity)
             rows.append(record)
+        occurrences_seen |= occurrences
     if variant.profile == spec_mod.PROFILE_DATED:
         window_from, window_to = resolved.window
         assert window_from is not None and window_to is not None
@@ -305,7 +314,8 @@ def _run_list_live(
     if args.require_complete and not result.complete:
         raise CliError(
             INCOMPLETE_RESULT,
-            "live collection did not cover the complete scope",
+            "live collection did not cover the complete scope"
+            f" (collected {len(result.records)}, reported {result.total_count})",
         )
     rows = _sort_rows(variant, _match(result.records, filters), now().isoformat())
     matched_total = len(rows)

@@ -176,7 +176,11 @@ def read_index(store: Cache, capability: str) -> IndexData | None:
 
 def read_capture(store: Cache, entry: CaptureEntry) -> list[dict[str, Any]]:
     snapshot, stored = store.read(entry.namespace)
-    if snapshot is None or snapshot.row_count != len(stored) != entry.row_count:
+    if (
+        snapshot is None
+        or snapshot.row_count != len(stored)
+        or len(stored) != entry.row_count
+    ):
         raise _invalid("cached capture coverage is invalid")
     rows = []
     for _, body in stored:
@@ -237,6 +241,16 @@ def series_value(
                 f"record is missing its verified series time {field_name};"
                 " retention ordering is unavailable"
             )
+        if list_spec.series_format is not None:
+            try:
+                parsed = datetime.strptime(value, list_spec.series_format)
+                if parsed.strftime(list_spec.series_format) != value:
+                    raise ValueError
+            except ValueError as error:
+                raise _invalid(
+                    f"record has invalid series time {field_name}"
+                ) from error
+            return parsed.strftime("%Y%m%d")
         return value
     # Capture-history records order by capture time explicitly (ADR 0017);
     # capture time is never relabelled as source observation time.
@@ -267,6 +281,8 @@ def _owning_variant(list_spec: spec.ListSpec, entry: CaptureEntry) -> spec.ListS
 
 
 def _identity_of(list_spec: spec.ListSpec, record: dict[str, Any]) -> str:
+    if not list_spec.identity:
+        return canonical(record)
     parts: list[str] = []
     for field_name in list_spec.identity:
         value = record.get(field_name)
@@ -525,7 +541,9 @@ def commit_plan(
 ) -> None:
     """Atomically publish the capture, trims, drops and the leaf index."""
     writes: list[tuple[SnapshotMeta, list[tuple[int, str]]]] = []
-    if plan.capture_records:
+    if any(
+        entry.namespace == plan.capture_meta.namespace for entry in plan.index.captures
+    ):
         writes.append((plan.capture_meta, plan.capture_records))
     writes.extend(plan.trimmed.values())
     if plan.eviction is not None:

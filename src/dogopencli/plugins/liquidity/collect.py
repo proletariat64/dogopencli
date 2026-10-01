@@ -72,6 +72,10 @@ def _collect_offset(
     deadline: float,
     progress: Callable[[int, int], None] | None,
 ) -> CollectedScope:
+    if not capability.descriptor.identity:
+        raise CliError(
+            INVALID_RESPONSE, "offset acquisition requires a native identity"
+        )
     seen: dict[tuple[str, ...], str] = {}
     ordered: list[dict[str, Any]] = []
     expected_total: int | None = None
@@ -118,9 +122,9 @@ def _collect_offset(
         _merge_page(capability, seen, ordered, rows)
         if progress is not None:
             progress(pages, max(-(-expected_total // spec.PAGE_SIZE), pages))
-        if arrivals >= expected_total:
+        if row_start + spec.PAGE_SIZE >= expected_total:
             break
-        row_start += len(rows)
+        row_start += spec.PAGE_SIZE
     collect_mod.remaining_seconds(deadline)
     assert expected_total is not None
     complete = arrivals == expected_total == len(ordered)
@@ -149,7 +153,10 @@ def _collect_single(
     rows, total = capability.parse_rows(response.body)
     seen: dict[tuple[str, ...], str] = {}
     ordered: list[dict[str, Any]] = []
-    _merge_page(capability, seen, ordered, rows)
+    if capability.descriptor.identity:
+        _merge_page(capability, seen, ordered, rows)
+    else:
+        ordered = rows
     if total is not None and total != len(ordered):
         # A reported total the single response does not cover can never be
         # normalized into an empty or partial complete dataset.

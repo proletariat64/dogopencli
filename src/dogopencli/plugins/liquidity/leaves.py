@@ -225,9 +225,10 @@ FORECAST_CASHFLOWS = ListSpec(
     total=None,
     pagination=PAGE_SINGLE,
     paged_request=False,
-    identity=("bankAccountNo", "originalBizNo", "expectValueDate", "fundDirection"),
+    identity=(),
     profile=PROFILE_DATED,
-    series_field="expectValueDate",
+    series_field="expectValueDateTime",
+    series_format="%Y%m%d%H%M",
     vo_field="cashFlowDataQueryVO",
     template={
         "tntInstId": TENANT,
@@ -256,12 +257,17 @@ FORECAST_CASHFLOWS = ListSpec(
         "bankAccountAliasName",
         "fundDirection",
         "amountStr",
-        "expectValueDate",
+        "expectValueDateTime",
     ),
     notes=(
         "No reported total exists; the single response is the complete"
         " scoped set. Record schema is live-verified on a populated"
         " previous-day scope.",
+        "Value Date uses expectValueDateTime (YYYYMMDDHHmm), as in the native"
+        " UI; queries and retention compare its calendar day without a"
+        " timezone conversion. No native unique key is established: all row"
+        " occurrences are preserved within a response; overlapping captures"
+        " match identical content by occurrence count.",
         _NULL_NOTE,
     ),
 )
@@ -1168,7 +1174,7 @@ CASH_ACCOUNTS = ListSpec(
     envelope=ENV_RESULT_FLAG,
     container=("result", "bankAccountPropertyVOList"),
     total=("count",),
-    identity=("id",),
+    identity=("aliasName", "currency"),
     profile=PROFILE_SNAPSHOT,
     vo_field="bankAccountQueryVO",
     template={
@@ -1195,6 +1201,8 @@ CASH_ACCOUNTS = ListSpec(
     notes=(
         "The wallet flag stays at its verified false; wallet membership is"
         " not established and no wallet filter is exposed.",
+        "Account list identity uses aliasName and currency; the observed id"
+        " is shared by different accounts and cannot identify list rows.",
         _PAGE_ECHO_NOTE,
         _NULL_NOTE,
     ),

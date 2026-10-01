@@ -47,7 +47,8 @@ def run_refresh_list(args: argparse.Namespace) -> int:
         if not result.complete:
             raise CliError(
                 INCOMPLETE_RESULT,
-                f"{variant.leaf} acquisition is incomplete; the previous"
+                f"{variant.leaf} acquisition is incomplete (collected"
+                f" {len(result.records)}, reported {result.total_count}); the previous"
                 " cache is retained",
             )
         fetched_at = now().isoformat()

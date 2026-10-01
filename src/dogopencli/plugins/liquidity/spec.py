@@ -87,12 +87,13 @@ class ListSpec:
     method: str
     envelope: str
     container: tuple[str, ...]
-    identity: tuple[str, ...]
+    identity: tuple[str, ...]  # empty: no native key; preserve row occurrences
     encoding: str = ENC_JSON
     total: tuple[str, ...] | None = None
     pagination: str = PAGE_OFFSET
     profile: str = PROFILE_SNAPSHOT
     series_field: str | None = None  # business series time for dated records
+    series_format: str | None = None  # verified native time format, read as a day
     template: dict[str, Any] = field(default_factory=dict)
     vo_field: str | None = None  # nested VO carried as one JSON string field
     scope_options: tuple[ScopeOption, ...] = ()
