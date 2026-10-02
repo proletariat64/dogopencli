@@ -997,3 +997,41 @@ def test_redundant_expired_empty_coverage_needs_fresh_evidence(
     assert code == (0 if fresh_empty_day else 1), err
     if not fresh_empty_day:
         assert parse(out)["error"]["code"] == "CACHE_STALE"
+
+
+def test_eviction_preserves_earlier_empty_day_end_to_end(setup, run_cli, monkeypatch):
+    from functools import partial
+
+    from dogopencli.plugins.liquidity import store as capture_store
+    from dogopencli.plugins.liquidity.common import now
+
+    monkeypatch.setattr(
+        capture_store,
+        "plan_capture_publish",
+        partial(capture_store.plan_capture_publish, cap=1),
+    )
+    fresh = now().isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (("20260928", "20260929"), [], fresh),
+            (("20260929", "20260929"), [_returns_row("T1", "20260929", "1")], fresh),
+            (("20260930", "20260930"), [_returns_row("T2", "20260930", "2")], fresh),
+        ],
+    )
+    query = [*RETURNS_QUERY, "--from-date", "20260928", "--to-date", "20260928"]
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == 0, err
+    envelope = parse(out)
+    assert envelope["data"] == []
+    assert envelope["meta"]["complete"] is True
+    assert envelope["meta"]["retained_coverage"][0]["missing_days"] == ["20260929"]
+    spanning = [*RETURNS_QUERY, "--from-date", "20260928", "--to-date", "20260930"]
+    code, out, err = run_cli(spanning)
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    # A complete acquisition restores only the refreshed day's coverage.
+    _seed_returns_captures(setup, [(("20260929", "20260929"), [], fresh)])
+    code, out, err = run_cli([*spanning, "--require-fresh"])
+    assert code == 0, err
+    assert [row["transactionId"] for row in parse(out)["data"]] == ["T2"]

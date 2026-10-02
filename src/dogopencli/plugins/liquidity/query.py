@@ -165,6 +165,7 @@ def _coverage_meta(entries: list[capture_store.CaptureEntry]) -> list[dict[str, 
             "namespace": entry.namespace,
             "window_from": entry.window_from,
             "window_to": entry.window_to,
+            "missing_days": list(entry.missing_days),
             "fetched_at": entry.fetched_at,
             "row_count": entry.row_count,
         }

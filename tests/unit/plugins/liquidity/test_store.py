@@ -532,3 +532,103 @@ def test_eviction_does_not_invalidate_another_scope(tmp_path):
     assert capture_store.select_captures(
         index, INVESTMENT_HOLDINGS, "other", ("20260929", "20260929")
     )[1]
+
+
+@pytest.mark.parametrize("earlier_rows", [[], [holding(9, "20260930")]])
+def test_later_eviction_preserves_unaffected_earlier_day(tmp_path, earlier_rows):
+    store = Cache(tmp_path / "cache.sqlite3")
+    publish_dated(store, ("20260928", "20260930"), earlier_rows, T1)
+    publish_dated(store, ("20260929", "20260929"), [holding(1, "20260929")], T2)
+    publish_dated(
+        store,
+        ("20260930", "20260930"),
+        [holding(2, "20260930")],
+        T3,
+        cap=1 + len(earlier_rows),
+    )
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    selected, covered = capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", ("20260928", "20260928")
+    )
+    assert covered
+    assert capture_store.read_capture(store, selected[0]) == earlier_rows
+    assert not capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", ("20260929", "20260929")
+    )[1]
+
+
+def test_trimmed_capture_preserves_empty_days_before_and_after_loss(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    publish_dated(
+        store,
+        ("20260928", "20260930"),
+        [holding(1, "20260929"), holding(2, "20260929")],
+        T1,
+        cap=1,
+    )
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    for day in ("20260928", "20260930"):
+        assert capture_store.select_captures(
+            index, INVESTMENT_HOLDINGS, "", (day, day)
+        )[1]
+    assert not capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", ("20260929", "20260929")
+    )[1]
+
+
+@pytest.mark.parametrize("missing_days", [None, ["bad"], ["20260230"], [1]])
+def test_invalid_cached_missing_days_rejects_coverage(tmp_path, missing_days):
+    store = Cache(tmp_path / "cache.sqlite3")
+    plan = publish_dated(store, ("20260928", "20260930"), [], T1)
+    record = plan.index.captures[0].record()
+    record["missing_days"] = missing_days
+    with pytest.raises(CliError, match="missing days are invalid"):
+        capture_store.CaptureEntry.from_record(record)
+
+
+def test_legacy_capture_defaults_to_no_missing_days(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    plan = publish_dated(store, ("20260928", "20260930"), [], T1)
+    record = plan.index.captures[0].record()
+    del record["missing_days"]
+    assert capture_store.CaptureEntry.from_record(record).missing_days == ()
+
+
+def test_eviction_preserves_empty_day_between_lost_record_days(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    publish_dated(
+        store,
+        ("20260929", "20261003"),
+        [
+            holding(1, "20260929"),
+            holding(2, "20261001"),
+            holding(3, "20261003"),
+        ],
+        T1,
+        cap=1,
+    )
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    for day in ("20260930", "20261002", "20261003"):
+        assert capture_store.select_captures(
+            index, INVESTMENT_HOLDINGS, "", (day, day)
+        )[1]
+    for day in ("20260929", "20261001"):
+        assert not capture_store.select_captures(
+            index, INVESTMENT_HOLDINGS, "", (day, day)
+        )[1]
+
+
+def test_all_records_evicted_preserves_verified_empty_days(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    publish_dated(store, ("20260928", "20260930"), [holding(1, "20260929")], T1)
+    publish_dated(store, ("20261001", "20261001"), [holding(2, "20261001")], T2, cap=1)
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    for day in ("20260928", "20260930"):
+        selected, covered = capture_store.select_captures(
+            index, INVESTMENT_HOLDINGS, "", (day, day)
+        )
+        assert covered
+        assert capture_store.read_capture(store, selected[0]) == []
+    assert not capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", ("20260929", "20260929")
+    )[1]

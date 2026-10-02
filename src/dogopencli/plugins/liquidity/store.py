@@ -51,6 +51,9 @@ class CaptureEntry:
     kind: str | None = None
     source_origin: str | None = None
     tenant: str | None = None
+    # Exact retention holes; a later missing day must not erase earlier
+    # verified empty days in this capture's acquisition window.
+    missing_days: tuple[str, ...] = ()
 
     def record(self) -> dict[str, Any]:
         return {
@@ -67,6 +70,7 @@ class CaptureEntry:
             "kind": self.kind,
             "source_origin": self.source_origin,
             "tenant": self.tenant,
+            "missing_days": list(self.missing_days),
         }
 
     @staticmethod
@@ -98,6 +102,17 @@ class CaptureEntry:
         kind = record.get("kind")
         source_origin = record.get("source_origin")
         tenant = record.get("tenant")
+        missing_days = record.get("missing_days", [])
+        if not isinstance(missing_days, list) or any(
+            not isinstance(day, str) for day in missing_days
+        ):
+            raise _invalid("cached capture missing days are invalid")
+        for day in missing_days:
+            try:
+                if datetime.strptime(day, "%Y%m%d").strftime("%Y%m%d") != day:
+                    raise ValueError
+            except ValueError as error:
+                raise _invalid("cached capture missing days are invalid") from error
         return CaptureEntry(
             namespace=namespace_value,
             scope=scope_value,
@@ -116,6 +131,7 @@ class CaptureEntry:
             kind=kind if isinstance(kind, str) else None,
             source_origin=source_origin if isinstance(source_origin, str) else None,
             tenant=tenant if isinstance(tenant, str) else None,
+            missing_days=tuple(sorted(set(missing_days))),
         )
 
 
@@ -319,22 +335,20 @@ def _eviction_record(
 def _retained_window_from(
     profile: str,
     entry: CaptureEntry,
-    remaining: list[_RankedRecord],
     lost: list[_RankedRecord],
 ) -> str | None:
-    """First day this capture still covers in full.
+    """Narrow a lost leading boundary without discarding earlier empty days.
 
-    Retention ranks records, so one day can lose some records and keep others.
-    Reporting that day as covered would call a partial day complete, so
-    coverage starts the next day instead and the boundary day stays missing
-    coverage rather than a misleadingly short result.
+    Interior retention holes are represented by missing_days. A lost record
+    on a later day does not invalidate the verified empty days before it.
     """
-    if profile != spec.PROFILE_DATED:
+    if profile != spec.PROFILE_DATED or entry.window_from is None:
         return entry.window_from
-    first = min(item.series for item in remaining)
-    if any(item.series == first for item in lost):
-        return _next_day_like(first)
-    return first
+    missing = set(entry.missing_days) | {item.series for item in lost}
+    start = entry.window_from
+    while start in missing:
+        start = _next_day_like(start)
+    return start
 
 
 @dataclass
@@ -514,7 +528,13 @@ def plan_capture_publish(
         if not lost:
             survivors.append(entry)
             continue
-        if not remaining:
+        retained_from = _retained_window_from(profile, entry, lost)
+        if not remaining and (
+            profile != spec.PROFILE_DATED
+            or retained_from is None
+            or entry.window_to is None
+            or retained_from > entry.window_to
+        ):
             if entry.namespace != entry_ns:
                 plan.dropped_namespaces.append(entry.namespace)
             else:
@@ -527,7 +547,7 @@ def plan_capture_publish(
         trimmed_entry = CaptureEntry(
             namespace=entry.namespace,
             scope=entry.scope,
-            window_from=_retained_window_from(profile, entry, remaining, lost),
+            window_from=retained_from,
             window_to=entry.window_to,
             profile=entry.profile,
             fetched_at=entry.fetched_at,
@@ -537,6 +557,7 @@ def plan_capture_publish(
             kind=entry.kind,
             source_origin=entry.source_origin,
             tenant=entry.tenant,
+            missing_days=entry.missing_days,
         )
         trimmed_meta = SnapshotMeta(
             namespace=entry.namespace,
@@ -580,7 +601,8 @@ def plan_capture_publish(
             ]
             if affected:
                 survivors[index] = replace(
-                    entry, window_from=_next_day_like(max(affected))
+                    entry,
+                    missing_days=tuple(sorted(set(entry.missing_days) | set(affected))),
                 )
     plan.index = IndexData(captures=survivors)
     plan.eviction = EvictionReport(
@@ -640,11 +662,23 @@ def select_captures(
 
 def covers_window(entries: list[CaptureEntry], start: str, end: str) -> bool:
     """Whether the union of complete capture intervals covers every requested day."""
-    intervals = sorted(
-        (entry.window_from, entry.window_to)
-        for entry in entries
-        if entry.window_from is not None and entry.window_to is not None
-    )
+    intervals: list[tuple[str, str]] = []
+    for entry in entries:
+        if entry.window_from is None or entry.window_to is None:
+            continue
+        interval_from = entry.window_from
+        for day in entry.missing_days:
+            if day < interval_from or day > entry.window_to:
+                continue
+            if interval_from < day:
+                previous = (
+                    datetime.strptime(day, "%Y%m%d") - timedelta(days=1)
+                ).strftime("%Y%m%d")
+                intervals.append((interval_from, previous))
+            interval_from = _next_day_like(day)
+        if interval_from <= entry.window_to:
+            intervals.append((interval_from, entry.window_to))
+    intervals.sort()
     cursor = start
     for interval_from, interval_to in intervals:
         if interval_from > cursor:
