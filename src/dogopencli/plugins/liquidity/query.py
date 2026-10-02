@@ -136,14 +136,14 @@ def _local_filters(
     return filters
 
 
+def _matches(record: dict[str, Any], filters: dict[str, list[str]]) -> bool:
+    return all(record.get(field) in values for field, values in filters.items())
+
+
 def _match(
     records: list[dict[str, Any]], filters: dict[str, list[str]]
 ) -> list[dict[str, Any]]:
-    return [
-        record
-        for record in records
-        if all(record.get(field) in values for field, values in filters.items())
-    ]
+    return [record for record in records if _matches(record, filters)]
 
 
 def _sort_rows(
@@ -165,6 +165,7 @@ def _coverage_meta(entries: list[capture_store.CaptureEntry]) -> list[dict[str, 
             "namespace": entry.namespace,
             "window_from": entry.window_from,
             "window_to": entry.window_to,
+            "missing_days": list(entry.missing_days),
             "fetched_at": entry.fetched_at,
             "row_count": entry.row_count,
         }
@@ -206,43 +207,84 @@ def run_list(args: argparse.Namespace) -> int:
             "retained coverage does not cover the requested window (missing"
             " or evicted); " + refresh_hint,
         )
-    rows: list[dict[str, Any]] = []
+    pairs: list[tuple[capture_store.CaptureEntry, dict[str, Any]]] = []
     seen: set[tuple[str, ...]] = set()
     capability = leaf.capability(variant)
     occurrences_seen: Counter[tuple[str, ...]] = Counter()
-    for entry in selected:
+    # Newest acquisition first: when retained captures overlap, a later
+    # corrected value must win over the older capture of the same identity.
+    for entry in sorted(
+        selected, key=lambda item: (item.fetched_at, item.namespace), reverse=True
+    ):
         occurrences: Counter[tuple[str, ...]] = Counter()
+        missing_days = set(entry.missing_days)
         for record in capture_store.read_capture(store, entry):
+            if variant.profile == spec_mod.PROFILE_DATED:
+                window_from, window_to = resolved.window
+                assert window_from is not None and window_to is not None
+                assert entry.window_from is not None and entry.window_to is not None
+                day = capture_store.series_value(variant, record, "")
+                # Another complete capture can restore coverage, but cannot
+                # make this capture's retained partial-day rows complete.
+                if not (
+                    window_from <= day <= window_to
+                    and entry.window_from <= day <= entry.window_to
+                    and day not in missing_days
+                ):
+                    continue
             identity = capability.identity_key(record)
             if not variant.identity:
                 occurrences[identity] += 1
                 if occurrences[identity] > occurrences_seen[identity]:
-                    rows.append(record)
+                    pairs.append((entry, record))
                 continue
             if identity in seen:
                 continue
             seen.add(identity)
-            rows.append(record)
+            pairs.append((entry, record))
         occurrences_seen |= occurrences
-    if variant.profile == spec_mod.PROFILE_DATED:
-        window_from, window_to = resolved.window
-        assert window_from is not None and window_to is not None
-        rows = [
-            record
-            for record in rows
-            if window_from
-            <= capture_store.series_value(variant, record, "")
-            <= window_to
-        ]
-    latest = max(selected, key=lambda entry: entry.fetched_at)
-    stale = is_stale(_capture_meta_view(latest), config.ttl_hours, now())
+    kept_pairs = [
+        (entry, record) for entry, record in pairs if _matches(record, filters)
+    ]
+    rows = [record for _, record in kept_pairs]
+    # Every returned row needs fresh evidence, and fresh captures together
+    # must cover the whole requested window, including verified empty days.
+    # Testing individual redundancy misses overlapping expired empty captures.
+    contributing = {entry.namespace for entry, _ in kept_pairs}
+    current = now()
+    fresh_entries = [
+        entry
+        for entry in selected
+        if not is_stale(_capture_meta_view(entry), config.ttl_hours, current)
+    ]
+    fresh_namespaces = {entry.namespace for entry in fresh_entries}
+    window_start, window_end = resolved.window
+    fresh_coverage = (
+        capture_store.covers_window(fresh_entries, window_start, window_end)
+        if window_start is not None and window_end is not None
+        else bool(fresh_entries)
+    )
+    contributors = [
+        entry
+        for entry in selected
+        if entry.namespace in contributing or entry.namespace in fresh_namespaces
+    ] or list(selected)
+    latest = max(contributors, key=lambda entry: entry.fetched_at)
+    stale_entries = [
+        entry
+        for entry in selected
+        if entry.namespace not in fresh_namespaces
+        and (entry.namespace in contributing or not fresh_coverage)
+    ]
+    stale = bool(stale_entries)
     if args.require_fresh and stale:
+        oldest = min(stale_entries, key=lambda entry: entry.fetched_at)
         raise CliError(
             CACHE_STALE,
             f"cached capture is older than {config.ttl_hours:g} hours"
-            f" (fetched_at {latest.fetched_at})",
+            f" (fetched_at {oldest.fetched_at})",
         )
-    rows = _sort_rows(variant, _match(rows, filters), latest.fetched_at)
+    rows = _sort_rows(variant, rows, latest.fetched_at)
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
     reported = sum(entry.reported_total or entry.row_count for entry in selected)
@@ -408,7 +450,7 @@ def run_detail(args: argparse.Namespace) -> int:
         return _emit_object(args, detail.table_columns, payload, meta, fields)
     store = Cache(config.cache_path)
     snapshot = detail_store.read_detail_snapshot(store, detail.name)
-    key = detail_store.detail_key(values)
+    key = detail_store.detail_key(values, detail.identity)
     hint = (
         f"run: dogopencli refresh liquidity {' '.join(detail.path)} detail"
         f" {detail.action} "

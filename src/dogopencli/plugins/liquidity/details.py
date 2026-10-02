@@ -37,9 +37,22 @@ def details_namespace(capability: str) -> str:
     return namespace(capability, DETAIL_SCOPE, SOURCE_KIND)
 
 
-def detail_key(values: dict[str, str]) -> str:
-    """Canonical storage key from validated identity option values."""
-    return "|".join(f"{flag}={values[flag]}" for flag in sorted(values))
+def detail_key(
+    values: dict[str, str], identity: tuple[spec.IdentityOption, ...]
+) -> str:
+    """Canonical storage key from validated identity option values.
+
+    Int-typed identities key on the numeric value, so equivalent spellings of
+    one object address one cached detail instead of duplicating it.
+    """
+    kinds = {option.flag: option.kind for option in identity}
+    parts: list[str] = []
+    for flag in sorted(values):
+        value = values[flag]
+        if kinds.get(flag) == "int" and value.isdigit():
+            value = str(int(value))
+        parts.append(f"{flag}={value}")
+    return "|".join(parts)
 
 
 def read_details(store: Cache, capability: str) -> dict[str, StoredDetail]:

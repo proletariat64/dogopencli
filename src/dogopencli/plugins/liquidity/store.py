@@ -13,7 +13,7 @@ so readers only ever see complete old or complete new state.
 """
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -51,6 +51,9 @@ class CaptureEntry:
     kind: str | None = None
     source_origin: str | None = None
     tenant: str | None = None
+    # Exact retention holes; a later missing day must not erase earlier
+    # verified empty days in this capture's acquisition window.
+    missing_days: tuple[str, ...] = ()
 
     def record(self) -> dict[str, Any]:
         return {
@@ -67,6 +70,7 @@ class CaptureEntry:
             "kind": self.kind,
             "source_origin": self.source_origin,
             "tenant": self.tenant,
+            "missing_days": list(self.missing_days),
         }
 
     @staticmethod
@@ -98,6 +102,17 @@ class CaptureEntry:
         kind = record.get("kind")
         source_origin = record.get("source_origin")
         tenant = record.get("tenant")
+        missing_days = record.get("missing_days", [])
+        if not isinstance(missing_days, list) or any(
+            not isinstance(day, str) for day in missing_days
+        ):
+            raise _invalid("cached capture missing days are invalid")
+        for day in missing_days:
+            try:
+                if datetime.strptime(day, "%Y%m%d").strftime("%Y%m%d") != day:
+                    raise ValueError
+            except ValueError as error:
+                raise _invalid("cached capture missing days are invalid") from error
         return CaptureEntry(
             namespace=namespace_value,
             scope=scope_value,
@@ -116,6 +131,7 @@ class CaptureEntry:
             kind=kind if isinstance(kind, str) else None,
             source_origin=source_origin if isinstance(source_origin, str) else None,
             tenant=tenant if isinstance(tenant, str) else None,
+            missing_days=tuple(sorted(set(missing_days))),
         )
 
 
@@ -292,6 +308,49 @@ def _identity_of(list_spec: spec.ListSpec, record: dict[str, Any]) -> str:
     return "|".join(parts)
 
 
+@dataclass(frozen=True)
+class _RankedRecord:
+    """One retained record ranked on its own capture's verified series axis."""
+
+    namespace: str
+    series: str
+    identity: str
+    fetched_at: str
+    seqid: int
+    body: str
+
+
+def _eviction_record(
+    entry: CaptureEntry, dropped: int, *, partial: bool
+) -> dict[str, Any]:
+    return {
+        "namespace": entry.namespace,
+        "window_from": entry.window_from,
+        "window_to": entry.window_to,
+        "dropped_records": dropped,
+        "partial": partial,
+    }
+
+
+def _retained_window_from(
+    profile: str,
+    entry: CaptureEntry,
+    lost: list[_RankedRecord],
+) -> str | None:
+    """Narrow a lost leading boundary without discarding earlier empty days.
+
+    Interior retention holes are represented by missing_days. A lost record
+    on a later day does not invalidate the verified empty days before it.
+    """
+    if profile != spec.PROFILE_DATED or entry.window_from is None:
+        return entry.window_from
+    missing = set(entry.missing_days) | {item.series for item in lost}
+    start = entry.window_from
+    while start in missing:
+        start = _next_day_like(start)
+    return start
+
+
 @dataclass
 class PublishPlan:
     """Everything one refresh must commit atomically."""
@@ -347,11 +406,11 @@ def plan_capture_publish(
     kept: list[CaptureEntry] = []
     dropped_namespaces: list[str] = []
     for entry in existing.captures:
-        same_scope = entry.scope == scope
-        same_window = entry.window_from == window_from and entry.window_to == window_to
-        if profile == spec.PROFILE_SNAPSHOT and same_scope:
-            dropped_namespaces.append(entry.namespace)
-        elif profile == spec.PROFILE_DATED and same_scope and same_window:
+        # Replacement is namespace identity. Retention narrows a trimmed
+        # capture's indexed window, so its window no longer names the
+        # acquisition it stands for, and matching on the window would leave
+        # two index entries pointing at one namespace.
+        if entry.namespace == entry_ns:
             dropped_namespaces.append(entry.namespace)
         else:
             kept.append(entry)
@@ -419,118 +478,138 @@ def plan_capture_publish(
                 " previous cache is retained"
             )
     excess = total - cap
-    ordered = sorted(
-        entries,
-        key=lambda entry: (entry.window_to or entry.fetched_at, entry.namespace),
-    )
-    dropped = 0
-    retained_from: str | None = None
-    tie_break: str | None = None
-    evicted: list[dict[str, Any]] = []
-    survivors: list[CaptureEntry] = list(ordered)
-    for victim in list(ordered):
-        if excess <= 0:
-            break
-        if victim.row_count <= excess:
-            excess -= victim.row_count
-            dropped += victim.row_count
-            survivors.remove(victim)
-            if victim.namespace != entry_ns:
-                plan.dropped_namespaces.append(victim.namespace)
-            else:
-                plan.capture_records = []
-            evicted.append(
-                {
-                    "namespace": victim.namespace,
-                    "window_from": victim.window_from,
-                    "window_to": victim.window_to,
-                    "dropped_records": victim.row_count,
-                    "partial": False,
-                }
-            )
-            continue
-        # Split the boundary capture: drop exactly the oldest excess records
-        # by (series time, identity, position) and keep the newest rest.
-        if victim.namespace in pending_rows:
-            stored_rows = pending_rows[victim.namespace]
-        else:
-            stored_rows = store.read(victim.namespace)[1]
-        victim_spec = _owning_variant(list_spec, victim)
-        decoded: list[tuple[str, str, int, str]] = []
+    # Retention is record-granular (ADR 0017): overlapping captures cannot be
+    # ranked as wholes without discarding newer records, so every retained
+    # record is decoded with its own capture's variant and ranked on the
+    # verified series axis with a stable identity tie-breaker.
+    ranked: list[_RankedRecord] = []
+    for entry in entries:
+        stored_rows = pending_rows.get(entry.namespace)
+        if stored_rows is None:
+            stored_rows = store.read(entry.namespace)[1]
+        entry_spec = _owning_variant(list_spec, entry)
         for seqid, body in stored_rows:
             record = parse(body)
-            decoded.append(
-                (
-                    series_value(victim_spec, record, victim.fetched_at),
-                    _identity_of(victim_spec, record),
-                    seqid,
-                    body,
+            ranked.append(
+                _RankedRecord(
+                    namespace=entry.namespace,
+                    series=series_value(entry_spec, record, entry.fetched_at),
+                    identity=_identity_of(entry_spec, record),
+                    fetched_at=entry.fetched_at,
+                    seqid=seqid,
+                    body=body,
                 )
             )
-        decoded.sort(key=lambda item: (item[0], item[1], item[2]))
-        keep = decoded[excess:]
-        dropped += excess
-        retained_from = keep[0][0]
-        tie_break = keep[0][1]
-        survivors.remove(victim)
-        trimmed_entry = CaptureEntry(
-            namespace=victim.namespace,
-            scope=victim.scope,
-            window_from=retained_from
-            if profile == spec.PROFILE_DATED
-            else victim.window_from,
-            window_to=victim.window_to,
-            profile=victim.profile,
-            fetched_at=victim.fetched_at,
-            row_count=len(keep),
-            reported_total=victim.reported_total,
-            snapshot_id=hashlib.sha256(
-                canonical([item[3] for item in keep]).encode()
-            ).hexdigest(),
-            kind=victim.kind,
-            source_origin=victim.source_origin,
-            tenant=victim.tenant,
+    # Acquisition time breaks identity ties: an older copy of one record must
+    # evict before the newer correction of it, whatever their namespaces.
+    ranked.sort(
+        key=lambda item: (
+            item.series,
+            item.identity,
+            item.fetched_at,
+            item.namespace,
+            item.seqid,
         )
-        survivors.append(trimmed_entry)
+    )
+    evicted_records = ranked[:excess]
+    surviving = ranked[excess:]
+    kept_rows: dict[str, list[_RankedRecord]] = {}
+    for item in surviving:
+        kept_rows.setdefault(item.namespace, []).append(item)
+    lost_rows: dict[str, list[_RankedRecord]] = {}
+    for item in evicted_records:
+        lost_rows.setdefault(item.namespace, []).append(item)
+
+    survivors: list[CaptureEntry] = []
+    evicted: list[dict[str, Any]] = []
+    for entry in entries:
+        remaining = kept_rows.get(entry.namespace, [])
+        lost = lost_rows.get(entry.namespace, [])
+        if not lost:
+            survivors.append(entry)
+            continue
+        retained_from = _retained_window_from(profile, entry, lost)
+        if not remaining and (
+            profile != spec.PROFILE_DATED
+            or retained_from is None
+            or entry.window_to is None
+            or retained_from > entry.window_to
+        ):
+            if entry.namespace != entry_ns:
+                plan.dropped_namespaces.append(entry.namespace)
+            else:
+                plan.capture_records = []
+            if lost:
+                evicted.append(_eviction_record(entry, len(lost), partial=False))
+            continue
+        remaining.sort(key=lambda item: item.seqid)
+        bodies = [item.body for item in remaining]
+        trimmed_entry = CaptureEntry(
+            namespace=entry.namespace,
+            scope=entry.scope,
+            window_from=retained_from,
+            window_to=entry.window_to,
+            profile=entry.profile,
+            fetched_at=entry.fetched_at,
+            row_count=len(remaining),
+            reported_total=entry.reported_total,
+            snapshot_id=hashlib.sha256(canonical(bodies).encode()).hexdigest(),
+            kind=entry.kind,
+            source_origin=entry.source_origin,
+            tenant=entry.tenant,
+            missing_days=entry.missing_days,
+        )
         trimmed_meta = SnapshotMeta(
-            namespace=victim.namespace,
+            namespace=entry.namespace,
             capability=list_spec.name,
-            scope=victim.scope,
+            scope=entry.scope,
             source_kind=SOURCE_KIND,
             snapshot_id=trimmed_entry.snapshot_id,
             dataset_id=None,
             simulated=False,
             backend_complete=True,
             dataset_complete=True,
-            fetched_at=victim.fetched_at,
+            fetched_at=entry.fetched_at,
             loaded_at=loaded_at,
             source_observed_from=trimmed_entry.window_from,
             source_observed_to=trimmed_entry.window_to,
-            row_count=len(keep),
+            row_count=len(remaining),
         )
-        trimmed_records = [(index, item[3]) for index, item in enumerate(keep, 1)]
-        if victim.namespace == entry_ns:
+        trimmed_records = [(index, body) for index, body in enumerate(bodies, 1)]
+        if entry.namespace == entry_ns:
             plan.capture_meta = trimmed_meta
             plan.capture_records = trimmed_records
         else:
-            plan.trimmed[victim.namespace] = (trimmed_meta, trimmed_records)
-        evicted.append(
-            {
-                "namespace": victim.namespace,
-                "window_from": victim.window_from,
-                "window_to": victim.window_to,
-                "dropped_records": excess,
-                "partial": True,
-            }
-        )
-        excess = 0
-    retained = sum(entry.row_count for entry in survivors)
+            plan.trimmed[entry.namespace] = (trimmed_meta, trimmed_records)
+        survivors.append(trimmed_entry)
+        evicted.append(_eviction_record(entry, len(lost), partial=True))
+    if profile == spec.PROFILE_DATED:
+        # A record lost from one capture is not recovered by another capture's
+        # older or different record set. Invalidate overlapping coverage in
+        # the same scope atomically; a complete refresh can restore it later.
+        lost_days: dict[str, set[str]] = {}
+        scopes = {entry.namespace: entry.scope for entry in entries}
+        for item in evicted_records:
+            lost_days.setdefault(scopes[item.namespace], set()).add(item.series)
+        for index, entry in enumerate(survivors):
+            affected = [
+                day
+                for day in lost_days.get(entry.scope, ())
+                if entry.window_from is not None
+                and entry.window_to is not None
+                and entry.window_from <= day <= entry.window_to
+            ]
+            if affected:
+                survivors[index] = replace(
+                    entry,
+                    missing_days=tuple(sorted(set(entry.missing_days) | set(affected))),
+                )
     plan.index = IndexData(captures=survivors)
     plan.eviction = EvictionReport(
-        dropped=dropped,
-        retained=retained,
-        retained_from=retained_from,
-        tie_break=tie_break,
+        dropped=len(evicted_records),
+        retained=len(surviving),
+        retained_from=surviving[0].series if surviving else None,
+        tie_break=surviving[0].identity if surviving else None,
         evicted=tuple(evicted),
     )
     return plan
@@ -578,15 +657,28 @@ def select_captures(
         and entry.window_from <= window_to
         and entry.window_to >= window_from
     ]
-    return covering, _covered(covering, window_from, window_to)
+    return covering, covers_window(covering, window_from, window_to)
 
 
-def _covered(entries: list[CaptureEntry], start: str, end: str) -> bool:
-    intervals = sorted(
-        (entry.window_from, entry.window_to)
-        for entry in entries
-        if entry.window_from is not None and entry.window_to is not None
-    )
+def covers_window(entries: list[CaptureEntry], start: str, end: str) -> bool:
+    """Whether the union of complete capture intervals covers every requested day."""
+    intervals: list[tuple[str, str]] = []
+    for entry in entries:
+        if entry.window_from is None or entry.window_to is None:
+            continue
+        interval_from = entry.window_from
+        for day in entry.missing_days:
+            if day < interval_from or day > entry.window_to:
+                continue
+            if interval_from < day:
+                previous = (
+                    datetime.strptime(day, "%Y%m%d") - timedelta(days=1)
+                ).strftime("%Y%m%d")
+                intervals.append((interval_from, previous))
+            interval_from = _next_day_like(day)
+        if interval_from <= entry.window_to:
+            intervals.append((interval_from, entry.window_to))
+    intervals.sort()
     cursor = start
     for interval_from, interval_to in intervals:
         if interval_from > cursor:

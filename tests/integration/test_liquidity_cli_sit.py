@@ -7,6 +7,7 @@ retention metadata, deferred discovery and auth expiry. All data synthetic.
 """
 
 import json
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -715,7 +716,7 @@ def test_detail_freshness_is_per_object_not_latest_upsert(setup, run_cli):
     details.upsert_detail(
         cache,
         leaf.spec.name,
-        details.detail_key({"investment_no": "A"}),
+        details.detail_key({"investment_no": "A"}, leaf.spec.identity),
         {"orderId": "A"},
         old,
         old,
@@ -723,7 +724,7 @@ def test_detail_freshness_is_per_object_not_latest_upsert(setup, run_cli):
     details.upsert_detail(
         cache,
         leaf.spec.name,
-        details.detail_key({"investment_no": "B"}),
+        details.detail_key({"investment_no": "B"}, leaf.spec.identity),
         {"orderId": "B"},
         fresh,
         fresh,
@@ -781,3 +782,309 @@ def test_liquidity_does_not_require_payment_auth(setup, run_cli):
     assert all(
         PAYMENT_URL not in transport.created for transport in setup.state.transports
     )
+
+
+def _seed_returns_captures(setup, captures):
+    """Publish dated cash-return captures with explicit fetch times."""
+    from dogopencli.cache import Cache
+    from dogopencli.plugins.liquidity import store as capture_store
+    from dogopencli.plugins.liquidity.leaves import list_leaf
+
+    leaf = list_leaf(("investment", "returns"))
+    store = Cache(setup.cache_path)
+    for window, rows, fetched_at in captures:
+        resolved = leaf.resolve(
+            {"basis": "cash", "from_date": window[0], "to_date": window[1]}
+        )
+        plan = capture_store.plan_capture_publish(
+            store,
+            resolved.spec,
+            resolved.scope_key,
+            resolved.window,
+            rows,
+            len(rows),
+            fetched_at,
+            fetched_at,
+        )
+        capture_store.commit_plan(store, resolved.spec.name, plan, fetched_at)
+
+
+def _returns_row(identity, day, income):
+    return {
+        "transactionId": identity,
+        "settlementDate": day,
+        "interestIncome": income,
+        "currency": "USD",
+    }
+
+
+RETURNS_QUERY = [
+    "liquidity",
+    "investment",
+    "returns",
+    "list",
+    "--basis",
+    "cash",
+    "--all",
+]
+
+
+def test_overlapping_captures_resolve_to_the_newest_value(setup, run_cli):
+    from dogopencli.plugins.liquidity.common import now
+
+    recent = (now() - timedelta(hours=1)).isoformat()
+    newest = now().isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (("20260930", "20261001"), [_returns_row("T1", "20261001", "OLD")], recent),
+            (("20261001", "20261001"), [_returns_row("T1", "20261001", "NEW")], newest),
+        ],
+    )
+    code, out, err = run_cli(
+        [*RETURNS_QUERY, "--from-date", "20261001", "--to-date", "20261001"]
+    )
+    assert code == 0, err
+    data = parse(out)["data"]
+    # One identity, two retained captures: the later acquisition wins.
+    assert [row["interestIncome"] for row in data] == ["NEW"]
+
+
+def test_require_fresh_covers_every_contributing_capture(setup, run_cli):
+    from dogopencli.plugins.liquidity.common import now
+
+    expired = (now() - timedelta(hours=100)).isoformat()  # beyond the 72h ttl
+    fresh = now().isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (("20260930", "20260930"), [_returns_row("T1", "20260930", "1")], expired),
+            (("20261001", "20261001"), [_returns_row("T2", "20261001", "2")], fresh),
+        ],
+    )
+    query = [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20261001"]
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    envelope = parse(out)
+    assert [row["transactionId"] for row in envelope["data"]] == ["T1", "T2"]
+    # A freshly refreshed day does not vouch for the expired one it merged with.
+    assert envelope["meta"]["stale"] is True
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_STALE"
+
+
+def test_expired_capture_contributing_nothing_keeps_result_fresh(setup, run_cli):
+    from dogopencli.plugins.liquidity.common import now
+
+    expired = (now() - timedelta(hours=100)).isoformat()  # beyond the 72h ttl
+    fresh = now().isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (
+                ("20260930", "20261001"),
+                [_returns_row("T1", "20261001", "OLD")],
+                expired,
+            ),
+            (
+                ("20261001", "20261001"),
+                [_returns_row("T1", "20261001", "NEW")],
+                fresh,
+            ),
+        ],
+    )
+    query = [*RETURNS_QUERY, "--from-date", "20261001", "--to-date", "20261001"]
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == 0, err
+    envelope = parse(out)
+    # The expired capture is retained and covers the window, but every row it
+    # holds is superseded, so it contributes nothing to the reported result.
+    assert [row["interestIncome"] for row in envelope["data"]] == ["NEW"]
+    assert envelope["meta"]["stale"] is False
+
+
+def test_expired_sole_coverage_of_an_empty_day_is_not_fresh(setup, run_cli):
+    from dogopencli.plugins.liquidity.common import now
+
+    expired = (now() - timedelta(hours=100)).isoformat()  # beyond the 72h ttl
+    fresh = now().isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (("20260930", "20260930"), [], expired),
+            (("20261001", "20261001"), [_returns_row("T2", "20261001", "2")], fresh),
+        ],
+    )
+    query = [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20261001"]
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    envelope = parse(out)
+    assert [row["transactionId"] for row in envelope["data"]] == ["T2"]
+    # The empty 20260930 rests only on the expired capture, so the combined
+    # answer is not fresh even though every reported row came from a fresh one.
+    assert envelope["meta"]["stale"] is True
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_STALE"
+
+
+def test_integer_detail_identity_spellings_share_one_cache_entry(setup, run_cli):
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {"success": True, "data": {"id": payload["id"], "name": "SVC"}},
+    }
+    refresh = [
+        "refresh",
+        "liquidity",
+        "network",
+        "account-capabilities",
+        "detail",
+        "get",
+        "--id",
+        "007",
+    ]
+    code, out, err = run_cli(refresh)
+    assert code == 0, err
+    assert setup.state.business_requests[0]["id"] == 7
+    code, out, err = run_cli(
+        ["liquidity", "network", "account-capabilities", "get", "--id", "7"]
+    )
+    assert code == 0, err
+    assert parse(out)["data"]["id"] == 7
+
+
+def test_outside_window_identity_does_not_hide_matching_row(setup, run_cli):
+    from dogopencli.plugins.liquidity.common import now
+
+    fresh = now().isoformat()
+    recent = (now() - timedelta(hours=1)).isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (("20260930", "20260930"), [_returns_row("T1", "20260930", "IN")], recent),
+            (("20260930", "20261001"), [_returns_row("T1", "20261001", "OUT")], fresh),
+        ],
+    )
+    code, out, err = run_cli(
+        [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20260930"]
+    )
+    assert code == 0, err
+    assert [row["interestIncome"] for row in parse(out)["data"]] == ["IN"]
+
+
+@pytest.mark.parametrize("fresh_empty_day", [False, True])
+def test_redundant_expired_empty_coverage_needs_fresh_evidence(
+    setup, run_cli, fresh_empty_day
+):
+    from dogopencli.plugins.liquidity.common import now
+
+    expired = (now() - timedelta(hours=100)).isoformat()
+    fresh = now().isoformat()
+    captures = [
+        (("20260929", "20260930"), [], expired),
+        (("20260930", "20260930"), [], expired),
+        (("20261001", "20261001"), [_returns_row("T2", "20261001", "2")], fresh),
+    ]
+    if fresh_empty_day:
+        captures.append((("20260930", "20261001"), [], fresh))
+    _seed_returns_captures(setup, captures)
+    query = [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20261001"]
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    assert parse(out)["meta"]["stale"] is (not fresh_empty_day)
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == (0 if fresh_empty_day else 1), err
+    if not fresh_empty_day:
+        assert parse(out)["error"]["code"] == "CACHE_STALE"
+
+
+def test_eviction_preserves_earlier_empty_day_end_to_end(setup, run_cli, monkeypatch):
+    from functools import partial
+
+    from dogopencli.plugins.liquidity import store as capture_store
+    from dogopencli.plugins.liquidity.common import now
+
+    monkeypatch.setattr(
+        capture_store,
+        "plan_capture_publish",
+        partial(capture_store.plan_capture_publish, cap=1),
+    )
+    fresh = now().isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (("20260928", "20260929"), [], fresh),
+            (("20260929", "20260929"), [_returns_row("T1", "20260929", "1")], fresh),
+            (("20260930", "20260930"), [_returns_row("T2", "20260930", "2")], fresh),
+        ],
+    )
+    query = [*RETURNS_QUERY, "--from-date", "20260928", "--to-date", "20260928"]
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == 0, err
+    envelope = parse(out)
+    assert envelope["data"] == []
+    assert envelope["meta"]["complete"] is True
+    assert envelope["meta"]["retained_coverage"][0]["missing_days"] == ["20260929"]
+    spanning = [*RETURNS_QUERY, "--from-date", "20260928", "--to-date", "20260930"]
+    code, out, err = run_cli(spanning)
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    # A complete acquisition restores only the refreshed day's coverage.
+    _seed_returns_captures(setup, [(("20260929", "20260929"), [], fresh)])
+    code, out, err = run_cli([*spanning, "--require-fresh"])
+    assert code == 0, err
+    assert [row["transactionId"] for row in parse(out)["data"]] == ["T2"]
+
+
+@pytest.mark.parametrize("older_start", ["20260928", "20260929"])
+@pytest.mark.parametrize(
+    "refreshed_rows", [[], [_returns_row("T3", "20260929", "NEW")]]
+)
+def test_partial_day_rows_do_not_enter_restored_complete_result(
+    setup, run_cli, monkeypatch, older_start, refreshed_rows
+):
+    from functools import partial
+
+    from dogopencli.plugins.liquidity import store as capture_store
+    from dogopencli.plugins.liquidity.common import now
+
+    expired = (now() - timedelta(hours=100)).isoformat()
+    fresh = now().isoformat()
+    original_publish = capture_store.plan_capture_publish
+    monkeypatch.setattr(
+        capture_store, "plan_capture_publish", partial(original_publish, cap=1)
+    )
+    _seed_returns_captures(
+        setup,
+        [
+            (
+                (older_start, "20260930"),
+                [
+                    _returns_row("T1", "20260929", "EVICTED"),
+                    _returns_row("T2", "20260929", "PARTIAL"),
+                ],
+                expired,
+            ),
+        ],
+    )
+    monkeypatch.setattr(capture_store, "plan_capture_publish", original_publish)
+    # Restore coverage through a different namespace, so the partial capture
+    # remains stored with either an interior hole or a narrowed leading edge.
+    refreshed_start = "20260929" if older_start == "20260928" else "20260928"
+    _seed_returns_captures(
+        setup,
+        [
+            ((refreshed_start, "20260930"), refreshed_rows, fresh),
+        ],
+    )
+    query = [*RETURNS_QUERY, "--from-date", "20260929", "--to-date", "20260930"]
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    envelope = parse(out)
+    assert envelope["data"] == refreshed_rows
+    assert envelope["meta"]["complete"] is True
+    assert envelope["meta"]["stale"] is False
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == 0, err
+    assert parse(out)["data"] == refreshed_rows
