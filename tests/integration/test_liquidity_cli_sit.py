@@ -952,3 +952,48 @@ def test_integer_detail_identity_spellings_share_one_cache_entry(setup, run_cli)
     )
     assert code == 0, err
     assert parse(out)["data"]["id"] == 7
+
+
+def test_outside_window_identity_does_not_hide_matching_row(setup, run_cli):
+    from dogopencli.plugins.liquidity.common import now
+
+    fresh = now().isoformat()
+    recent = (now() - timedelta(hours=1)).isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (("20260930", "20260930"), [_returns_row("T1", "20260930", "IN")], recent),
+            (("20260930", "20261001"), [_returns_row("T1", "20261001", "OUT")], fresh),
+        ],
+    )
+    code, out, err = run_cli(
+        [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20260930"]
+    )
+    assert code == 0, err
+    assert [row["interestIncome"] for row in parse(out)["data"]] == ["IN"]
+
+
+@pytest.mark.parametrize("fresh_empty_day", [False, True])
+def test_redundant_expired_empty_coverage_needs_fresh_evidence(
+    setup, run_cli, fresh_empty_day
+):
+    from dogopencli.plugins.liquidity.common import now
+
+    expired = (now() - timedelta(hours=100)).isoformat()
+    fresh = now().isoformat()
+    captures = [
+        (("20260929", "20260930"), [], expired),
+        (("20260930", "20260930"), [], expired),
+        (("20261001", "20261001"), [_returns_row("T2", "20261001", "2")], fresh),
+    ]
+    if fresh_empty_day:
+        captures.append((("20260930", "20261001"), [], fresh))
+    _seed_returns_captures(setup, captures)
+    query = [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20261001"]
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    assert parse(out)["meta"]["stale"] is (not fresh_empty_day)
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == (0 if fresh_empty_day else 1), err
+    if not fresh_empty_day:
+        assert parse(out)["error"]["code"] == "CACHE_STALE"

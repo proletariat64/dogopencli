@@ -460,3 +460,75 @@ def test_detail_key_canonicalizes_integer_identities():
     assert detail_store.detail_key({"investment_no": "007"}, textual) == (
         "investment_no=007"
     )
+
+
+@pytest.mark.parametrize("empty_first", [True, False])
+def test_overflow_preserves_empty_day_coverage(tmp_path, empty_first):
+    store = Cache(tmp_path / "cache.sqlite3")
+    empty = (("20260928", "20260928"), [])
+    populated = (("20260929", "20260929"), [holding(1, "20260929")])
+    first, second = (empty, populated) if empty_first else (populated, empty)
+    publish_dated(store, *first, T1, cap=1)
+    publish_dated(store, *second, T2, cap=1)
+    publish_dated(store, ("20260930", "20260930"), [holding(2, "20260930")], T3, cap=1)
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    selected, covered = capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", empty[0]
+    )
+    assert covered
+    assert len(selected) == 1
+    assert capture_store.read_capture(store, selected[0]) == []
+
+
+@pytest.mark.parametrize("overlap_rows", [[], [holding(9, "20260929")]])
+def test_overlapping_capture_cannot_mask_evicted_day(tmp_path, overlap_rows):
+    store = Cache(tmp_path / "cache.sqlite3")
+    publish_dated(store, ("20260928", "20260929"), overlap_rows, T1)
+    day = [holding(i, "20260929") for i in (1, 2, 3)]
+    publish_dated(store, ("20260929", "20260929"), day, T2, cap=2)
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    assert not capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", ("20260929", "20260929")
+    )[1]
+    # Complete reacquisition restores coverage without retaining a false gap.
+    publish_dated(store, ("20260929", "20260929"), day, T3)
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    assert capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", ("20260929", "20260929")
+    )[1]
+
+
+def test_new_empty_capture_survives_overflow(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    publish_dated(
+        store,
+        ("20260929", "20260929"),
+        [holding(1, "20260929"), holding(2, "20260929")],
+        T1,
+    )
+    publish_dated(store, ("20260930", "20260930"), [], T2, cap=1)
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    selected, covered = capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", ("20260930", "20260930")
+    )
+    assert covered
+    assert capture_store.read_capture(store, selected[0]) == []
+
+
+def test_eviction_does_not_invalidate_another_scope(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+    plan = capture_store.plan_capture_publish(
+        store, INVESTMENT_HOLDINGS, "other", ("20260929", "20260929"), [], 0, T1, T1
+    )
+    capture_store.commit_plan(store, INVESTMENT_HOLDINGS.name, plan, T1)
+    publish_dated(
+        store,
+        ("20260929", "20260929"),
+        [holding(1, "20260929"), holding(2, "20260929")],
+        T2,
+        cap=1,
+    )
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    assert capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "other", ("20260929", "20260929")
+    )[1]

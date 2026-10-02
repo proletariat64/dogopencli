@@ -13,7 +13,7 @@ so readers only ever see complete old or complete new state.
 """
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -511,6 +511,9 @@ def plan_capture_publish(
     for entry in entries:
         remaining = kept_rows.get(entry.namespace, [])
         lost = lost_rows.get(entry.namespace, [])
+        if not lost:
+            survivors.append(entry)
+            continue
         if not remaining:
             if entry.namespace != entry_ns:
                 plan.dropped_namespaces.append(entry.namespace)
@@ -518,9 +521,6 @@ def plan_capture_publish(
                 plan.capture_records = []
             if lost:
                 evicted.append(_eviction_record(entry, len(lost), partial=False))
-            continue
-        if not lost:
-            survivors.append(entry)
             continue
         remaining.sort(key=lambda item: item.seqid)
         bodies = [item.body for item in remaining]
@@ -562,6 +562,26 @@ def plan_capture_publish(
             plan.trimmed[entry.namespace] = (trimmed_meta, trimmed_records)
         survivors.append(trimmed_entry)
         evicted.append(_eviction_record(entry, len(lost), partial=True))
+    if profile == spec.PROFILE_DATED:
+        # A record lost from one capture is not recovered by another capture's
+        # older or different record set. Invalidate overlapping coverage in
+        # the same scope atomically; a complete refresh can restore it later.
+        lost_days: dict[str, set[str]] = {}
+        scopes = {entry.namespace: entry.scope for entry in entries}
+        for item in evicted_records:
+            lost_days.setdefault(scopes[item.namespace], set()).add(item.series)
+        for index, entry in enumerate(survivors):
+            affected = [
+                day
+                for day in lost_days.get(entry.scope, ())
+                if entry.window_from is not None
+                and entry.window_to is not None
+                and entry.window_from <= day <= entry.window_to
+            ]
+            if affected:
+                survivors[index] = replace(
+                    entry, window_from=_next_day_like(max(affected))
+                )
     plan.index = IndexData(captures=survivors)
     plan.eviction = EvictionReport(
         dropped=len(evicted_records),
@@ -615,28 +635,11 @@ def select_captures(
         and entry.window_from <= window_to
         and entry.window_to >= window_from
     ]
-    return covering, _covered(covering, window_from, window_to)
+    return covering, covers_window(covering, window_from, window_to)
 
 
-def is_load_bearing(
-    entries: list[CaptureEntry],
-    entry: CaptureEntry,
-    start: str | None,
-    end: str | None,
-) -> bool:
-    """Whether dropping one capture would leave the requested window uncovered.
-
-    A capture that is the only coverage for part of a window is load-bearing
-    even when it supplied no row: the absence of records there is part of the
-    answer, so its own freshness still matters. Undated profiles select a
-    single capture, which always is.
-    """
-    if start is None or end is None:
-        return True
-    return not _covered([item for item in entries if item is not entry], start, end)
-
-
-def _covered(entries: list[CaptureEntry], start: str, end: str) -> bool:
+def covers_window(entries: list[CaptureEntry], start: str, end: str) -> bool:
+    """Whether the union of complete capture intervals covers every requested day."""
     intervals = sorted(
         (entry.window_from, entry.window_to)
         for entry in entries

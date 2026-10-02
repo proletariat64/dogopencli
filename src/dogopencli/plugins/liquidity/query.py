@@ -217,6 +217,15 @@ def run_list(args: argparse.Namespace) -> int:
     ):
         occurrences: Counter[tuple[str, ...]] = Counter()
         for record in capture_store.read_capture(store, entry):
+            if variant.profile == spec_mod.PROFILE_DATED:
+                window_from, window_to = resolved.window
+                assert window_from is not None and window_to is not None
+                if not (
+                    window_from
+                    <= capture_store.series_value(variant, record, "")
+                    <= window_to
+                ):
+                    continue
             identity = capability.identity_key(record)
             if not variant.identity:
                 occurrences[identity] += 1
@@ -228,40 +237,38 @@ def run_list(args: argparse.Namespace) -> int:
             seen.add(identity)
             pairs.append((entry, record))
         occurrences_seen |= occurrences
-    if variant.profile == spec_mod.PROFILE_DATED:
-        window_from, window_to = resolved.window
-        assert window_from is not None and window_to is not None
-        pairs = [
-            (entry, record)
-            for entry, record in pairs
-            if window_from
-            <= capture_store.series_value(variant, record, "")
-            <= window_to
-        ]
     kept_pairs = [
         (entry, record) for entry, record in pairs if _matches(record, filters)
     ]
     rows = [record for _, record in kept_pairs]
-    # Freshness follows the captures the answer actually rests on: those that
-    # supplied a reported row, plus those no other capture could replace
-    # without opening a gap in the requested window. An empty day is evidence
-    # too, so expired sole coverage must not pass --require-fresh. A capture
-    # whose rows were all superseded and whose window is covered elsewhere
-    # rests under nothing and is ignored.
+    # Every returned row needs fresh evidence, and fresh captures together
+    # must cover the whole requested window, including verified empty days.
+    # Testing individual redundancy misses overlapping expired empty captures.
     contributing = {entry.namespace for entry, _ in kept_pairs}
+    current = now()
+    fresh_entries = [
+        entry
+        for entry in selected
+        if not is_stale(_capture_meta_view(entry), config.ttl_hours, current)
+    ]
+    fresh_namespaces = {entry.namespace for entry in fresh_entries}
     window_start, window_end = resolved.window
+    fresh_coverage = (
+        capture_store.covers_window(fresh_entries, window_start, window_end)
+        if window_start is not None and window_end is not None
+        else bool(fresh_entries)
+    )
     contributors = [
         entry
         for entry in selected
-        if entry.namespace in contributing
-        or capture_store.is_load_bearing(selected, entry, window_start, window_end)
+        if entry.namespace in contributing or entry.namespace in fresh_namespaces
     ] or list(selected)
     latest = max(contributors, key=lambda entry: entry.fetched_at)
-    current = now()
     stale_entries = [
         entry
-        for entry in contributors
-        if is_stale(_capture_meta_view(entry), config.ttl_hours, current)
+        for entry in selected
+        if entry.namespace not in fresh_namespaces
+        and (entry.namespace in contributing or not fresh_coverage)
     ]
     stale = bool(stale_entries)
     if args.require_fresh and stale:
