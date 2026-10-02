@@ -1035,3 +1035,56 @@ def test_eviction_preserves_earlier_empty_day_end_to_end(setup, run_cli, monkeyp
     code, out, err = run_cli([*spanning, "--require-fresh"])
     assert code == 0, err
     assert [row["transactionId"] for row in parse(out)["data"]] == ["T2"]
+
+
+@pytest.mark.parametrize("older_start", ["20260928", "20260929"])
+@pytest.mark.parametrize(
+    "refreshed_rows", [[], [_returns_row("T3", "20260929", "NEW")]]
+)
+def test_partial_day_rows_do_not_enter_restored_complete_result(
+    setup, run_cli, monkeypatch, older_start, refreshed_rows
+):
+    from functools import partial
+
+    from dogopencli.plugins.liquidity import store as capture_store
+    from dogopencli.plugins.liquidity.common import now
+
+    expired = (now() - timedelta(hours=100)).isoformat()
+    fresh = now().isoformat()
+    original_publish = capture_store.plan_capture_publish
+    monkeypatch.setattr(
+        capture_store, "plan_capture_publish", partial(original_publish, cap=1)
+    )
+    _seed_returns_captures(
+        setup,
+        [
+            (
+                (older_start, "20260930"),
+                [
+                    _returns_row("T1", "20260929", "EVICTED"),
+                    _returns_row("T2", "20260929", "PARTIAL"),
+                ],
+                expired,
+            ),
+        ],
+    )
+    monkeypatch.setattr(capture_store, "plan_capture_publish", original_publish)
+    # Restore coverage through a different namespace, so the partial capture
+    # remains stored with either an interior hole or a narrowed leading edge.
+    refreshed_start = "20260929" if older_start == "20260928" else "20260928"
+    _seed_returns_captures(
+        setup,
+        [
+            ((refreshed_start, "20260930"), refreshed_rows, fresh),
+        ],
+    )
+    query = [*RETURNS_QUERY, "--from-date", "20260929", "--to-date", "20260930"]
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    envelope = parse(out)
+    assert envelope["data"] == refreshed_rows
+    assert envelope["meta"]["complete"] is True
+    assert envelope["meta"]["stale"] is False
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == 0, err
+    assert parse(out)["data"] == refreshed_rows

@@ -217,14 +217,19 @@ def run_list(args: argparse.Namespace) -> int:
         selected, key=lambda item: (item.fetched_at, item.namespace), reverse=True
     ):
         occurrences: Counter[tuple[str, ...]] = Counter()
+        missing_days = set(entry.missing_days)
         for record in capture_store.read_capture(store, entry):
             if variant.profile == spec_mod.PROFILE_DATED:
                 window_from, window_to = resolved.window
                 assert window_from is not None and window_to is not None
+                assert entry.window_from is not None and entry.window_to is not None
+                day = capture_store.series_value(variant, record, "")
+                # Another complete capture can restore coverage, but cannot
+                # make this capture's retained partial-day rows complete.
                 if not (
-                    window_from
-                    <= capture_store.series_value(variant, record, "")
-                    <= window_to
+                    window_from <= day <= window_to
+                    and entry.window_from <= day <= entry.window_to
+                    and day not in missing_days
                 ):
                     continue
             identity = capability.identity_key(record)
