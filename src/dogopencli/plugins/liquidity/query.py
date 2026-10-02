@@ -245,7 +245,10 @@ def run_list(args: argparse.Namespace) -> int:
     # Freshness follows the rows actually reported. A capture whose records
     # were all superseded, or all fell outside the requested window and the
     # local filters, contributes nothing: it must neither vouch for the
-    # result nor taint it.
+    # result nor taint it. When no row survives at all, every selected
+    # capture is the whole evidence for that empty answer, so all of them
+    # count: an empty result drawn from expired captures must not pass
+    # --require-fresh as fresh.
     contributing = {entry.namespace for entry, _ in kept_pairs}
     contributors = [
         entry for entry in selected if entry.namespace in contributing
