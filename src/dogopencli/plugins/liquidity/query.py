@@ -242,16 +242,19 @@ def run_list(args: argparse.Namespace) -> int:
         (entry, record) for entry, record in pairs if _matches(record, filters)
     ]
     rows = [record for _, record in kept_pairs]
-    # Freshness follows the rows actually reported. A capture whose records
-    # were all superseded, or all fell outside the requested window and the
-    # local filters, contributes nothing: it must neither vouch for the
-    # result nor taint it. When no row survives at all, every selected
-    # capture is the whole evidence for that empty answer, so all of them
-    # count: an empty result drawn from expired captures must not pass
-    # --require-fresh as fresh.
+    # Freshness follows the captures the answer actually rests on: those that
+    # supplied a reported row, plus those no other capture could replace
+    # without opening a gap in the requested window. An empty day is evidence
+    # too, so expired sole coverage must not pass --require-fresh. A capture
+    # whose rows were all superseded and whose window is covered elsewhere
+    # rests under nothing and is ignored.
     contributing = {entry.namespace for entry, _ in kept_pairs}
+    window_start, window_end = resolved.window
     contributors = [
-        entry for entry in selected if entry.namespace in contributing
+        entry
+        for entry in selected
+        if entry.namespace in contributing
+        or capture_store.is_load_bearing(selected, entry, window_start, window_end)
     ] or list(selected)
     latest = max(contributors, key=lambda entry: entry.fetched_at)
     current = now()

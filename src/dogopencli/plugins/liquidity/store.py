@@ -618,6 +618,24 @@ def select_captures(
     return covering, _covered(covering, window_from, window_to)
 
 
+def is_load_bearing(
+    entries: list[CaptureEntry],
+    entry: CaptureEntry,
+    start: str | None,
+    end: str | None,
+) -> bool:
+    """Whether dropping one capture would leave the requested window uncovered.
+
+    A capture that is the only coverage for part of a window is load-bearing
+    even when it supplied no row: the absence of records there is part of the
+    answer, so its own freshness still matters. Undated profiles select a
+    single capture, which always is.
+    """
+    if start is None or end is None:
+        return True
+    return not _covered([item for item in entries if item is not entry], start, end)
+
+
 def _covered(entries: list[CaptureEntry], start: str, end: str) -> bool:
     intervals = sorted(
         (entry.window_from, entry.window_to)

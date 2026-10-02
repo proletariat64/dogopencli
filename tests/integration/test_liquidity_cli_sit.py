@@ -904,6 +904,31 @@ def test_expired_capture_contributing_nothing_keeps_result_fresh(setup, run_cli)
     assert envelope["meta"]["stale"] is False
 
 
+def test_expired_sole_coverage_of_an_empty_day_is_not_fresh(setup, run_cli):
+    from dogopencli.plugins.liquidity.common import now
+
+    expired = (now() - timedelta(hours=100)).isoformat()  # beyond the 72h ttl
+    fresh = now().isoformat()
+    _seed_returns_captures(
+        setup,
+        [
+            (("20260930", "20260930"), [], expired),
+            (("20261001", "20261001"), [_returns_row("T2", "20261001", "2")], fresh),
+        ],
+    )
+    query = [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20261001"]
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    envelope = parse(out)
+    assert [row["transactionId"] for row in envelope["data"]] == ["T2"]
+    # The empty 20260930 rests only on the expired capture, so the combined
+    # answer is not fresh even though every reported row came from a fresh one.
+    assert envelope["meta"]["stale"] is True
+    code, out, err = run_cli([*query, "--require-fresh"])
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_STALE"
+
+
 def test_integer_detail_identity_spellings_share_one_cache_entry(setup, run_cli):
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
