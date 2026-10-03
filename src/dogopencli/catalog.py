@@ -280,6 +280,35 @@ def build_catalog(declarations: Iterable[BizNode]) -> dict[tuple[str, ...], BizN
 
 NODES = build_catalog(
     (
+        BizNode(
+            ("snapshot",),
+            "Inspect the installed command tree and local cache metadata offline.",
+            options=(
+                opt(
+                    "format",
+                    "Report format.",
+                    default="text",
+                    choices=("json", "text", "table"),
+                ),
+            ),
+            constraints=(
+                "Optional command path selects a subtree; arguments remain in help.",
+                "Offline, read-only metadata inspection; never refreshes"
+                " or opens a browser.",
+            ),
+            output={
+                "default_format": "text",
+                "formats": ["json", "text", "table"],
+                "help_default_format": "json",
+                "help_formats": ["json", "text"],
+            },
+            errors=("INVALID_ARGUMENT", "CONFIG_ERROR", "CACHE_ERROR"),
+            examples=(
+                "dogopencli snapshot",
+                "dogopencli snapshot liquidity cash --format json",
+            ),
+            handler="cmd_snapshot",
+        ),
         *group_nodes(),
         *_GROUPS.values(),
         *description_nodes(command_nodes()),
