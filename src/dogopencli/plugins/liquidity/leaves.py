@@ -46,6 +46,8 @@ from .cash_forecast import (
     UAT_PASSED,
     WITHDRAWN_GETTERS,
 )
+from .operations_batch import RELEASED as OPERATIONS_RELEASED
+from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .spec import (
     ENC_FORM,
     ENV_BASE_RESULT,
@@ -1958,8 +1960,12 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
     DeferredLeaf(
         ("operations", "demands", "list"),
         RUNTIMES,
-        "empty-scope",
-        f"Funding demands: {_EMPTY}.",
+        "uat-blocked",
+        "Spec #82 funding demands: current one-day inquiries succeed empty;"
+        " native week/30-day scopes return error 099 (database exception). Usable"
+        " nonempty schema, identity, date scope, complete pagination and"
+        " independent production UAT remain unverified; no backend repair"
+        " is included in this batch.",
     ),
     DeferredLeaf(
         ("operations", "demands", "get"),
@@ -1970,8 +1976,12 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
     DeferredLeaf(
         ("operations", "executions", "list"),
         RUNTIMES,
-        "empty-scope",
-        f"Executions: {_EMPTY}.",
+        "uat-blocked",
+        "Spec #82 executions: both native task-type variants succeed empty"
+        " in current one-day scopes; week/30-day scopes return error 099"
+        " (database exception). Nonempty schema, identity, native status"
+        " meanings, date scope, complete pagination and independent"
+        " production UAT remain unverified.",
     ),
     DeferredLeaf(
         ("operations", "executions", "get"),
@@ -2014,7 +2024,13 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("investment", "investable-funds", "list"),
         RUNTIMES,
         "empty-scope",
-        f"Investable funds: {_EMPTY}.",
+        "Spec #82 investable funds: the native JSON list inquiry"
+        " /queryInvestableFundList.json is known; five bounded report/range"
+        " probes returned zero rows. Successful empty scopes"
+        " do not establish a nonempty record schema, unique identity, amount"
+        " and currency semantics, report/forecast date meaning, or complete"
+        " pagination. Standalone production UAT has not passed; list, live"
+        " acquisition and refresh remain unavailable.",
     ),
     DeferredLeaf(
         ("investment", "interest-rates", "get"),
@@ -2328,6 +2344,24 @@ _TICKET_DEFERRED: tuple[DeferredLeaf, ...] = (
     ),
 )
 
+# Spec #82 swap declaration stays non-executing until its own UAT/CI gate.
+if SWAP_ORDERS.name in OPERATIONS_RELEASED:
+    LIST_SPECS += (SWAP_ORDERS,)
+_AUDIT_DEFERRED = tuple(
+    item for item in _AUDIT_DEFERRED if item.path != (*SWAP_ORDERS.path, "list")
+)
+if SWAP_ORDERS.name not in OPERATIONS_RELEASED:
+    _AUDIT_DEFERRED += (
+        DeferredLeaf(
+            (*SWAP_ORDERS.path, "list"),
+            SWAP_ORDERS.kind,
+            "uat-pending",
+            "Spec #82 swap orders: nonempty native records observed; candidate"
+            " identity, full pagination, date scope, CLI production UAT and"
+            " local Kimi CLI CI/review must pass before release.",
+        ),
+    )
+
 # Spec #76 replaces old cash/forecast deferrals, not other domains' contracts.
 _ACCEPTED_PATHS = {(*item.path, "list") for item in ACCEPTED_LIST_SPECS} | {
     (*item.path, item.action) for item in ACCEPTED_DETAIL_SPECS
@@ -2440,6 +2474,8 @@ class ListLeaf:
             )
         variant = candidates[0]
         request_values, window = scope_values(variant.scope_options, provided)
+        if variant.projection == "swap_orders":
+            validate_swap_query(request_values)
         window_fields = {
             option.field for option in variant.scope_options if option.window
         }

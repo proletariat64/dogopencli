@@ -12,8 +12,9 @@ from typing import Any
 from ...annotations import schema_annotations
 from ...helpspec import BizNode
 from . import spec
-from .fields import SAMPLED_FIELDS, VARIANT_SAMPLED_FIELDS
+from .fields import CANDIDATE_SAMPLED_FIELDS, SAMPLED_FIELDS, VARIANT_SAMPLED_FIELDS
 from .leaves import DEFERRED_BY_PATH, DETAIL_LEAVES
+from .operations_batch import SWAP_ORDERS
 
 
 def _field_schema(fields: dict[str, str]) -> dict[str, Any]:
@@ -56,6 +57,9 @@ def _list_description(node: BizNode) -> dict[str, Any]:
     leaf = list_leaf(path)
     variant = leaf.variants[0]
     capability = variant.name
+    # A private UAT registry can install a candidate explicitly. Its observed
+    # fields are available here without advertising it as a shipped capability.
+    sampled_fields = CANDIDATE_SAMPLED_FIELDS | SAMPLED_FIELDS
     contract: dict[str, Any] = {
         "method": variant.method,
         "path": variant.endpoint,
@@ -86,7 +90,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                 },
                 "data_schema": _field_schema(
                     VARIANT_SAMPLED_FIELDS.get(item.name, {}).get(
-                        item.endpoint, SAMPLED_FIELDS.get(item.name, {})
+                        item.endpoint, sampled_fields.get(item.name, {})
                     )
                 ),
                 "selectors": {
@@ -105,12 +109,14 @@ def _list_description(node: BizNode) -> dict[str, Any]:
         )
     return {
         "schema_version": 1,
-        "data_schema": _field_schema(SAMPLED_FIELDS.get(capability, {})),
+        "data_schema": _field_schema(sampled_fields.get(capability, {})),
         "read_guide": {
             **_source_guide(
                 capability,
                 contract,
-                "2026-10-02" if variant.schema_version else "2026-10-01",
+                "2026-10-03"
+                if variant.name == SWAP_ORDERS.name
+                else ("2026-10-02" if variant.schema_version else "2026-10-01"),
             ),
             "projection": variant.projection or None,
             "schema_version": variant.schema_version or None,

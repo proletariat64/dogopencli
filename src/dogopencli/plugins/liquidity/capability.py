@@ -260,6 +260,10 @@ class LiquidityListCapability:
 
     def validate_rows_scope(self, rows: list[dict[str, Any]], scope: str) -> None:
         """Reject unverified dates before live output or complete publication."""
+        if self._spec.projection == "swap_orders":
+            from .operations_batch import validate_swap_rows_scope
+
+            validate_swap_rows_scope(rows, decode_scope(scope))
         if not (self._spec.schema_version and self._spec.profile == spec.PROFILE_DATED):
             return
         # Use the retention reader's native series parser so acquisition and

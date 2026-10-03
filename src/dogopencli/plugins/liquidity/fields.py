@@ -6,6 +6,8 @@ Samples are not
 complete schemas, validation assertions, or nullability guarantees.
 """
 
+from .operations_batch import RELEASED as OPERATIONS_RELEASED
+
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
     "liquidity.cash.accounts.list": {
         "accHolder": "str",
@@ -3235,3 +3237,79 @@ VARIANT_SAMPLED_FIELDS: dict[str, dict[str, dict[str, str]]] = {
         },
     }
 }
+
+
+# Spec #82 native nonempty swap list sampled on 2026-10-03.
+# Types are observations; no source values or closed state enums are recorded.
+CANDIDATE_SAMPLED_FIELDS: dict[str, dict[str, str]] = {}
+CANDIDATE_SAMPLED_FIELDS["liquidity.operations.swaps.list"] = {
+    "bookId": "str",
+    "counterParty": "str",
+    "dealId": "str",
+    "decisionMode": "str",
+    "drAlisName": "str",
+    "env": "str",
+    "errorCode": "str",
+    "errorMsg": "str",
+    "expectFarLegFxRate": "str",
+    "expectNearLegFxRate": "str",
+    "farLegCreditAliasName": "str",
+    "farLegCreditAmount": "str",
+    "farLegCreditCcy": "str",
+    "farLegCreditEntity": "str",
+    "farLegCreditSettlementAccount": "str",
+    "farLegDebitAliasName": "str",
+    "farLegDebitAmount": "str",
+    "farLegDebitCcy": "str",
+    "farLegDebitEntity": "str",
+    "farLegDebitSettlementAccount": "str",
+    "farLegFxRate": "str",
+    "farLegValueDate": "str",
+    "firstApproval": "str",
+    "fourthApproval": "str",
+    "gapId": "str",
+    "gmtCreate": "int",
+    "gmtModified": "int",
+    "gmtReturn": "int | null",
+    "gmtSend": "int | null",
+    "hedgeOrderId": "str",
+    "instCode": "str",
+    "memo": "str",
+    "nearLegCreditAliasName": "str",
+    "nearLegCreditAmount": "str",
+    "nearLegCreditCcy": "str",
+    "nearLegCreditEntity": "str",
+    "nearLegCreditSettlementAccount": "str",
+    "nearLegDebitAliasName": "str",
+    "nearLegDebitAmount": "str",
+    "nearLegDebitCcy": "str",
+    "nearLegDebitEntity": "str",
+    "nearLegDebitSettlementAccount": "str",
+    "nearLegFxRate": "str",
+    "nearLegValueDate": "str",
+    "needReview": "bool",
+    "nodeNum": "int",
+    "operationTaskId": "str",
+    "operator": "str",
+    "orderId": "str",
+    "orderSource": "str",
+    "processCode": "str",
+    "processId": "str",
+    "reportId": "str",
+    "secondApproval": "str",
+    "source": "str",
+    "status": "str",
+    "thirdApproval": "str",
+    "tntInstId": "str",
+    "tradeDate": "str",
+}
+
+# Observed candidate records do not make a business leaf executable. Keep the
+# shipped evidence catalog aligned with the production release registration.
+SAMPLED_FIELDS.update(
+    {
+        name: fields
+        for name, fields in CANDIDATE_SAMPLED_FIELDS.items()
+        if name in OPERATIONS_RELEASED
+    }
+)
