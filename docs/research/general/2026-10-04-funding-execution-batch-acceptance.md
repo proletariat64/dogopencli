@@ -5,7 +5,8 @@ Scope: general
 Status: snapshot
 
 Outcome: bounded swap enabled, registered production CLI UAT passed 21/21;
-one of four leaves accepted. Final release-delta Kimi review is pending approval.
+one of four leaves accepted. Local Kimi CLI CI and code review are complete;
+the user confirmed that no incremental Kimi review is required.
 
 Specification: [#82](https://github.com/proletariat64/dogopencli/issues/82).
 Implementation tickets: [#84](https://github.com/proletariat64/dogopencli/issues/84)
@@ -23,7 +24,8 @@ allowlist contains only `liquidity.operations.swaps.list`. Actual registered
 public-command production UAT passed 21/21 without candidate bootstrap.
 The source registration is therefore **1/4 enabled**. This is an integration
 branch acceptance observation, not a claim that the complete batch or a package
-release has shipped. A separate final release-delta Kimi run remains pending.
+release has shipped. No incremental Kimi rerun is required under the user's
+latest instruction.
 
 Only the user-approved bounded swap scope can proceed to release: both
 `--trade-from` and `--trade-to` are required. Unbounded, one-sided and reversed
@@ -35,7 +37,7 @@ no getter or business mutation in this batch.
 | --- | --- | --- |
 | `operations demands list` | October 3 bounded inquiries returned empty results or business error `099`; no new nonempty evidence is claimed | unsupported; nonempty structure, identity, date semantics and representative complete acquisition remain missing |
 | `operations executions list` | October 3 instruction and realtime inquiries had independent empty/error observations; no new nonempty evidence is claimed | unsupported; both variants need nonempty structure, identity, state meanings and complete acquisition |
-| `operations swaps list` | October 4 candidate and actual registered public CLI matrices each passed 21/21, including independent nonempty and empty refresh/offline checks | enabled for required bounded dates; final release-delta Kimi run pending approval |
+| `operations swaps list` | October 4 candidate and actual registered public CLI matrices each passed 21/21, including independent nonempty and empty refresh/offline checks | enabled for required bounded dates |
 | `investment investable-funds list` | October 3 five report/forecast date inquiries succeeded empty; no new nonempty evidence is claimed | unsupported; amount/currency types, funding scope, observation semantics, identity and complete acquisition remain missing |
 
 The four-leaf specification remains incomplete. Keep #82, #84, #85 and #86 open
@@ -124,11 +126,11 @@ The minor spec-test gap for getter refusal while the swap list is installed was
 fixed in the bounded release and covered by its focused checks.
 
 The baseline result applies to `909bd0c`, independently of the later registered
-release and production UAT. Automatic approval review rejected the additional
-release-delta Kimi invocation because it requested explicit consent to send
-private source to `api.kimi.com`. That permission request is pending; the
-additional run has not executed and has no result. This does not invalidate the
-completed baseline review.
+release and production UAT. CI and code review were executed through the locally
+installed Kimi CLI, with its JSON results retained. The user confirmed that no
+incremental Kimi review is required. The optional additional invocation did not
+execute; it is no longer a pending review or approval gate. The completed Kimi
+result and the later focused checks remain separate evidence.
 
 Post-merge checks actually ran against `56add6f`: Ruff check, Ruff format check
 for 257 Python files, documentation guard for 100 Markdown files and
@@ -139,14 +141,12 @@ Adding this October 4 snapshot and README index passed documentation guard for
 
 ## Remaining gates and continuation evidence
 
-1. Resolve the explicit `api.kimi.com` consent request before the additional
-   release-delta Kimi run, then record its actual result if authorized.
-2. Preserve the distinction between the passing baseline review, bounded release
+1. Preserve the distinction between the passing local Kimi review, bounded release
    focused checks and actual registered production UAT.
-3. Obtain the missing nonempty/native contracts for demands, both execution
+2. Obtain the missing nonempty/native contracts for demands, both execution
    variants and investable funds before implementing and independently enabling
    them. Their earlier empty samples do not establish populated schemas.
-4. Keep the four-leaf issue/tickets open and the PR draft until the complete
+3. Keep the four-leaf issue/tickets open and the PR draft until the complete
    batch is accepted. Do not add backend repair, duplicate tolerance, arbitrary
    requests, getters or other deferred leaves.
 
@@ -157,6 +157,5 @@ Kimi summary is `/tmp/issue82-kimi-ci-20261003T174436Z/summary.json`.
 Stable continuation copies are retained under the main worktree's ignored
 `tmp/issue82-evidence/`, including `swaps-registered-uat-20261004/`,
 `kimi-ci-baseline-20261004/` and `delivery-status-20261004.json`.
-The current Kimi run pointer is
-`/tmp/issue82-kimi-run-current.json`. Raw stream JSONL, source/code payload,
-credentials and native records remain private and are not reproduced here.
+Raw stream JSONL, source/code payload, credentials and native records remain
+private and are not reproduced here. No incremental Kimi run is pending.
