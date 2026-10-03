@@ -1,6 +1,10 @@
 # Investable-funds list contract and release gate
 
-Scope: [issue #82](https://github.com/proletariat64/dogopencli/issues/82),
+Observed: 2026-10-03
+Scope: general
+Status: snapshot
+
+Feature: [issue #82](https://github.com/proletariat64/dogopencli/issues/82),
 `dogopencli liquidity investment investable-funds list`. This is a `runtimes`
 inquiry. Native UI evidence and successful empty inquiries are discovery
 evidence; they do not establish a populated schema or permit release.
@@ -11,7 +15,8 @@ The saved published Liquidity UI bundle identifies the table inquiry as
 `POST /queryInvestableFundList.json` with JSON encoding and explicit
 `Content-Type: application/json;charset=utf-8`. Its request contains:
 
-- `tntInstId` and `timeZone`, sourced from the authorized portal environment;
+- `tntInstId` from the verified tenant and `timeZone` from the native timezone
+  preference, defaulting to `GMT+08` when that preference is absent;
 - `reportDate`, formatted as `YYYY-MM-DD`, defaulting to the browser's current
   day; the native form prevents selection of future report dates;
 - `startForecastDate` and `endForecastDate`, also `YYYY-MM-DD` when supplied,
@@ -105,7 +110,7 @@ list query. Nonempty acquisition and release remain blocked.
 - Saved published UI bundle, inquiry wrapper character offset `1523773`,
   report/default/filter mapping `8386634` and `8387658`, and table definition
   around `8389000`. These are source bundle pointers, not production UAT.
-- [Funding and execution batch spec](../../design/liquidity-funding-execution-batch.md)
+- [Funding and execution batch spec](../../design/liquidity-funding-execution-v0.1.0.md)
   and ADRs [0016](../../adr/0016-liquidity-independent-list-and-detail-caches.md),
   [0018](../../adr/0018-liquidity-capture-store-and-retention.md),
   [0019](../../adr/0019-usable-incomplete-acquisitions.md).
