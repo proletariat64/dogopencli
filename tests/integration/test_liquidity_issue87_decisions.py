@@ -7,7 +7,11 @@ import pytest
 from dogopencli import catalog, helptree
 from dogopencli.jsonutil import parse
 from dogopencli.plugins.liquidity import leaves
-from dogopencli.plugins.liquidity.decision_list import DECISIONS, SAMPLED_FIELDS
+from dogopencli.plugins.liquidity.decision_list import (
+    DECISIONS,
+    RELEASED,
+    SAMPLED_FIELDS,
+)
 
 pytest_plugins = ["test_liquidity_cli_sit"]
 START = "2026-09-30 00:00:00"
@@ -37,7 +41,14 @@ def decision_candidate_catalog(monkeypatch):
     monkeypatch.delitem(
         leaves.DEFERRED_BY_PATH, (*DECISIONS.path, "list"), raising=False
     )
-    monkeypatch.setattr(leaves, "LIST_SPECS", (*leaves.LIST_SPECS, DECISIONS))
+    monkeypatch.setattr(
+        leaves,
+        "LIST_SPECS",
+        (
+            *tuple(spec for spec in leaves.LIST_SPECS if spec.name != DECISIONS.name),
+            DECISIONS,
+        ),
+    )
     for node in (
         leaves.list_query_node(leaf),
         leaves.refresh_list_node(leaf),
@@ -109,7 +120,16 @@ def published(rows):
     ]
 
 
-def test_decision_gate_stays_unsupported_without_release(setup, run_cli):
+def test_decision_registration_matches_release_evidence(setup, run_cli):
+    released = DECISIONS.name in RELEASED
+    assert (DECISIONS.path in leaves.LIST_LEAVES) is released
+    assert ((*DECISIONS.path, "list") in leaves.DEFERRED_BY_PATH) is not released
+    if released:
+        code, out, err = run_cli(["describe", *QUERY])
+        assert code == 0, err
+        assert parse(out)["read_guide"]["identity"] == ["id"]
+        assert setup.state.business_requests == []
+        return
     code, out, _ = run_cli(QUERY)
     assert code == 1
     assert parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
