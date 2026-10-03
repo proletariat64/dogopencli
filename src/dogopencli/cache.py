@@ -17,7 +17,7 @@ from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
 
-from .errors import LOCKED, CliError
+from .errors import INVALID_RESPONSE, LOCKED, CliError
 from .jsonutil import canonical, parse
 from .result_policy import AcquisitionEvidence
 
@@ -77,6 +77,15 @@ class SnapshotMeta:
 
 
 def _snapshot_from_row(row: tuple) -> SnapshotMeta:
+    acquisition = None
+    if row[15] is not None:
+        try:
+            document = parse(row[15])
+        except ValueError as error:
+            raise CliError(
+                INVALID_RESPONSE, "cached acquisition metadata is not valid JSON"
+            ) from error
+        acquisition = AcquisitionEvidence.from_record(document).record()
     snapshot = SnapshotMeta(
         namespace=row[0],
         capability=row[1],
@@ -93,11 +102,7 @@ def _snapshot_from_row(row: tuple) -> SnapshotMeta:
         source_observed_to=row[12],
         row_count=row[13],
         source_path=row[14],
-        acquisition=(
-            AcquisitionEvidence.from_record(parse(row[15])).record()
-            if row[15] is not None
-            else None
-        ),
+        acquisition=acquisition,
     )
     if snapshot.acquisition is not None:
         evidence = AcquisitionEvidence.from_record(snapshot.acquisition)
@@ -106,7 +111,7 @@ def _snapshot_from_row(row: tuple) -> SnapshotMeta:
             or evidence.dataset_complete != snapshot.dataset_complete
             or evidence.collected_total < snapshot.row_count
         ):
-            raise CliError("INVALID_RESPONSE", "cached acquisition metadata conflicts")
+            raise CliError(INVALID_RESPONSE, "cached acquisition metadata conflicts")
     return snapshot
 
 

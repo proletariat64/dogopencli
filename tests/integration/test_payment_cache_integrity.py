@@ -32,6 +32,28 @@ CASES = (
 )
 
 
+@pytest.mark.parametrize("kind,capability,scope,path", CASES)
+def test_malformed_acquisition_metadata_is_a_safe_cache_diagnostic(
+    run_cli, envelope, tmp_path, monkeypatch, kind, capability, scope, path
+):
+    cache_path = publish(
+        tmp_path, monkeypatch, kind, capability, scope, records(kind, scope)
+    )
+    with sqlite3.connect(cache_path) as connection:
+        connection.execute(
+            "UPDATE snapshots SET acquisition = ?", ("BROKEN-PRIVATE-METADATA",)
+        )
+    before = cache_path.read_bytes()
+    code, out, err = run_cli(list(path))
+    assert code == 1
+    result = envelope(out)
+    assert result["data"] is None
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+    assert "acquisition" in result["error"]["message"]
+    assert "BROKEN-PRIVATE" not in out + err
+    assert cache_path.read_bytes() == before
+
+
 def records(kind, scope):
     if kind == "channel":
         return [
