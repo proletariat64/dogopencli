@@ -167,26 +167,35 @@ def test_operations_no_refresh_or_get_is_enabled_by_discovery(setup, run_cli, re
 
 
 def test_swap_unbounded_default_and_get_remain_non_executing(setup, run_cli):
-    for argv in (
-        ["liquidity", "operations", "swaps", "list"],
-        ["refresh", "liquidity", "operations", "swaps"],
-        ["liquidity", "operations", "swaps", "get"],
+    for argv, expected_code, expected_error in (
+        (
+            ["liquidity", "operations", "swaps", "list"],
+            2,
+            "INVALID_ARGUMENT",
+        ),
+        (
+            ["refresh", "liquidity", "operations", "swaps"],
+            2,
+            "INVALID_ARGUMENT",
+        ),
+        (
+            ["liquidity", "operations", "swaps", "get"],
+            1,
+            "UNSUPPORTED_CAPABILITY",
+        ),
     ):
         code, out, _ = run_cli(argv)
         result = parse(out)
-        assert code != 0
+        assert code == expected_code
         assert result["data"] is None
-        assert result["error"]["code"] in {
-            "INVALID_ARGUMENT",
-            "UNSUPPORTED_CAPABILITY",
-        }
+        assert result["error"]["code"] == expected_error
     assert setup.state.transports == []
     assert setup.state.business_requests == []
     assert not setup.cache_path.exists()
 
 
-def test_scoped_swaps_refresh_live_and_disconnected_cache_are_exact(
-    setup, run_cli, swap_candidate_catalog
+def test_registered_scoped_swaps_refresh_live_and_disconnected_cache_are_exact(
+    setup, run_cli
 ):
     rows = [swap(i) for i in range(12)]
     rows[0].update({"memo": None, "errorMsg": "", "unknownAdditiveField": "keep"})

@@ -95,7 +95,7 @@ SWAP_ORDERS = ListSpec(
 # The user approved a required trade-date-only candidate. The unbounded native
 # default remains excluded. Production CLI UAT and local Kimi CLI CI/review
 # must pass before this scoped allowlist is populated.
-RELEASED: frozenset[str] = frozenset()
+RELEASED: frozenset[str] = frozenset({SWAP_ORDERS.name})
 
 
 def validate_swap_query(values: dict[str, Any]) -> None:
