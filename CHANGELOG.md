@@ -20,5 +20,7 @@ Liquidity dated 按最新同范围请求窗口确定有效行与覆盖证明；�
 离线缓存读取不建库或迁移库。
 
 规格与边界见[统一 incomplete 规格](docs/design/unified-incomplete-v0.1.0.md)及
-[ADR 0019](docs/adr/0019-usable-incomplete-acquisitions.md)。本次验证限于合成离线数据，
-未执行新策略的生产 UAT；本节不表示已发布版本。
+[ADR 0019](docs/adr/0019-usable-incomplete-acquisitions.md)。离线回归及新策略的
+[生产只读 UAT](docs/research/general/2026-10-03-unified-incomplete-production-uat.md) 已完成：
+82/83 个目标命令通过，Payment channel EXTERNAL 源端阻塞，ledger balances 按用户要求跳过。
+本节不表示已发布版本。

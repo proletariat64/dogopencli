@@ -1,6 +1,6 @@
 # 统一 incomplete 架构规格 v0.1.0
 
-日期：2026-10-03（Asia/Shanghai）。状态：当前 feature branch 已完成实施与离线验收；Greptile CLI 及 PR 前双轴审查通过，尚未发布或执行新策略的生产 UAT。
+日期：2026-10-03（Asia/Shanghai）。状态：当前 feature branch 已完成实施与离线验收；新策略生产只读 UAT 为 82/83 个目标命令通过，Payment channel EXTERNAL 源端阻塞，ledger balances 按用户要求跳过；尚未发布。完整记录见[生产 UAT](../research/general/2026-10-03-unified-incomplete-production-uat.md)。
 规格版本独立于 Python 包版本。实施工作树：`refact-incomplete-unify-process`。
 权威规格：[GitHub Issue #78](https://github.com/proletariat64/dogopencli/issues/78)。本文件为仓库阅读副本。
 
@@ -223,4 +223,6 @@ Payment 已有恢复契约区分预计页序列尚未结束的提前空页与遍
 - Payment 末页覆盖缺口的独立重采已补回归：5000、5000、10000 请求，最终缓存仅来自重采候选；遍历未结束的提前空页继续硬失败。
 - 注册表实测仍为 **46 个 Liquidity list 路由、47 个 variant**；页宽和 PTR 必需稳定性证明保留。
 
-本记录证明当前分支的实现与离线验收，不代表已发布、已创建 PR 或已执行新策略的生产 UAT。生产逐能力验证及历史延期边界继续以真实 allowlist 和各能力契约为准。
+后续生产只读 UAT：82/83 个目标命令通过（78 完整、4 可用 partial），90/90 个目标 scope 完成四种基础模式，3459/3459 项记录检查通过；另外三类 Payment/Collection 原生详情均完成真实 get 验证，包括 VA 明确拒绝。正式配置、缓存主库及辅助文件哈希完全不变，81 个业务源码文件未变。Payment channel EXTERNAL 在外层业务成功校验阶段阻塞，不计通过；ledger balances 按用户要求跳过，已有观察保留。详见[本轮生产 UAT](../research/general/2026-10-03-unified-incomplete-production-uat.md)，其中明确记录验收脚本误报的证据与修正。
+
+本记录不代表已发布或已创建 PR。生产逐能力验证及历史延期边界继续以真实 allowlist 和各能力契约为准。
