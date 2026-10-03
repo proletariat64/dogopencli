@@ -2,6 +2,8 @@
 
 ## 产品规格
 
+- [Liquidity v0.2.3 inquiry specification (GitHub Issue #76)](https://github.com/proletariat64/dogopencli/issues/76)：spec 从 v0.2.1 增加 0.0.2；依据新 cash/forecast probe 接受 8 项实施目标、保留 7 项延期、撤回 3 项 getter 设计。[新版完整命令树与本地规格](design/liquidity-v0.2.3.md)；[实施与 CLI UAT](research/general/2026-10-02-liquidity-spec76-implementation-uat.md)：8 项已实施放行：7 项完整 UAT，预测按 accounts 语义兼容已知后端缺陷；新全范围 UAT 20135/20129、跨页重复与 count 变化均保留非零失败/缓存保护。[后端报告与关联建议](research/general/2026-10-02-forecast-results-backend-count-bug.md)。
+
 - [Liquidity v0.2.1 inquiry specification (GitHub Issue #71)](https://github.com/proletariat64/dogopencli/issues/71): every business leaf has a kind; bounded live evidence, unresolved contracts and release gates. Verified inquiry slice implemented on the current source branch (#72); deferred leaves remain unsupported, and per-leaf production UAT/release are pending.
 
 - [v0.1.0 付款只读 CLI 规格（GitHub Issue #1）](https://github.com/proletariat64/dogopencli/issues/1)：已发布，标签 `ready-for-agent`；公开 CLI＋假 CDP 为 SIT，生产只读验收为 UAT。
@@ -27,8 +29,18 @@
 
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
+| General | [Liquidity v0.2.3 完整 CLI UAT](research/general/2026-10-03-liquidity-full-cli-uat.md) | 68 个可执行叶子的本轮 native live、独立 refresh、断开传输 offline 验收，以及 65 个延期叶子的非执行检查；[完整彩色地图](assets/general/2026-10-03-liquidity-full-cli-uat-roadmap.svg) |
+| General | [可按时间查询历史的运行数据源对照](research/general/2026-10-03-historical-runtime-source-comparison.md) | Forecast 十个历史日期查询证据；对照已执行命令的源端日期/时间过滤、运行数据类型与本地历史缓存边界 |
+| General | [采集兼容与完整性处理的整体架构研究](research/general/2026-10-03-acquisition-compatibility-architecture.md) | 统一结果证据、live/refresh 策略与退出码；保留域分页、VA 详情发布和 PTR 稳定校验；分步迁移与验收矩阵，尚未实施 |
 | General | [运营平台访问与通用发现](research/general/2026-09-08-platform-access.md) | CDP、登录、聚合应用结构、查询协议、只读约束与技术参考 |
 | General | [Liquidity v0.2.1 live probes](research/general/2026-10-01-liquidity-live-probes.md) | All 134 draft leaves audited; scoped timings, decoded payload sizes, sampled schemas, pagination defects, permission gaps and actual SQLite measurements |
+| General | [Liquidity inherited CLI UAT](research/general/2026-10-02-liquidity-inherited-cli-uat.md) | 60 个 inherited 叶子的累计验收：55 PASS、1 EMPTY、3 PARTIAL、1 BLOCKED；利率/决策历史修复通过，returns accrual 通过、cash 不完整，ledger 后端 999；holdings 采用用户已验证的 500 页宽，保留历史 UAT；附彩色地图 |
+| General | [Forecast results 后端收敛性缺陷](research/general/2026-10-02-forecast-results-backend-count-bug.md) | 历史 7504/7502；新 UAT 20135/20129、跨页重复与 count 变化；accounts 式兼容及关联排查建议，不宣称同根因 |
+| General | [Liquidity v0.2.3 实施与 UAT](research/general/2026-10-02-liquidity-spec76-implementation-uat.md) | 8 个契约实现、7 项 UAT 通过、3 个 getter 目录迁移；本地 CI 与 apex 复审通过；8 项放行（7 完整、1 后端兼容），缓存与源端完整性不混同 |
+| General | [Liquidity v0.2.3 投影字段证据](research/general/2026-10-02-liquidity-spec76-field-evidence.md) | 仅字段名及类型、独立 pool detail 嵌套白名单；可复现 describe 生成输入 |
+| General | [Cash / Forecast 业务 probe](research/general/2026-10-02-cash-forecast-business-probe.md) | 18延期叶子、57次只读请求；8项可进入实现，后端异常及语义/样本缺口分别记录，支撑spec v0.2.3 |
+| General | [账户原生详情后台异常](research/general/2026-10-02-cash-accounts-detail-backend-bug.md) | 原生View身份返回业务999，界面复现步骤与证据限制 |
+| General | [准确率跨页重复后台异常](research/general/2026-10-02-forecast-accuracy-pagination-backend-bug.md) | pageSize1000到达4419但唯一4416；Network只读复现及5000未测边界 |
 | General | [Liquidity UAT 执行记录](research/general/2026-10-01-liquidity-uat.md) | 6,328 CASE；原始失败 1,062 条，区分脚本误判、前置阻塞及实际异常；验收未通过 |
 | General | [银行账户列表后端数量异常](research/general/2026-10-01-cash-accounts-backend-count-bug.md) | count 3691、实际 3690；界面短页定位与单页 5000 复现证据 |
 | General | [Cash 与 Forecast 分页配置验证](research/general/2026-10-01-cash-forecast-page-sizes.md) | accounts 5000；waterlevels、intraday、adjustments 1000；cashflows 不带分页参数 |

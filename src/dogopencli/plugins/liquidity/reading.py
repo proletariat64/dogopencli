@@ -37,13 +37,15 @@ def _field_schema(fields: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def _source_guide(capability: str, contract: dict[str, Any]) -> dict[str, Any]:
+def _source_guide(
+    capability: str, contract: dict[str, Any], verified_date: str = "2026-10-01"
+) -> dict[str, Any]:
     return {
         "capability": capability,
         "source_origin": f"https://{spec.HOST}",
         "tenant": spec.TENANT,
         "request": contract,
-        "live_verified": "2026-10-01",
+        "live_verified": verified_date,
     }
 
 
@@ -57,7 +59,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
     contract: dict[str, Any] = {
         "method": variant.method,
         "path": variant.endpoint,
-        "encoding": variant.encoding,
+        "encoding": "query" if variant.method == "GET" else variant.encoding,
         "envelope": variant.envelope,
         "record_container": "$." + ".".join(variant.container),
         "reported_total": (
@@ -73,7 +75,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                 "request": {
                     "method": item.method,
                     "path": item.endpoint,
-                    "encoding": item.encoding,
+                    "encoding": "query" if item.method == "GET" else item.encoding,
                     "envelope": item.envelope,
                     "record_container": "$." + ".".join(item.container),
                     "reported_total": "$." + ".".join(item.total)
@@ -105,7 +107,13 @@ def _list_description(node: BizNode) -> dict[str, Any]:
         "schema_version": 1,
         "data_schema": _field_schema(SAMPLED_FIELDS.get(capability, {})),
         "read_guide": {
-            **_source_guide(capability, contract),
+            **_source_guide(
+                capability,
+                contract,
+                "2026-10-02" if variant.schema_version else "2026-10-01",
+            ),
+            "projection": variant.projection or None,
+            "schema_version": variant.schema_version or None,
             "variants": variants,
             "kind": variant.kind,
             "offline_profile": variant.profile,
@@ -129,7 +137,8 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
     contract = {
         "method": detail.method,
         "path": detail.endpoint,
-        "encoding": detail.encoding,
+        "encoding": "query" if detail.method == "GET" else detail.encoding,
+        "fixed_fields": detail.template,
         "envelope": detail.envelope,
         "detail_container": "$." + ".".join(detail.container),
         "identity": [
@@ -146,7 +155,13 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
         "schema_version": 1,
         "data_schema": _field_schema(SAMPLED_FIELDS.get(detail.name, {})),
         "read_guide": {
-            **_source_guide(detail.name, contract),
+            **_source_guide(
+                detail.name,
+                contract,
+                "2026-10-02" if detail.schema_version else "2026-10-01",
+            ),
+            "projection": detail.projection or None,
+            "schema_version": detail.schema_version or None,
             "kind": detail.kind,
             "offline_profile": "per-object detail cache (ADR 0016)",
             "notes": list(detail.notes),

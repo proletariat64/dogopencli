@@ -58,6 +58,11 @@ def valid_layout(relative: Path) -> bool:
         return relative.name in ROOT_DOCS
     if parts == ("docs", "README.md"):
         return True
+    if len(parts) == 3 and parts[:2] == ("docs", "design"):
+        version = r"(?:0|[1-9][0-9]*)"
+        return bool(
+            re.fullmatch(SLUG + rf"-v{version}\.{version}\.{version}\.md", parts[2])
+        )
     if len(parts) == 3 and parts[:2] == ("docs", "agents"):
         return bool(re.fullmatch(SLUG + r"\.md", parts[2]))
     if len(parts) == 3 and parts[:2] == ("docs", "adr"):
@@ -98,6 +103,14 @@ def check(root: Path) -> tuple[int, list[str]]:
             error("document must contain exactly one H1 title")
         if not text.endswith("\n"):
             error("missing final newline")
+        if relative.parts[:2] == ("docs", "design") and not any(
+            re.search(
+                r"https://github\.com/proletariat64/dogopencli/issues/[1-9][0-9]*\b",
+                line,
+            )
+            for line in prose
+        ):
+            error("design copy must link its authoritative GitHub issue")
         if relative.parts[:2] == ("docs", "adr"):
             number = path.name.split("-", 1)[0]
             if number in adr_numbers:

@@ -52,13 +52,14 @@ Python 包、模块和函数使用 `snake_case`，类使用 `PascalCase`；测�
 | `docs/README.md` | 文档导航，新增报告时更新 |
 | `docs/agents/<slug>.md` | 持续维护的协作规范 |
 | `docs/adr/NNNN-<slug>.md` | 已形成的架构决策；从 0001 编号，编号唯一 |
+| `docs/design/<slug>-vMAJOR.MINOR.PATCH.md` | 已发布 GitHub Issue 规格的版本化可读副本，必须链接权威 Issue；保留历史基线，注明后续实施状态 |
 | `docs/research/general/YYYY-MM-DD-<slug>.md` | 跨产品的平台、访问和技术研究快照 |
 | `docs/research/payment/YYYY-MM-DD-<slug>.md` | 付款产品设计与运行态研究快照 |
 | `docs/assets/<scope>/` | 按需保存已脱敏的文档配图；不存业务原始响应或凭证 |
 
 普通 Markdown 文件名使用小写英文、数字和连字符，例如 `platform-access.md`；日期使用真实日历日期。根目录和文档索引中的大写文件名为明确例外。保持扁平分类，暂不增加其他研究 scope。
 
-需求与规格继续使用 [GitHub Issues](issue-tracker.md)，不新增本地 `docs/spec/`。领域术语与架构决策遵循 [领域文档约定](domain.md)。这些目录按需建立，不创建空文档。
+需求与规格继续使用 [GitHub Issues](issue-tracker.md)，不新增本地 `docs/spec/`。`docs/design/` 仅保存已发布 Issue 的可读副本，不建立另一套本地规格权威；版本段使用无多余前导零的三段数字。历史规格状态与后续实施记录分别标注，避免把设计树当作当前可执行目录。领域术语与架构决策遵循 [领域文档约定](domain.md)。这些目录按需建立，不创建空文档。
 
 ## 研究快照
 

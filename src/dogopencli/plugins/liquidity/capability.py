@@ -25,6 +25,7 @@ from ...jsonutil import canonical
 from .. import EndpointContract
 from . import spec
 from .envelope import dig, envelope_document
+from .projection import project_record
 
 
 def _invalid(message: str) -> CliError:
@@ -106,6 +107,15 @@ def scope_values(
                     raise _usage(
                         f"--{option.flag.replace('_', '-')} must be a valid YYYYMMDD",
                     ) from error
+            if option.time:
+                try:
+                    if len(text) != 6 or not text.isascii() or not text.isdigit():
+                        raise ValueError
+                    datetime.strptime(text, "%H%M%S")
+                except ValueError as error:
+                    raise _usage(
+                        f"--{option.flag.replace('_', '-')} must be a valid HHmmss",
+                    ) from error
             value = [text] if option.list_of_one else text
         if option.choices:
             values = value if isinstance(value, list) else [value]
@@ -124,6 +134,12 @@ def scope_values(
         raise _usage("the business window needs both bounds")
     if window_from is not None and window_to is not None and window_from > window_to:
         raise _usage("the business window start is after its end")
+    if (
+        "recordStartTime" in fields
+        and "recordEndTime" in fields
+        and fields["recordStartTime"] > fields["recordEndTime"]
+    ):
+        raise _usage("record creation time start is after its end")
     return fields, (window_from, window_to)
 
 
@@ -133,12 +149,16 @@ class LiquidityListCapability:
     def __init__(self, list_spec: spec.ListSpec) -> None:
         self._spec = list_spec
         body_keys = set(list_spec.template)
-        if list_spec.paged_request:
+        if list_spec.paged_request and not (
+            list_spec.schema_version and list_spec.vo_field
+        ):
             body_keys |= {"rowStart", "pageSize"}
         if list_spec.vo_field is not None:
             body_keys |= {list_spec.vo_field}
         for option in list_spec.scope_options:
-            if not option.virtual:
+            if not option.virtual and not (
+                list_spec.schema_version and list_spec.vo_field
+            ):
                 body_keys.add(option.field)
         self._body_keys = frozenset(body_keys)
 
@@ -168,6 +188,13 @@ class LiquidityListCapability:
             page_size=self._spec.page_size,
             one_based=False,
             allowed_body_keys=self._body_keys,
+            fixed_body_values=tuple(
+                (key, value)
+                for key, value in self._spec.template.items()
+                if self._spec.schema_version
+                and isinstance(value, (str, int))
+                and not isinstance(value, bool)
+            ),
             encoding=(
                 spec.ENC_FORM if self._spec.encoding == spec.ENC_FORM else spec.ENC_JSON
             ),
@@ -202,6 +229,10 @@ class LiquidityListCapability:
     def parse_rows(self, body: bytes) -> tuple[list[dict[str, Any]], int | None]:
         """Envelope, record container and reported total of one response."""
         node = envelope_document(body, self._spec.envelope)
+        if self._spec.require_inner_success:
+            inner_success = dig(node, ("result", "success"))
+            if not isinstance(inner_success, bool) or not inner_success:
+                raise _invalid("inner result success marker is not true")
         rows = dig(node, self._spec.container)
         if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
             raise _invalid("record container is not a list of objects")
@@ -213,9 +244,45 @@ class LiquidityListCapability:
             if raw_total < 0:
                 raise _invalid("reported total is negative")
             total = raw_total
+        for path in self._spec.total_checks:
+            other_total = dig(node, path)
+            if (
+                isinstance(other_total, bool)
+                or not isinstance(other_total, int)
+                or other_total != total
+            ):
+                raise _invalid("reported totals disagree")
         for row in rows:
             self.identity_key(row)
+        if self._spec.projection:
+            rows = [project_record(self._spec.projection, row) for row in rows]
         return list(rows), total
+
+    def validate_rows_scope(self, rows: list[dict[str, Any]], scope: str) -> None:
+        """Reject unverified dates before live output or complete publication."""
+        if not (self._spec.schema_version and self._spec.profile == spec.PROFILE_DATED):
+            return
+        # Use the retention reader's native series parser so acquisition and
+        # offline coverage interpret the same business day, not capture time.
+        from .store import series_value
+
+        values = decode_scope(scope)
+        bounds: dict[str, str] = {}
+        for option in self._spec.scope_options:
+            if option.window is None:
+                continue
+            value = values.get(option.field)
+            if not isinstance(value, str):
+                raise _invalid("dated inquiry is missing its verified request window")
+            keys = ("from", "to") if option.window == "both" else (option.window,)
+            for key in keys:
+                bounds[key] = value
+        if "from" not in bounds or "to" not in bounds:
+            raise _invalid("dated inquiry is missing its verified request window")
+        for record in rows:
+            day = series_value(self._spec, record, "")
+            if not bounds["from"] <= day <= bounds["to"]:
+                raise _invalid("record series date is outside the requested window")
 
     def identity_key(self, record: dict[str, Any]) -> tuple[str, ...]:
         """Typed identity: every declared field must be present and atomic."""
@@ -226,7 +293,18 @@ class LiquidityListCapability:
         key: list[str] = []
         for field in self._spec.identity:
             value = record.get(field)
-            if value is None or isinstance(value, (dict, list)):
+            if (
+                value is None
+                or isinstance(value, (dict, list))
+                or (
+                    self._spec.schema_version
+                    and (
+                        isinstance(value, bool)
+                        or not isinstance(value, (str, int))
+                        or (isinstance(value, str) and not value.strip())
+                    )
+                )
+            ):
                 raise _invalid(f"record is missing identity field {field}")
             key.append(canonical(value))
         return tuple(key)
@@ -261,7 +339,16 @@ class LiquidityDetailCapability:
             allowed_body_keys=frozenset(
                 ({"tntInstId"} if self._spec.sends_tenant else set())
                 | {option.field for option in self._spec.identity}
+                | set(self._spec.template)
             ),
+            fixed_body_values=tuple(
+                (key, value)
+                for key, value in self._spec.template.items()
+                if isinstance(value, (str, int)) and not isinstance(value, bool)
+            )
+            + (("tntInstId", spec.TENANT),)
+            if self._spec.schema_version and self._spec.sends_tenant
+            else (),
             encoding=(
                 spec.ENC_FORM if self._spec.encoding == spec.ENC_FORM else spec.ENC_JSON
             ),
@@ -272,7 +359,7 @@ class LiquidityDetailCapability:
         unknown = sorted(set(values) - {o.flag for o in self._spec.identity})
         if unknown:
             raise CliError(REQUEST_NOT_ALLOWED, f"unknown identity options: {unknown}")
-        body: dict[str, Any] = {}
+        body: dict[str, Any] = dict(self._spec.template)
         for option in self._spec.identity:
             raw = values.get(option.flag)
             if raw is None or not raw.strip():
@@ -324,6 +411,15 @@ class LiquidityDetailCapability:
                 continue
             expected = request_identity[option.field]
             actual = detail.get(option.echo)
-            if actual is None or str(actual) != str(expected):
+            if actual is None or isinstance(actual, (dict, list, bool)):
                 raise _invalid("detail identity does not match the request")
+            if self._spec.schema_version:
+                # Versioned details echo the typed request identity exactly:
+                # a native int never satisfies a requested string id.
+                if type(actual) is not type(expected) or actual != expected:
+                    raise _invalid("detail identity does not match the request")
+            elif str(actual) != str(expected):
+                raise _invalid("detail identity does not match the request")
+        if self._spec.projection:
+            return project_record(self._spec.projection, detail)
         return detail

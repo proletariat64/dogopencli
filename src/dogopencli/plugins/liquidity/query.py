@@ -201,7 +201,8 @@ def run_list(args: argparse.Namespace) -> int:
             CACHE_MISS,
             "no retained capture covers the requested scope; " + refresh_hint,
         )
-    if not covered:
+    retention_incomplete = variant.profile == spec_mod.PROFILE_HISTORY and not covered
+    if not covered and (not retention_incomplete or args.require_complete):
         raise CliError(
             INCOMPLETE_RESULT,
             "retained coverage does not cover the requested window (missing"
@@ -304,7 +305,7 @@ def run_list(args: argparse.Namespace) -> int:
         "fetched_at": latest.fetched_at,
         "loaded_at": None,
         "stale": stale,
-        "complete": True,
+        "complete": covered,
         "dataset_complete": None,
         "source_observed_from": None,
         "source_observed_to": None,
@@ -313,7 +314,24 @@ def run_list(args: argparse.Namespace) -> int:
         "returned_count": len(window),
         "has_more": offset + len(window) < matched_total,
     }
-    return _emit_window(args, variant.table_columns, window, meta, fields)
+    incomplete_error: dict[str, Any] | None = None
+    if retention_incomplete:
+        message = (
+            "retained capture does not cover the complete scope"
+            f" (retained {len(pairs)}, originally reported {reported});"
+            " records were evicted; " + refresh_hint
+        )
+        incomplete_error = {
+            "code": INCOMPLETE_RESULT,
+            "message": message,
+            "retryable": False,
+        }
+        print(f"warning: {INCOMPLETE_RESULT}: {message}", file=sys.stderr)
+        meta["warnings"] = [incomplete_error]
+        meta["collected_total"] = len(pairs)
+    return _emit_window(
+        args, variant.table_columns, window, meta, fields, incomplete_error
+    )
 
 
 def _capture_meta_view(entry: capture_store.CaptureEntry) -> Any:
@@ -356,9 +374,17 @@ def _run_list_live(
             ),
         )
     incomplete_error: dict[str, Any] | None = None
-    if not result.complete and variant.path == ("cash", "accounts"):
+    if not result.complete and (
+        variant.schema_version
+        or variant.path
+        in (
+            ("cash", "accounts"),
+            ("investment", "holdings"),
+            ("investment", "returns"),
+        )
+    ):
         message = (
-            "cash accounts list is incomplete"
+            f"{variant.leaf} is incomplete"
             f" (collected {len(result.records)}, reported {result.total_count});"
             " the cache is not updated"
         )
@@ -430,7 +456,9 @@ def run_detail(args: argparse.Namespace) -> int:
         with inquiry_session(
             config_file=config_mod.config_path(), startup_url=leaf.capability.page_url
         ) as session:
-            payload = fetch_detail(session.transport(leaf.capability), leaf, values)
+            from .decision_history import fetch_native_detail
+
+            payload = fetch_native_detail(session, leaf, values)
         meta = {
             "source": "live",
             "backend": "cdp",
@@ -450,7 +478,7 @@ def run_detail(args: argparse.Namespace) -> int:
         return _emit_object(args, detail.table_columns, payload, meta, fields)
     store = Cache(config.cache_path)
     snapshot = detail_store.read_detail_snapshot(store, detail.name)
-    key = detail_store.detail_key(values, detail.identity)
+    key = detail_store.contract_detail_key(detail, values)
     hint = (
         f"run: dogopencli refresh liquidity {' '.join(detail.path)} detail"
         f" {detail.action} "

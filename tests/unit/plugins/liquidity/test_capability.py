@@ -100,13 +100,13 @@ def test_scope_values_list_of_one_and_virtual():
 def test_flat_json_page_body_and_allowlist():
     capability = LiquidityListCapability(INVESTMENT_HOLDINGS)
     scope = encode_scope({"date": "20261001"})
-    body = capability.page_body(scope, 20)
+    body = capability.page_body(scope, 500)
     assert body == {
         "tntInstId": "GUAPW3SG",
         "status": ["ACTIVE", "INACTIVE"],
         "date": "20261001",
-        "rowStart": 20,
-        "pageSize": 10,
+        "rowStart": 500,
+        "pageSize": 500,
     }
     assert set(body) <= capability.contract.allowed_body_keys
 
@@ -248,7 +248,9 @@ def test_parse_detail_list_payload_echoes_each_row():
 
 
 def test_every_shipped_leaf_builds_a_valid_contract():
-    assert len(LIST_LEAVES) == 39
+    assert (
+        len(LIST_LEAVES) == 46
+    )  # seven spec #76 native lists, including compatible forecast
     for leaf in LIST_LEAVES.values():
         for variant in leaf.variants:
             capability = leaf.capability(variant)

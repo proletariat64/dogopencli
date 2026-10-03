@@ -22,7 +22,6 @@ from . import store as capture_store
 from .collect import collect_liquidity_scope
 from .common import emit, identity_values, load_config, now, provided, scope_flags
 from .leaves import DetailLeaf, detail_leaf, list_leaf
-from .query import fetch_detail
 
 
 def run_refresh_list(args: argparse.Namespace) -> int:
@@ -45,7 +44,11 @@ def run_refresh_list(args: argparse.Namespace) -> int:
                 ),
             )
         if not result.complete:
-            if variant.path == ("cash", "accounts"):
+            if variant.schema_version or variant.path in (
+                ("cash", "accounts"),
+                ("investment", "holdings"),
+                ("investment", "returns"),
+            ):
                 message = (
                     f"{variant.leaf} acquisition is incomplete (collected"
                     f" {len(result.records)}, reported {result.total_count});"
@@ -166,12 +169,14 @@ def run_refresh_detail(args: argparse.Namespace) -> int:
         with inquiry_session(
             config_file=config_mod.config_path(), startup_url=leaf.capability.page_url
         ) as session:
-            payload = fetch_detail(session.transport(leaf.capability), leaf, values)
+            from .decision_history import fetch_native_detail
+
+            payload = fetch_native_detail(session, leaf, values)
         fetched_at = now().isoformat()
         snapshot = detail_store.upsert_detail(
             store,
             detail.name,
-            detail_store.detail_key(values, detail.identity),
+            detail_store.contract_detail_key(detail, values),
             payload,
             fetched_at,
             now().isoformat(),

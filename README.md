@@ -103,10 +103,12 @@ SLA 是配置目标，不是观测到账耗时。
 
 ## 流动性查询（当前源码分支）
 
-[#72](https://github.com/proletariat64/dogopencli/issues/72) 已实现 60 个查询叶子：
-28 settings、25 runtimes、7 reference；另有 76 个延期叶子可通过帮助发现，
-执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。生产逐叶 UAT 和发布仍待完成；
-安装源码可使用本节命令，不表示上述 v0.1.15 wheel 已包含它们。
+当前源码版本为 **v0.2.3**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)
+和 [#76](https://github.com/proletariat64/dogopencli/issues/76) 已实现 68 个查询叶子：
+32 settings、29 runtimes、7 reference；另有 65 个延期叶子可通过帮助发现，
+执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
+已有 v0.1.15 wheel 不包含它们。已实现命令的完整性、告警和后端阻塞须分别判断，
+验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
 
 ```toml
 [sources.liquidity]
@@ -123,6 +125,8 @@ dogopencli liquidity investment holdings get --investment-no HOLDING_ID
 dogopencli liquidity investment returns list --basis cash \
   --from-date 20260930 --to-date 20260930
 dogopencli describe liquidity investment returns list
+dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
+  --record-from-time 000000 --record-to-time 235959 --live --all
 ```
 
 日期与身份须替换为实际查询范围和原生 ID；查询默认离线，`--live` 不写缓存。
@@ -138,10 +142,17 @@ dogopencli describe liquidity investment returns list
 | 资源 | 已实现动作 |
 | --- | --- |
 | `cash accounts` | `list` |
+| `cash balances` | `list` |
+| `cash groups` | `list` |
+| `cash group-balances` | `list` |
+| `cash pools` | `list`, `get` |
+| `cash credit-lines` | `list` |
 | `cash statements intraday` | `list` |
+| `cash statements end-of-day` | `list` |
 | `cash waterlevels` | `list` |
 | `forecast adjustments` | `list` |
 | `forecast cashflows` | `list` |
+| `forecast results` | `list` |
 | `investment benchmarks` | `list` |
 | `investment compound-ledger` | `list`, `get` |
 | `investment holdings` | `list`, `get` |
@@ -181,8 +192,13 @@ dogopencli describe liquidity investment returns list
 | `rules transfer` | `get` |
 | `rules waterlevel` | `list`, `get` |
 
-重叠分页、无总数或尚未证明分页的列表保持延期（如 balances、forecast results、
-risk sla、transfer rules、quote-groups、decisions、transfers）；独立验证过的详情不受此影响。
+普通 live 对已兼容的不完整采集保留可用数据，同时返回 `INCOMPLETE_RESULT`、
+`complete=false` 和退出码 1；`--require-complete` 拒绝部分数据。
+不完整 refresh 不发布或覆盖原完整缓存。后端 total 变化仍返回 `INVALID_RESPONSE`。
+`ledger balances list` 已有查询实现，但后端业务错误 999 仍阻塞完整采集。
+没有已验证查询合同的叶子继续延期，如 wallets、pool-balances、credit-usage、
+forecast accuracy、risk sla list、transfer rules list、quote-groups、decisions list、
+transfers list；独立验证过的详情不受此影响。
 [证据与未验证事项](docs/research/general/2026-10-01-liquidity-live-probes.md)，
 [缓存决策](docs/adr/0016-liquidity-independent-list-and-detail-caches.md)。
 

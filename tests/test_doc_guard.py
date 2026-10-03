@@ -54,12 +54,32 @@ class DocGuardTests(unittest.TestCase):
             "docs/report.md",
             "docs/agents/Bad_Name.md",
             "docs/spec/payment.md",
+            "docs/design/payment.md",
+            "docs/design/payment-v01.2.3.md",
             "docs/research/genernal/2026-09-08-access.md",
         ):
             with self.subTest(name=name):
                 result = self.run_guard({name: "# Test\n"})
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("invalid documentation", result.stdout)
+
+    def test_versioned_design_copy_requires_authoritative_issue(self) -> None:
+        name = "docs/design/liquidity-v0.2.3.md"
+        result = self.run_guard(
+            {
+                name: "# Liquidity\n\n[Specification](https://github.com/proletariat64/dogopencli/issues/76)\n"
+            }
+        )
+        self.assertEqual(result.returncode, 0, result.stdout)
+        for body in (
+            "# Liquidity\n",
+            "# Liquidity\n\n```text\nhttps://github.com/proletariat64/dogopencli/issues/76\n```\n",
+            "# Liquidity\n\nhttps://github.com/another/repository/issues/76\n",
+        ):
+            with self.subTest(body=body):
+                result = self.run_guard({name: body})
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("authoritative GitHub issue", result.stdout)
 
     def test_inline_code_title_and_link_examples_pass(self) -> None:
         result = self.run_guard(

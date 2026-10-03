@@ -64,7 +64,7 @@ def holding(index, day="20261001", amount="10.00"):
 
 
 def collect(rows_by_offset, total):
-    holdings = LiquidityListCapability(INVESTMENT_HOLDINGS)
+    holdings = LiquidityListCapability(replace(INVESTMENT_HOLDINGS, page_size=10))
     transport = FakeQueryTransport(
         lambda body: holdings_page(rows_by_offset(body), total)
     )
@@ -135,7 +135,7 @@ def test_short_page_missing_source_row_remains_incomplete():
 
 
 def test_changed_total_is_a_hard_failure():
-    holdings = LiquidityListCapability(INVESTMENT_HOLDINGS)
+    holdings = LiquidityListCapability(replace(INVESTMENT_HOLDINGS, page_size=10))
     calls = iter([12, 13])
     transport = FakeQueryTransport(
         lambda body: holdings_page([holding(1)], next(calls))
@@ -145,7 +145,7 @@ def test_changed_total_is_a_hard_failure():
 
 
 def test_empty_page_before_the_total_stalls():
-    holdings = LiquidityListCapability(INVESTMENT_HOLDINGS)
+    holdings = LiquidityListCapability(replace(INVESTMENT_HOLDINGS, page_size=10))
     fake = FakeQueryTransport(lambda body: holdings_page([], 5))
     with pytest.raises(CliError) as error:
         collect_liquidity_scope(holdings, fake, encode_scope({"date": "20261001"}))
@@ -153,7 +153,7 @@ def test_empty_page_before_the_total_stalls():
 
 
 def test_oversized_page_is_rejected():
-    holdings = LiquidityListCapability(INVESTMENT_HOLDINGS)
+    holdings = LiquidityListCapability(replace(INVESTMENT_HOLDINGS, page_size=10))
     fake = FakeQueryTransport(
         lambda body: holdings_page([holding(i) for i in range(11)], 11)
     )
@@ -227,20 +227,20 @@ def test_accounts_large_page_keeps_backend_shortfall_incomplete():
 
 
 def test_large_page_uses_its_own_offset_stride():
-    capability = LiquidityListCapability(replace(INVESTMENT_HOLDINGS, page_size=1000))
+    capability = LiquidityListCapability(INVESTMENT_HOLDINGS)
     fake = FakeQueryTransport(
         lambda body: holdings_page(
             [
                 holding(i)
-                for i in range(body["rowStart"], min(body["rowStart"] + 1000, 1201))
+                for i in range(body["rowStart"], min(body["rowStart"] + 500, 1201))
             ],
             1201,
         )
     )
     result = collect_liquidity_scope(capability, fake, "")
     assert result.complete
-    assert result.page_size == 1000
-    assert [body["rowStart"] for body in fake.requests] == [0, 1000]
+    assert result.page_size == 500
+    assert [body["rowStart"] for body in fake.requests] == [0, 500, 1000]
 
 
 def test_accounts_alias_conflict_still_rejects_collection():

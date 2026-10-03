@@ -15,7 +15,15 @@ from dogopencli.plugins.liquidity.leaves import (
     CASH_WATERLEVELS,
     FORECAST_ADJUSTMENTS,
     FORECAST_CASHFLOWS,
-    INVESTMENT_HOLDINGS,
+)
+from dogopencli.plugins.liquidity.leaves import (
+    INVESTMENT_HOLDINGS as NATIVE_HOLDINGS,
+)
+
+# These cases exercise the generic dated retention contract. Native holdings
+# are query-date-scoped snapshots; their row valueDate is not a coverage axis.
+INVESTMENT_HOLDINGS = replace(
+    NATIVE_HOLDINGS, profile=spec_mod.PROFILE_DATED, series_field="valueDate"
 )
 
 T1 = "2026-10-01T00:00:00+00:00"

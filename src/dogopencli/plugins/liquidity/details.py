@@ -55,6 +55,25 @@ def detail_key(
     return "|".join(parts)
 
 
+def contract_detail_key(detail: spec.DetailSpec, values: dict[str, str]) -> str:
+    """Typed object identity plus fixed native contract/version for new leaves."""
+    key = detail_key(values, detail.identity)
+    if not detail.schema_version:
+        return key
+    contract = {
+        "origin": spec.HOST,
+        "tenant": spec.TENANT,
+        "kind": detail.kind,
+        "endpoint": detail.endpoint,
+        "method": detail.method,
+        "schema_version": detail.schema_version,
+        "projection": detail.projection,
+        "template": detail.template,
+    }
+    digest = hashlib.sha256(canonical(contract).encode()).hexdigest()
+    return f"{key}|contract={digest}"
+
+
 def read_details(store: Cache, capability: str) -> dict[str, StoredDetail]:
     snapshot, stored = store.read(details_namespace(capability))
     details: dict[str, StoredDetail] = {}

@@ -89,6 +89,7 @@ def _collect_offset(
         body = capability.page_body(scope, row_start)
         response = collect_mod.execute_bounded(capability, transport, body, deadline)
         rows, reported = capability.parse_rows(response.body)
+        capability.validate_rows_scope(rows, scope)
         if reported is None:
             raise CliError(
                 INVALID_RESPONSE,
@@ -151,15 +152,18 @@ def _collect_single(
     body = capability.page_body(scope, 0)
     response = collect_mod.execute_bounded(capability, transport, body, deadline)
     rows, total = capability.parse_rows(response.body)
+    capability.validate_rows_scope(rows, scope)
     seen: dict[tuple[str, ...], str] = {}
     ordered: list[dict[str, Any]] = []
     if capability.descriptor.identity:
         _merge_page(capability, seen, ordered, rows)
     else:
         ordered = rows
-    if total is not None and total != len(ordered):
+    if total is not None and (total != len(rows) or total != len(ordered)):
         # A reported total the single response does not cover can never be
-        # normalized into an empty or partial complete dataset.
+        # normalized into an empty or partial complete dataset. Duplicate
+        # arrivals cannot prove completeness merely because deduplication
+        # happens to produce the reported number of identities.
         complete = False
     else:
         complete = True

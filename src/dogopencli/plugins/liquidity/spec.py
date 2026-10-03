@@ -74,6 +74,7 @@ class ScopeOption:
     list_of_one: bool = False
     # Value this spec binds for a virtual option in a variant leaf.
     match: str = ""
+    time: bool = False  # verified HHmmss, without an inferred source timezone
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,10 @@ class ListSpec:
     paged_request: bool = True
     # Per-leaf request width, based on verified inquiry responses.
     page_size: int = PAGE_SIZE
+    projection: str = ""
+    total_checks: tuple[tuple[str, ...], ...] = ()
+    require_inner_success: bool = False
+    schema_version: str = ""  # nonempty versions isolate new projected caches
 
     @property
     def leaf(self) -> str:
@@ -149,6 +154,9 @@ class DetailSpec:
     # the method (every observed GET detail carries it); the two product
     # POST inquiries are the observed POST exceptions.
     tenant_field: bool | None = None
+    template: dict[str, Any] = field(default_factory=dict)
+    projection: str = ""
+    schema_version: str = ""
 
     @property
     def sends_tenant(self) -> bool:

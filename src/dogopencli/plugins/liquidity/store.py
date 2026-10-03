@@ -645,7 +645,16 @@ def select_captures(
     scoped = [entry for entry in data.captures if entry.scope == scope]
     if list_spec.profile in (spec.PROFILE_SNAPSHOT, spec.PROFILE_HISTORY):
         latest = max(scoped, key=lambda entry: entry.fetched_at, default=None)
-        return ([latest] if latest is not None else []), latest is not None
+        complete = latest is not None
+        if latest is not None and list_spec.profile == spec.PROFILE_HISTORY:
+            # Retention can split the newest capture at its identity boundary.
+            # Its original total remains evidence of the acquired scope;
+            # merely selecting the retained suffix cannot restore coverage.
+            complete = (
+                latest.reported_total is None
+                or latest.row_count == latest.reported_total
+            )
+        return ([latest] if latest is not None else []), complete
     window_from, window_to = window
     if window_from is None or window_to is None:
         raise CliError(INVALID_ARGUMENT, "dated queries require a business window")

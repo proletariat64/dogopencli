@@ -37,6 +37,15 @@ from .capability import (
     encode_scope,
     scope_values,
 )
+from .cash_forecast import (
+    ACCEPTED_DETAIL_SPECS,
+    ACCEPTED_LIST_SPECS,
+    CI_BLOCKER,
+    RELEASED,
+    UAT_BLOCKERS,
+    UAT_PASSED,
+    WITHDRAWN_GETTERS,
+)
 from .spec import (
     ENC_FORM,
     ENV_BASE_RESULT,
@@ -382,17 +391,16 @@ INVESTMENT_HOLDINGS = ListSpec(
     container=("data", "data"),
     total=("data", "totalCount"),
     identity=("investmentNo",),
-    profile=PROFILE_DATED,
-    series_field="valueDate",
+    page_size=500,
+    profile=PROFILE_HISTORY,
     template={"tntInstId": TENANT, "status": ["ACTIVE", "INACTIVE"]},
     scope_options=(
         ScopeOption(
             "date",
             "date",
-            f"Business date of the holdings snapshot. {_DATE_FMT}",
+            f"Native query date for the holdings snapshot. {_DATE_FMT}",
             required=True,
             date=True,
-            window="both",
         ),
     ),
     filters=(
@@ -413,6 +421,10 @@ INVESTMENT_HOLDINGS = ListSpec(
         " scope. Holdings detail uses the native investmentNo as orderId.",
         _PAGE_ECHO_NOTE,
         _NULL_NOTE,
+        "The request date scopes the complete portfolio snapshot; native"
+        " row valueDate is not that snapshot date and is never used to discard"
+        " its holdings. Each query date has an independent cache scope."
+        " Retained snapshot history orders by capture time, not row valueDate.",
     ),
 )
 
@@ -426,6 +438,7 @@ INVESTMENT_TRANSACTIONS = ListSpec(
     container=("data", "data"),
     total=("data", "totalCount"),
     identity=("orderId",),
+    page_size=5000,
     profile=PROFILE_HISTORY,
     template={"tntInstId": TENANT},
     filters=(("currency", "currency"), ("product_code", "productCode")),
@@ -453,6 +466,7 @@ INVESTMENT_INTEREST_RATES = ListSpec(
     identity=("currency", "rateName", "ratePeriod", "effectiveDate"),
     profile=PROFILE_DATED,
     series_field="effectiveDate",
+    series_format="%Y-%m-%d",
     template={"tntInstId": TENANT, "currency": [], "productTerm": [], "isPage": "Y"},
     scope_options=(
         ScopeOption(
@@ -519,6 +533,7 @@ INVESTMENT_RETURNS_ACCRUAL = ListSpec(
     container=("data", "data"),
     total=("data", "totalCount"),
     identity=("investmentNo", "transactionDate"),
+    page_size=5000,
     profile=PROFILE_DATED,
     series_field="transactionDate",
     template={"tntInstId": TENANT, "transactionId": []},
@@ -560,6 +575,7 @@ INVESTMENT_RETURNS_CASH = ListSpec(
     container=("data", "data"),
     total=("data", "totalCount"),
     identity=("transactionId",),
+    page_size=5000,
     profile=PROFILE_DATED,
     series_field="settlementDate",
     template={
@@ -641,6 +657,7 @@ LEDGER_BALANCES = ListSpec(
     identity=("accountNo", "currency", "valueDate", "accountingDate"),
     profile=PROFILE_DATED,
     series_field="valueDate",
+    series_format="%Y-%m-%d",
     template={
         "tntInstId": TENANT,
         "accountingStartDate": "",
@@ -838,6 +855,7 @@ INVESTMENT_BENCHMARKS = ListSpec(
     container=("data", "data"),
     total=("data", "totalCount"),
     identity=("id",),
+    page_size=5000,
     profile=PROFILE_SNAPSHOT,
     template={
         "tntInstId": TENANT,
@@ -886,6 +904,7 @@ RULES_FUNDING = ListSpec(
     container=("result", "dataValue"),
     total=("result", "count"),
     identity=("id",),
+    page_size=5000,
     profile=PROFILE_SNAPSHOT,
     vo_field="fundRiskActionRelationQueryVO",
     template={
@@ -966,6 +985,7 @@ RULES_FX_SETTLEMENT = ListSpec(
     container=("result", "dataValue"),
     total=("result", "count"),
     identity=("id",),
+    page_size=5000,
     profile=PROFILE_SNAPSHOT,
     vo_field="fxBankAccountPropertyConfigQueryVO",
     template={
@@ -1043,6 +1063,7 @@ RULES_WATERLEVEL = ListSpec(
     container=("result", "dataValue"),
     total=("result", "count"),
     identity=("bufferId",),
+    page_size=5000,
     profile=PROFILE_SNAPSHOT,
     vo_field="bankAccountBufferQueryVO",
     template={
@@ -1154,6 +1175,7 @@ REFERENCE_ENTITIES = ListSpec(
     container=("result", "entityMaintVOList"),
     total=("count",),
     identity=("id",),
+    page_size=5000,
     profile=PROFILE_SNAPSHOT,
     vo_field="entityMaintQueryVO",
     template={"tntInstId": TENANT, "entityMaintQueryVO": {"tntInstId": TENANT}},
@@ -1241,6 +1263,7 @@ LEDGER_ACCOUNTS = ListSpec(
     container=("data", "data"),
     total=("data", "totalCount"),
     identity=("accountNo", "bookType", "currency"),
+    page_size=5000,
     profile=PROFILE_SNAPSHOT,
     template={"tntInstId": TENANT, "timeZone": "GMT+08", "parentCustomerNo": None},
     scope_options=(
@@ -1267,6 +1290,7 @@ REFERENCE_BANKS = ListSpec(
     container=("result", "bankVoList"),
     total=("count",),
     identity=("bankId",),
+    page_size=5000,
     profile=PROFILE_SNAPSHOT,
     vo_field="paraBankVO",
     template={"tntInstId": TENANT, "paraBankVO": {"tntInstId": TENANT}},
@@ -1285,6 +1309,7 @@ REFERENCE_BUSINESS_LINES = ListSpec(
     container=("result", "dataValue"),
     total=("result", "count"),
     identity=("id",),
+    page_size=5000,
     profile=PROFILE_SNAPSHOT,
     vo_field="bankAccountBusinessLineQueryVO",
     template={
@@ -1413,12 +1438,15 @@ DETAIL_SPECS: tuple[DetailSpec, ...] = (
         method="POST",
         envelope=ENV_SUCCESS,
         container=("data",),
-        identity=(
-            IdentityOption(
-                "id", "id", "Decision report id from the list.", "int", "id"
-            ),
-        ),
+        container_list=True,
+        identity=(IdentityOption("id", "id", "Current decision report id.", "int"),),
         list_leaf=("operations", "decisions"),
+        schema_version="decision-history-lineage-v1",
+        notes=(
+            "Native history is a list of versions with distinct row ids.",
+            "Each acquisition verifies the current native getDetail id and"
+            " binds every history row to its reportId, groupId and tenant.",
+        ),
     ),
     DetailSpec(
         path=("operations", "transfers"),
@@ -1826,7 +1854,11 @@ _PROJECTION = "mixed native response needs validated settings/runtime projection
 
 _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
     DeferredLeaf(
-        ("cash", "accounts", "get"), REFERENCE, "failed", f"Account detail: {_FAILED}."
+        ("cash", "accounts", "get"),
+        REFERENCE,
+        "backend-blocked",
+        "Native account detail returns business error 999; list ids are shared."
+        " Backend identity/detail repair and typed echo evidence are required.",
     ),
     DeferredLeaf(
         ("cash", "statements", "end-of-day", "list"),
@@ -1886,8 +1918,9 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
     DeferredLeaf(
         ("cash", "pool-balances", "list"),
         RUNTIMES,
-        "projection-pending",
-        f"Pool balances: {_PROJECTION}.",
+        "semantics-pending",
+        "Pool balances: native observation time and equivalent-currency/aggregate"
+        " semantics are unverified; gmtModified/billingTime are not balance times.",
     ),
     DeferredLeaf(
         ("cash", "credit-lines", "list"),
@@ -1904,8 +1937,9 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
     DeferredLeaf(
         ("cash", "credit-usage", "list"),
         RUNTIMES,
-        "unverified",
-        f"Credit usage: {_UNVERIFIED}.",
+        "semantics-pending",
+        "Credit usage: shared/merged credit currency aggregation and usage"
+        " observation times are unverified; validity dates are not usage times.",
     ),
     DeferredLeaf(
         ("forecast", "results", "get"),
@@ -1916,9 +1950,10 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
     DeferredLeaf(
         ("forecast", "accuracy", "list"),
         RUNTIMES,
-        "semantics-pending",
-        "Forecast accuracy: populated native query observed, but accuracy"
-        " measure and time semantics are not established.",
+        "backend-blocked",
+        "Forecast accuracy: 1000-width offset pages contain cross-page duplicate"
+        " ids (4416 unique of 4419 reported). Backend pagination repair and"
+        " nonzero accuracy/formula/day-boundary evidence are required.",
     ),
     DeferredLeaf(
         ("operations", "demands", "list"),
@@ -2293,9 +2328,54 @@ _TICKET_DEFERRED: tuple[DeferredLeaf, ...] = (
     ),
 )
 
-# Every audited deferred leaf stays discoverable: the seven ticket-level
-# deferrals from the 67-candidate catalog plus the rest of the #71 audit.
-DEFERRED: tuple[DeferredLeaf, ...] = (*_TICKET_DEFERRED, *_AUDIT_DEFERRED)
+# Spec #76 replaces old cash/forecast deferrals, not other domains' contracts.
+_ACCEPTED_PATHS = {(*item.path, "list") for item in ACCEPTED_LIST_SPECS} | {
+    (*item.path, item.action) for item in ACCEPTED_DETAIL_SPECS
+}
+LIST_SPECS += tuple(item for item in ACCEPTED_LIST_SPECS if item.name in RELEASED)
+DETAIL_SPECS += tuple(item for item in ACCEPTED_DETAIL_SPECS if item.name in RELEASED)
+DEFERRED: tuple[DeferredLeaf, ...] = (
+    tuple(
+        item
+        for item in (*_TICKET_DEFERRED, *_AUDIT_DEFERRED)
+        if item.path not in _ACCEPTED_PATHS and item.path not in WITHDRAWN_GETTERS
+    )
+    + tuple(
+        DeferredLeaf(
+            (*item.path, "list"),
+            item.kind,
+            "uat-blocked"
+            if item.name in UAT_BLOCKERS
+            else ("ci-pending" if item.name in UAT_PASSED else "uat-pending"),
+            UAT_BLOCKERS.get(
+                item.name,
+                CI_BLOCKER
+                if item.name in UAT_PASSED
+                else (
+                    "Spec #76 implementation candidate: focused SIT and per-leaf CLI"
+                    " production inquiry UAT must pass before execution is released."
+                ),
+            ),
+        )
+        for item in ACCEPTED_LIST_SPECS
+        if item.name not in RELEASED
+    )
+    + tuple(
+        DeferredLeaf(
+            (*item.path, item.action),
+            item.kind,
+            "ci-pending" if item.name in UAT_PASSED else "uat-pending",
+            CI_BLOCKER
+            if item.name in UAT_PASSED
+            else (
+                "Spec #76 native detail candidate: focused SIT and per-leaf CLI"
+                " production inquiry UAT must pass before execution is released."
+            ),
+        )
+        for item in ACCEPTED_DETAIL_SPECS
+        if item.name not in RELEASED
+    )
+)
 
 
 # --- leaf registry -----------------------------------------------------------
@@ -2363,13 +2443,23 @@ class ListLeaf:
         window_fields = {
             option.field for option in variant.scope_options if option.window
         }
-        scope_key = encode_scope(
-            {
-                field: value
-                for field, value in request_values.items()
-                if field not in window_fields
+        cache_values = {
+            field: value
+            for field, value in request_values.items()
+            if field not in window_fields
+        }
+        if variant.schema_version:
+            cache_values["__contract"] = {
+                "origin": "iliquidity.alipay.com",
+                "tenant": TENANT,
+                "kind": variant.kind,
+                "endpoint": variant.endpoint,
+                "method": variant.method,
+                "schema_version": variant.schema_version,
+                "projection": variant.projection,
+                "template": variant.template,
             }
-        )
+        scope_key = encode_scope(cache_values)
         return ResolvedScope(
             spec=variant,
             request_values=request_values,
@@ -2455,6 +2545,8 @@ def _option_spec(option: ScopeOption) -> OptionSpec:
     summary = option.summary
     if option.verified:
         summary += f" Live-verified: {option.verified}."
+    if option.repeat and option.default is not None:
+        summary += f" Default native scope when omitted: {option.default}."
     kind = "append" if option.repeat else "str"
     return OptionSpec(
         option.flag,
@@ -2462,7 +2554,7 @@ def _option_spec(option: ScopeOption) -> OptionSpec:
         summary,
         kind,
         required=option.required,
-        default=option.default,
+        default=None if option.repeat else option.default,
         choices=option.choices,
     )
 

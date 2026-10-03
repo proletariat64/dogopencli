@@ -94,7 +94,9 @@ def holdings_page(rows, total):
 
 def holdings_listing(rows_by_offset, total):
     def answer(payload, index):
-        return holdings_page(rows_by_offset(payload["rowStart"]), total)
+        return holdings_page(
+            rows_by_offset(payload["rowStart"], payload["pageSize"]), total
+        )
 
     return answer
 
@@ -102,8 +104,8 @@ def holdings_listing(rows_by_offset, total):
 def seed_holdings(run_cli, setup, total=12, day="20261001"):
     rows = [holding(i, day) for i in range(total)]
 
-    def by_offset(row_start):
-        return rows[row_start : row_start + 10]
+    def by_offset(row_start, page_size):
+        return rows[row_start : row_start + page_size]
 
     setup.state.business_handler = holdings_listing(by_offset, total)
     code, out, err = run_cli(
@@ -116,25 +118,28 @@ def seed_holdings(run_cli, setup, total=12, day="20261001"):
 
 
 def test_refresh_then_offline_list_with_kind_and_origin(setup, run_cli):
-    rows = seed_holdings(run_cli, setup)
+    rows = seed_holdings(run_cli, setup, total=512)
+    assert [p["rowStart"] for p in setup.state.business_requests] == [0, 500]
+    assert all(p["pageSize"] == 500 for p in setup.state.business_requests)
     created = [url for transport in setup.state.transports for url in transport.created]
     # Session setup verifies only the requested liquidity origin (ADR 0015).
     assert PAYMENT_URL not in created
     assert LIQUIDITY_URL in created
     code, out, err = run_cli(
-        ["liquidity", "investment", "holdings", "list", "--date", "20261001"]
+        ["liquidity", "investment", "holdings", "list", "--date", "20261001", "--all"]
     )
     assert code == 0, err
     envelope = parse(out)
     assert envelope["error"] is None
-    assert len(envelope["data"]) == 12
+    assert len(envelope["data"]) == 512
     meta = envelope["meta"]
     assert meta["kind"] == "runtimes"
     assert meta["source"] == "cache"
     assert meta["complete"] is True
-    assert meta["reported_total"] == 12
-    assert meta["requested_window"] == ["20261001", "20261001"]
-    assert meta["retained_coverage"][0]["row_count"] == 12
+    assert meta["reported_total"] == 512
+    assert meta["requested_window"] is None
+    assert 'date="20261001"' in meta["scope"]
+    assert meta["retained_coverage"][0]["row_count"] == 512
     assert [row["investmentNo"] for row in envelope["data"]] == [
         row["investmentNo"] for row in rows
     ]
@@ -272,22 +277,25 @@ def test_refresh_failure_preserves_the_previous_cache(setup, run_cli):
 
 
 def test_live_overlap_is_partial_and_require_complete_fails(setup, run_cli):
-    rows = [holding(i) for i in range(12)]
+    rows = [holding(i) for i in range(512)]
 
-    def by_offset(row_start):
+    def by_offset(row_start, page_size):
         # The observed overlap defect: page 2 repeats the last page-1 row.
         if row_start == 0:
-            return rows[:10]
-        return rows[9:11]
+            return rows[:page_size]
+        return rows[row_start - 1 : row_start + 11]
 
-    setup.state.business_handler = holdings_listing(by_offset, 12)
+    setup.state.business_handler = holdings_listing(by_offset, 512)
     code, out, _ = run_cli(
         ["liquidity", "investment", "holdings", "list", "--date", "20261001", "--live"]
     )
-    assert code == 0
+    assert code == 1
     envelope = parse(out)
     assert envelope["meta"]["source"] == "live"
     assert envelope["meta"]["complete"] is False
+    assert envelope["error"]["code"] == "INCOMPLETE_RESULT"
+    assert envelope["meta"]["warnings"][0]["code"] == "INCOMPLETE_RESULT"
+    assert envelope["data"]
     code, out, _ = run_cli(
         [
             "liquidity",
@@ -344,12 +352,14 @@ def test_products_single_response_route(setup, run_cli):
 
 
 def test_deferred_leaf_is_discoverable_and_fails_truthfully(setup, run_cli):
-    code, out, _ = run_cli(["liquidity", "cash", "balances", "list"])
+    code, out, _ = run_cli(["liquidity", "forecast", "accuracy", "list"])
     assert code == 1
     error = parse(out)["error"]
     assert error["code"] == "UNSUPPORTED_CAPABILITY"
-    assert "overlap" in error["message"]
-    help_code, help_out, _ = run_cli(["help", "liquidity", "cash", "balances", "list"])
+    assert "duplicate" in error["message"]
+    help_code, help_out, _ = run_cli(
+        ["help", "liquidity", "forecast", "accuracy", "list"]
+    )
     assert help_code == 0
     assert "Unsupported" in help_out
     # The wider #71 audit deferrals are discoverable the same way.
@@ -370,7 +380,7 @@ def test_kind_in_help_and_describe(setup, run_cli):
     assert document["describe_version"] == 1
     guide = document["read_guide"]
     assert guide["kind"] == "runtimes"
-    assert guide["offline_profile"] == "dated"
+    assert guide["offline_profile"] == "history"
     assert document["data_schema"]["properties"]["investmentNo"]
 
 
