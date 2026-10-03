@@ -1596,6 +1596,19 @@ def cmd_liquidity_unsupported(args: argparse.Namespace) -> int:
     return run_unsupported(args)
 
 
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    from .snapshot import main as snapshot_main
+
+    tokens = getattr(args, "snapshot_tokens", None)
+    if tokens is None:
+        tokens = [
+            *getattr(args, "path", ()),
+            "--format",
+            getattr(args, "format", "text"),
+        ]
+    return snapshot_main(tokens)
+
+
 def cmd_describe(args: argparse.Namespace) -> int:
     from .describe import describe, render_text
 
@@ -1617,6 +1630,17 @@ class _BusinessParser(argparse.ArgumentParser):
 
 def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
     """Parse the resolved leaf's remaining argv and run its handler."""
+    if node.path == ("snapshot",):
+        return cmd_snapshot(
+            argparse.Namespace(
+                snapshot_tokens=[
+                    token
+                    for index, token in enumerate(values)
+                    if index not in word_indices
+                ],
+                command_path=node.path,
+            )
+        )
     parser = _BusinessParser(
         prog="dogopencli " + " ".join(node.path),
         description=node.summary,
@@ -1670,6 +1694,13 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
 def main(argv: list[str] | None = None) -> int:
     values = list(sys.argv[1:] if argv is None else argv)
     word, index = leading_command(values)
+    if word == "snapshot" and not any(token in ("--help", "-h") for token in values):
+        return cmd_snapshot(
+            argparse.Namespace(
+                snapshot_tokens=values[:index] + values[index + 1 :],
+                command_path=("snapshot",),
+            )
+        )
     if word == "help":
         return help_main(values[:index] + values[index + 1 :])
     if word in AUTH_COMMANDS:

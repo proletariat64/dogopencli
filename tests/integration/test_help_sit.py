@@ -14,6 +14,7 @@ import pytest
 from dogopencli.plugins.payment.channel import SCOPES, STATUSES
 
 ROOT_CHILDREN = [
+    "snapshot",
     "payment",
     "refresh",
     "collection",
