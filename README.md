@@ -13,7 +13,7 @@ WSL 用户应使用 Linux 磁盘目录。
 ### 1. 安装
 
 从 [Releases](https://github.com/proletariat64/dogopencli/releases) 下载 wheel，
-在虚拟环境中安装。以下以 v0.2.4 为例，在下载目录执行：
+在虚拟环境中安装。以下以已发布的 v0.2.4 为例，在下载目录执行：
 
 ```bash
 python3 -m venv .venv
@@ -62,11 +62,11 @@ dogopencli collection account-isolation list --live --all
 
 示例中的币种、业务代码与 ID 应替换为实际返回值；示例筛选结果可以为空。
 
-当前源码分支默认允许使用已验证的 incomplete 列表：live、离线读取和 refresh
+当前版本默认允许使用已验证的 incomplete 列表：live、离线读取和 refresh
 退出 0，`error=null`，每次通过 `meta.warnings` 和 stderr 告警。最新 partial refresh
 可替换旧完整缓存；需要完整结果时，查询和刷新都使用 `--require-complete`，
 严格刷新会在提交前拒绝。身份、范围、格式及 PTR 稳定性失败继续拒绝。
-行为变化与缓存回滚要求见[未发布变更记录](CHANGELOG.md)。
+行为变化与缓存回滚要求见[变更记录](CHANGELOG.md)。
 
 ## 可以查询什么
 
@@ -141,11 +141,12 @@ SLA 是配置目标，不是观测到账耗时。
 
 ## 流动性查询（当前源码分支）
 
-当前版本为 **v0.2.4**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)
-和 [#76](https://github.com/proletariat64/dogopencli/issues/76) 已实现 68 个查询叶子：
-32 settings、29 runtimes、7 reference；另有 65 个延期叶子可通过帮助发现，
+当前源码版本为 **v0.2.5**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)、
+[#76](https://github.com/proletariat64/dogopencli/issues/76) 和
+[PR #83](https://github.com/proletariat64/dogopencli/pull/83) 已实现 69 个查询叶子：
+32 settings、30 runtimes、7 reference；另有 64 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
-已有 v0.1.15 wheel 不包含它们。已实现命令的完整性、告警和后端阻塞须分别判断，
+v0.2.4 wheel 不包含新增的 swaps 列表。已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
 
 ```toml
@@ -208,6 +209,7 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `operations decisions` | `get`, `history` |
 | `operations forwards` | `list`, `get` |
 | `operations prefunds` | `list`, `get` |
+| `operations swaps` | `list`（必填交易日期范围） |
 | `operations transfers` | `get` |
 | `pricing client-prices` | `list` |
 | `pricing cost-prices` | `list` |
@@ -229,6 +231,27 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `rules realtime` | `list`, `get` |
 | `rules transfer` | `get` |
 | `rules waterlevel` | `list`, `get` |
+
+### Swap 订单列表
+
+`operations swaps list` 与对应 refresh 必须同时提供 `--trade-from` 和
+`--trade-to`，格式为 `YYYYMMDD`，包含两端交易日期。缺失、单边或倒置范围在访问
+传输前拒绝；原生无日期全范围有重复记录，未开放。每个精确日期范围独立缓存，
+不跨范围拼接记录。`get` 继续返回 `UNSUPPORTED_CAPABILITY`。
+
+```bash
+dogopencli refresh liquidity operations swaps --trade-from 20260901 --trade-to 20261001
+dogopencli liquidity operations swaps list --trade-from 20260901 --trade-to 20261001 --all
+dogopencli describe liquidity operations swaps list
+```
+
+正式注册 CLI 的生产只读 UAT 已通过 21/21；代表范围为 15 条订单、两页、无重复或
+缺失，refresh 与离线全量记录一致，live 不写缓存。见
+[验收记录](docs/research/general/2026-10-04-funding-execution-batch-acceptance.md)。
+四列表 batch 当前交付 **1/4**：`operations demands list`、`operations executions list`
+和 `investment investable-funds list` 因缺少非空原生结构、身份及业务语义证据，
+继续 unsupported；[#82](https://github.com/proletariat64/dogopencli/issues/82) 及其
+实施、验收 issues 保持开放。
 
 普通 live 对已验证的不完整采集返回有效数据、完整性 false、`INCOMPLETE_RESULT`
 告警，顶层 `error=null`、退出码 0；`--require-complete` 拒绝部分数据。

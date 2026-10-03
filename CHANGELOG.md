@@ -1,5 +1,17 @@
 # 变更记录
 
+## v0.2.5（2026-10-04）
+
+合并 PR #83，新增 `liquidity operations swaps list` 与对应 refresh，必填
+`--trade-from`、`--trade-to`（YYYYMMDD，包含两端）。默认离线读取精确范围缓存，
+显式 live 不写缓存；无日期、单边、倒置范围拒绝，get 继续 unsupported。
+正式注册 CLI 生产只读 UAT 21/21 通过。
+
+四列表 batch 交付 1/4；demands、executions、investable-funds 仍缺少非空原生
+证据，#82、#84、#85、#86 尚未完成。查询叶子为 69 supported、64 unsupported。
+同步 README 与 snapshot 回归测试的支持状态；源码版本由 0.2.4 增加至 0.2.5。
+此记录不表示安装包或 GitHub Release 已发布。
+
 ## v0.2.4（2026-10-03）
 
 新增 `dogopencli snapshot`，离线查看当前命令树及本地缓存元数据，支持 JSON、
