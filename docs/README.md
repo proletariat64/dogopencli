@@ -31,6 +31,7 @@
 
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
+| General | [Issue #82 资金需求与执行查询验收](research/general/2026-10-03-funding-execution-batch-acceptance.md) | 0/4 放行，四叶子保持 unsupported；有界 swap 候选的生产 CLI UAT 受认证阻塞，本地 Kimi CI／复审未执行；原生采集、本地验证与待补门槛分别记录 |
 | General | [Issue #82 资金需求／执行／swap 原生契约](research/general/2026-10-03-liquidity-issue82-operations-contract.md) | 资金需求与两类执行记录的空样本／099 阻塞；swap 原生全范围 959 次到达、952 个唯一身份、7 次重复到达，有界交易日期范围 15/15 完整采集；代码为待 UAT／CI 放行候选 |
 | General | [Issue #82 可投资资金原生契约](research/general/2026-10-03-liquidity-investable-funds-contract.md) | 五个原生日期范围查询成功但为空；非空结构、金额／币种、唯一身份和完整性未验证，保持 unsupported；拒绝测试不代表列表已交付 |
 | General | [Liquidity v0.2.3 完整 CLI UAT](research/general/2026-10-03-liquidity-full-cli-uat.md) | 68 个可执行叶子的本轮 native live、独立 refresh、断开传输 offline 验收，以及 65 个延期叶子的非执行检查；[完整彩色地图](assets/general/2026-10-03-liquidity-full-cli-uat-roadmap.svg) |

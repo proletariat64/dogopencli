@@ -32,9 +32,11 @@ zero records with total zero. The native UI also requests
 inquiry and is outside this list implementation.
 
 On 2026-10-03, the current production bundle was checked against the saved
-bundle and matched its hash. The fresh authorized portal environment still
-reported `GMT+08`. Five bounded first-page table inquiries used native
-`pageSize=10`, `rowStart=0`, the authorized tenant and this native timezone:
+bundle and matched its hash. The native timezone preference was absent, so
+the source-verified UI default `GMT+08` was used. The fresh `queryenv` response
+supplied available timezone choices, not the selected preference. Five bounded
+first-page table inquiries used native `pageSize=10`, `rowStart=0`, the authorized
+tenant and this native preference default:
 
 | Report date | Forecast range | Result |
 | --- | --- | --- |
