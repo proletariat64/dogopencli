@@ -347,7 +347,8 @@ def render(report: dict[str, Any], format: str) -> str:
     lines: list[str] = []
 
     def visit(node: dict[str, Any], prefix: str, connector: str) -> None:
-        line = prefix + connector + node["command"].split()[-1]
+        label = node["command"] if not connector else node["command"].split()[-1]
+        line = prefix + connector + label
         if "availability" in node:
             rows = str(node["rows"]) + " rows" if node["rows"] is not None else "—"
             line += (
