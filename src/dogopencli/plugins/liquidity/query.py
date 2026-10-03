@@ -26,6 +26,7 @@ from ...errors import (
     EXIT_OK,
     EXIT_USAGE,
     INVALID_ARGUMENT,
+    INVALID_RESPONSE,
     UNSUPPORTED_CAPABILITY,
     CliError,
 )
@@ -222,7 +223,18 @@ def run_list(args: argparse.Namespace) -> int:
     ):
         occurrences: Counter[tuple[str, ...]] = Counter()
         missing_days = set(entry.missing_days)
-        for record in capture_store.read_capture(store, entry):
+        capture_rows = capture_store.read_capture(store, entry)
+        if variant.identity:
+            capture_ids: set[tuple[str, ...]] = set()
+            for record in capture_rows:
+                identity = capability.identity_key(record)
+                if identity in capture_ids:
+                    raise CliError(
+                        INVALID_RESPONSE,
+                        "cached capture contains duplicate native identities",
+                    )
+                capture_ids.add(identity)
+        for record in capture_rows:
             if variant.profile == spec_mod.PROFILE_DATED:
                 window_from, window_to = resolved.window
                 assert window_from is not None and window_to is not None

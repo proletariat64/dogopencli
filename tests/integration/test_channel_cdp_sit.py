@@ -368,14 +368,16 @@ def test_refresh_replaces_without_merging_old_rows(run_cli, envelope, cdp_setup)
     assert {row["abilityId"] for row in result["data"]} == {201, 202}
 
 
-def test_distinct_versions_remain_usable_with_unproven_business_consistency(
+@pytest.mark.parametrize("second_version", ["v1", "v2"])
+def test_business_key_and_version_do_not_prove_channel_row_identity(
     run_cli,
     envelope,
     cdp_setup,
+    second_version,
 ):
     rows = [
         channel_row(701, configVersion="v1"),
-        channel_row(701, configVersion="v2", status="DISABLE"),
+        channel_row(701, configVersion=second_version, status="DISABLE"),
         channel_row(702),
     ]
     cdp_setup.state.business_handler = paging_handler({1: rows}, len(rows))
@@ -390,7 +392,7 @@ def test_distinct_versions_remain_usable_with_unproven_business_consistency(
     assert result["meta"]["acquisition"]["duplicate_count"] is None
     assert "BUSINESS_CONSISTENCY_UNPROVEN" in err
     versions = [(row["abilityId"], row["configVersion"]) for row in result["data"]]
-    assert sorted(versions) == [(701, "v1"), (701, "v2"), (702, "v1")]
+    assert sorted(versions) == [(701, "v1"), (701, second_version), (702, "v1")]
     assert [row["seqid"] for row in result["data"]] == [1, 2, 3]
     code, out, _ = listing(run_cli, "--live", "--require-complete")
     assert code == 1
@@ -398,25 +400,44 @@ def test_distinct_versions_remain_usable_with_unproven_business_consistency(
     assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
 
 
-def test_channel_conflict_across_pages_preserves_cache(run_cli, envelope, cdp_setup):
+def test_channel_cross_page_occurrences_publish_partial_and_strict_keeps_cache(
+    run_cli, envelope, cdp_setup
+):
     refreshed(run_cli, cdp_setup, [channel_row(900)])
     original = cdp_setup.cache_path.read_bytes()
     rows = [channel_row(n) for n in range(100)]
     cdp_setup.state.business_handler = paging_handler(
         {1: rows, 2: [channel_row(0, status="DISABLE")]}, 101
     )
-    code, out, _ = refresh(run_cli)
+    code, out, _ = refresh(run_cli, "--require-complete")
     assert code == 1
-    assert envelope(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    assert envelope(out)["meta"]["published"] is False
     assert cdp_setup.cache_path.read_bytes() == original
     code, out, _ = listing(run_cli, "--all")
     assert code == 0
     assert [row["abilityId"] for row in envelope(out)["data"]] == [900]
     code, out, _ = listing(run_cli, "--live", "--require-complete")
     assert code == 1
-    assert envelope(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
     assert envelope(out)["data"] is None
     assert cdp_setup.cache_path.read_bytes() == original
+
+    code, out, err = refresh(run_cli)
+    result = envelope(out)
+    assert code == 0
+    assert result["meta"]["published"] is True
+    assert result["meta"]["complete"] is False
+    assert result["data"]["row_count"] == 101
+    assert result["error"] is None
+    assert "BUSINESS_CONSISTENCY_UNPROVEN" in err
+    code, out, err = listing(run_cli, "--all")
+    rows = envelope(out)["data"]
+    assert code == 0
+    assert len(rows) == 101
+    assert len([row for row in rows if row["abilityId"] == 0]) == 2
+    assert all(row["abilityId"] != 900 for row in rows)
+    assert "INCOMPLETE_RESULT" in err
 
 
 def test_candidate_seqids_are_content_deterministic(run_cli, envelope, cdp_setup):

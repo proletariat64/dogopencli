@@ -1301,7 +1301,7 @@ def _collection_va_capacity_cached(
     )
 
 
-def _refresh_complete_list(
+def _refresh_validated_list(
     cap: Capability,
     scope_name: str,
     *,
@@ -1356,7 +1356,7 @@ def _refresh_complete_list(
 
 
 def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
+    return _refresh_validated_list(
         collection_va_capacity.COLLECTION_VA_CAPACITY,
         "collection VA capacity",
         require_complete=getattr(args, "require_complete", False),
@@ -1465,7 +1465,7 @@ def cmd_collection_account_isolation_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_collection_account_isolation(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
+    return _refresh_validated_list(
         account_isolation.ACCOUNT_ISOLATION,
         "account-isolation configuration",
         require_complete=getattr(args, "require_complete", False),
@@ -1473,7 +1473,7 @@ def cmd_refresh_collection_account_isolation(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_collection_clearing_system(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
+    return _refresh_validated_list(
         network_config.CLEARING_SYSTEM,
         "collection network configuration",
         require_complete=getattr(args, "require_complete", False),
@@ -1485,7 +1485,7 @@ def cmd_collection_card_template_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_collection_card_template(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
+    return _refresh_validated_list(
         network_config.CARD_TEMPLATE,
         "collection network configuration",
         require_complete=getattr(args, "require_complete", False),
@@ -1499,7 +1499,7 @@ def cmd_payment_ptr_orders_list(args: argparse.Namespace) -> int:
 
 def cmd_refresh_payment_ptr_orders(args: argparse.Namespace) -> int:
     cap = payment_ptr_orders.bind_window(args.updated_from, args.updated_to)
-    return _refresh_complete_list(
+    return _refresh_validated_list(
         cap,
         "outflow PTR order interval",
         require_complete=getattr(args, "require_complete", False),
@@ -1511,7 +1511,7 @@ def cmd_payment_ptr_cases_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_payment_ptr_cases(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
+    return _refresh_validated_list(
         payment_ptr.CASES,
         "outflow PTR case library",
         require_complete=getattr(args, "require_complete", False),
@@ -1523,7 +1523,7 @@ def cmd_payment_rules_same_bank_transfer_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_payment_rules_same_bank_transfer(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
+    return _refresh_validated_list(
         payment_rules.SAME_BANK_TRANSFER,
         "same-bank rules",
         require_complete=getattr(args, "require_complete", False),
@@ -1535,7 +1535,7 @@ def cmd_payment_rules_cost_reduction_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_payment_rules_cost_reduction(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
+    return _refresh_validated_list(
         payment_rules.COST_REDUCTION,
         "cost-reduction rules",
         require_complete=getattr(args, "require_complete", False),
@@ -1547,7 +1547,7 @@ def cmd_payment_rules_retry_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_payment_rules_retry(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
+    return _refresh_validated_list(
         payment_rules.RETRY,
         "retry rules",
         require_complete=getattr(args, "require_complete", False),
@@ -1559,7 +1559,7 @@ def cmd_payment_rules_bank_switch_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_payment_rules_bank_switch(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
+    return _refresh_validated_list(
         payment_rules.BANK_SWITCH,
         "bank-switch source nodes",
         require_complete=getattr(args, "require_complete", False),

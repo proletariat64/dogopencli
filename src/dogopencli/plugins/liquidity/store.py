@@ -222,7 +222,10 @@ def read_index(store: Cache, capability: str) -> IndexData | None:
         return None
     data = IndexData()
     for _, body in stored:
-        record = parse(body)
+        try:
+            record = parse(body)
+        except (ValueError, TypeError) as error:
+            raise _invalid("cached capture index JSON is invalid") from error
         if not isinstance(record, dict):
             raise _invalid("cached capture index is invalid")
         entry_type = record.get("type")
@@ -298,8 +301,13 @@ def read_capture(store: Cache, entry: CaptureEntry) -> list[dict[str, Any]]:
     ):
         raise _invalid("cached legacy acquisition flags do not match capture")
     rows = []
-    for _, body in stored:
-        record = parse(body)
+    for expected_seqid, (seqid, body) in enumerate(stored, 1):
+        if seqid != expected_seqid:
+            raise _invalid("cached capture storage sequence is invalid")
+        try:
+            record = parse(body)
+        except (ValueError, TypeError) as error:
+            raise _invalid("cached capture record JSON is invalid") from error
         if not isinstance(record, dict):
             raise _invalid("cached capture record is invalid")
         rows.append(record)

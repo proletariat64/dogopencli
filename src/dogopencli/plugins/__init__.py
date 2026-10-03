@@ -53,8 +53,8 @@ class EndpointContract:
     total_semantics: str = "unique_objects"
     duplicate_policy: str = "conservative"
     has_identity: bool = True
-    # Versioned business IDs retain distinct versions but cannot establish a
-    # stable business snapshot. Same-version contradictory content is invalid.
+    # Business keys and versions do not establish native row identity.
+    # Distinct content under an unverified key leaves consistency unproven.
     consistency_version_field: str | None = None
 
 

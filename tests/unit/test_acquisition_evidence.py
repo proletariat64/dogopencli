@@ -157,7 +157,7 @@ def test_no_native_identity_preserves_identical_occurrences():
 
 
 @pytest.mark.parametrize("same_version", [False, True])
-def test_versioned_business_contract_distinguishes_versions_from_conflicts(
+def test_versioned_business_key_does_not_prove_native_row_identity(
     same_version,
 ):
     cap = replace(
@@ -176,16 +176,11 @@ def test_versioned_business_contract_distinguishes_versions_from_conflicts(
         row("2", business="same", version="v1" if same_version else "v2"),
     ]
     transport = Transport([(records, 2)])
-    if same_version:
-        with pytest.raises(CliError) as error:
-            collect.collect_scope(cap, transport, COST_TYPE)
-        assert error.value.code == "INVALID_RESPONSE"
-    else:
-        result = collect.collect_scope(cap, transport, COST_TYPE)
-        assert result.records == records
-        assert result.complete is False
-        assert result.evidence.reasons == ("BUSINESS_CONSISTENCY_UNPROVEN",)
-        assert result.evidence.unique_count is None
+    result = collect.collect_scope(cap, transport, COST_TYPE)
+    assert result.records == records
+    assert result.complete is False
+    assert result.evidence.reasons == ("BUSINESS_CONSISTENCY_UNPROVEN",)
+    assert result.evidence.unique_count is None
 
 
 def test_unreported_versions_cannot_establish_same_version_conflict():

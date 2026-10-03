@@ -220,10 +220,8 @@ def _attempt(
                 business_id = record.get(contract.consistency_field)
                 if business_id is not None:
                     business_key = canonical(business_id)
-                    version_known = True
                     if contract.consistency_version_field is not None:
                         version_value = record.get(contract.consistency_version_field)
-                        version_known = version_value is not None
                         version = canonical(version_value)
                         previous_version = observed_versions.setdefault(
                             business_key, version
@@ -235,7 +233,7 @@ def _attempt(
                         business_key, content
                     )
                     if previous_content != content:
-                        if version_known:
+                        if contract.has_identity:
                             raise CliError(
                                 INVALID_RESPONSE,
                                 "conflicting content for business identity",

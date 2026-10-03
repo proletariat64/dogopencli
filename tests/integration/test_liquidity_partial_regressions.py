@@ -1,6 +1,7 @@
 """Partial holdings and single-response duplicate coverage stay explicit."""
 
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,88 @@ from dogopencli.plugins.liquidity.capability import LiquidityListCapability
 from dogopencli.plugins.liquidity.collect import collect_liquidity_scope
 from dogopencli.plugins.liquidity.leaves import INVESTMENT_PRODUCTS, list_leaf
 from dogopencli.transport import OriginMetadata, TransportResponse
+
+
+@pytest.mark.parametrize("require_complete", [False, True])
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "conflicting_identity",
+        "identical_identity",
+        "missing_identity",
+        "seqid_gap",
+        "capture_json",
+        "index_json",
+    ],
+)
+def test_corrupt_capture_is_rejected_before_display_or_identity_merge(
+    holdings_source, run_cli, corruption, require_complete
+):
+    _, path = holdings_source
+    leaf = list_leaf(("risk", "metrics"))
+    resolved = leaf.resolve({"metric": "CONCENTRATION_RATE"})
+    rows = [{"id": 1, "value": "1"}, {"id": 2, "value": "2"}]
+    cache = Cache(path)
+    at = "2026-10-03T00:00:00+00:00"
+    plan = capture_store.plan_capture_publish(
+        cache, resolved.spec, resolved.scope_key, resolved.window, rows, None, at, at
+    )
+    capture_store.commit_plan(cache, resolved.spec.name, plan, at)
+    capture_ns = plan.capture_meta.namespace
+    with sqlite3.connect(path) as connection:
+        if corruption == "seqid_gap":
+            connection.execute(
+                "UPDATE records SET seqid = 3 WHERE namespace = ? AND seqid = 2",
+                (capture_ns,),
+            )
+        elif corruption in ("capture_json", "index_json"):
+            corrupted_ns = (
+                capture_ns
+                if corruption == "capture_json"
+                else capture_store.index_namespace(resolved.spec.name)
+            )
+            connection.execute(
+                "UPDATE records SET body = ? WHERE namespace = ? AND seqid = 2",
+                ("{", corrupted_ns),
+            )
+        else:
+            record = dict(rows[1])
+            if corruption == "missing_identity":
+                del record["id"]
+            else:
+                record["id"] = 1
+                if corruption == "identical_identity":
+                    record = rows[0]
+            connection.execute(
+                "UPDATE records SET body = ? WHERE namespace = ? AND seqid = 2",
+                (json.dumps(record), capture_ns),
+            )
+    before = path.read_bytes()
+
+    def disconnected(*args, **kwargs):
+        pytest.fail("offline corrupt capture query contacted CDP")
+
+    cdp.set_transport_factory(disconnected)
+    query = [
+        "liquidity",
+        "risk",
+        "metrics",
+        "list",
+        "--metric",
+        "CONCENTRATION_RATE",
+        "--limit",
+        "1",
+        "--fields",
+        "value",
+    ]
+    if require_complete:
+        query.append("--require-complete")
+    code, out, _ = run_cli(query)
+    result = parse(out)
+    assert code == 1
+    assert result["data"] is None
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+    assert path.read_bytes() == before
 
 
 @pytest.fixture
