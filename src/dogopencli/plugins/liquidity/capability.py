@@ -264,6 +264,10 @@ class LiquidityListCapability:
             from .operations_batch import validate_swap_rows_scope
 
             validate_swap_rows_scope(rows, decode_scope(scope))
+        if self._spec.projection == "transfer_orders":
+            from .transfer_list import validate_transfer_rows_scope
+
+            validate_transfer_rows_scope(rows)
         if not (self._spec.schema_version and self._spec.profile == spec.PROFILE_DATED):
             return
         # Use the retention reader's native series parser so acquisition and
