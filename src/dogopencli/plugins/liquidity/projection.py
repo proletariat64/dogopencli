@@ -19,11 +19,11 @@ cashPoolMemberId), when present, must match the parent id.
 
 import re
 from collections.abc import Callable, Mapping
-from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
 from ...errors import INVALID_ARGUMENT, INVALID_RESPONSE, CliError
+from .operations_batch import validate_swap_business_date
 
 # The verified group-balances request scope fixes the equivalent currency
 # (spec #76: only the USD scope carries business evidence); it is declared
@@ -713,14 +713,7 @@ def _project_swap_orders(row: Any) -> dict[str, Any]:
         if value is None or value == "":
             continue
         try:
-            if (
-                not isinstance(value, str)
-                or len(value) != 8
-                or not value.isascii()
-                or not value.isdigit()
-            ):
-                raise ValueError
-            datetime.strptime(value, "%Y%m%d")
+            validate_swap_business_date(value)
         except ValueError as error:
             raise _invalid(f"swap_orders.{field}: invalid YYYYMMDD") from error
     for field in ("gmtCreate", "gmtModified", "gmtSend", "gmtReturn", "nodeNum"):

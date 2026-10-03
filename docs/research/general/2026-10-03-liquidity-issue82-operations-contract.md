@@ -1,9 +1,13 @@
 # Issue #82 operations list contract prerequisites
 
+Observed: 2026-10-03
+Scope: general
+Status: snapshot
+
 The demands, executions and swaps leaves are `runtimes`. Demands and executions
 still have no usable nonempty native records. Current swaps evidence provides
 nonempty records and a complete bounded trade-date inquiry, while its unbounded
-listing has overlapping pages. Empty query success establishes neither a
+listing has repeated arrivals. Empty query success establishes neither a
 nonempty record contract nor an eligible production release.
 The implementation specification is
 [Issue #82](https://github.com/proletariat64/dogopencli/issues/82).
@@ -44,7 +48,9 @@ Its column `key` is not a table `rowKey`; no claim of a native `rowKey="dealId"`
 is made. Current records establish a nonempty string Deal ID within the tenant
 and query scope. `orderId`, `hedgeOrderId` and `gapId` remain separate native
 identifiers. Same-identity different content is a hard failure. Observed
-same-content cross-page repeats do not prove coverage.
+same-content repeated arrivals do not prove coverage. The collection proves
+seven repeated arrivals across the collected dataset; the saved deduplicated
+records alone do not locate those repeats within or between individual pages.
 
 Both historical envelope flags, `resultFlag` and `result.success`, were true.
 Native pagination uses `rowStart`/`pageSize`, with width 10 for the candidate.
@@ -62,8 +68,8 @@ Reported total zero alone does not prove populated pagination boundaries.
 | Swaps, trade date 20261003 | Complete zero records | Native complete-empty scope evidence |
 
 The user approved the bounded trade-date-only swap inquiry after the unbounded
-overlap was found. Both `--trade-from` and `--trade-to` are mandatory YYYYMMDD
-dates; missing, invalid or reversed bounds fail before network access. Neither
+repeated arrivals were found. Both `--trade-from` and `--trade-to` are mandatory
+YYYYMMDD dates; missing, invalid or reversed bounds fail before network access. Neither
 the unbounded native scope nor backend overlap repair is part of this delivery.
 
 `tradeDate`, `nearLegValueDate` and `farLegValueDate` are distinct native YYYYMMDD

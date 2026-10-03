@@ -79,7 +79,7 @@ SWAP_ORDERS = ListSpec(
         "Fixed entity filters are the current native empty arrays on both"
         " legs; this is the current authorized native listing scope.",
         "Both trade date bounds are required. The unbounded default source"
-        " listing has observed overlapping pages and is not enabled.",
+        " listing has observed repeated arrivals and is not enabled.",
         "dealId identifies a native Deal ID within this tenant and query scope;"
         " orderId and hedgeOrderId are separate source identifiers.",
         "tradeDate, nearLegValueDate and farLegValueDate are separate YYYYMMDD"
@@ -116,6 +116,18 @@ def validate_swap_query(values: dict[str, Any]) -> None:
         )
 
 
+def validate_swap_business_date(value: Any) -> None:
+    """Validate a native swap YYYYMMDD without inferring time or time zone."""
+    if (
+        not isinstance(value, str)
+        or len(value) != 8
+        or not value.isascii()
+        or not value.isdigit()
+    ):
+        raise ValueError
+    datetime.strptime(value, "%Y%m%d")
+
+
 def validate_swap_rows_scope(
     rows: list[dict[str, Any]], values: dict[str, Any]
 ) -> None:
@@ -127,14 +139,7 @@ def validate_swap_rows_scope(
             raise CliError(INVALID_RESPONSE, "swap order tenant is outside query scope")
         day = row.get("tradeDate")
         try:
-            if (
-                not isinstance(day, str)
-                or len(day) != 8
-                or not day.isascii()
-                or not day.isdigit()
-            ):
-                raise ValueError
-            datetime.strptime(day, "%Y%m%d")
+            validate_swap_business_date(day)
         except ValueError as error:
             raise CliError(
                 INVALID_RESPONSE, "swap order tradeDate is not a valid YYYYMMDD"
