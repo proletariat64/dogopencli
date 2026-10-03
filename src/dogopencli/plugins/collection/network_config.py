@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from ...errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
+from ...errors import INVALID_RESPONSE, CliError
 from ...helpspec import (
     ALL,
     CACHE_FLAGS,
@@ -52,6 +52,7 @@ class NetworkConfigCapability(ConfigurationListCapability):
             one_based=True,
             allowed_body_keys=frozenset({"pageNo", "pageSize"}),
             fixed_body_values=(("pageNo", 1), ("pageSize", PAGE_SIZE)),
+            single_page=True,
         )
 
     def parse_page(self, body: bytes) -> ParsedPage:
@@ -72,14 +73,6 @@ class NetworkConfigCapability(ConfigurationListCapability):
             raise CliError(INVALID_RESPONSE, "configuration pagination echo mismatch")
         for row in rows:
             validate_row(row)
-        if total != len(rows) or total > PAGE_SIZE:
-            raise CliError(
-                INCOMPLETE_RESULT,
-                "configuration exceeds verified single-page coverage; "
-                "reverify the contract before expanding acquisition",
-            )
-        if len({row["id"] for row in rows}) != len(rows):
-            raise CliError(INCOMPLETE_RESULT, "duplicate configuration identities")
         return ParsedPage(rows, number, size, total, 0 if empty else 1)
 
 
@@ -152,10 +145,10 @@ def list_node(cap: NetworkConfigCapability) -> BizNode:
             "Local filters use exact case-sensitive strings, same-field OR and "
             "cross-field AND; * is literal, missing/null never match. Empty or "
             "whitespace-only values reject; valid values are never normalized.",
-            "Acquire one unfiltered page (pageNo=1, pageSize=1000), require rows "
-            "equal totalCount and unique nonempty string IDs, then filter, sort "
-            "IDs lexically and apply display windows. Incomplete coverage fails; "
-            "no multi-page fallback. Out-of-range backend pages clamp to page 1.",
+            "Acquire one unfiltered page (pageNo=1, pageSize=1000), validate "
+            "nonempty string IDs, deduplicate identical rows, then filter, sort "
+            "IDs lexically and apply display windows. Safe coverage gaps warn; "
+            "--require-complete rejects. No multi-page fallback.",
             "Only list configuration data is covered. No detail or relationship "
             "queries; absent relationship fields are not fabricated. Unknown "
             "fields and nested values remain raw. Timestamp units are unverified.",
@@ -178,9 +171,9 @@ def refresh_node(cap: NetworkConfigCapability) -> BizNode:
         constraints=(
             "Requires an existing authenticated CDP session. Only the local cache "
             "changes; production remains inquiry-only. Accepts no selectors.",
-            "One unfiltered page at size 1000 must cover totalCount with unique "
-            "IDs. Any failure or incomplete coverage preserves the prior snapshot. "
-            "No multi-page fallback; exact full pages require totalCount=1000.",
+            "One unfiltered page at size 1000. Safe incomplete coverage publishes "
+            "with a warning; --require-complete rejects before publication. "
+            "Hard failures preserve the prior snapshot; no multi-page fallback.",
             "Progress goes to stderr, the result envelope to stdout.",
         ),
         effects=dict(REFRESH_CDP_EFFECTS),

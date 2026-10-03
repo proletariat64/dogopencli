@@ -3,7 +3,11 @@
 import pytest
 
 from dogopencli.errors import CliError
-from dogopencli.result_policy import AcquisitionEvidence, evaluate_result
+from dogopencli.result_policy import (
+    AcquisitionEvidence,
+    evaluate_result,
+    prepare_result,
+)
 
 
 def test_safe_shortfall_is_usable_and_publishable_but_strictly_rejected():
@@ -46,3 +50,18 @@ def test_corrupt_complete_evidence_cannot_claim_missing_records_are_complete():
     record["scope_complete"] = True
     with pytest.raises(CliError, match="evidence"):
         AcquisitionEvidence.from_record(record)
+
+
+@pytest.mark.parametrize(
+    "flags", [("complete",), ("dataset_complete",), ("complete", "dataset_complete")]
+)
+def test_output_metadata_cannot_promote_validated_incomplete_evidence(flags):
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False, reported_total=100, collected_total=99, arrivals=99
+    )
+    meta = evidence.meta()
+    for flag in flags:
+        meta[flag] = True
+    with pytest.raises(CliError) as caught:
+        prepare_result(meta, require_complete=True)
+    assert caught.value.code == "INVALID_RESPONSE"

@@ -1,5 +1,7 @@
 # Liquidity inquiry specification v0.2.3
 
+后续统一架构目标：[统一 incomplete 规格 v0.1.0](unified-incomplete-v0.1.0.md)调整默认 partial refresh/缓存读取与退出码规则；本文件保留 v0.2.3 历史基线，新目标尚未实现，能力端点、页宽与独立详情契约继续有效。
+
 权威规格：[GitHub Issue #76](https://github.com/proletariat64/dogopencli/issues/76)。证据：[业务 probe 脱敏报告](../research/general/2026-10-02-cash-forecast-business-probe.md)。本文件是可阅读的规格与完整树副本；原始响应保留在私有目录。
 
 日期：2026-10-02（Asia/Shanghai）。规格冻结时状态：设计更新；当时新增能力尚未实现或通过 CLI UAT。

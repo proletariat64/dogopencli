@@ -35,7 +35,7 @@ def holdings_source(tmp_path: Path, monkeypatch):
     cdp.set_transport_factory(None)
 
 
-def test_holdings_partial_warns_without_replacing_complete_cache(
+def test_holdings_partial_publishes_and_warns_on_every_offline_read(
     holdings_source, run_cli
 ):
     browser, cache = holdings_source
@@ -69,9 +69,9 @@ def test_holdings_partial_warns_without_replacing_complete_cache(
         [*query, "--live", "--limit", "1", "--fields", "investmentNo"]
     )
     result = parse(out)
-    assert code == 1
+    assert code == 0
     assert result["data"] == [{"investmentNo": "H0"}]
-    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert result["error"] is None
     assert result["meta"]["complete"] is False
     assert result["meta"]["reported_total"] == 3
     assert result["meta"]["collected_total"] == 2
@@ -82,7 +82,7 @@ def test_holdings_partial_warns_without_replacing_complete_cache(
     assert cache.read_bytes() == before
 
     code, out, err = run_cli([*query, "--live", "--all", "--format", "table"])
-    assert code == 1
+    assert code == 0
     assert "warning: INCOMPLETE_RESULT" in err
     assert "H0" in out and "H1" in out
 
@@ -93,24 +93,33 @@ def test_holdings_partial_warns_without_replacing_complete_cache(
 
     code, out, err = run_cli(refresh)
     result = parse(out)
-    assert code == 1
-    assert result["data"] == records
-    assert result["meta"]["published"] is False
+    assert code == 0
+    assert result["data"]["published"] is True
+    assert result["data"]["row_count"] == 2
+    assert result["meta"]["published"] is True
     assert result["meta"]["complete"] is False
     assert result["meta"]["reported_total"] == 3
     assert result["meta"]["collected_total"] == 2
     assert "warning: INCOMPLETE_RESULT" in err
-    assert cache.read_bytes() == before
+    assert cache.read_bytes() != before
+    before = cache.read_bytes()
     assert all(body["pageSize"] == 500 for body in requests)
 
     def disconnected(*args, **kwargs):
         pytest.fail("offline holdings query contacted CDP")
 
     cdp.set_transport_factory(disconnected)
+    for _ in range(2):
+        code, out, err = run_cli([*query, "--all"])
+        assert code == 0
+        assert parse(out)["data"] == records
+        assert parse(out)["meta"]["complete"] is False
+        assert parse(out)["error"] is None
+        assert "warning: INCOMPLETE_RESULT" in err
     code, out, _ = run_cli([*query, "--all", "--require-complete"])
-    assert code == 0
-    assert parse(out)["data"] == original
-    assert parse(out)["meta"]["complete"] is True
+    assert code == 1
+    assert parse(out)["data"] is None
+    assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
     assert cache.read_bytes() == before
 
 
@@ -180,9 +189,9 @@ def test_history_retention_preserves_truthful_scope_completeness(
     assert result["meta"]["reported_total"] == 2
     assert result["meta"]["returned_count"] == cap
     assert result["meta"]["retained_coverage"][0]["row_count"] == cap
-    assert code == (0 if cap == 2 else 1)
+    assert code == 0
     if cap == 1:
-        assert result["error"]["code"] == "INCOMPLETE_RESULT"
+        assert result["error"] is None
         assert result["meta"]["collected_total"] == 1
         assert result["meta"]["warnings"][0]["code"] == "INCOMPLETE_RESULT"
         assert "warning: INCOMPLETE_RESULT" in err
@@ -198,4 +207,193 @@ def test_history_retention_preserves_truthful_scope_completeness(
     else:
         assert code == 0
         assert strict["meta"]["complete"] is True
+    assert path.read_bytes() == before
+
+
+def test_strict_refresh_rejects_retention_before_commit(
+    holdings_source, run_cli, monkeypatch
+):
+    from functools import partial
+
+    browser, path = holdings_source
+    rows = [{"orderId": "H1"}, {"orderId": "H2"}]
+    browser.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {"success": True, "data": {"data": rows, "totalCount": 2}},
+    }
+    refresh = ["refresh", "liquidity", "investment", "transactions"]
+    assert run_cli(refresh)[0] == 0
+    before = path.read_bytes()
+    monkeypatch.setattr(
+        capture_store,
+        "plan_capture_publish",
+        partial(capture_store.plan_capture_publish, cap=1),
+    )
+    code, out, _ = run_cli([*refresh, "--require-complete"])
+    result = parse(out)
+    assert code == 1
+    assert result["data"] is None
+    assert result["meta"]["published"] is False
+    assert "RETENTION_GAP" in result["meta"]["acquisition"]["reasons"]
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("same_timestamp", [False, True])
+def test_latest_dated_request_replaces_rows_and_quality_without_old_hole_fill(
+    holdings_source,
+    run_cli,
+    same_timestamp,
+):
+    from dogopencli.plugins.liquidity.common import now
+    from dogopencli.result_policy import AcquisitionEvidence
+
+    _, path = holdings_source
+    leaf = list_leaf(("investment", "returns"))
+    cache = Cache(path)
+    fetched = now().isoformat()
+    index = 0
+
+    def publish(start, end, rows, total):
+        nonlocal index
+        resolved = leaf.resolve(
+            {"basis": "accrual", "from_date": start, "to_date": end}
+        )
+        stamp = fetched if same_timestamp else f"2026-10-03T00:00:0{index}+00:00"
+        index += 1
+        evidence = AcquisitionEvidence.for_collection(
+            complete=len(rows) == total,
+            reported_total=total,
+            collected_total=len(rows),
+        )
+        plan = capture_store.plan_capture_publish(
+            cache,
+            resolved.spec,
+            resolved.scope_key,
+            resolved.window,
+            rows,
+            total,
+            stamp,
+            stamp,
+            acquisition=evidence,
+        )
+        capture_store.commit_plan(cache, resolved.spec.name, plan, stamp)
+
+    def row(identity, day, amount):
+        return {
+            "investmentNo": identity,
+            "transactionDate": day,
+            "interestIncome": amount,
+        }
+
+    query = [
+        "liquidity",
+        "investment",
+        "returns",
+        "list",
+        "--basis",
+        "accrual",
+        "--from-date",
+        "20261001",
+        "--to-date",
+        "20261002",
+        "--all",
+    ]
+    publish(
+        "20261001",
+        "20261002",
+        [
+            row("A", "20261001", "old"),
+            row("B", "20261001", "old"),
+            row("C", "20261002", "old"),
+        ],
+        3,
+    )
+    publish("20261001", "20261001", [row("A", "20261001", "partial")], 2)
+
+    def disconnected(*args, **kwargs):
+        pytest.fail("offline dated query contacted CDP")
+
+    cdp.set_transport_factory(disconnected)
+    code, out, err = run_cli(query)
+    result = parse(out)
+    assert code == 0
+    assert result["data"] == [
+        row("A", "20261001", "partial"),
+        row("C", "20261002", "old"),
+    ]
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["reported_total"] is None
+    assert result["meta"]["missing_count"] is None
+    assert result["meta"]["coverage_ratio"] is None
+    assert "COUNT_SHORTFALL" in result["meta"]["acquisition"]["reasons"]
+    assert "INCOMPLETE_RESULT" in err
+    assert run_cli([*query, "--require-complete"])[0] == 1
+    publish(
+        "20261001",
+        "20261001",
+        [row("A", "20261001", "new"), row("B", "20261001", "new")],
+        2,
+    )
+    code, out, _ = run_cli([*query, "--require-complete"])
+    assert code == 0
+    assert parse(out)["data"] == [
+        row("A", "20261001", "new"),
+        row("B", "20261001", "new"),
+        row("C", "20261002", "old"),
+    ]
+    publish("20261001", "20261001", [row("A", "20261001", "final")], 1)
+    code, out, _ = run_cli([*query, "--require-complete"])
+    assert code == 0
+    assert parse(out)["data"] == [
+        row("A", "20261001", "final"),
+        row("C", "20261002", "old"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "rows", [[], [{"incrementProductId": "P1", "currency": "USD"}]]
+)
+def test_first_single_partial_refresh_publishes_usable_cache_and_strict_keeps_it(
+    holdings_source,
+    run_cli,
+    rows,
+):
+    browser, path = holdings_source
+    browser.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {"success": True, "data": {"data": rows, "totalCount": 2}},
+    }
+    refresh = ["refresh", "liquidity", "investment", "products"]
+    query = ["liquidity", "investment", "products", "list", "--all"]
+    code, out, err = run_cli(refresh)
+    result = parse(out)
+    assert code == 0
+    assert result["data"]["published"] is True
+    assert result["data"]["row_count"] == len(rows)
+    assert result["meta"]["published"] is True
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["missing_count"] == 2 - len(rows)
+    assert result["error"] is None
+    assert "INCOMPLETE_RESULT" in err
+    before = path.read_bytes()
+    code, out, _ = run_cli([*refresh, "--require-complete"])
+    result = parse(out)
+    assert code == 1
+    assert result["data"] is None
+    assert result["meta"]["published"] is False
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert path.read_bytes() == before
+
+    def disconnected(*args, **kwargs):
+        pytest.fail("offline partial query contacted CDP")
+
+    cdp.set_transport_factory(disconnected)
+    code, out, err = run_cli(query)
+    result = parse(out)
+    assert code == 0
+    assert result["data"] == rows
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["collected_total"] == len(rows)
+    assert result["error"] is None
+    assert "INCOMPLETE_RESULT" in err
     assert path.read_bytes() == before

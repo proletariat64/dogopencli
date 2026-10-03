@@ -102,6 +102,10 @@
 
 ## 领域与架构
 
+- [统一 incomplete 规格 v0.1.0](design/unified-incomplete-v0.1.0.md)：默认可发布/读取安全 partial，持续告警；严格模式拒绝；完整性证据、去重、dated/retention 与 17 项验收条件。当前 feature branch 实施中，尚未发布或执行新策略生产 UAT；[未发布变更记录](../CHANGELOG.md)。
+- [统一 incomplete 源码核查](research/general/2026-10-03-incomplete-source-evidence.md)：当前采集器、缓存和必要域证明；单响应重复回归已修复的证据。
+- [ADR 0019：可用不完整采集](adr/0019-usable-incomplete-acquisitions.md)：accepted；在当前 feature branch 实施默认可用 partial，修订仅完整发布与 partial 默认失败退出的旧规则。
+
 - [ADR 0005：Channel 离线替代源](adr/0005-channel-snapshot-source.md)：故障期替代传输、数据整理、缓存隔离和切回验收。
 - [Channel 替代数据准备状态](research/payment/2026-09-11-channel-snapshot-preparation.md)：崩溃后重新采集，3834 行替代集及仓库 tmp 私有存储。
 

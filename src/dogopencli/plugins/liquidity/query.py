@@ -25,13 +25,13 @@ from ...errors import (
     EXIT_FAILURE,
     EXIT_OK,
     EXIT_USAGE,
-    INCOMPLETE_RESULT,
     INVALID_ARGUMENT,
     UNSUPPORTED_CAPABILITY,
     CliError,
 )
 from ...inquiry import inquiry_session
 from ...jsonutil import canonical
+from ...result_policy import evidence_for, prepare_result
 from ...table import render_table
 from ...transport.cdp import CdpQueryTransport
 from ..envelope import is_business_refusal
@@ -92,6 +92,11 @@ def _emit_window(
     fields: list[str] | None,
     error: dict[str, Any] | None = None,
 ) -> int:
+    meta = prepare_result(
+        meta,
+        require_complete=args.require_complete,
+        mode="live" if args.live else "cache",
+    )
     window = _project(window, fields)
     if args.format == "table":
         selected = tuple(fields) if fields is not None else columns
@@ -168,6 +173,7 @@ def _coverage_meta(entries: list[capture_store.CaptureEntry]) -> list[dict[str, 
             "missing_days": list(entry.missing_days),
             "fetched_at": entry.fetched_at,
             "row_count": entry.row_count,
+            "acquisition": entry.evidence.record(),
         }
         for entry in entries
     ]
@@ -201,21 +207,18 @@ def run_list(args: argparse.Namespace) -> int:
             CACHE_MISS,
             "no retained capture covers the requested scope; " + refresh_hint,
         )
-    retention_incomplete = variant.profile == spec_mod.PROFILE_HISTORY and not covered
-    if not covered and (not retention_incomplete or args.require_complete):
-        raise CliError(
-            INCOMPLETE_RESULT,
-            "retained coverage does not cover the requested window (missing"
-            " or evicted); " + refresh_hint,
-        )
+
     pairs: list[tuple[capture_store.CaptureEntry, dict[str, Any]]] = []
     seen: set[tuple[str, ...]] = set()
     capability = leaf.capability(variant)
     occurrences_seen: Counter[tuple[str, ...]] = Counter()
+    authority_by_day: dict[str, capture_store.CaptureEntry | None] = {}
     # Newest acquisition first: when retained captures overlap, a later
     # corrected value must win over the older capture of the same identity.
-    for entry in sorted(
-        selected, key=lambda item: (item.fetched_at, item.namespace), reverse=True
+    for _, entry in sorted(
+        enumerate(selected),
+        key=lambda pair: (pair[1].fetched_at, pair[0]),
+        reverse=True,
     ):
         occurrences: Counter[tuple[str, ...]] = Counter()
         missing_days = set(entry.missing_days)
@@ -225,12 +228,17 @@ def run_list(args: argparse.Namespace) -> int:
                 assert window_from is not None and window_to is not None
                 assert entry.window_from is not None and entry.window_to is not None
                 day = capture_store.series_value(variant, record, "")
+                if day not in authority_by_day:
+                    authority_by_day[day] = capture_store.authoritative_capture(
+                        selected, day
+                    )
                 # Another complete capture can restore coverage, but cannot
                 # make this capture's retained partial-day rows complete.
                 if not (
                     window_from <= day <= window_to
                     and entry.window_from <= day <= entry.window_to
                     and day not in missing_days
+                    and authority_by_day[day] == entry
                 ):
                     continue
             identity = capability.identity_key(record)
@@ -253,27 +261,34 @@ def run_list(args: argparse.Namespace) -> int:
     # Testing individual redundancy misses overlapping expired empty captures.
     contributing = {entry.namespace for entry, _ in kept_pairs}
     current = now()
+    window_start, window_end = resolved.window
+    quality_entries = (
+        capture_store.active_captures(selected, window_start, window_end)
+        if window_start is not None and window_end is not None
+        else selected
+    )
     fresh_entries = [
         entry
-        for entry in selected
+        for entry in quality_entries
         if not is_stale(_capture_meta_view(entry), config.ttl_hours, current)
     ]
     fresh_namespaces = {entry.namespace for entry in fresh_entries}
-    window_start, window_end = resolved.window
     fresh_coverage = (
-        capture_store.covers_window(fresh_entries, window_start, window_end)
+        capture_store.covers_window(
+            fresh_entries, window_start, window_end, authority=selected
+        )
         if window_start is not None and window_end is not None
         else bool(fresh_entries)
     )
     contributors = [
         entry
-        for entry in selected
+        for entry in quality_entries
         if entry.namespace in contributing or entry.namespace in fresh_namespaces
     ] or list(selected)
     latest = max(contributors, key=lambda entry: entry.fetched_at)
     stale_entries = [
         entry
-        for entry in selected
+        for entry in quality_entries
         if entry.namespace not in fresh_namespaces
         and (entry.namespace in contributing or not fresh_coverage)
     ]
@@ -314,24 +329,11 @@ def run_list(args: argparse.Namespace) -> int:
         "returned_count": len(window),
         "has_more": offset + len(window) < matched_total,
     }
-    incomplete_error: dict[str, Any] | None = None
-    if retention_incomplete:
-        message = (
-            "retained capture does not cover the complete scope"
-            f" (retained {len(pairs)}, originally reported {reported});"
-            " records were evicted; " + refresh_hint
-        )
-        incomplete_error = {
-            "code": INCOMPLETE_RESULT,
-            "message": message,
-            "retryable": False,
-        }
-        print(f"warning: {INCOMPLETE_RESULT}: {message}", file=sys.stderr)
-        meta["warnings"] = [incomplete_error]
-        meta["collected_total"] = len(pairs)
-    return _emit_window(
-        args, variant.table_columns, window, meta, fields, incomplete_error
+    evidence = capture_store.query_evidence(
+        quality_entries, covered, len(pairs), window=resolved.window
     )
+    meta.update(evidence.meta())
+    return _emit_window(args, variant.table_columns, window, meta, fields)
 
 
 def _capture_meta_view(entry: capture_store.CaptureEntry) -> Any:
@@ -373,33 +375,7 @@ def _run_list_live(
                 f"live: collected page {done}/{total}", file=sys.stderr
             ),
         )
-    incomplete_error: dict[str, Any] | None = None
-    if not result.complete and (
-        variant.schema_version
-        or variant.path
-        in (
-            ("cash", "accounts"),
-            ("investment", "holdings"),
-            ("investment", "returns"),
-        )
-    ):
-        message = (
-            f"{variant.leaf} is incomplete"
-            f" (collected {len(result.records)}, reported {result.total_count});"
-            " the cache is not updated"
-        )
-        print(f"warning: {INCOMPLETE_RESULT}: {message}", file=sys.stderr)
-        incomplete_error = {
-            "code": INCOMPLETE_RESULT,
-            "message": message,
-            "retryable": False,
-        }
-    if args.require_complete and not result.complete:
-        raise CliError(
-            INCOMPLETE_RESULT,
-            "live collection did not cover the complete scope"
-            f" (collected {len(result.records)}, reported {result.total_count})",
-        )
+    evidence = evidence_for(result)
     rows = _sort_rows(variant, _match(result.records, filters), now().isoformat())
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
@@ -419,8 +395,7 @@ def _run_list_live(
         "fetched_at": now().isoformat(),
         "loaded_at": None,
         "stale": False,
-        "complete": result.complete,
-        "dataset_complete": None,
+        **evidence.meta(),
         "source_observed_from": None,
         "source_observed_to": None,
         "reported_total": result.total_count,
@@ -428,12 +403,7 @@ def _run_list_live(
         "returned_count": len(window),
         "has_more": offset + len(window) < matched_total,
     }
-    if incomplete_error is not None:
-        meta["warnings"] = [incomplete_error]
-        meta["collected_total"] = len(result.records)
-    return _emit_window(
-        args, variant.table_columns, window, meta, fields, incomplete_error
-    )
+    return _emit_window(args, variant.table_columns, window, meta, fields)
 
 
 def run_detail(args: argparse.Namespace) -> int:

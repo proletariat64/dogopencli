@@ -62,6 +62,12 @@ dogopencli collection account-isolation list --live --all
 
 示例中的币种、业务代码与 ID 应替换为实际返回值；示例筛选结果可以为空。
 
+当前源码分支默认允许使用已验证的 incomplete 列表：live、离线读取和 refresh
+退出 0，`error=null`，每次通过 `meta.warnings` 和 stderr 告警。最新 partial refresh
+可替换旧完整缓存；需要完整结果时，查询和刷新都使用 `--require-complete`，
+严格刷新会在提交前拒绝。身份、范围、格式及 PTR 稳定性失败继续拒绝。
+行为变化与缓存回滚要求见[未发布变更记录](CHANGELOG.md)。
+
 ## 可以查询什么
 
 下表命令均省略 `dogopencli` 前缀。配置键对应 `[sources.<键>]`，
@@ -192,9 +198,10 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `rules transfer` | `get` |
 | `rules waterlevel` | `list`, `get` |
 
-普通 live 对已兼容的不完整采集保留可用数据，同时返回 `INCOMPLETE_RESULT`、
-`complete=false` 和退出码 1；`--require-complete` 拒绝部分数据。
-不完整 refresh 不发布或覆盖原完整缓存。后端 total 变化仍返回 `INVALID_RESPONSE`。
+普通 live 对已验证的不完整采集返回有效数据、完整性 false、`INCOMPLETE_RESULT`
+告警，顶层 `error=null`、退出码 0；`--require-complete` 拒绝部分数据。
+默认 incomplete refresh 原子替换旧缓存并告警；严格刷新保留旧缓存。
+固定-total 合同内的后端 total 变化仍返回 `INVALID_RESPONSE`。
 `ledger balances list` 已有查询实现，但后端业务错误 999 仍阻塞完整采集。
 没有已验证查询合同的叶子继续延期，如 wallets、pool-balances、credit-usage、
 forecast accuracy、risk sla list、transfer rules list、quote-groups、decisions list、
@@ -215,15 +222,17 @@ transfers list；独立验证过的详情不受此影响。
 但会标记 `stale`。需要时加 `--require-fresh` 或 `--require-complete`，不会因此自动刷新。
 各能力及来源的快照相互隔离。
 
-刷新通常只在完整校验通过后替换快照，失败保留旧数据。**VA 规则详情拒绝是一个例外**：
+刷新通过有效性校验后可替换快照；完整或安全 partial 均默认退出 0，硬失败保留旧数据。
 若后端明确拒绝单条详情，刷新可以发布真实列表行与 `detail=null` 的部分快照，
-标记 `dataset_complete=false`，再以 `INCOMPLETE_RESULT` 失败退出。
-此时旧详情可能被替换；`--require-complete` 会拒绝该快照，缺详情的 `get` 也会失败。
-其他采集错误仍保留旧快照。详见 [ADR 0010](docs/adr/0010-collection-va-partial-detail-tolerance.md)。
+标记 `dataset_complete=false` 并持续告警。此时旧详情可能被替换；
+`refresh --require-complete` 在提交前拒绝，严格读取也拒绝该快照，缺详情的 `get` 失败。
+详情拒绝条件见 [ADR 0010](docs/adr/0010-collection-va-partial-detail-tolerance.md)，
+默认结果处置由 [ADR 0019](docs/adr/0019-usable-incomplete-acquisitions.md) 修订。
 
 显示分页不等于后端采集分页。收款成本、VA 规则、清算系统、卡模板及账户隔离规则
-以及上述四项付款规则使用各自验证过的单页采集契约；超过 1000 条或覆盖校验失败会明确报错，不猜测下一页。
-VA 容量采用已验证的多页采集与最终总数校验。`--limit` 不会放宽这些完整性要求。
+以及上述四项付款规则使用各自验证过的单页采集契约；安全数量缺口会标 incomplete 并告警，
+不猜测下一页。VA 容量采用已验证的多页采集与最终动态总数校验。
+`--limit` 只控制本地展示，不改变完整性证据。
 
 账户隔离采集拒绝仅在后端筛选场景观察到的 null 列表／全零分页响应，避免把未知状态
 发布为空快照；正确回显页码、页大小及零总数的空数组可以接受。见

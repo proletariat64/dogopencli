@@ -328,8 +328,7 @@ def test_query_leaf_effects(run_cli, path):
     variants = doc["effects_variants"]
     cache_init = [v for v in variants if v["effects"]["mutates"] is True]
     live = [v for v in variants if "--live" in v["when"]]
-    assert len(cache_init) == 1
-    assert cache_init[0]["effects"]["network"] is False
+    assert cache_init == []
     assert len(live) == 1
     assert live[0]["effects"] == {
         "mutates": False,

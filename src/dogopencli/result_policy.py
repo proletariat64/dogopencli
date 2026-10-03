@@ -5,7 +5,7 @@ or converted to partial success here; publishing remains a domain transaction.
 """
 
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
@@ -277,15 +277,11 @@ def prepare_result(
         return meta
     if meta.get("acquisition") is not None:
         evidence = AcquisitionEvidence.from_record(meta["acquisition"])
-        evidence = replace(
-            evidence,
-            scope_complete=meta["complete"],
-            dataset_complete=(
-                meta["dataset_complete"]
-                if meta.get("dataset_complete") is not None
-                else evidence.dataset_complete
-            ),
-        )
+        if meta["complete"] is not evidence.scope_complete or (
+            meta.get("dataset_complete") is not None
+            and meta["dataset_complete"] is not evidence.dataset_complete
+        ):
+            raise CliError(INVALID_RESPONSE, "output acquisition evidence conflicts")
     else:
         evidence = AcquisitionEvidence(
             scope_complete=meta["complete"],

@@ -91,6 +91,19 @@ def _invalid(message: str) -> CliError:
     return CliError(INVALID_RESPONSE, message)
 
 
+def validate_cached_pair(pair: Any) -> None:
+    """Validate the whole stored native list/detail pair before selection."""
+    if not isinstance(pair, dict):
+        raise _invalid("cached SLA pair is not an object")
+    identity = pair.get("id")
+    if not isinstance(identity, str) or not identity.strip():
+        raise _invalid("cached SLA pair requires a nonempty string id")
+    for field in ("baseline", "detail"):
+        record = pair.get(field)
+        if not isinstance(record, dict) or record.get("id") != identity:
+            raise _invalid("cached SLA pair identities do not match")
+
+
 def _record_key(record: dict[str, Any]) -> tuple[int, Any]:
     row_id = record.get("id")
     if isinstance(row_id, str) and row_id.isdigit():

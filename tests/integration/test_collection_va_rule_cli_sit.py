@@ -101,8 +101,8 @@ def getting(run_cli, *flags):
     return run_cli(["collection", "va", "rules", "get", *flags])
 
 
-def refresh(run_cli):
-    return run_cli(["refresh", "collection", "va"])
+def refresh(run_cli, *flags):
+    return run_cli(["refresh", "collection", "va", *flags])
 
 
 def seed(run_cli, setup):
@@ -204,7 +204,7 @@ def test_cache_miss_directs_refresh_and_live_never_writes_cache(
 def test_overflow_and_detail_mismatch_preserve_snapshot(run_cli, envelope, setup):
     old = seed(run_cli, setup)
     setup.state.business_script.append(page([row()], totalCount=1001))
-    result = refresh(run_cli)
+    result = refresh(run_cli, "--require-complete")
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == "INCOMPLETE_RESULT"
     assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
@@ -212,7 +212,7 @@ def test_overflow_and_detail_mismatch_preserve_snapshot(run_cli, envelope, setup
     mismatched = detail()
     mismatched["body"]["resultObj"]["ruleStatus"] = "DRIFTED"
     setup.state.business_script.extend([page(), mismatched])
-    result = refresh(run_cli)
+    result = refresh(run_cli, "--require-complete")
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
     assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
@@ -365,7 +365,11 @@ def test_list_rejects_incomplete_or_bad_data(
 ):
     old = seed(run_cli, setup)
     setup.state.business_script.append(page(**changes))
-    result = listing(run_cli, "--live") if live else refresh(run_cli)
+    result = (
+        listing(run_cli, "--live", "--require-complete")
+        if live
+        else refresh(run_cli, "--require-complete")
+    )
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == code
     assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
@@ -410,11 +414,14 @@ def test_detail_refusal_boundary_preserves_snapshot(run_cli, envelope, setup, st
 def test_refused_detail_publishes_partial_snapshot(run_cli, envelope, setup):
     rows = [row("2"), row("20")]
     setup.state.business_script.extend([page(rows), detail("2"), refusal()])
-    code, out, _ = refresh(run_cli)
-    assert code == 1
-    error = envelope(out)["error"]
-    assert error["code"] == "INCOMPLETE_RESULT"
-    assert "1/2" in error["message"]
+    code, out, err = refresh(run_cli)
+    assert code == 0
+    result = envelope(out)
+    assert result["error"] is None
+    assert result["data"]["published"] is True
+    assert result["meta"]["published"] is True
+    assert result["meta"]["acquisition"]["reasons"] == ["DETAIL_REFUSED"]
+    assert "INCOMPLETE_RESULT" in err
     assert "SYNTHETIC-REFUSAL" not in out
     listed = envelope(listing(run_cli, "--all")[1])
     assert [record["vaRuleId"] for record in listed["data"]] == ["2", "20"]
@@ -426,7 +433,7 @@ def test_refused_detail_publishes_partial_snapshot(run_cli, envelope, setup):
 def test_partial_snapshot_reads_report_the_missing_detail(run_cli, envelope, setup):
     rows = [row("2"), row("20")]
     setup.state.business_script.extend([page(rows), detail("2"), refusal()])
-    assert refresh(run_cli)[0] == 1
+    assert refresh(run_cli)[0] == 0
     missing = getting(run_cli, "--id", "20")
     assert missing[0] == 1
     assert envelope(missing[1])["error"]["code"] == "INCOMPLETE_RESULT"
@@ -441,6 +448,37 @@ def test_partial_snapshot_reads_report_the_missing_detail(run_cli, envelope, set
     ]:
         assert result[0] == 1
         assert envelope(result[1])["error"]["code"] == "INCOMPLETE_RESULT"
+
+
+def test_strict_detail_refusal_never_publishes(run_cli, envelope, setup):
+    old = seed(run_cli, setup)
+    cache_bytes = setup.cache_path.read_bytes()
+    setup.state.business_script.extend([page(), refusal()])
+    code, out, _ = refresh(run_cli, "--require-complete")
+    assert code == 1
+    result = envelope(out)
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert result["meta"]["published"] is False
+    assert result["meta"]["acquisition"]["reasons"] == ["DETAIL_REFUSED"]
+    assert setup.cache_path.read_bytes() == cache_bytes
+    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+
+
+def test_partial_list_detail_absence_is_unknown_and_found_detail_is_real(
+    run_cli,
+    envelope,
+    setup,
+):
+    setup.state.business_script.extend([page(totalCount=2), detail()])
+    code, out, _ = refresh(run_cli)
+    assert code == 0, out
+    assert envelope(out)["meta"]["complete"] is False
+    found = envelope(getting(run_cli, "--id", "1")[1])
+    assert found["data"] == detail()["body"]["resultObj"]
+    missing = envelope(getting(run_cli, "--id", "absent")[1])
+    assert missing["data"] is None
+    assert missing["error"]["code"] == "INCOMPLETE_RESULT"
 
 
 DETAIL_REQUIRED_FIELDS = [
@@ -542,7 +580,9 @@ def test_freshness_and_completeness_requirements(run_cli, envelope, setup):
         assert query("--require-complete")[0] == 0
     with sqlite3.connect(setup.cache_path) as connection:
         # Synthetic incomplete metadata; production snapshots remain untouched.
-        connection.execute("UPDATE snapshots SET backend_complete = 0")
+        connection.execute(
+            "UPDATE snapshots SET backend_complete = 0, acquisition = NULL"
+        )
     assert (
         envelope(listing(run_cli, "--require-complete")[1])["error"]["code"]
         == "INCOMPLETE_RESULT"

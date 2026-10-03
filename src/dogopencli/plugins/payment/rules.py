@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from ...errors import INCOMPLETE_RESULT, INVALID_RESPONSE, REQUEST_NOT_ALLOWED, CliError
+from ...errors import INVALID_RESPONSE, REQUEST_NOT_ALLOWED, CliError
 from .. import EndpointContract, ParsedPage
 from ..envelope import success_document
 
@@ -82,6 +82,7 @@ class RuleListCapability:
             one_based=self.is_same_bank_transfer,
             allowed_body_keys=frozenset({self.page_key, "pageSize"}),
             fixed_body_values=((self.page_key, self.first_page), ("pageSize", 1000)),
+            single_page=True,
         )
 
     @property
@@ -176,15 +177,16 @@ class RuleListCapability:
         for row in rows:
             self.validate_row(row)
         total = data["totalCount"]
-        if total != len(rows) or total > 1000:
-            raise CliError(
-                INCOMPLETE_RESULT, "rule scope exceeds verified page coverage"
-            )
-        if len({self.identity_key(row) for row in rows}) != len(rows):
-            raise CliError(INCOMPLETE_RESULT, "duplicate rule identities")
         pages = 1 if rows else 0
-        if self.is_same_bank_transfer and data[pages_key] != pages:
-            raise CliError(INVALID_RESPONSE, "rule page count mismatch")
+        if self.is_same_bank_transfer:
+            # Complete single-page scopes have a verified 0/1 page count.
+            # Beyond capacity the native count must remain positive, but no
+            # larger-page arithmetic or pagination fallback is verified.
+            native_pages = data[pages_key]
+            if (total <= 1000 and native_pages != (1 if total else 0)) or (
+                total > 1000 and native_pages == 0
+            ):
+                raise CliError(INVALID_RESPONSE, "rule page count mismatch")
         return ParsedPage(rows, self.first_page, 1000, total, pages)
 
 

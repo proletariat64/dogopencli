@@ -303,17 +303,19 @@ def test_credit_unstable_order_partial_live_and_failed_refresh_keep_cache(
     code, out, _ = run_cli(
         ["liquidity", "cash", "credit-lines", "list", "--live", "--all"]
     )
-    assert code == 1
+    assert code == 0
     envelope = parse(out)
     assert envelope["meta"]["complete"] is False
     assert len(envelope["data"]) == 100
-    assert envelope["error"]["code"] == "INCOMPLETE_RESULT"
+    assert envelope["error"] is None
     code, out, _ = run_cli(
         ["liquidity", "cash", "credit-lines", "list", "--live", "--require-complete"]
     )
     assert code == 1
     assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
-    code, out, _ = run_cli(["refresh", "liquidity", "cash", "credit-lines"])
+    code, out, _ = run_cli(
+        ["refresh", "liquidity", "cash", "credit-lines", "--require-complete"]
+    )
     assert code == 1
     assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
     assert setup.cache_path.read_bytes() == before
@@ -370,8 +372,8 @@ def test_forecast_7504_7502_uses_accounts_partial_contract_and_preserves_cache(
     setup.state.business_handler = overlap
     code, out, err = run_cli([*query, "--live"])
     envelope = parse(out)
-    assert code == 1
-    assert envelope["error"]["code"] == "INCOMPLETE_RESULT"
+    assert code == 0
+    assert envelope["error"] is None
     assert "INCOMPLETE_RESULT" in err
     assert envelope["meta"]["complete"] is False
     assert envelope["meta"]["reported_total"] == 7504
@@ -389,7 +391,7 @@ def test_forecast_7504_7502_uses_accounts_partial_contract_and_preserves_cache(
     assert envelope["data"] is None
     assert setup.cache_path.read_bytes() == before
 
-    code, out, _ = run_cli(refresh)
+    code, out, _ = run_cli([*refresh, "--require-complete"])
     envelope = parse(out)
     assert code == 1
     assert envelope["error"]["code"] == "INCOMPLETE_RESULT"

@@ -15,6 +15,7 @@ from .helpspec import (
     REFRESH_CDP_CONSTRAINTS,
     REFRESH_CDP_EFFECTS,
     REFRESH_CDP_ERRORS,
+    REQUIRE_COMPLETE,
     BizNode,
     opt,
 )
@@ -245,6 +246,9 @@ def build_catalog(declarations: Iterable[BizNode]) -> dict[tuple[str, ...], BizN
     """Reject ambiguous/unreachable declarations and derive direct children."""
     nodes: dict[tuple[str, ...], BizNode] = {}
     for node in declarations:
+        if node.path[:1] == ("refresh",) and node.handler is not None:
+            if not any(option.name == "require_complete" for option in node.options):
+                node = replace(node, options=(*node.options, REQUIRE_COMPLETE))
         if node.path in nodes or node.path in AUTH_PATHS:
             raise ValueError(f"duplicate command path: {node.path}")
         if node.children:

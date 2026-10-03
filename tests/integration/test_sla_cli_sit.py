@@ -757,7 +757,7 @@ def test_machine_output_envelope(run_cli, envelope, sla_setup, sample_sla_rows):
     assert code == 0
     result = json.loads(out)
     assert set(result) == {"data", "error", "meta"}
-    assert set(result["meta"]) == {
+    assert set(result["meta"]) >= {
         "source",
         "backend",
         "simulated",

@@ -4,8 +4,8 @@ Offset leaves follow the verified pagination: increment rowStart by the
 leaf's configured page size; the reported total must stay fixed, page
 arrivals must keep typed identities consistent, and completeness requires
 the unique identity count to equal the fixed total. Observed overlapping
-pages therefore refuse publication instead of fabricating coverage; the
-leaves where overlap was measured stay deferred in the catalog.
+pages therefore retain incomplete evidence; default result policy allows
+validated partial rows while strict mode refuses them.
 
 Single-response leaves issue exactly the one verified request: routes that
 return their whole scoped set in one response (products; no-pagination
@@ -21,6 +21,7 @@ from ... import collect as collect_mod
 from ...collect import CollectedScope
 from ...errors import INVALID_RESPONSE, TIMEOUT, CliError
 from ...jsonutil import canonical
+from ...result_policy import AcquisitionEvidence
 from . import spec
 from .capability import LiquidityListCapability
 
@@ -137,6 +138,12 @@ def _collect_offset(
         pages=pages,
         rebuilt=False,
         deadline=deadline,
+        evidence=AcquisitionEvidence.for_collection(
+            complete=complete,
+            reported_total=expected_total,
+            collected_total=len(ordered),
+            arrivals=arrivals,
+        ),
     )
 
 
@@ -167,15 +174,24 @@ def _collect_single(
         complete = False
     else:
         complete = True
+    evidence = AcquisitionEvidence.for_collection(
+        complete=complete,
+        reported_total=total,
+        collected_total=len(ordered),
+        arrivals=len(rows),
+        has_identity=bool(capability.descriptor.identity),
+    )
+    complete = evidence.scope_complete
     if progress is not None:
         progress(1, 1)
     collect_mod.remaining_seconds(deadline)
     return CollectedScope(
         records=ordered,
         complete=complete,
-        total_count=total if total is not None else len(ordered),
+        total_count=total,
         page_size=capability.descriptor.page_size,
         pages=1,
         rebuilt=False,
         deadline=deadline,
+        evidence=evidence,
     )

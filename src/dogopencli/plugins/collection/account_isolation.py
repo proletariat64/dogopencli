@@ -1,6 +1,6 @@
 """Verified account-isolation configuration inquiry (issue #51)."""
 
-from ...errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
+from ...errors import INVALID_RESPONSE, CliError
 from ...helpspec import (
     ALL,
     CACHE_FLAGS,
@@ -50,6 +50,7 @@ class AccountIsolationCapability(ConfigurationListCapability):
         one_based=False,
         allowed_body_keys=frozenset({"pageNo", "pageSize"}),
         fixed_body_values=(("pageNo", 0), ("pageSize", 1000)),
+        single_page=True,
     )
 
     def parse_page(self, body: bytes) -> ParsedPage:
@@ -68,12 +69,6 @@ class AccountIsolationCapability(ConfigurationListCapability):
             )
         for row in rows:
             validate_row(row)
-        if total != len(rows) or total > 1000:
-            raise CliError(
-                INCOMPLETE_RESULT, "isolation exceeds verified page coverage"
-            )
-        if len({row["id"] for row in rows}) != len(rows):
-            raise CliError(INCOMPLETE_RESULT, "duplicate isolation identities")
         # The observed totalPageNo remains zero even for nonempty scopes.
         # Coverage is established by row count and identity, not that field.
         return ParsedPage(rows, 0, 1000, total, 1 if rows else 0)
@@ -81,9 +76,10 @@ class AccountIsolationCapability(ConfigurationListCapability):
 
 ACCOUNT_ISOLATION = AccountIsolationCapability()
 ACQUISITION = (
-    "Acquire one unfiltered pageNo=0/pageSize=1000, require unique string IDs "
-    "and rows=totalCount, then filter, lexical ID sort, window and project. "
-    "Coverage over 1000 fails; no paging fallback. totalPageNo is not trusted."
+    "Acquire one unfiltered pageNo=0/pageSize=1000, validate string IDs and "
+    "deduplicate identical rows, then filter, lexical ID sort, window and project. "
+    "Safe incomplete coverage warns; --require-complete rejects. No paging "
+    "fallback; totalPageNo is not trusted."
 )
 MATCHING = (
     "Local exact case-sensitive whole-string filters: same-field OR, cross-field "
@@ -124,7 +120,8 @@ REFRESH_NODE = BizNode(
     constraints=(
         ACQUISITION,
         "Requires authenticated CDP; only the local cache changes. No selectors. "
-        "Any failure preserves the prior snapshot; progress goes to stderr.",
+        "Safe incomplete results publish with a warning; strict mode and hard "
+        "failures preserve the prior snapshot. Progress goes to stderr.",
     ),
     effects=dict(REFRESH_CDP_EFFECTS),
     output=REFRESH_OUTPUT,

@@ -1,13 +1,13 @@
 """Verified collection transaction-cost inquiry (issue #21).
 
-One complete page at the observed capacity; no speculative pagination,
+One validated page at the observed capacity; no speculative pagination,
 filters, VA fees or cost calculations.
 """
 
 from dataclasses import dataclass
 from typing import Any
 
-from ...errors import INCOMPLETE_RESULT, INVALID_RESPONSE, REQUEST_NOT_ALLOWED, CliError
+from ...errors import INVALID_RESPONSE, REQUEST_NOT_ALLOWED, CliError
 from ...helpspec import (
     ALL,
     CACHE_FLAGS,
@@ -39,6 +39,7 @@ CONTRACT = EndpointContract(
     one_based=False,
     allowed_body_keys=frozenset({"costTypeCode", "pageNo", "pageSize"}),
     scope_field="itemType",
+    single_page=True,
     fixed_body_values=(
         ("costTypeCode", COST_TYPE),
         ("pageNo", 0),
@@ -87,17 +88,6 @@ class CollectionCostCapability:
         page = parse_cost_page(body, COST_TYPE, allow_omitted_empty=True)
         if page.page_num != 0 or page.page_size != PAGE_SIZE or page.total_count < 0:
             raise CliError(INVALID_RESPONSE, "invalid collection cost pagination")
-        identities = {row["itemId"] for row in page.records}
-        if (
-            page.total_count > PAGE_SIZE
-            or len(page.records) != page.total_count
-            or len(identities) != len(page.records)
-        ):
-            raise CliError(
-                INCOMPLETE_RESULT,
-                "collection cost response does not prove complete unique coverage; "
-                "no pagination fallback is verified",
-            )
         return page
 
 
@@ -110,8 +100,8 @@ COLLECTION_COST_LIST_NODE = BizNode(
         "Fixed costTypeCode=FUND_IN_CHANNEL_TRANS_FEE; no "
         "domain filters or scope option.",
         "Cost configurations are not actual transaction charges or calculated fees.",
-        "Live results must prove complete unique coverage in one 1000-row request; "
-        "otherwise fail without a fallback or cache update.",
+        "Live uses one verified 1000-row request. Safe incomplete coverage returns "
+        "with a warning; --require-complete rejects. No pagination fallback.",
         CACHE_SEMANTICS,
         DISPLAY_WINDOW,
     ),
@@ -147,7 +137,8 @@ REFRESH_NODE = BizNode(
     "through the existing CDP session.",
     constraints=(
         *REFRESH_CDP_CONSTRAINTS,
-        "Fixed collection transaction-cost type; only complete unique results publish.",
+        "Fixed transaction-cost type; safe partial results publish with a warning; "
+        "--require-complete rejects before publishing.",
         "Only the local cache changes; production business state remains read-only.",
     ),
     errors=(*REFRESH_CDP_ERRORS, "INCOMPLETE_RESULT"),

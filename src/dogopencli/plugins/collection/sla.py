@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...errors import (
-    INCOMPLETE_RESULT,
     INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
     CliError,
@@ -50,6 +49,7 @@ LIST_CONTRACT = EndpointContract(
     one_based=False,
     allowed_body_keys=frozenset({"pageNo", "pageSize"}),
     fixed_body_values=(("pageNo", 0), ("pageSize", PAGE_SIZE)),
+    single_page=True,
 )
 DETAIL_CONTRACT = EndpointContract(
     method="GET",
@@ -196,18 +196,6 @@ class CollectionSlaCapability:
             _validate_record(row)
         if total == 0 and rows:
             raise CliError(INVALID_RESPONSE, "inconsistent empty result")
-        if (
-            total > PAGE_SIZE
-            or len(rows) != total
-            or len({row[self.id_field] for row in rows}) != len(rows)
-        ):
-            raise CliError(
-                INCOMPLETE_RESULT,
-                (
-                    "collection SLA response does not prove complete unique "
-                    "coverage; no pagination fallback is verified"
-                ),
-            )
         return ParsedPage(rows, 0, PAGE_SIZE, total, 1 if total else 0)
 
 
@@ -256,7 +244,7 @@ COLLECTION_SLA_LIST_NODE = BizNode(
             "is not a wildcard. Missing/null fields do not match."
         ),
         (
-            "Live fetches the complete unfiltered scope before local filtering, "
+            "Live acquires the verified unfiltered response before local filtering, "
             "stable-ID sorting and display windowing. ASCII digit IDs sort "
             "numerically, with original string as the tie-breaker; other IDs "
             "sort lexically afterward. Original string IDs remain unchanged. "
@@ -270,9 +258,10 @@ COLLECTION_SLA_LIST_NODE = BizNode(
             "holidayLimit arrays remain complete."
         ),
         (
-            "Live acquisition validates one complete "
+            "Live acquisition validates one "
             "pageNo=0/pageSize=1000 response; no speculative paging "
-            "or implicit refresh."
+            "or implicit refresh. Safe incomplete coverage warns; "
+            "--require-complete rejects."
         ),
     ),
     effects_variants=QUERY_EFFECTS_VARIANTS,
@@ -330,8 +319,9 @@ REFRESH_NODE = BizNode(
     constraints=(
         *REFRESH_CDP_CONSTRAINTS,
         (
-            "Only local cache changes. Any list/detail failure "
-            "preserves the previous snapshot."
+            "Only local cache changes. Safe partial lists with validated true details "
+            "publish with a warning. --require-complete and hard list/detail "
+            "failures preserve the previous snapshot."
         ),
         (
             "One verified 1000-row acquisition; no business filters "

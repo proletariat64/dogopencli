@@ -29,8 +29,8 @@ def page(rows, slug="same-bank-transfer", **changes):
     }
 
 
-def refresh(run_cli, slug="same-bank-transfer"):
-    return run_cli(["refresh", "payment", "rules", slug])
+def refresh(run_cli, slug="same-bank-transfer", *flags):
+    return run_cli(["refresh", "payment", "rules", slug, *flags])
 
 
 def listing(run_cli, slug="same-bank-transfer", *flags):
@@ -378,7 +378,7 @@ def test_refresh_failure_preserves_snapshot(run_cli, envelope, setup, slug, fail
     elif failure == "not_json":
         outcome["body"] = "PRIVATE-RAW-RESPONSE"
     setup.state.business_script.append(outcome)
-    code, out, err = refresh(run_cli, slug)
+    code, out, err = refresh(run_cli, slug, "--require-complete")
     assert code == 1, out
     assert envelope(out)["error"]["code"] in {
         "INVALID_RESPONSE",
@@ -477,7 +477,8 @@ def test_freshness_completeness_and_corruption(run_cli, envelope, setup, slug):
         == "CACHE_STALE"
     )
     with sqlite3.connect(setup.cache_path) as db:
-        db.execute("UPDATE snapshots SET backend_complete = 0")
+        # A legacy partial cache has no acquisition evidence to contradict.
+        db.execute("UPDATE snapshots SET backend_complete = 0, acquisition = NULL")
     assert (
         envelope(listing(run_cli, slug, "--require-complete")[1])["error"]["code"]
         == "INCOMPLETE_RESULT"

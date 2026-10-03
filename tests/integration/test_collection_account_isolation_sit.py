@@ -83,8 +83,8 @@ def listing(run_cli, *flags):
     return run_cli(["collection", "account-isolation", "list", *flags])
 
 
-def refresh(run_cli):
-    return run_cli(["refresh", "collection", "account-isolation"])
+def refresh(run_cli, *flags):
+    return run_cli(["refresh", "collection", "account-isolation", *flags])
 
 
 def seed(run_cli, setup):
@@ -210,7 +210,8 @@ def test_corrupt_cached_scope_identifies_capability(
     code, out, _ = listing(run_cli)
     assert code == 1
     error = envelope(out)["error"]
-    assert error["code"] == "INCOMPLETE_RESULT"
+    assert error["code"] == "INVALID_RESPONSE"
+    assert envelope(out)["data"] is None
     assert "collection.account_isolation.list" in error["message"]
 
 
@@ -232,7 +233,7 @@ def test_corrupt_cached_scope_identifies_capability(
         ({"businessDataList": [row(), row()], "totalCount": 2}, "INCOMPLETE_RESULT"),
         (
             {"businessDataList": [row(), row(sceneCode="changed")], "totalCount": 2},
-            "INCOMPLETE_RESULT",
+            "INVALID_RESPONSE",
         ),
         ({"businessDataList": [], "totalCount": 0, "pageNo": 99}, "INVALID_RESPONSE"),
         (
@@ -252,7 +253,11 @@ def test_bad_acquisition_preserves_old_cache(
 ):
     old = seed(run_cli, setup)
     setup.state.business_script.append(page(**changes))
-    result = listing(run_cli, "--live") if live else refresh(run_cli)
+    result = (
+        listing(run_cli, "--live", "--require-complete")
+        if live
+        else refresh(run_cli, "--require-complete")
+    )
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == error
     assert listing(run_cli)[1] == old
@@ -359,7 +364,7 @@ def test_freshness_completeness_and_cache_miss(run_cli, envelope, setup):
     )
     assert listing(run_cli, "--require-complete")[0] == 0
     with sqlite3.connect(setup.cache_path) as db:
-        db.execute("UPDATE snapshots SET backend_complete = 0")
+        db.execute("UPDATE snapshots SET backend_complete = 0, acquisition = NULL")
     assert (
         envelope(listing(run_cli, "--require-complete")[1])["error"]["code"]
         == "INCOMPLETE_RESULT"

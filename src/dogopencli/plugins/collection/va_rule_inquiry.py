@@ -1,14 +1,14 @@
 """Collection VA Rule acquisition, snapshot reads and Detail Refusal policy.
 
-ADR 0010 belongs here: only an explicit refusal permits publication with a
-missing detail, and that publication still fails. Other failures preserve
-old data. The CLI need not interpret null details or completeness flags.
+Only an explicit refusal permits publication with a missing detail. Safe
+list coverage gaps and detail refusals retain distinct evidence; strict
+mode rejects before publication. Other failures preserve old data.
 """
 
 import hashlib
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 
@@ -19,6 +19,7 @@ from ...config import Config, SourceConfig
 from ...errors import INCOMPLETE_RESULT, NOT_FOUND, CliError
 from ...inquiry import InquirySession
 from ...jsonutil import canonical
+from ...result_policy import check_complete, evidence_for
 from ...transport.cdp import CdpQueryTransport
 from ..envelope import is_business_refusal
 from . import va_rule
@@ -111,8 +112,9 @@ def refresh(
     now: Callable[[], datetime],
     progress: Callable[[int, int], None],
     detail_progress: Callable[[str], None],
+    require_complete: bool = False,
 ) -> SnapshotMeta:
-    """Publish the newest acquisition, then fail if any detail was refused."""
+    """Publish a validated candidate, preserving actual list/detail quality."""
     cap = va_rule.COLLECTION_VA_RULES
     store = Cache(config.cache_path)
     ns = namespace(cap.name, cap.default_scope, source.kind)
@@ -121,10 +123,8 @@ def refresh(
             result = collect.collect_scope(
                 cap, session.transport(cap), cap.default_scope, progress=progress
             )
-            if not result.complete:
-                raise CliError(
-                    INCOMPLETE_RESULT, "collection VA rule list is incomplete"
-                )
+            evidence = evidence_for(result)
+            check_complete(evidence, require_complete=require_complete, mode="refresh")
             transport = session.transport(va_rule.COLLECTION_VA_RULES_DETAIL)
             pairs = []
             refused = 0
@@ -148,6 +148,26 @@ def refresh(
                     f"{'refused' if detail is None else 'collected'} "
                     f"{len(pairs)}/{len(result.records)}"
                 )
+            if evidence.attempts:
+                evidence = replace(
+                    evidence,
+                    attempts=(
+                        *evidence.attempts[:-1],
+                        {
+                            **evidence.attempts[-1],
+                            "details_requested": len(pairs),
+                            "details_collected": len(pairs) - refused,
+                            "details_refused": refused,
+                        },
+                    ),
+                )
+            if refused:
+                evidence = replace(
+                    evidence,
+                    dataset_complete=False,
+                    reasons=evidence.reasons + ("DETAIL_REFUSED",),
+                )
+            check_complete(evidence, require_complete=require_complete, mode="refresh")
         fetched_at = now().isoformat()
         snapshot = SnapshotMeta(
             namespace=ns,
@@ -157,22 +177,17 @@ def refresh(
             snapshot_id=hashlib.sha256(canonical(pairs).encode()).hexdigest(),
             dataset_id=None,
             simulated=False,
-            backend_complete=True,
-            dataset_complete=refused == 0,
+            backend_complete=evidence.scope_complete,
+            dataset_complete=evidence.dataset_complete,
             fetched_at=fetched_at,
             loaded_at=now().isoformat(),
             source_observed_from=None,
             source_observed_to=None,
             row_count=len(pairs),
+            acquisition=evidence.record(),
         )
         collect.remaining_seconds(result.deadline)
         store.publish(
             snapshot, [(i, canonical(pair)) for i, pair in enumerate(pairs, 1)]
-        )
-    if refused:
-        raise CliError(
-            INCOMPLETE_RESULT,
-            f"published {len(pairs) - refused}/{len(pairs)} collection VA rule"
-            f" details; {refused} refused by the backend",
         )
     return snapshot

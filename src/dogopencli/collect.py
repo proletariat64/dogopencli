@@ -22,7 +22,7 @@ completeness.
 import math
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .errors import (
@@ -34,6 +34,7 @@ from .errors import (
 )
 from .jsonutil import canonical
 from .plugins import Capability, TransportCapability
+from .result_policy import AcquisitionEvidence
 from .transport import QueryRequest, TransportResponse, validate_request
 from .transport.cdp import FetchFailed
 
@@ -57,11 +58,12 @@ class CollectedScope:
 
     records: list[dict[str, Any]]
     complete: bool
-    total_count: int
+    total_count: int | None
     page_size: int
     pages: int
     rebuilt: bool
     deadline: float
+    evidence: AcquisitionEvidence | None = None
 
 
 def collect_scope(
@@ -110,14 +112,15 @@ def collect_scope(
         page_cap,
         progress,
     )
-    return CollectedScope(
-        records=rebuilt.records,
-        complete=rebuilt.complete,
-        total_count=rebuilt.total_count,
-        page_size=rebuilt.page_size,
-        pages=rebuilt.pages,
+    assert result.evidence is not None and rebuilt.evidence is not None
+    evidence = replace(
+        rebuilt.evidence,
+        attempts=result.evidence.attempts + rebuilt.evidence.attempts,
+    )
+    return replace(
+        rebuilt,
         rebuilt=True,
-        deadline=deadline,
+        evidence=evidence,
     )
 
 
@@ -137,7 +140,8 @@ def _attempt(
     total_pages = 0
     seen: dict[Any, str] = {}
     observed_content: dict[str, str] = {}
-    consistent = True
+    observed_versions: dict[str, str] = {}
+    consistency_unproven = False
     ordered: list[dict[str, Any]] = []
     rows = 0
     pages = 0
@@ -149,6 +153,8 @@ def _attempt(
         body.update(filters)
         response = execute_bounded(capability, transport, body, deadline)
         page = capability.parse_page(response.body)
+        if len(page.records) > page_size:
+            raise CliError(INVALID_RESPONSE, "page returned more rows than pageSize")
         if contract.scope_field is not None and any(
             record.get(contract.scope_field) != scope for record in page.records
         ):
@@ -183,7 +189,7 @@ def _attempt(
         elif expected_total is None:
             expected_total = page.total_count
             total_pages = math.ceil(expected_total / page_size)
-            if total_pages > max_pages:
+            if not contract.single_page and total_pages > max_pages:
                 raise CliError(
                     TIMEOUT,
                     f"page budget exceeded: {total_pages} pages > {max_pages}",
@@ -197,24 +203,52 @@ def _attempt(
                 f"page budget exceeded: {pages} pages > {max_pages}",
             )
         done_pages = page_num - first_page + 1
-        if not contract.running_total and not page.records and done_pages < total_pages:
+        if (
+            not contract.single_page
+            and not contract.running_total
+            and not page.records
+            and rows < page.total_count
+        ):
             raise CliError(
                 INVALID_RESPONSE,
                 "collection made no progress: empty page before the range end",
             )
         for record in page.records:
             rows += 1
-            record_id = capability.identity_key(record)
             content = canonical(record)
             if contract.consistency_field is not None:
                 business_id = record.get(contract.consistency_field)
                 if business_id is not None:
                     business_key = canonical(business_id)
+                    version_known = True
+                    if contract.consistency_version_field is not None:
+                        version_value = record.get(contract.consistency_version_field)
+                        version_known = version_value is not None
+                        version = canonical(version_value)
+                        previous_version = observed_versions.setdefault(
+                            business_key, version
+                        )
+                        if previous_version != version:
+                            consistency_unproven = True
+                        business_key = canonical((business_key, version))
                     previous_content = observed_content.setdefault(
                         business_key, content
                     )
                     if previous_content != content:
-                        consistent = False
+                        if version_known:
+                            raise CliError(
+                                INVALID_RESPONSE,
+                                "conflicting content for business identity",
+                            )
+                        consistency_unproven = True
+            if not contract.has_identity:
+                ordered.append(record)
+                continue
+            record_id = capability.identity_key(record)
+            if record_id is None or (
+                isinstance(record_id, str) and not record_id.strip()
+            ):
+                raise CliError(INVALID_RESPONSE, "response record identity is missing")
             previous = seen.get(record_id)
             if previous is not None:
                 if previous != content:
@@ -227,6 +261,8 @@ def _attempt(
             ordered.append(record)
         if progress is not None:
             progress(pages, max(total_pages, pages))
+        if contract.single_page:
+            break
         if contract.running_total:
             if len(page.records) < page_size:
                 break
@@ -235,14 +271,40 @@ def _attempt(
         page_num += 1
     remaining_seconds(deadline)
     total = expected_total if expected_total is not None else 0
+    evidence = AcquisitionEvidence.for_collection(
+        complete=len(ordered) == total and not consistency_unproven,
+        reported_total=total,
+        collected_total=len(ordered),
+        arrivals=rows,
+        has_identity=contract.has_identity,
+        total_semantics=contract.total_semantics,
+        duplicate_policy=contract.duplicate_policy,
+        reasons=("BUSINESS_CONSISTENCY_UNPROVEN",) if consistency_unproven else (),
+    )
+    evidence = replace(
+        evidence,
+        attempts=(
+            {
+                "page_size": page_size,
+                "pages": pages,
+                "arrivals": rows,
+                "unique_count": evidence.unique_count,
+                "duplicate_count": evidence.duplicate_count,
+                "reported_total": total,
+                "complete": evidence.scope_complete,
+                "reasons": list(evidence.reasons),
+            },
+        ),
+    )
     return CollectedScope(
         records=ordered,
-        complete=consistent and rows == total == len(ordered),
+        complete=evidence.scope_complete,
         total_count=total,
         page_size=page_size,
         pages=pages,
         rebuilt=False,
         deadline=deadline,
+        evidence=evidence,
     )
 
 

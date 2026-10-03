@@ -487,6 +487,34 @@ def test_live_incomplete_marked_and_require_complete(
     assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
 
 
+def test_partial_refresh_builds_usable_cache_with_persistent_warning(
+    run_cli, envelope, cost_setup
+):
+    rows = [cost_row(1), cost_row(2)]
+    cost_setup.state.business_script.extend(
+        [
+            cost_page(rows, page_size=5000, total_count=3),
+            cost_page(rows, page_size=10000, total_count=3),
+        ]
+    )
+    code, out, err = refresh(run_cli)
+    assert code == 0
+    result = envelope(out)
+    assert result["error"] is None
+    assert result["meta"]["published"] is True
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["missing_count"] == 1
+    assert "INCOMPLETE_RESULT" in err
+    requests = len(cost_setup.state.business_requests)
+    code, out, err = listing(run_cli, "--all")
+    assert code == 0 and len(envelope(out)["data"]) == 2
+    assert envelope(out)["meta"]["acquisition"]["reported_total"] == 3
+    assert "INCOMPLETE_RESULT" in err
+    assert len(cost_setup.state.business_requests) == requests
+    code, out, _ = listing(run_cli, "--require-complete")
+    assert code == 1 and envelope(out)["data"] is None
+
+
 def test_multi_page_collection_is_zero_based(run_cli, envelope, cost_setup):
     rows = [cost_row(n) for n in range(1, 6001)]
     cost_setup.state.business_handler = paging_handler(
@@ -657,10 +685,10 @@ def test_rebuild_happens_only_once(
             cost_page(duplicated, page_size=10000, total_count=9),
         ]
     )
-    code, out, _ = refresh(run_cli)
+    code, out, _ = refresh(run_cli, "--require-complete")
     assert code == 1
     result = envelope(out)
-    assert result["error"]["code"] == "INVALID_RESPONSE"
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert "incomplete" in result["error"]["message"]
     assert [p["pageSize"] for p in cost_setup.state.business_requests[1:]] == [
         5000,
@@ -943,7 +971,7 @@ def test_machine_output_envelope(run_cli, envelope, cost_setup, sample_cost_rows
     assert code == 0
     result = json.loads(out)
     assert set(result) == {"data", "error", "meta"}
-    assert set(result["meta"]) == {
+    assert set(result["meta"]) >= {
         "source",
         "backend",
         "simulated",

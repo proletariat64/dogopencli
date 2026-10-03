@@ -71,9 +71,9 @@ def describe(path: tuple[str, ...]) -> dict[str, Any]:
                 "local data."
             ),
             "error": (
-                "Null on success. On failure data/meta are null and error has"
-                " code, message and retryable. Check nonzero exit before "
-                "consuming data."
+                "Null for usable data, including warned incomplete results."
+                " Failures withhold data and carry code, message and retryable;"
+                " meta may preserve quality and publication evidence."
             ),
         },
         "projection": "--fields selects comma-separated top-level record fields. "
@@ -90,6 +90,11 @@ def describe(path: tuple[str, ...]) -> dict[str, Any]:
             "describes this display window, not source completeness."
         ),
         "annotations": guide_annotations(),
+        "quality": (
+            "Default validated incomplete acquisitions can be published and read"
+            " with warnings and exit 0. Check complete, dataset_complete and"
+            " acquisition reasons; use --require-complete to reject gaps."
+        ),
         "errors": help_doc["errors"],
         "exit_codes": {
             str(code): meaning for code, meaning in BUSINESS_EXIT_CODES.items()
@@ -101,6 +106,21 @@ def describe(path: tuple[str, ...]) -> dict[str, Any]:
         "version or alter query envelopes or help_version.",
     }
     guide.update(description["read_guide"])
+    guide.setdefault("metadata", {}).update(
+        {
+            "acquisition": "Persisted acquisition counts, quality flags, reason codes"
+            " and bounded attempt summaries; independent of local display filters.",
+            "reported_total": "Native reported total, or null when unreported or"
+            " unavailable for the combined query scope.",
+            "collected_total": "Collected records before local filtering and display.",
+            "missing_count": "Quantified count gap only for comparable native total"
+            " units; otherwise null.",
+            "coverage_ratio": "Collected/native total for comparable nonzero totals;"
+            " otherwise null. Does not promise representativeness.",
+            "warnings": "Optional structured quality warnings. Usable incomplete"
+            " data has INCOMPLETE_RESULT warnings, error=null and exit 0 by default.",
+        }
+    )
     return {
         "describe_version": 1,
         "capability": ".".join(path),

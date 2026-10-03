@@ -11,8 +11,15 @@ from typing import Any
 
 from .cache import Cache, SnapshotMeta, namespace
 from .config import SOURCE_SNAPSHOT, Config, SourceConfig
-from .errors import CACHE_MISS, CACHE_STALE, INCOMPLETE_RESULT, CliError
+from .errors import (
+    CACHE_MISS,
+    CACHE_STALE,
+    INCOMPLETE_RESULT,
+    INVALID_RESPONSE,
+    CliError,
+)
 from .jsonutil import parse
+from .result_policy import AcquisitionEvidence, check_complete
 
 
 def snapshot_meta(
@@ -23,7 +30,7 @@ def snapshot_meta(
     returned_count: int,
     has_more: bool,
 ) -> dict[str, Any]:
-    return {
+    result = {
         "source": source,
         "backend": snapshot.source_kind,
         "simulated": snapshot.simulated,
@@ -41,6 +48,17 @@ def snapshot_meta(
         "returned_count": returned_count,
         "has_more": has_more,
     }
+    evidence = (
+        AcquisitionEvidence.from_record(snapshot.acquisition)
+        if snapshot.acquisition is not None
+        else AcquisitionEvidence(
+            scope_complete=snapshot.backend_complete,
+            dataset_complete=snapshot.dataset_complete,
+            collected_total=snapshot.row_count,
+        )
+    )
+    result.update(evidence.meta())
+    return result
 
 
 def is_stale(snapshot: SnapshotMeta, ttl_hours: float, now: datetime) -> bool:
@@ -69,13 +87,31 @@ class CachedQuery:
         """
         records = []
         for _, body in self.stored:
-            record = parse(body)
+            try:
+                record = parse(body)
+            except ValueError as error:
+                raise CliError(
+                    INVALID_RESPONSE, "cached record is not valid JSON"
+                ) from error
+            if not isinstance(record, dict):
+                raise CliError(INVALID_RESPONSE, "cached record is not an object")
             validate(record)
             records.append(record)
-        if len(records) != self.snapshot.row_count or len(
-            {identity(record) for record in records}
-        ) != len(records):
+        if len(self.stored) != self.snapshot.row_count or [
+            seqid for seqid, _ in self.stored
+        ] != list(range(1, self.snapshot.row_count + 1)):
             raise CliError(INCOMPLETE_RESULT, coverage_error)
+        identities: set[Hashable] = set()
+        for record in records:
+            try:
+                key = identity(record)
+                if key in identities:
+                    raise CliError(INCOMPLETE_RESULT, coverage_error)
+                identities.add(key)
+            except (KeyError, TypeError, ValueError) as error:
+                raise CliError(
+                    INVALID_RESPONSE, "cached record identity is invalid"
+                ) from error
         return records
 
     def meta(
@@ -107,9 +143,20 @@ def read_cached_query(
     Identity compares publication metadata, so an imported dataset remains
     available after its source files have been removed.
     """
-    snapshot, stored = Cache(config.cache_path).read(
-        namespace(capability, scope, source.kind)
-    )
+    try:
+        snapshot, stored = Cache(config.cache_path).read(
+            namespace(capability, scope, source.kind)
+        )
+    except CliError as error:
+        if error.code != INVALID_RESPONSE:
+            raise
+        raise CliError(
+            error.code,
+            f"cached {capability}: {error.message}",
+            retryable=error.retryable,
+            exit_code=error.exit_code,
+            meta=error.meta,
+        ) from error
     hint = f"run: dogopencli {refresh_command}"
     if snapshot is None:
         raise CliError(CACHE_MISS, f"no cached snapshot; {hint}")
@@ -128,9 +175,14 @@ def read_cached_query(
             f"cached snapshot is older than {config.ttl_hours:g} hours"
             f" (fetched_at {snapshot.fetched_at})",
         )
-    if require_complete and not snapshot.backend_complete:
-        raise CliError(
-            INCOMPLETE_RESULT,
-            "cached snapshot does not cover the complete backend scope",
+    evidence = (
+        AcquisitionEvidence.from_record(snapshot.acquisition)
+        if snapshot.acquisition is not None
+        else AcquisitionEvidence(
+            scope_complete=snapshot.backend_complete,
+            dataset_complete=snapshot.dataset_complete,
+            collected_total=snapshot.row_count,
         )
+    )
+    check_complete(evidence, require_complete=require_complete, mode="cache")
     return CachedQuery(snapshot, stored, stale)

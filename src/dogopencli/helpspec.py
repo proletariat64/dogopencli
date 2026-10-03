@@ -134,7 +134,8 @@ REQUIRE_FRESH = opt(
 )
 REQUIRE_COMPLETE = opt(
     "require_complete",
-    "Fail when the snapshot or live collection does not cover the complete scope.",
+    "Require complete scope and required details; incomplete refresh is not"
+    " published. Default usable partial results warn and exit 0.",
     "bool",
 )
 FORMAT_TABLE = opt(
@@ -149,6 +150,7 @@ CACHE_SEMANTICS = (
     "Cached read: default TTL 72 hours (configurable); stale and complete are"
     " independent; --require-fresh fails on stale, --require-complete fails on"
     " incomplete."
+    " Usable incomplete live/cache results warn and exit 0 by default."
 )
 DISPLAY_WINDOW = (
     "Display window: default shows 100 rows (limit=100, offset=0); --all"
@@ -179,7 +181,7 @@ LIVE_VARIANT: dict[str, Any] = {
     },
 }
 
-QUERY_EFFECTS_VARIANTS = (CACHE_INIT_VARIANT, LIVE_VARIANT)
+QUERY_EFFECTS_VARIANTS = (LIVE_VARIANT,)
 
 
 def add_options(
@@ -338,8 +340,11 @@ REFRESH_CDP_EFFECTS = {
 REFRESH_CDP_CONSTRAINTS = (
     "Requires the CDP source and an existing authenticated browser session.",
     "Progress diagnostics go to stderr; the result envelope goes to stdout.",
+    "Validated partial data is published with quality warnings by default;"
+    " --require-complete rejects before publication and preserves the old cache.",
 )
 REFRESH_CDP_ERRORS = (
+    "INCOMPLETE_RESULT",
     "INVALID_ARGUMENT",
     "CONFIG_ERROR",
     "INVALID_RESPONSE",
