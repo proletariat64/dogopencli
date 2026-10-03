@@ -70,6 +70,38 @@ dogopencli collection account-isolation list --live --all
 
 ## 可以查询什么
 
+### 离线命令与缓存概览
+
+`snapshot` 按 [#80](https://github.com/proletariat64/dogopencli/issues/80)
+提供已安装命令树与本地缓存的元数据概览，默认显示文本树：
+
+```bash
+dogopencli snapshot
+dogopencli snapshot liquidity cash
+dogopencli snapshot liquidity cash balances list --format json
+dogopencli snapshot --format table
+dogopencli snapshot --format json > snapshot.json
+```
+
+路径与 `help` 一致，可选择组或叶子；未知路径与格式退出 2。参数说明和可选值
+继续查看 `help` / `describe`。`availability` 的 supported/unsupported 表示当前版本
+是否实现该命令；延期叶子和原有原因仍可发现，不表示认证、后端或缓存状态。
+
+缓存概览一起显示存在情况、新鲜度与完整性；JSON 保留各采集的质量、范围与缺口。
+缺失缓存的 `rows` 为 null，已验证空采集为 0。`rows` 统计实际保留的业务记录或
+原生详情文档，不计内部索引，也不展开详情成员；重叠范围与多次采集可能重复计数，
+不是去重查询结果或生产总量。完整性只对声明的保留范围成立。
+
+`updated` 为最新成功采集时间，JSON 同时保留最早时间与逐采集时间；报告时间
+`generated_at` 与源观察时间分别保存。新鲜度沿用已有能力/配置策略；时间或策略
+缺失时保持未知，多采集质量不同会显示 mixed，最新采集不代表全部缓存。
+帮助、描述、认证和 snapshot 控制项没有业务缓存；刷新控制项引用其目标查询缓存。
+
+检查只读配置与 SQLite 的一致视图，不创建文件、不迁移或修复缓存，不启动浏览器、
+探测认证、执行查询或刷新。输出只含元数据，范围/采集 ID 是不透明报告标识，
+不能作为业务查询参数。缺失、过期、不完整和延期状态退出 0；配置/读取失败退出 1，
+保留可读取的树并标记检查错误，JSON 仍可解析。诊断写 stderr。
+
 下表命令均省略 `dogopencli` 前缀。配置键对应 `[sources.<键>]`，
 除付款渠道的离线替代源外，使用 `kind = "cdp"`。
 
