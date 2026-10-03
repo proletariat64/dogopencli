@@ -214,7 +214,7 @@ Payment 已有恢复契约区分预计页序列尚未结束的提前空页与遍
 
 ## 实施验收记录
 
-2026-10-03，最终业务代码提交 `c64178eaa89e15f345711886bc6427984e9f2af5`，相对实际默认分支 `master`（`308d5c448abad01478330729555204a05e90d59b`）验证：
+2026-10-03，首轮业务代码提交 `c64178eaa89e15f345711886bc6427984e9f2af5`，相对实际默认分支 `master`（`308d5c448abad01478330729555204a05e90d59b`）验证：
 
 - 全套离线 pytest：**1725 passed、1 skipped、28 subtests passed**，914.11 秒。使用既有虚拟环境、fake CDP/transport 与真实临时 SQLite；没有调用生产系统。
 - Ruff、格式、编译与 Doc Guard 通过。仓库未配置独立静态类型检查器，不将编译检查记作类型检查。
@@ -224,5 +224,7 @@ Payment 已有恢复契约区分预计页序列尚未结束的提前空页与遍
 - 注册表实测仍为 **46 个 Liquidity list 路由、47 个 variant**；页宽和 PTR 必需稳定性证明保留。
 
 后续生产只读 UAT：82/83 个目标命令通过（78 完整、4 可用 partial），90/90 个目标 scope 完成四种基础模式，3459/3459 项记录检查通过；另外三类 Payment/Collection 原生详情均完成真实 get 验证，包括 VA 明确拒绝。正式配置、缓存主库及辅助文件哈希完全不变，81 个业务源码文件未变。Payment channel EXTERNAL 在外层业务成功校验阶段阻塞，不计通过；ledger balances 按用户要求跳过，已有观察保留。详见[本轮生产 UAT](../research/general/2026-10-03-unified-incomplete-production-uat.md)，其中明确记录验收脚本误报的证据与修正。
+
+PR 前复审 `b05ce61d-e292-4b21-adfa-6256f5e4cdad` 给出 5/5 并提出两项 P2：过期 UAT 状态文字，以及 dated refresh 误聚合被覆盖的旧 partial 缺口。前者已修正文档；后者在 `a6d173e65e618abaeac1bcfd531bc91d5b3f6ad6` 修复，证据聚合复用当前窗口的有效 capture。两个参数化回归先复现失败，再验证旧缺口消除、当前重复告警和未覆盖日期的缺口保留。该提交通过 **360 项 Liquidity/公共策略测试**、Ruff、格式、编译及 Doc Guard（10 passed、20 subtests passed）；Standards 和 Spec 两轴各 0 项未解决。此前全套 1725 项和整轮生产 UAT 对应 `c64178e`，不冒称已在新提交重跑全套。新提交使用原命令 `greptile review` 复审时因账户 50 次 trial 额度耗尽被拒绝，没有产生新评分。
 
 本记录不代表已发布或已创建 PR。生产逐能力验证及历史延期边界继续以真实 allowlist 和各能力契约为准。

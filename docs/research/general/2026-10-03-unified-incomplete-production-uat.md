@@ -141,6 +141,12 @@ These follow-ups use identities acquired from the actual public cache envelope; 
 | `collection va rules get` | PARTIAL | True | True |
 Native-detail command artifacts recorded: 30; overall check counts above include their checks. The route table command-result count covers base and extra per-case modes only.
 
+## Subsequent source correction
+
+After the route matrix above, Greptile review `b05ce61d-e292-4b21-adfa-6256f5e4cdad` scored 5/5 and identified a dated-refresh diagnostic defect: a superseded partial capture could still contribute its old `COUNT_SHORTFALL` reason to a newer complete request. Source commit `a6d173e65e618abaeac1bcfd531bc91d5b3f6ad6` filters aggregated evidence through the existing current-window authority selector. Two regression cases reproduced the defect before the fix, then verified that current duplicate warnings and gaps on dates still owned by partial captures remain intact. The affected Liquidity/public-policy gate passed 360 tests; independent Standards and Spec follow-ups have zero unresolved findings. The full route matrix and original source fingerprint remain evidence for `c64178e`; they were not relabeled as a full production rerun on the correction. A new plain `greptile review` on the correction was rejected because the account exhausted its 50 trial reviews.
+
+Supplemental real-cache reads on the correction passed four forecast checks: narrow default/strict queries returned six complete rows without obsolete gap reasons; the broad default query returned 22,273 partial rows with a warning, and strict rejected with `INCOMPLETE_RESULT` and null data. Offline CDP calls were zero, and formal config/cache plus original UAT artifacts remained unchanged. Corrected-source fingerprint: `fc4d66c2d71eb2025e9616224a0394599a22035a23938e99124c62ddd746cebc`. An additional native overlap refresh stopped at the shared browser-control lock due to the sandbox filesystem boundary, before any native request. That supplement is `PARTIAL_VALIDATION`, not a successful native refresh; it was not retried after the user requested that excessive acceptance work stop. The complete-overlap correction is supported by deterministic regressions, not this blocked native attempt.
+
 ## Remaining limitations
 
 No recorded check failures at generation time. This does not count blocked or unattempted routes as acceptance.
