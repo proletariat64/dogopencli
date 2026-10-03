@@ -260,6 +260,10 @@ class LiquidityListCapability:
 
     def validate_rows_scope(self, rows: list[dict[str, Any]], scope: str) -> None:
         """Reject unverified dates before live output or complete publication."""
+        if self._spec.projection == "decision_reports":
+            from .decision_list import validate_decision_rows_scope
+
+            validate_decision_rows_scope(rows, decode_scope(scope))
         if self._spec.projection == "swap_orders":
             from .operations_batch import validate_swap_rows_scope
 

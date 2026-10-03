@@ -23,6 +23,7 @@ from decimal import Decimal
 from typing import Any
 
 from ...errors import INVALID_ARGUMENT, INVALID_RESPONSE, CliError
+from .decision_list import project_decision_record
 from .operations_batch import validate_swap_business_date
 from .transfer_list import project_transfer_order
 
@@ -739,6 +740,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "forecast_results": _project_forecast_results,
     "swap_orders": _project_swap_orders,
     "transfer_orders": project_transfer_order,
+    "decision_reports": project_decision_record,
 }
 
 
