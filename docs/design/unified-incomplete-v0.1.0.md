@@ -1,6 +1,6 @@
 # 统一 incomplete 架构规格 v0.1.0
 
-日期：2026-10-03（Asia/Shanghai）。状态：实施规格；当前 feature branch 已接入新策略，最终离线验收与 PR 审查进行中，尚未发布或执行新策略的生产 UAT。
+日期：2026-10-03（Asia/Shanghai）。状态：当前 feature branch 已完成实施与离线验收；Greptile CLI 及 PR 前双轴审查通过，尚未发布或执行新策略的生产 UAT。
 规格版本独立于 Python 包版本。实施工作树：`refact-incomplete-unify-process`。
 权威规格：[GitHub Issue #78](https://github.com/proletariat64/dogopencli/issues/78)。本文件为仓库阅读副本。
 
@@ -188,7 +188,7 @@ Payment 已有恢复契约区分预计页序列尚未结束的提前空页与遍
 
 ## 验收矩阵
 
-实施验收用 fake transport、真实临时 SQLite 和 CLI 边界测试，避免只重复 policy 内部分支。下列为必需条件，不是本次已执行测试。
+实施验收用 fake transport、真实临时 SQLite 和 CLI 边界测试，避免只重复 policy 内部分支。下列为必需条件；实施验收记录见文末，不等于生产 UAT。
 
 | ID | 输入/场景 | 必须证明 |
 | --- | --- | --- |
@@ -211,3 +211,16 @@ Payment 已有恢复契约区分预计页序列尚未结束的提前空页与遍
 | A17 | 注册表遍历全部路由/variant/其他采集入口 | 每个已放行能力声明规则；无schema/path分支；未验证能力继续不可执行；选代表CLI做全链路证明 |
 
 最终交付报告分别报告离线验收、生产只读 UAT、仍未验证的能力及具体阻塞；历史 UAT 不证明新 policy/缓存迁移已验收。
+
+## 实施验收记录
+
+2026-10-03，最终业务代码提交 `c64178eaa89e15f345711886bc6427984e9f2af5`，相对实际默认分支 `master`（`308d5c448abad01478330729555204a05e90d59b`）验证：
+
+- 全套离线 pytest：**1725 passed、1 skipped、28 subtests passed**，914.11 秒。使用既有虚拟环境、fake CDP/transport 与真实临时 SQLite；没有调用生产系统。
+- Ruff、格式、编译与 Doc Guard 通过。仓库未配置独立静态类型检查器，不将编译检查记作类型检查。
+- 原命令 `greptile review`：**5/5、零评论**，review ID `03d38ea6-bce8-46e9-99af-860200dd5cf1`。
+- PR 前双轴审查分别完成：Standards 明文规范违规及未解决建议均为 0；Spec 原 2 项 P1 均已修复，未解决项为 0。修复包括拒绝 Liquidity capture 内损坏的原生身份/存储序号，以及保留 Channel 未验证业务键下的有效行次；损坏缓存 JSON 返回明确错误。
+- Payment 末页覆盖缺口的独立重采已补回归：5000、5000、10000 请求，最终缓存仅来自重采候选；遍历未结束的提前空页继续硬失败。
+- 注册表实测仍为 **46 个 Liquidity list 路由、47 个 variant**；页宽和 PTR 必需稳定性证明保留。
+
+本记录证明当前分支的实现与离线验收，不代表已发布、已创建 PR 或已执行新策略的生产 UAT。生产逐能力验证及历史延期边界继续以真实 allowlist 和各能力契约为准。
