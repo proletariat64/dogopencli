@@ -1,0 +1,302 @@
+"""Shared acquisition evidence and result decisions, independent of storage.
+
+Only validated candidates reach this policy. Domain failures are never caught
+or converted to partial success here; publishing remains a domain transaction.
+"""
+
+import sys
+from dataclasses import dataclass, replace
+from typing import Any
+
+from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
+
+
+@dataclass(frozen=True)
+class AcquisitionEvidence:
+    scope_complete: bool
+    dataset_complete: bool
+    collected_total: int
+    reported_total: int | None = None
+    arrivals: int | None = None
+    unique_count: int | None = None
+    duplicate_count: int | None = None
+    total_semantics: str = "unknown"
+    reasons: tuple[str, ...] = ()
+    attempts: tuple[dict[str, Any], ...] = ()
+
+    @classmethod
+    def for_collection(
+        cls,
+        *,
+        complete: bool,
+        reported_total: int | None,
+        collected_total: int,
+        arrivals: int | None = None,
+        has_identity: bool = True,
+        total_semantics: str | None = None,
+        duplicate_policy: str = "conservative",
+        reasons: tuple[str, ...] = (),
+        attempts: tuple[dict[str, Any], ...] = (),
+    ) -> "AcquisitionEvidence":
+        if reported_total is not None and collected_total > reported_total:
+            raise CliError(INVALID_RESPONSE, "unique records exceed reported total")
+        codes = list(reasons)
+        duplicate_count = (
+            arrivals - collected_total
+            if has_identity and arrivals is not None
+            else None
+        )
+        if duplicate_count is not None and duplicate_count < 0:
+            raise CliError(INVALID_RESPONSE, "invalid acquisition arrival count")
+        semantics = total_semantics or (
+            "unique_objects" if has_identity else "occurrences"
+        )
+        if reported_total is not None and collected_total < reported_total:
+            codes.append("COUNT_SHORTFALL")
+            complete = False
+        if duplicate_count:
+            codes.append("DUPLICATE_ROWS")
+            if duplicate_policy != "allow_identical_overlap":
+                codes.append("UNEXPECTED_DUPLICATE_ROWS")
+                complete = False
+            elif semantics != "unique_objects":
+                raise CliError(
+                    INVALID_RESPONSE, "duplicate tolerance needs unique total"
+                )
+        if not complete and not codes:
+            codes.append("COVERAGE_UNPROVEN")
+        return cls(
+            scope_complete=complete,
+            dataset_complete=complete,
+            reported_total=reported_total,
+            collected_total=collected_total,
+            arrivals=arrivals,
+            unique_count=collected_total if has_identity else None,
+            duplicate_count=duplicate_count,
+            total_semantics=semantics,
+            reasons=tuple(dict.fromkeys(codes)),
+            attempts=attempts,
+        )
+
+    def record(self) -> dict[str, Any]:
+        return {
+            "scope_complete": self.scope_complete,
+            "dataset_complete": self.dataset_complete,
+            "reported_total": self.reported_total,
+            "collected_total": self.collected_total,
+            "arrivals": self.arrivals,
+            "unique_count": self.unique_count,
+            "duplicate_count": self.duplicate_count,
+            "total_semantics": self.total_semantics,
+            "reasons": list(self.reasons),
+            "attempts": list(self.attempts),
+        }
+
+    @classmethod
+    def from_record(cls, record: Any) -> "AcquisitionEvidence":
+        if not isinstance(record, dict):
+            raise CliError(INVALID_RESPONSE, "cached acquisition evidence is invalid")
+        for flag in ("scope_complete", "dataset_complete"):
+            if not isinstance(record.get(flag), bool):
+                raise CliError(INVALID_RESPONSE, "cached acquisition flags are invalid")
+        for key in (
+            "collected_total",
+            "reported_total",
+            "arrivals",
+            "unique_count",
+            "duplicate_count",
+        ):
+            value = record.get(key)
+            if value is None and key != "collected_total":
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise CliError(
+                    INVALID_RESPONSE, "cached acquisition counts are invalid"
+                )
+        reasons = record.get("reasons", [])
+        attempts = record.get("attempts", [])
+        if (
+            not isinstance(reasons, list)
+            or any(not isinstance(code, str) for code in reasons)
+            or not isinstance(attempts, list)
+            or any(not isinstance(item, dict) for item in attempts)
+            or not isinstance(record.get("total_semantics", "unknown"), str)
+        ):
+            raise CliError(INVALID_RESPONSE, "cached acquisition reasons are invalid")
+        evidence = cls(
+            scope_complete=record["scope_complete"],
+            dataset_complete=record["dataset_complete"],
+            collected_total=record["collected_total"],
+            reported_total=record.get("reported_total"),
+            arrivals=record.get("arrivals"),
+            unique_count=record.get("unique_count"),
+            duplicate_count=record.get("duplicate_count"),
+            total_semantics=record.get("total_semantics", "unknown"),
+            reasons=tuple(reasons),
+            attempts=tuple(attempts),
+        )
+        if (
+            (
+                evidence.unique_count is not None
+                and evidence.unique_count != evidence.collected_total
+            )
+            or (
+                evidence.arrivals is not None
+                and evidence.arrivals < evidence.collected_total
+            )
+            or (
+                evidence.duplicate_count is not None
+                and (
+                    evidence.arrivals is None
+                    or evidence.unique_count is None
+                    or evidence.duplicate_count
+                    != evidence.arrivals - evidence.unique_count
+                )
+            )
+            or (
+                evidence.reported_total is not None
+                and evidence.collected_total > evidence.reported_total
+            )
+            or (
+                evidence.scope_complete
+                and evidence.reported_total is not None
+                and evidence.collected_total != evidence.reported_total
+            )
+            or (
+                evidence.scope_complete
+                and "UNEXPECTED_DUPLICATE_ROWS" in evidence.reasons
+            )
+        ):
+            raise CliError(INVALID_RESPONSE, "cached acquisition evidence conflicts")
+        return evidence
+
+    def meta(self) -> dict[str, Any]:
+        comparable = self.reported_total is not None and self.total_semantics in (
+            "unique_objects",
+            "occurrences",
+        )
+        missing = (
+            max(0, self.reported_total - self.collected_total) if comparable else None
+        )
+        ratio = (
+            self.collected_total / self.reported_total
+            if comparable and self.reported_total
+            else None
+        )
+        return {
+            "complete": self.scope_complete,
+            "dataset_complete": self.dataset_complete,
+            "reported_total": self.reported_total,
+            "collected_total": self.collected_total,
+            "missing_count": missing,
+            "coverage_ratio": ratio,
+            "acquisition": self.record(),
+        }
+
+
+def evidence_for(result: Any) -> AcquisitionEvidence:
+    """Compatibility adapter for existing registered collectors."""
+    evidence = getattr(result, "evidence", None)
+    if evidence is not None:
+        return evidence
+    return AcquisitionEvidence.for_collection(
+        complete=result.complete,
+        reported_total=result.total_count,
+        collected_total=len(result.records),
+    )
+
+
+@dataclass(frozen=True)
+class ResultDecision:
+    expose_data: bool
+    publishable: bool
+    warnings: tuple[dict[str, Any], ...]
+    error: dict[str, Any] | None
+    exit_code: int
+
+
+def evaluate_result(
+    evidence: AcquisitionEvidence,
+    *,
+    mode: str,
+    require_complete: bool = False,
+    complete_only: bool = False,
+) -> ResultDecision:
+    incomplete = not (evidence.scope_complete and evidence.dataset_complete)
+    reasons = list(evidence.reasons)
+    if incomplete and not reasons:
+        reasons = ["COVERAGE_UNPROVEN"]
+    warnings: tuple[dict[str, Any], ...] = ()
+    message = (
+        f"result is incomplete (collected {evidence.collected_total},"
+        f" reported {evidence.reported_total}); reasons: {', '.join(reasons)}"
+    )
+    if incomplete or reasons:
+        warnings = (
+            {
+                "code": INCOMPLETE_RESULT if incomplete else "DUPLICATE_ROWS",
+                "message": message
+                if incomplete
+                else "identical duplicate rows removed",
+                "reason_codes": reasons,
+                "retryable": False,
+            },
+        )
+    rejected = incomplete and (require_complete or complete_only)
+    error = (
+        {"code": INCOMPLETE_RESULT, "message": message, "retryable": False}
+        if rejected
+        else None
+    )
+    return ResultDecision(
+        expose_data=not rejected,
+        publishable=mode == "refresh" and not rejected,
+        warnings=warnings,
+        error=error,
+        exit_code=1 if rejected else 0,
+    )
+
+
+def check_complete(
+    evidence: AcquisitionEvidence, *, require_complete: bool, mode: str = "live"
+) -> None:
+    decision = evaluate_result(evidence, mode=mode, require_complete=require_complete)
+    if decision.error is not None:
+        meta = evidence.meta()
+        meta["warnings"] = list(decision.warnings)
+        if mode == "refresh":
+            meta["published"] = False
+        raise CliError(INCOMPLETE_RESULT, decision.error["message"], meta=meta)
+
+
+def prepare_result(
+    meta: dict[str, Any], *, require_complete: bool = False, mode: str = "cache"
+) -> dict[str, Any]:
+    """Apply one decision and render its diagnostics at the output boundary."""
+    if "complete" not in meta:
+        return meta
+    if meta.get("acquisition") is not None:
+        evidence = AcquisitionEvidence.from_record(meta["acquisition"])
+        evidence = replace(
+            evidence,
+            scope_complete=meta["complete"],
+            dataset_complete=(
+                meta["dataset_complete"]
+                if meta.get("dataset_complete") is not None
+                else evidence.dataset_complete
+            ),
+        )
+    else:
+        evidence = AcquisitionEvidence(
+            scope_complete=meta["complete"],
+            dataset_complete=meta.get("dataset_complete") is not False,
+            collected_total=meta.get("collected_total", meta.get("matched_total", 0)),
+        )
+    check_complete(evidence, require_complete=require_complete, mode=mode)
+    decision = evaluate_result(evidence, mode=mode)
+    output = {**meta, **evidence.meta()}
+    if decision.warnings:
+        output["warnings"] = list(decision.warnings)
+        for warning in decision.warnings:
+            print(f"warning: {warning['code']}: {warning['message']}", file=sys.stderr)
+    return output

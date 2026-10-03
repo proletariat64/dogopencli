@@ -1,0 +1,48 @@
+"""Public result-policy contracts for usable but incomplete acquisitions."""
+
+import pytest
+
+from dogopencli.errors import CliError
+from dogopencli.result_policy import AcquisitionEvidence, evaluate_result
+
+
+def test_safe_shortfall_is_usable_and_publishable_but_strictly_rejected():
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False, reported_total=100, collected_total=99, arrivals=100
+    )
+    decision = evaluate_result(evidence, mode="refresh")
+    assert decision.expose_data and decision.publishable
+    assert decision.error is None and decision.exit_code == 0
+    assert decision.warnings[0]["reason_codes"] == [
+        "COUNT_SHORTFALL",
+        "DUPLICATE_ROWS",
+        "UNEXPECTED_DUPLICATE_ROWS",
+    ]
+    strict = evaluate_result(evidence, mode="refresh", require_complete=True)
+    assert not strict.expose_data and not strict.publishable
+    assert strict.error["code"] == "INCOMPLETE_RESULT" and strict.exit_code == 1
+
+
+def test_declared_identical_overlap_can_be_complete_and_strictly_usable():
+    evidence = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=100,
+        collected_total=100,
+        arrivals=102,
+        duplicate_policy="allow_identical_overlap",
+        total_semantics="unique_objects",
+    )
+    decision = evaluate_result(evidence, mode="live", require_complete=True)
+    assert evidence.scope_complete is True and evidence.duplicate_count == 2
+    assert decision.expose_data and decision.exit_code == 0
+    assert decision.warnings[0]["code"] == "DUPLICATE_ROWS"
+    assert decision.error is None
+
+
+def test_corrupt_complete_evidence_cannot_claim_missing_records_are_complete():
+    record = AcquisitionEvidence.for_collection(
+        complete=False, reported_total=100, collected_total=99, arrivals=99
+    ).record()
+    record["scope_complete"] = True
+    with pytest.raises(CliError, match="evidence"):
+        AcquisitionEvidence.from_record(record)
