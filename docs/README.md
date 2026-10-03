@@ -2,7 +2,7 @@
 
 ## 产品规格
 
-- [资金需求与执行查询规格 v0.1.0（GitHub Issue #82）](design/liquidity-funding-execution-v0.1.0.md)：四个列表目标；swap 仅接受双端交易日期的有界查询候选，无日期范围不启用。候选生产 CLI UAT 与本地 Kimi CLI CI／复审仍待通过；其他三个叶子因非空契约证据不足继续 unsupported。
+- [资金需求与执行查询规格 v0.1.0（GitHub Issue #82）](design/liquidity-funding-execution-v0.1.0.md)：四个列表目标；swap 已启用双端交易日期的有界查询，无日期范围拒绝执行。[10 月 4 日验收](research/general/2026-10-04-funding-execution-batch-acceptance.md)：认证恢复，正式注册生产 CLI UAT 21/21，本地 Kimi 基线通过；追加 release-delta Kimi 权限待确认。当前 1/4 启用，其他三个叶子因非空契约证据不足继续 unsupported。
 
 - [Liquidity v0.2.3 inquiry specification (GitHub Issue #76)](https://github.com/proletariat64/dogopencli/issues/76)：spec 从 v0.2.1 增加 0.0.2；依据新 cash/forecast probe 接受 8 项实施目标、保留 7 项延期、撤回 3 项 getter 设计。[新版完整命令树与本地规格](design/liquidity-v0.2.3.md)；[实施与 CLI UAT](research/general/2026-10-02-liquidity-spec76-implementation-uat.md)：8 项已实施放行：7 项完整 UAT，预测按 accounts 语义兼容已知后端缺陷；新全范围 UAT 20135/20129、跨页重复与 count 变化均保留非零失败/缓存保护。[后端报告与关联建议](research/general/2026-10-02-forecast-results-backend-count-bug.md)。
 
@@ -31,8 +31,9 @@
 
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
-| General | [Issue #82 资金需求与执行查询验收](research/general/2026-10-03-funding-execution-batch-acceptance.md) | 0/4 放行，四叶子保持 unsupported；有界 swap 候选的生产 CLI UAT 受认证阻塞，本地 Kimi CI／复审未执行；原生采集、本地验证与待补门槛分别记录 |
-| General | [Issue #82 资金需求／执行／swap 原生契约](research/general/2026-10-03-liquidity-issue82-operations-contract.md) | 资金需求与两类执行记录的空样本／099 阻塞；swap 原生全范围 959 次到达、952 个唯一身份、7 次重复到达，有界交易日期范围 15/15 完整采集；代码为待 UAT／CI 放行候选 |
+| General | [Issue #82 资金需求与执行查询最新验收](research/general/2026-10-04-funding-execution-batch-acceptance.md) | 10 月 4 日 Liquidity 认证恢复，有界 swap 正式注册生产 CLI UAT 21/21、Kimi 基线通过；当前 1/4 启用，追加 Kimi 权限待确认，其他三个列表保持 unsupported |
+| General | [Issue #82 10 月 3 日验收历史快照](research/general/2026-10-03-funding-execution-batch-acceptance.md) | 当时 0/4 放行、UAT 认证阻塞、Kimi 未执行；保留原生采集、本地验证及当时门槛，不作为最新授权状态 |
+| General | [Issue #82 资金需求／执行／swap 原生契约](research/general/2026-10-03-liquidity-issue82-operations-contract.md) | 10 月 3 日资金需求与两类执行记录的空样本／099 阻塞；swap 原生全范围 959 次到达、952 个唯一身份、7 次重复到达，有界交易日期范围 15/15 完整采集；后续放行见 10 月 4 日验收 |
 | General | [Issue #82 可投资资金原生契约](research/general/2026-10-03-liquidity-investable-funds-contract.md) | 五个原生日期范围查询成功但为空；非空结构、金额／币种、唯一身份和完整性未验证，保持 unsupported；拒绝测试不代表列表已交付 |
 | General | [Liquidity v0.2.3 完整 CLI UAT](research/general/2026-10-03-liquidity-full-cli-uat.md) | 68 个可执行叶子的本轮 native live、独立 refresh、断开传输 offline 验收，以及 65 个延期叶子的非执行检查；[完整彩色地图](assets/general/2026-10-03-liquidity-full-cli-uat-roadmap.svg) |
 | General | [可按时间查询历史的运行数据源对照](research/general/2026-10-03-historical-runtime-source-comparison.md) | Forecast 十个历史日期查询证据；对照已执行命令的源端日期/时间过滤、运行数据类型与本地历史缓存边界 |
