@@ -6,6 +6,8 @@ Samples are not
 complete schemas, validation assertions, or nullability guarantees.
 """
 
+from .operations_batch import RELEASED as OPERATIONS_RELEASED
+
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
     "liquidity.cash.accounts.list": {
         "accHolder": "str",
@@ -3239,7 +3241,8 @@ VARIANT_SAMPLED_FIELDS: dict[str, dict[str, dict[str, str]]] = {
 
 # Spec #82 native nonempty swap list sampled on 2026-10-03.
 # Types are observations; no source values or closed state enums are recorded.
-SAMPLED_FIELDS["liquidity.operations.swaps.list"] = {
+CANDIDATE_SAMPLED_FIELDS: dict[str, dict[str, str]] = {}
+CANDIDATE_SAMPLED_FIELDS["liquidity.operations.swaps.list"] = {
     "bookId": "str",
     "counterParty": "str",
     "dealId": "str",
@@ -3300,3 +3303,13 @@ SAMPLED_FIELDS["liquidity.operations.swaps.list"] = {
     "tntInstId": "str",
     "tradeDate": "str",
 }
+
+# Observed candidate records do not make a business leaf executable. Keep the
+# shipped evidence catalog aligned with the production release registration.
+SAMPLED_FIELDS.update(
+    {
+        name: fields
+        for name, fields in CANDIDATE_SAMPLED_FIELDS.items()
+        if name in OPERATIONS_RELEASED
+    }
+)

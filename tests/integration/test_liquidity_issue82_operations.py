@@ -237,6 +237,7 @@ def test_scoped_swaps_refresh_live_and_disconnected_cache_are_exact(
                 ]
                 == "str"
             )
+            assert doc["read_guide"]["variants"][0]["data_schema"] == doc["data_schema"]
     assert len(setup.state.business_requests) == count
 
 
