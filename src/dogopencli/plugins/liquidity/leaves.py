@@ -68,6 +68,8 @@ from .spec import (
     ListSpec,
     ScopeOption,
 )
+from .transfer_list import RELEASED as TRANSFERS_RELEASED
+from .transfer_list import TRANSFER_ORDERS, map_transfer_query
 
 VERIFIED_DATE = "2026-10-01"
 _PAGE_ECHO_NOTE = (
@@ -2344,6 +2346,14 @@ _TICKET_DEFERRED: tuple[DeferredLeaf, ...] = (
     ),
 )
 
+if TRANSFER_ORDERS.name in TRANSFERS_RELEASED:
+    LIST_SPECS += (TRANSFER_ORDERS,)
+    _TICKET_DEFERRED = tuple(
+        item
+        for item in _TICKET_DEFERRED
+        if item.path != (*TRANSFER_ORDERS.path, "list")
+    )
+
 # Spec #82 swap declaration stays non-executing until its own UAT/CI gate.
 if SWAP_ORDERS.name in OPERATIONS_RELEASED:
     LIST_SPECS += (SWAP_ORDERS,)
@@ -2476,6 +2486,8 @@ class ListLeaf:
         request_values, window = scope_values(variant.scope_options, provided)
         if variant.projection == "swap_orders":
             validate_swap_query(request_values)
+        if variant.projection == "transfer_orders":
+            map_transfer_query(request_values)
         window_fields = {
             option.field for option in variant.scope_options if option.window
         }
