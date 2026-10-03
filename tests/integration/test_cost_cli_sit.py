@@ -654,6 +654,7 @@ def test_rebuild_on_empty_last_page_coverage_gap(
     run_cli, envelope, cost_setup, no_sleep
 ):
     rows = [cost_row(n) for n in range(1, 6001)]
+    rebuilt_rows = [cost_row(n) for n in range(10001, 16001)]
 
     def handler(payload: dict, call_index: int):
         page_no = payload["pageNo"]
@@ -661,7 +662,7 @@ def test_rebuild_on_empty_last_page_coverage_gap(
         if page_size == 5000:
             body_rows = rows[:5000] if page_no == 0 else []
         else:
-            body_rows = rows
+            body_rows = rebuilt_rows
         return cost_page(
             body_rows, page_no=page_no, page_size=page_size, total_count=6000
         )
@@ -669,9 +670,19 @@ def test_rebuild_on_empty_last_page_coverage_gap(
     cost_setup.state.business_handler = handler
     code, out, _ = refresh(run_cli)
     assert code == 0
-    assert envelope(out)["data"]["row_count"] == 6000
+    result = envelope(out)
+    assert result["error"] is None
+    assert result["data"]["row_count"] == 6000
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["published"] is True
     payloads = cost_setup.state.business_requests
     assert [p["pageSize"] for p in payloads] == [5000, 5000, 10000]
+    assert [p["pageNo"] for p in payloads] == [0, 1, 0]
+    cached = envelope(listing(run_cli, "--all")[1])
+    assert cached["data"] == rebuilt_rows
+    assert [
+        attempt["page_size"] for attempt in cached["meta"]["acquisition"]["attempts"]
+    ] == [5000, 10000]
 
 
 def test_rebuild_happens_only_once(

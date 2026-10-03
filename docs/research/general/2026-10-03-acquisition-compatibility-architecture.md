@@ -4,7 +4,7 @@ Observed: 2026-10-03
 Scope: general
 Status: snapshot
 
-后续业务取舍：用户要求默认允许发布与使用安全 incomplete 缓存；新的实施目标见[统一 incomplete 规格](../../design/unified-incomplete-v0.1.0.md)与[ADR 0019](../../adr/0019-usable-incomplete-acquisitions.md)。本文保留原研究建议，不再代表该新目标的发布/退出码规则，也不表示新架构已实现。
+后续业务取舍：用户要求默认允许发布与使用安全 incomplete 缓存；当前 feature branch 已按[统一 incomplete 规格](../../design/unified-incomplete-v0.1.0.md)与[ADR 0019](../../adr/0019-usable-incomplete-acquisitions.md)实施。本文保留原研究建议，不再代表当前分支的发布/退出码规则；实施及验收状态见该规格，历史研究不证明新策略的生产 UAT。
 
 ## 结论与适用范围
 

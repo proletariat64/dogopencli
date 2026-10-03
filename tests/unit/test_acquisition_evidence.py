@@ -138,22 +138,6 @@ def test_paginated_empty_page_before_range_end_stays_hard_failure():
     assert len(transport.requests) == 1
 
 
-@pytest.mark.parametrize("initial_rows", [[], [row()]])
-def test_paginated_empty_final_page_is_not_a_safe_partial(initial_rows):
-    cap = replace(
-        COST_CAPABILITY,
-        contract=replace(COST_CAPABILITY.contract, page_size=1, rebuild_page_size=None),
-    )
-    candidates = (
-        [(initial_rows, 1)] if not initial_rows else [(initial_rows, 2), ([], 2)]
-    )
-    transport = Transport(candidates)
-    with pytest.raises(CliError) as error:
-        collect.collect_scope(cap, transport, COST_TYPE)
-    assert error.value.code == "INVALID_RESPONSE"
-    assert len(transport.requests) == len(candidates)
-
-
 def test_no_native_identity_preserves_identical_occurrences():
     cap = replace(
         COST_CAPABILITY,

@@ -207,7 +207,7 @@ def _attempt(
             not contract.single_page
             and not contract.running_total
             and not page.records
-            and rows < page.total_count
+            and done_pages < total_pages
         ):
             raise CliError(
                 INVALID_RESPONSE,
