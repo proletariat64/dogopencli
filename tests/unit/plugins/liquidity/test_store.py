@@ -721,6 +721,69 @@ def test_latest_partial_dated_capture_revokes_older_complete_coverage(tmp_path):
     assert index.captures[-1].evidence.reasons == ("COUNT_SHORTFALL",)
 
 
+@pytest.mark.parametrize("new_reasons", [(), ("DUPLICATE_ROWS",)])
+def test_dated_refresh_quality_uses_only_current_window_authority(
+    tmp_path, new_reasons
+):
+    from dogopencli.result_policy import AcquisitionEvidence, evaluate_result
+
+    cache = Cache(tmp_path / "cache.sqlite3")
+    old_rows = [holding(1, "20260929"), holding(2, "20260930")]
+    partial = AcquisitionEvidence.for_collection(
+        complete=False, reported_total=3, collected_total=2
+    )
+    old = capture_store.plan_capture_publish(
+        cache,
+        INVESTMENT_HOLDINGS,
+        "",
+        ("20260929", "20260930"),
+        old_rows,
+        3,
+        T1,
+        T1,
+        acquisition=partial,
+    )
+    capture_store.commit_plan(cache, INVESTMENT_HOLDINGS.name, old, T1)
+    window = ("20260929", "20260929")
+    new = capture_store.plan_capture_publish(
+        cache,
+        INVESTMENT_HOLDINGS,
+        "",
+        window,
+        [holding(3, "20260929")],
+        1,
+        T2,
+        T2,
+        acquisition=AcquisitionEvidence(
+            scope_complete=True,
+            dataset_complete=True,
+            collected_total=1,
+            reported_total=1,
+            reasons=new_reasons,
+        ),
+    )
+    evidence = capture_store.retained_evidence(new, INVESTMENT_HOLDINGS, "", window)
+    assert evidence.scope_complete and evidence.dataset_complete
+    assert evidence.reasons == new_reasons
+    assert evidence.reported_total == 1
+    decision = evaluate_result(evidence, mode="refresh", require_complete=True)
+    assert decision.publishable and decision.exit_code == 0
+    assert bool(decision.warnings) is bool(new_reasons)
+    if new_reasons:
+        assert decision.warnings[0]["reason_codes"] == list(new_reasons)
+
+    # The older acquisition still owns the second day and keeps its gap.
+    entries, covered = capture_store.select_captures(
+        new.index, INVESTMENT_HOLDINGS, "", ("20260929", "20260930")
+    )
+    wider = capture_store.query_evidence(
+        entries, covered, 2, window=("20260929", "20260930")
+    )
+    assert not wider.scope_complete
+    assert "COUNT_SHORTFALL" in wider.reasons
+    assert evaluate_result(wider, mode="cache", require_complete=True).exit_code == 1
+
+
 def test_trim_inherits_acquisition_gap_and_reports_retention_separately(tmp_path):
     from dogopencli.result_policy import AcquisitionEvidence
 

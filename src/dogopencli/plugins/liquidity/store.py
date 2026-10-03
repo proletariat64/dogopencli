@@ -891,6 +891,10 @@ def query_evidence(
     window: tuple[str | None, str | None] = (None, None),
 ) -> AcquisitionEvidence:
     """Aggregate source quality without adding totals from overlapping captures."""
+    if window[0] is not None and window[1] is not None:
+        # Refresh plans include overlapping historical captures. Only the
+        # current owners of the requested days supply quality evidence.
+        entries = active_captures(entries, window[0], window[1])
     evidence = entries[0].evidence if len(entries) == 1 else None
     # A count for a wider acquisition cannot be a count for a queried subwindow.
     exact_window = len(entries) == 1 and (
