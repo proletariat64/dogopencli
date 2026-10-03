@@ -278,5 +278,8 @@ def test_cashflows_preserve_identical_rows_without_a_native_key():
         LiquidityListCapability(FORECAST_CASHFLOWS), fake, ""
     )
     assert result.complete
-    assert result.total_count == 3
+    assert result.total_count is None
+    assert result.evidence.arrivals == 3
+    assert result.evidence.unique_count is None
+    assert result.evidence.duplicate_count is None
     assert result.records == rows

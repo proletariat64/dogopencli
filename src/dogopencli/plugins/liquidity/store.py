@@ -9,7 +9,7 @@ atomically evicts the oldest records by the verified series axis with a
 stable identity tie-breaker, warns on stderr and narrows the published
 coverage. Non-time-series overflow rejects the refresh. Every publish —
 capture, index, eviction — lands in one ``Cache.publish_many`` transaction,
-so readers only ever see complete old or complete new state.
+so readers only ever see the old or new data and its matching quality evidence.
 """
 
 import hashlib
@@ -20,6 +20,7 @@ from typing import Any
 from ...cache import Cache, SnapshotMeta, namespace
 from ...errors import INVALID_ARGUMENT, INVALID_RESPONSE, CliError
 from ...jsonutil import canonical, parse
+from ...result_policy import AcquisitionEvidence
 from . import spec
 
 INDEX_SCOPE = "__index__"
@@ -27,6 +28,8 @@ SOURCE_KIND = "cdp"
 
 ENTRY_CAPTURE = "capture"
 ENTRY_RETENTION = "retention"
+ENTRY_FORMAT = "acquisition_format"
+ACQUISITION_FORMAT = 1
 
 
 def _invalid(message: str) -> CliError:
@@ -54,6 +57,26 @@ class CaptureEntry:
     # Exact retention holes; a later missing day must not erase earlier
     # verified empty days in this capture's acquisition window.
     missing_days: tuple[str, ...] = ()
+    acquisition: AcquisitionEvidence | None = None
+    requested_from: str | None = None
+    requested_to: str | None = None
+    # Read-only adapter for pre-evidence snapshots; never serialized on reads.
+    legacy_evidence: AcquisitionEvidence | None = field(default=None, repr=False)
+
+    @property
+    def evidence(self) -> AcquisitionEvidence:
+        # Old list captures were admitted only after complete acquisition.
+        return (
+            self.acquisition
+            or self.legacy_evidence
+            or AcquisitionEvidence.for_collection(
+                complete=True,
+                reported_total=self.reported_total,
+                collected_total=self.reported_total
+                if self.reported_total is not None
+                else self.row_count,
+            )
+        )
 
     def record(self) -> dict[str, Any]:
         return {
@@ -71,6 +94,9 @@ class CaptureEntry:
             "source_origin": self.source_origin,
             "tenant": self.tenant,
             "missing_days": list(self.missing_days),
+            "acquisition": self.acquisition.record() if self.acquisition else None,
+            "requested_from": self.requested_from,
+            "requested_to": self.requested_to,
         }
 
     @staticmethod
@@ -113,6 +139,18 @@ class CaptureEntry:
                     raise ValueError
             except ValueError as error:
                 raise _invalid("cached capture missing days are invalid") from error
+        for boundary in ("requested_from", "requested_to"):
+            value = record.get(boundary)
+            if value is not None:
+                try:
+                    if (
+                        not isinstance(value, str)
+                        or datetime.strptime(value, "%Y%m%d").strftime("%Y%m%d")
+                        != value
+                    ):
+                        raise ValueError
+                except ValueError as error:
+                    raise _invalid("cached acquisition window is invalid") from error
         return CaptureEntry(
             namespace=namespace_value,
             scope=scope_value,
@@ -132,6 +170,13 @@ class CaptureEntry:
             source_origin=source_origin if isinstance(source_origin, str) else None,
             tenant=tenant if isinstance(tenant, str) else None,
             missing_days=tuple(sorted(set(missing_days))),
+            acquisition=(
+                AcquisitionEvidence.from_record(record["acquisition"])
+                if record.get("acquisition") is not None
+                else None
+            ),
+            requested_from=record.get("requested_from", window_from),
+            requested_to=record.get("requested_to", window_to),
         )
 
 
@@ -177,12 +222,41 @@ def read_index(store: Cache, capability: str) -> IndexData | None:
         return None
     data = IndexData()
     for _, body in stored:
-        record = parse(body)
+        try:
+            record = parse(body)
+        except (ValueError, TypeError) as error:
+            raise _invalid("cached capture index JSON is invalid") from error
         if not isinstance(record, dict):
             raise _invalid("cached capture index is invalid")
         entry_type = record.get("type")
-        if entry_type == ENTRY_CAPTURE:
-            data.captures.append(CaptureEntry.from_record(record))
+        if entry_type == ENTRY_FORMAT:
+            if record.get("version") != ACQUISITION_FORMAT:
+                raise _invalid("unsupported cached acquisition format")
+        elif entry_type == ENTRY_CAPTURE:
+            entry = CaptureEntry.from_record(record)
+            if entry.acquisition is None:
+                capture = store.current(entry.namespace)
+                if capture is None:
+                    raise _invalid("cached capture coverage is invalid")
+                if capture.acquisition is not None:
+                    entry = replace(
+                        entry,
+                        acquisition=AcquisitionEvidence.from_record(
+                            capture.acquisition
+                        ),
+                    )
+                elif not (capture.backend_complete and capture.dataset_complete):
+                    entry = replace(
+                        entry,
+                        legacy_evidence=AcquisitionEvidence(
+                            scope_complete=capture.backend_complete,
+                            dataset_complete=capture.dataset_complete,
+                            collected_total=capture.row_count,
+                            reported_total=entry.reported_total,
+                            reasons=("COVERAGE_UNPROVEN",),
+                        ),
+                    )
+            data.captures.append(entry)
         elif entry_type == ENTRY_RETENTION:
             data.evictions.append(record)
         else:
@@ -198,9 +272,42 @@ def read_capture(store: Cache, entry: CaptureEntry) -> list[dict[str, Any]]:
         or len(stored) != entry.row_count
     ):
         raise _invalid("cached capture coverage is invalid")
+    if (
+        snapshot.source_kind != SOURCE_KIND
+        or snapshot.simulated
+        or snapshot.snapshot_id != entry.snapshot_id
+        or snapshot.scope != entry.scope
+        or entry.source_origin not in (None, f"https://{spec.HOST}")
+        or entry.tenant not in (None, spec.TENANT)
+    ):
+        raise _invalid("cached capture source is invalid")
+    # Snapshot leaves do not permit retention trims: storage must contain the
+    # whole validated candidate, including candidates without reported totals.
+    if (
+        entry.profile == spec.PROFILE_SNAPSHOT
+        and entry.acquisition is not None
+        and entry.row_count != entry.acquisition.collected_total
+    ):
+        raise _invalid("cached snapshot acquisition count does not match storage")
+    if entry.acquisition is not None and (
+        snapshot.acquisition != entry.acquisition.record()
+        or snapshot.backend_complete != entry.acquisition.scope_complete
+        or snapshot.dataset_complete != entry.acquisition.dataset_complete
+    ):
+        raise _invalid("cached acquisition evidence does not match capture")
+    if entry.legacy_evidence is not None and (
+        snapshot.backend_complete != entry.legacy_evidence.scope_complete
+        or snapshot.dataset_complete != entry.legacy_evidence.dataset_complete
+    ):
+        raise _invalid("cached legacy acquisition flags do not match capture")
     rows = []
-    for _, body in stored:
-        record = parse(body)
+    for expected_seqid, (seqid, body) in enumerate(stored, 1):
+        if seqid != expected_seqid:
+            raise _invalid("cached capture storage sequence is invalid")
+        try:
+            record = parse(body)
+        except (ValueError, TypeError) as error:
+            raise _invalid("cached capture record JSON is invalid") from error
         if not isinstance(record, dict):
             raise _invalid("cached capture record is invalid")
         rows.append(record)
@@ -216,7 +323,11 @@ def _index_snapshot(
 ) -> tuple[SnapshotMeta, list[tuple[int, str]]]:
     # Keep publication order across reloads so equal acquisition timestamps
     # still distinguish a later complete capture from older retained evidence.
-    records: list[dict[str, Any]] = [entry.record() for entry in data.captures]
+    # Older readers reject this unknown row type before exposing new partial captures.
+    records: list[dict[str, Any]] = [
+        {"type": ENTRY_FORMAT, "version": ACQUISITION_FORMAT},
+        *(entry.record() for entry in data.captures),
+    ]
     records.extend(data.evictions[-8:])
     meta = SnapshotMeta(
         namespace=index_namespace(capability),
@@ -368,13 +479,20 @@ def plan_capture_publish(
     loaded_at: str,
     *,
     cap: int = spec.RETENTION_CAP,
+    acquisition: AcquisitionEvidence | None = None,
 ) -> PublishPlan:
     """Validate and lay out one acquisition; never writes anything.
 
-    Retention is deliberate, not tolerance of failed acquisition: the caller
-    publishes the plan only after complete validated acquisition.
+    The caller decides whether source and final retained quality satisfy its
+    strictness requirement before committing this plan.
     """
     profile = list_spec.profile
+    acquisition = acquisition or AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=reported_total,
+        collected_total=len(rows),
+        has_identity=bool(list_spec.identity),
+    )
     window_from, window_to = window
     if profile == spec.PROFILE_SNAPSHOT:
         if len(rows) > cap:
@@ -420,6 +538,9 @@ def plan_capture_publish(
         kind=list_spec.kind,
         source_origin=f"https://{spec.HOST}",
         tenant=spec.TENANT,
+        acquisition=acquisition,
+        requested_from=window_from,
+        requested_to=window_to,
     )
     capture_meta = SnapshotMeta(
         namespace=entry_ns,
@@ -429,8 +550,9 @@ def plan_capture_publish(
         snapshot_id=snapshot_id,
         dataset_id=None,
         simulated=False,
-        backend_complete=True,
-        dataset_complete=True,
+        backend_complete=acquisition.scope_complete,
+        dataset_complete=acquisition.dataset_complete,
+        acquisition=acquisition.record(),
         fetched_at=fetched_at,
         loaded_at=loaded_at,
         source_observed_from=new_entry.window_from,
@@ -550,6 +672,9 @@ def plan_capture_publish(
             source_origin=entry.source_origin,
             tenant=entry.tenant,
             missing_days=entry.missing_days,
+            acquisition=entry.evidence,
+            requested_from=entry.requested_from,
+            requested_to=entry.requested_to,
         )
         trimmed_meta = SnapshotMeta(
             namespace=entry.namespace,
@@ -559,8 +684,9 @@ def plan_capture_publish(
             snapshot_id=trimmed_entry.snapshot_id,
             dataset_id=None,
             simulated=False,
-            backend_complete=True,
-            dataset_complete=True,
+            backend_complete=entry.evidence.scope_complete,
+            dataset_complete=entry.evidence.dataset_complete,
+            acquisition=entry.evidence.record(),
             fetched_at=entry.fetched_at,
             loaded_at=loaded_at,
             source_observed_from=trimmed_entry.window_from,
@@ -644,16 +770,21 @@ def select_captures(
     """
     scoped = [entry for entry in data.captures if entry.scope == scope]
     if list_spec.profile in (spec.PROFILE_SNAPSHOT, spec.PROFILE_HISTORY):
-        latest = max(scoped, key=lambda entry: entry.fetched_at, default=None)
-        complete = latest is not None
+        latest = max(
+            enumerate(scoped),
+            key=lambda pair: (pair[1].fetched_at, pair[0]),
+            default=(0, None),
+        )[1]
+        complete = (
+            latest is not None
+            and latest.evidence.scope_complete
+            and latest.evidence.dataset_complete
+        )
         if latest is not None and list_spec.profile == spec.PROFILE_HISTORY:
             # Retention can split the newest capture at its identity boundary.
             # Its original total remains evidence of the acquired scope;
             # merely selecting the retained suffix cannot restore coverage.
-            complete = (
-                latest.reported_total is None
-                or latest.row_count == latest.reported_total
-            )
+            complete = complete and latest.row_count == latest.evidence.collected_total
         return ([latest] if latest is not None else []), complete
     window_from, window_to = window
     if window_from is None or window_to is None:
@@ -663,40 +794,157 @@ def select_captures(
         for entry in scoped
         if entry.window_from is not None
         and entry.window_to is not None
-        and entry.window_from <= window_to
-        and entry.window_to >= window_from
+        and (entry.requested_from or entry.window_from) <= window_to
+        and (entry.requested_to or entry.window_to) >= window_from
     ]
     return covering, covers_window(covering, window_from, window_to)
 
 
-def covers_window(entries: list[CaptureEntry], start: str, end: str) -> bool:
-    """Whether the union of complete capture intervals covers every requested day."""
-    intervals: list[tuple[str, str]] = []
+def authoritative_capture(entries: list[CaptureEntry], day: str) -> CaptureEntry | None:
+    """Newest request owns its whole original window, including missing rows."""
+    candidates = [
+        (index, entry)
+        for index, entry in enumerate(entries)
+        if (entry.requested_from or entry.window_from) is not None
+        and (entry.requested_to or entry.window_to) is not None
+        and (entry.requested_from or entry.window_from) <= day
+        and day <= (entry.requested_to or entry.window_to)
+    ]
+    return max(
+        candidates, key=lambda pair: (pair[1].fetched_at, pair[0]), default=(0, None)
+    )[1]
+
+
+def coverage_segments(
+    entries: list[CaptureEntry], start: str, end: str
+) -> list[tuple[str, CaptureEntry | None]]:
+    """Only request, trim and hole boundaries can change day-level authority."""
+    stop = _next_day_like(end)
+    boundaries = {start, stop}
     for entry in entries:
-        if entry.window_from is None or entry.window_to is None:
-            continue
-        interval_from = entry.window_from
+        for first, last in (
+            (
+                entry.requested_from or entry.window_from,
+                entry.requested_to or entry.window_to,
+            ),
+            (entry.window_from, entry.window_to),
+        ):
+            if first is not None and start < first < stop:
+                boundaries.add(first)
+            if last is not None:
+                after = _next_day_like(last)
+                if start < after < stop:
+                    boundaries.add(after)
         for day in entry.missing_days:
-            if day < interval_from or day > entry.window_to:
-                continue
-            if interval_from < day:
-                previous = (
-                    datetime.strptime(day, "%Y%m%d") - timedelta(days=1)
-                ).strftime("%Y%m%d")
-                intervals.append((interval_from, previous))
-            interval_from = _next_day_like(day)
-        if interval_from <= entry.window_to:
-            intervals.append((interval_from, entry.window_to))
-    intervals.sort()
-    cursor = start
-    for interval_from, interval_to in intervals:
-        if interval_from > cursor:
+            if start <= day <= end:
+                boundaries.add(day)
+                boundaries.add(_next_day_like(day))
+    return [
+        (day, authoritative_capture(entries, day))
+        for day in sorted(boundaries)
+        if day < stop
+    ]
+
+
+def active_captures(
+    entries: list[CaptureEntry], start: str, end: str
+) -> list[CaptureEntry]:
+    active = {
+        entry.namespace
+        for _, entry in coverage_segments(entries, start, end)
+        if entry is not None
+    }
+    return [entry for entry in entries if entry.namespace in active]
+
+
+def covers_window(
+    entries: list[CaptureEntry],
+    start: str,
+    end: str,
+    *,
+    authority: list[CaptureEntry] | None = None,
+) -> bool:
+    """Every requested segment needs the latest request's complete evidence."""
+    available = {entry.namespace for entry in entries}
+    for day, entry in coverage_segments(
+        authority if authority is not None else entries, start, end
+    ):
+        if (
+            entry is None
+            or entry.namespace not in available
+            or not entry.evidence.scope_complete
+            or not entry.evidence.dataset_complete
+            or entry.window_from is None
+            or entry.window_to is None
+            or not entry.window_from <= day <= entry.window_to
+            or day in entry.missing_days
+        ):
             return False
-        if interval_to >= cursor:
-            cursor = _next_day_like(interval_to)
-            if cursor > end:
-                return True
-    return cursor > end
+    return True
+
+
+def query_evidence(
+    entries: list[CaptureEntry],
+    covered: bool,
+    collected_total: int,
+    *,
+    window: tuple[str | None, str | None] = (None, None),
+) -> AcquisitionEvidence:
+    """Aggregate source quality without adding totals from overlapping captures."""
+    if window[0] is not None and window[1] is not None:
+        # Refresh plans include overlapping historical captures. Only the
+        # current owners of the requested days supply quality evidence.
+        entries = active_captures(entries, window[0], window[1])
+    evidence = entries[0].evidence if len(entries) == 1 else None
+    # A count for a wider acquisition cannot be a count for a queried subwindow.
+    exact_window = len(entries) == 1 and (
+        window[0] is None
+        or window
+        == (
+            entries[0].requested_from or entries[0].window_from,
+            entries[0].requested_to or entries[0].window_to,
+        )
+    )
+    same_collection = (
+        evidence is not None
+        and exact_window
+        and collected_total == evidence.collected_total
+    )
+    reasons = tuple(
+        dict.fromkeys(code for entry in entries for code in entry.evidence.reasons)
+    )
+    if not covered and any(
+        entry.missing_days or entry.row_count < entry.evidence.collected_total
+        for entry in entries
+    ):
+        reasons += ("RETENTION_GAP",)
+    if not covered and not reasons:
+        reasons = ("COVERAGE_UNPROVEN",)
+    return AcquisitionEvidence(
+        scope_complete=covered,
+        dataset_complete=covered,
+        collected_total=collected_total,
+        reported_total=evidence.reported_total if evidence and exact_window else None,
+        arrivals=evidence.arrivals if same_collection else None,
+        unique_count=collected_total
+        if evidence and evidence.unique_count is not None
+        else None,
+        duplicate_count=evidence.duplicate_count if same_collection else None,
+        total_semantics=evidence.total_semantics if evidence else "unknown",
+        reasons=tuple(dict.fromkeys(reasons)),
+        attempts=evidence.attempts if evidence else (),
+    )
+
+
+def retained_evidence(
+    plan: PublishPlan,
+    list_spec: spec.ListSpec,
+    scope: str,
+    window: tuple[str | None, str | None],
+) -> AcquisitionEvidence:
+    """Quality of the requested result after the proposed retention transaction."""
+    entries, covered = select_captures(plan.index, list_spec, scope, window)
+    return query_evidence(entries, covered, len(plan.capture_records), window=window)
 
 
 def _next_day_like(value: str) -> str:

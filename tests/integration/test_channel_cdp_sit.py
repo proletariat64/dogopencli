@@ -264,7 +264,7 @@ def test_failed_page_keeps_old_cache(run_cli, envelope, cdp_setup):
     assert envelope(out)["meta"]["matched_total"] == 3
 
 
-def test_cross_page_duplicates_not_published_no_rebuild(
+def test_cross_page_identical_occurrences_preserved_without_rebuild(
     run_cli, envelope, cdp_setup, no_sleep
 ):
     rows = [channel_row(n) for n in (1, 2, 3)]
@@ -273,15 +273,27 @@ def test_cross_page_duplicates_not_published_no_rebuild(
     cdp_setup.state.business_handler = paging_handler(
         {1: fresh[:100], 2: [fresh[100], fresh[0]]}, 102
     )
-    code, out, _ = refresh(run_cli)
-    assert code == 1
+    code, out, err = refresh(run_cli, "--require-complete")
+    assert code == 0
     result = envelope(out)
-    assert result["error"]["code"] == "INVALID_RESPONSE"
-    assert "incomplete" in result["error"]["message"]
+    assert result["error"] is None
+    assert result["meta"]["published"] is True
+    assert result["meta"]["complete"] is True
+    evidence = result["meta"]["acquisition"]
+    assert evidence["total_semantics"] == "occurrences"
+    assert evidence["arrivals"] == 102
+    assert evidence["collected_total"] == 102
+    assert evidence["unique_count"] is None
+    assert evidence["duplicate_count"] is None
+    assert "INCOMPLETE_RESULT" not in err
     # Channel has no 10000 rebuild clause: only the default page size ran.
     assert [p["pageSize"] for p in cdp_setup.state.business_requests[1:]] == [100, 100]
-    code, out, _ = listing(run_cli, "--all")
-    assert envelope(out)["meta"]["matched_total"] == 3
+    code, out, err = listing(run_cli, "--all", "--require-complete")
+    assert code == 0
+    listed = envelope(out)
+    assert listed["meta"]["matched_total"] == 102
+    assert sum(record["abilityId"] == 1 for record in listed["data"]) == 2
+    assert "INCOMPLETE_RESULT" not in err
 
 
 def test_no_progress_keeps_old_cache(run_cli, envelope, cdp_setup):
@@ -356,38 +368,76 @@ def test_refresh_replaces_without_merging_old_rows(run_cli, envelope, cdp_setup)
     assert {row["abilityId"] for row in result["data"]} == {201, 202}
 
 
-def test_exact_dedup_preserves_distinct_versions(run_cli, envelope, cdp_setup):
+@pytest.mark.parametrize("second_version", ["v1", "v2"])
+def test_business_key_and_version_do_not_prove_channel_row_identity(
+    run_cli,
+    envelope,
+    cdp_setup,
+    second_version,
+):
     rows = [
         channel_row(701, configVersion="v1"),
-        channel_row(701, configVersion="v2", status="DISABLE"),
+        channel_row(701, configVersion=second_version, status="DISABLE"),
         channel_row(702),
     ]
     cdp_setup.state.business_handler = paging_handler({1: rows}, len(rows))
-    code, out, _ = listing(run_cli, "--live", "--all")
+    code, out, err = listing(run_cli, "--live", "--all")
     assert code == 0
     result = envelope(out)
     assert result["meta"]["matched_total"] == 3
     assert result["meta"]["complete"] is False
+    assert result["error"] is None
+    assert result["meta"]["acquisition"]["reasons"] == ["BUSINESS_CONSISTENCY_UNPROVEN"]
+    assert result["meta"]["acquisition"]["unique_count"] is None
+    assert result["meta"]["acquisition"]["duplicate_count"] is None
+    assert "BUSINESS_CONSISTENCY_UNPROVEN" in err
     versions = [(row["abilityId"], row["configVersion"]) for row in result["data"]]
-    assert sorted(versions) == [(701, "v1"), (701, "v2"), (702, "v1")]
+    assert sorted(versions) == [(701, "v1"), (701, second_version), (702, "v1")]
     assert [row["seqid"] for row in result["data"]] == [1, 2, 3]
+    code, out, _ = listing(run_cli, "--live", "--require-complete")
+    assert code == 1
+    assert envelope(out)["data"] is None
+    assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
 
 
-def test_channel_conflict_across_pages_preserves_cache(run_cli, envelope, cdp_setup):
+def test_channel_cross_page_occurrences_publish_partial_and_strict_keeps_cache(
+    run_cli, envelope, cdp_setup
+):
     refreshed(run_cli, cdp_setup, [channel_row(900)])
+    original = cdp_setup.cache_path.read_bytes()
     rows = [channel_row(n) for n in range(100)]
     cdp_setup.state.business_handler = paging_handler(
         {1: rows, 2: [channel_row(0, status="DISABLE")]}, 101
     )
-    code, out, _ = refresh(run_cli)
+    code, out, _ = refresh(run_cli, "--require-complete")
     assert code == 1
-    assert envelope(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    assert envelope(out)["meta"]["published"] is False
+    assert cdp_setup.cache_path.read_bytes() == original
     code, out, _ = listing(run_cli, "--all")
     assert code == 0
     assert [row["abilityId"] for row in envelope(out)["data"]] == [900]
     code, out, _ = listing(run_cli, "--live", "--require-complete")
     assert code == 1
     assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    assert envelope(out)["data"] is None
+    assert cdp_setup.cache_path.read_bytes() == original
+
+    code, out, err = refresh(run_cli)
+    result = envelope(out)
+    assert code == 0
+    assert result["meta"]["published"] is True
+    assert result["meta"]["complete"] is False
+    assert result["data"]["row_count"] == 101
+    assert result["error"] is None
+    assert "BUSINESS_CONSISTENCY_UNPROVEN" in err
+    code, out, err = listing(run_cli, "--all")
+    rows = envelope(out)["data"]
+    assert code == 0
+    assert len(rows) == 101
+    assert len([row for row in rows if row["abilityId"] == 0]) == 2
+    assert all(row["abilityId"] != 900 for row in rows)
+    assert "INCOMPLETE_RESULT" in err
 
 
 def test_candidate_seqids_are_content_deterministic(run_cli, envelope, cdp_setup):
@@ -506,17 +556,80 @@ def test_live_incomplete_marked_and_require_complete(
     rows = [channel_row(n) for n in (1, 2)]
 
     def handler(payload: dict, call_index: int):
-        return channel_page(rows + [rows[0]], 1, total_count=3)
+        return channel_page(rows + [rows[0]], 1, total_count=4)
 
     cdp_setup.state.business_handler = handler
-    code, out, _ = listing(run_cli, "--live")
+    code, out, err = listing(run_cli, "--live")
     assert code == 0
     result = envelope(out)
     assert result["meta"]["complete"] is False
-    assert result["meta"]["matched_total"] == 2
+    assert result["meta"]["matched_total"] == 3
+    assert result["meta"]["missing_count"] == 1
+    assert result["meta"]["acquisition"]["reasons"] == ["COUNT_SHORTFALL"]
+    assert result["meta"]["acquisition"]["unique_count"] is None
+    assert result["meta"]["acquisition"]["duplicate_count"] is None
+    assert "INCOMPLETE_RESULT" in err
     code, out, _ = listing(run_cli, "--live", "--require-complete")
     assert code == 1
     assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
+
+
+@pytest.mark.parametrize("version_gap", [False, True])
+def test_partial_refresh_preserves_evidence_and_strict_refresh_is_atomic(
+    run_cli,
+    envelope,
+    cdp_setup,
+    version_gap,
+):
+    refreshed(run_cli, cdp_setup, [channel_row(900)])
+    before = cdp_setup.cache_path.read_bytes()
+    if version_gap:
+        rows = [channel_row(1), channel_row(1, configVersion="v2", status="DISABLE")]
+        total = 2
+        reason = "BUSINESS_CONSISTENCY_UNPROVEN"
+    else:
+        rows = [channel_row(1), channel_row(2)]
+        total = 3
+        reason = "COUNT_SHORTFALL"
+    cdp_setup.state.business_handler = paging_handler({1: rows}, total)
+    code, out, _ = refresh(run_cli, "--require-complete")
+    assert code == 1
+    rejected = envelope(out)
+    assert rejected["data"] is None
+    assert rejected["error"]["code"] == "INCOMPLETE_RESULT"
+    assert rejected["meta"]["published"] is False
+    assert rejected["meta"]["acquisition"]["reasons"] == [reason]
+    assert cdp_setup.cache_path.read_bytes() == before
+
+    code, out, err = refresh(run_cli)
+    assert code == 0, out
+    published = envelope(out)
+    assert published["error"] is None
+    assert published["data"]["published"] is True
+    assert published["meta"]["published"] is True
+    assert published["meta"]["complete"] is False
+    assert published["meta"]["reported_total"] == total
+    assert published["meta"]["collected_total"] == 2
+    assert published["meta"]["acquisition"]["reasons"] == [reason]
+    assert reason in err
+    retained = cdp_setup.cache_path.read_bytes()
+    requests = len(cdp_setup.state.business_requests)
+    cdp_setup.state.running = False
+    for flags in (("--all",), ("--limit", "1", "--fields", "abilityId")):
+        code, out, err = listing(run_cli, *flags)
+        assert code == 0, out
+        cached = envelope(out)
+        assert cached["meta"]["complete"] is False
+        assert cached["meta"]["collected_total"] == 2
+        assert cached["meta"]["acquisition"]["reasons"] == [reason]
+        assert all(record["abilityId"] != 900 for record in cached["data"])
+        assert reason in err
+    code, out, _ = listing(run_cli, "--require-complete")
+    assert code == 1
+    assert envelope(out)["data"] is None
+    assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    assert cdp_setup.cache_path.read_bytes() == retained
+    assert len(cdp_setup.state.business_requests) == requests
 
 
 def test_source_switching_isolates_caches(

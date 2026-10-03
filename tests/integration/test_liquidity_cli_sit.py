@@ -289,11 +289,11 @@ def test_live_overlap_is_partial_and_require_complete_fails(setup, run_cli):
     code, out, _ = run_cli(
         ["liquidity", "investment", "holdings", "list", "--date", "20261001", "--live"]
     )
-    assert code == 1
+    assert code == 0
     envelope = parse(out)
     assert envelope["meta"]["source"] == "live"
     assert envelope["meta"]["complete"] is False
-    assert envelope["error"]["code"] == "INCOMPLETE_RESULT"
+    assert envelope["error"] is None
     assert envelope["meta"]["warnings"][0]["code"] == "INCOMPLETE_RESULT"
     assert envelope["data"]
     code, out, _ = run_cli(
@@ -310,9 +310,17 @@ def test_live_overlap_is_partial_and_require_complete_fails(setup, run_cli):
     )
     assert code == 1
     assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
-    # A refresh with the same defect refuses to publish.
+    # Strict refresh rejects the same defect before publication.
     code, out, _ = run_cli(
-        ["refresh", "liquidity", "investment", "holdings", "--date", "20261001"]
+        [
+            "refresh",
+            "liquidity",
+            "investment",
+            "holdings",
+            "--date",
+            "20261001",
+            "--require-complete",
+        ]
     )
     assert code == 1
     assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
@@ -427,7 +435,7 @@ def test_accounts_result_flag_family_end_to_end(setup, run_cli):
 @pytest.mark.parametrize(
     "extra", [[], ["--limit", "1"], ["--fields", "aliasName"], ["--format", "table"]]
 )
-def test_accounts_partial_live_warns_returns_rows_and_fails(setup, run_cli, extra):
+def test_accounts_partial_live_warns_and_returns_usable_rows(setup, run_cli, extra):
     rows = [{"id": "0", "aliasName": f"A{i}", "currency": "USD"} for i in range(2)]
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
@@ -441,14 +449,14 @@ def test_accounts_partial_live_warns_returns_rows_and_fails(setup, run_cli, extr
     code, out, err = run_cli(
         ["liquidity", "cash", "accounts", "list", "--live", *extra]
     )
-    assert code == 1
+    assert code == 0
     assert "warning: INCOMPLETE_RESULT" in err
     assert "collected 2, reported 3" in err
     if "table" in extra:
         assert "A0" in out
     else:
         envelope = parse(out)
-        assert envelope["error"]["code"] == "INCOMPLETE_RESULT"
+        assert envelope["error"] is None
         assert envelope["meta"]["complete"] is False
         assert envelope["meta"]["reported_total"] == 3
         assert envelope["meta"]["collected_total"] == 2
@@ -467,7 +475,7 @@ def test_accounts_partial_live_warns_returns_rows_and_fails(setup, run_cli, extr
     assert parse(out)["data"] is None
 
 
-def test_accounts_partial_refresh_returns_rows_and_preserves_cache(setup, run_cli):
+def test_accounts_partial_refresh_replaces_cache_and_warns(setup, run_cli):
     old_rows = [{"id": "0", "aliasName": "OLD", "currency": "USD"}]
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
@@ -490,18 +498,18 @@ def test_accounts_partial_refresh_returns_rows_and_preserves_cache(setup, run_cl
         },
     }
     code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
-    assert code == 1
+    assert code == 0
     assert "warning: INCOMPLETE_RESULT" in err
     envelope = parse(out)
-    assert envelope["data"] == new_rows
-    assert envelope["error"]["code"] == "INCOMPLETE_RESULT"
+    assert envelope["data"]["published"] is True
+    assert envelope["error"] is None
     assert envelope["meta"]["complete"] is False
-    assert envelope["meta"]["published"] is False
-    assert envelope["meta"]["source"] == "live"
-    assert setup.cache_path.read_bytes() == before
+    assert envelope["meta"]["published"] is True
+    assert envelope["meta"]["source"] == "cache"
+    assert setup.cache_path.read_bytes() != before
     code, out, _ = run_cli(["liquidity", "cash", "accounts", "list"])
     assert code == 0
-    assert parse(out)["data"] == old_rows
+    assert parse(out)["data"] == new_rows
 
 
 @pytest.mark.parametrize(
@@ -964,7 +972,7 @@ def test_integer_detail_identity_spellings_share_one_cache_entry(setup, run_cli)
     assert parse(out)["data"]["id"] == 7
 
 
-def test_outside_window_identity_does_not_hide_matching_row(setup, run_cli):
+def test_latest_window_owns_proven_empty_day(setup, run_cli):
     from dogopencli.plugins.liquidity.common import now
 
     fresh = now().isoformat()
@@ -980,7 +988,9 @@ def test_outside_window_identity_does_not_hide_matching_row(setup, run_cli):
         [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20260930"]
     )
     assert code == 0, err
-    assert [row["interestIncome"] for row in parse(out)["data"]] == ["IN"]
+    # The latest complete request proves the earlier day empty.
+    assert parse(out)["data"] == []
+    assert parse(out)["meta"]["complete"] is True
 
 
 @pytest.mark.parametrize("fresh_empty_day", [False, True])
@@ -1038,8 +1048,9 @@ def test_eviction_preserves_earlier_empty_day_end_to_end(setup, run_cli, monkeyp
     assert envelope["meta"]["retained_coverage"][0]["missing_days"] == ["20260929"]
     spanning = [*RETURNS_QUERY, "--from-date", "20260928", "--to-date", "20260930"]
     code, out, err = run_cli(spanning)
-    assert code == 1
-    assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    assert code == 0
+    assert parse(out)["error"] is None
+    assert parse(out)["meta"]["complete"] is False
     # A complete acquisition restores only the refreshed day's coverage.
     _seed_returns_captures(setup, [(("20260929", "20260929"), [], fresh)])
     code, out, err = run_cli([*spanning, "--require-fresh"])

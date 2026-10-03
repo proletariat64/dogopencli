@@ -45,6 +45,17 @@ class EndpointContract:
     # into the URL query. GET always uses ``query`` regardless of this
     # declaration; the default ``json`` preserves existing POST contracts.
     encoding: str = "json"
+    # Only one response is verified for fixed-page inquiries. A reported
+    # total beyond its capacity becomes a coverage gap, never a new request.
+    single_page: bool = False
+    # Native list identity is the counting unit for these paginated contracts.
+    # No existing capability permits repeated arrivals to prove completeness.
+    total_semantics: str = "unique_objects"
+    duplicate_policy: str = "conservative"
+    has_identity: bool = True
+    # Business keys and versions do not establish native row identity.
+    # Distinct content under an unverified key leaves consistency unproven.
+    consistency_version_field: str | None = None
 
 
 @dataclass(frozen=True)

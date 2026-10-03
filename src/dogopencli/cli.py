@@ -38,7 +38,7 @@ from .errors import (
 from .helpspec import BizNode, add_options
 from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
-from .jsonutil import canonical, parse
+from .jsonutil import canonical
 from .plugins import (
     Capability,
     ConfigurationCapability,
@@ -54,12 +54,19 @@ from .plugins.collection import (
 from .plugins.collection import sla as collection_sla
 from .plugins.collection import va_capacity as collection_va_capacity
 from .plugins.collection import va_rule as collection_va
+from .plugins.cost import validate_cost_record
 from .plugins.payment import ptr as payment_ptr
 from .plugins.payment import ptr_orders as payment_ptr_orders
 from .plugins.payment import rules as payment_rules
-from .plugins.payment.channel import assign_seqids
-from .plugins.payment.sla import SLA_DETAIL, detail_body
+from .plugins.payment.channel import assign_seqids, validate_cached_record
+from .plugins.payment.sla import SLA_DETAIL, detail_body, validate_cached_pair
 from .plugins.payment.sla import parse_detail as parse_payment_sla_detail
+from .result_policy import (
+    AcquisitionEvidence,
+    check_complete,
+    evidence_for,
+    prepare_result,
+)
 from .table import render_table
 from .transport import QueryRequest, validate_request
 from .transport.cdp import CdpQueryTransport, FetchFailed
@@ -81,7 +88,11 @@ def _parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def _emit(data: Any, meta: Any, error: Any = None) -> None:
+def _emit(data: Any, meta: Any, error: Any = None, *, prepared: bool = False) -> None:
+    if error is None and isinstance(meta, dict) and not prepared:
+        if isinstance(data, dict) and "published" in data:
+            meta = {**meta, "published": data["published"]}
+        meta = prepare_result(meta)
     envelope = {"data": data, "error": error, "meta": meta}
     sys.stdout.write(canonical(envelope) + "\n")
 
@@ -92,7 +103,7 @@ def _emit_error(error: CliError, output_format: str = "json") -> int:
         return error.exit_code
     _emit(
         None,
-        None,
+        error.meta,
         {
             "code": error.code,
             "message": error.message,
@@ -142,12 +153,12 @@ def _refresh_channel_cdp(
             result = collect_mod.collect_scope(
                 capability, transport, args.payout_type, progress=_progress
             )
-        if not result.complete:
-            raise CliError(
-                INVALID_RESPONSE,
-                "collected channel records are incomplete; the previous "
-                "cache is retained",
-            )
+        evidence = evidence_for(result)
+        check_complete(
+            evidence,
+            require_complete=getattr(args, "require_complete", False),
+            mode="refresh",
+        )
         rows = assign_seqids(result.records)
         fetched_at = _now().isoformat()
         snapshot = SnapshotMeta(
@@ -158,12 +169,13 @@ def _refresh_channel_cdp(
             snapshot_id=hashlib.sha256(canonical(rows).encode()).hexdigest(),
             dataset_id=None,
             simulated=False,
-            backend_complete=True,
-            dataset_complete=True,
+            backend_complete=evidence.scope_complete,
+            dataset_complete=evidence.dataset_complete,
             fetched_at=fetched_at,
             loaded_at=_now().isoformat(),
             source_observed_from=None,
             source_observed_to=None,
+            acquisition=evidence.record(),
             row_count=len(rows),
         )
         collect_mod.remaining_seconds(result.deadline)
@@ -261,6 +273,21 @@ def _refresh_channel_snapshot(
             keyed.append((seqid, canonical({"seqid": seqid, **record})))
         if seen != set(range(1, dataset.row_count + 1)):
             raise CliError(SOURCE_DATA_INVALID, "collected seqids are not continuous")
+        evidence = AcquisitionEvidence(
+            scope_complete=dataset.backend_complete,
+            dataset_complete=dataset.dataset_complete,
+            collected_total=len(collected),
+            arrivals=len(collected),
+            total_semantics="occurrences",
+            reasons=("COVERAGE_UNPROVEN",)
+            if not (dataset.backend_complete and dataset.dataset_complete)
+            else (),
+        )
+        check_complete(
+            evidence,
+            require_complete=getattr(args, "require_complete", False),
+            mode="refresh",
+        )
         loaded_at = _now().isoformat()
         snapshot = SnapshotMeta(
             namespace=ns,
@@ -278,6 +305,7 @@ def _refresh_channel_snapshot(
             source_observed_to=dataset.source_observed_to,
             row_count=dataset.row_count,
             source_path=str(dataset_path.expanduser().resolve()),
+            acquisition=evidence.record(),
         )
         store.publish(snapshot, keyed)
     print(
@@ -338,11 +366,7 @@ def _cmd_channel_list_live(
         result = collect_mod.collect_scope(
             capability, transport, args.payout_type, body_filters
         )
-    if args.require_complete and not result.complete:
-        raise CliError(
-            INCOMPLETE_RESULT,
-            "live collection did not cover the complete matching scope",
-        )
+    check_complete(evidence_for(result), require_complete=args.require_complete)
     rows = capability.filter_records(assign_seqids(result.records), filters)
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
@@ -354,6 +378,7 @@ def _cmd_channel_list_live(
         len(window),
         offset,
     )
+    meta.update(evidence_for(result).meta())
     return _emit_window(args, capability, window, meta, fields)
 
 
@@ -389,7 +414,11 @@ def cmd_channel_list(args: argparse.Namespace) -> int:
         require_complete=args.require_complete,
         now=_now(),
     )
-    records = [parse(body) for _, body in cached.stored]
+    records = cached.validated_records(
+        lambda row: validate_cached_record(row, args.payout_type),
+        lambda row: row["seqid"],
+        coverage_error="cached channel snapshot coverage is invalid",
+    )
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
     window = matched[offset:] if args.all else matched[offset : offset + limit]
@@ -423,6 +452,9 @@ def _emit_window(
     meta: dict[str, Any],
     fields: list[str] | None,
 ) -> int:
+    meta = prepare_result(
+        meta, require_complete=getattr(args, "require_complete", False)
+    )
     if fields is not None:
         window = [
             {name: record[name] for name in fields if name in record}
@@ -432,7 +464,7 @@ def _emit_window(
         columns = fields if fields is not None else capability.table_columns
         sys.stdout.write(render_table(window, columns, meta) + "\n")
     else:
-        _emit(window, meta)
+        _emit(window, meta, prepared=True)
     return EXIT_OK
 
 
@@ -474,12 +506,12 @@ def _refresh_cost(args: argparse.Namespace, capability_name: str) -> int:
                 capability.default_scope,
                 progress=_progress,
             )
-        if not result.complete:
-            raise CliError(
-                INVALID_RESPONSE,
-                "collected cost records are incomplete after the bounded "
-                "rebuild; the previous cache is retained",
-            )
+        evidence = evidence_for(result)
+        check_complete(
+            evidence,
+            require_complete=getattr(args, "require_complete", False),
+            mode="refresh",
+        )
         records = capability.sort_records(result.records)
         fetched_at = _now().isoformat()
         snapshot = SnapshotMeta(
@@ -490,12 +522,13 @@ def _refresh_cost(args: argparse.Namespace, capability_name: str) -> int:
             snapshot_id=hashlib.sha256(canonical(records).encode()).hexdigest(),
             dataset_id=None,
             simulated=False,
-            backend_complete=True,
-            dataset_complete=True,
+            backend_complete=evidence.scope_complete,
+            dataset_complete=evidence.dataset_complete,
             fetched_at=fetched_at,
             loaded_at=_now().isoformat(),
             source_observed_from=None,
             source_observed_to=None,
+            acquisition=evidence.record(),
             row_count=len(records),
         )
         collect_mod.remaining_seconds(result.deadline)
@@ -545,11 +578,7 @@ def _cmd_cost_list_live(
         result = collect_mod.collect_scope(
             capability, transport, capability.default_scope, scalars
         )
-    if args.require_complete and not result.complete:
-        raise CliError(
-            INCOMPLETE_RESULT,
-            "live collection did not cover the complete matching scope",
-        )
+    check_complete(evidence_for(result), require_complete=args.require_complete)
     records = capability.sort_records(result.records)
     matched_total = len(records)
     window = records[offset:] if args.all else records[offset : offset + limit]
@@ -571,6 +600,7 @@ def _cmd_cost_list_live(
         "returned_count": len(window),
         "has_more": offset + len(window) < matched_total,
     }
+    meta.update(evidence_for(result).meta())
     return _emit_window(args, capability, window, meta, fields)
 
 
@@ -606,7 +636,11 @@ def _cost_list(
         require_complete=args.require_complete,
         now=_now(),
     )
-    records = [parse(body) for _, body in cached.stored]
+    records = cached.validated_records(
+        lambda row: validate_cost_record(row, capability.default_scope),
+        lambda row: row["itemId"],
+        coverage_error="cached cost snapshot coverage is invalid",
+    )
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
     window = matched[offset:] if args.all else matched[offset : offset + limit]
@@ -693,12 +727,12 @@ def cmd_refresh_sla(args: argparse.Namespace) -> int:
                 capability.default_scope,
                 progress=_progress,
             )
-            if not result.complete:
-                raise CliError(
-                    INVALID_RESPONSE,
-                    "collected SLA baselines are incomplete after the bounded "
-                    "rebuild; the previous cache is retained",
-                )
+            evidence = evidence_for(result)
+            check_complete(
+                evidence,
+                require_complete=getattr(args, "require_complete", False),
+                mode="refresh",
+            )
             baselines = capability.sort_records(result.records)
             details: list[dict[str, Any]] = []
             for index, record in enumerate(baselines, 1):
@@ -722,12 +756,13 @@ def cmd_refresh_sla(args: argparse.Namespace) -> int:
             snapshot_id=hashlib.sha256(canonical(rows).encode()).hexdigest(),
             dataset_id=None,
             simulated=False,
-            backend_complete=True,
-            dataset_complete=True,
+            backend_complete=evidence.scope_complete,
+            dataset_complete=evidence.dataset_complete,
             fetched_at=fetched_at,
             loaded_at=_now().isoformat(),
             source_observed_from=None,
             source_observed_to=None,
+            acquisition=evidence.record(),
             row_count=len(rows),
         )
         collect_mod.remaining_seconds(deadline)
@@ -815,11 +850,7 @@ def _cmd_sla_list_live(
         result = collect_mod.collect_scope(
             capability, transport, capability.default_scope, scalars
         )
-    if args.require_complete and not result.complete:
-        raise CliError(
-            INCOMPLETE_RESULT,
-            "live collection did not cover the complete matching scope",
-        )
+    check_complete(evidence_for(result), require_complete=args.require_complete)
     records = capability.sort_records(result.records)
     matched_total = len(records)
     window = records[offset:] if args.all else records[offset : offset + limit]
@@ -831,6 +862,7 @@ def _cmd_sla_list_live(
         len(window),
         offset,
     )
+    meta.update(evidence_for(result).meta())
     return _emit_window(args, capability, window, meta, fields)
 
 
@@ -860,7 +892,12 @@ def cmd_sla_list(args: argparse.Namespace) -> int:
         require_complete=args.require_complete,
         now=_now(),
     )
-    records = [parse(body)["baseline"] for _, body in cached.stored]
+    pairs = cached.validated_records(
+        validate_cached_pair,
+        lambda row: row["id"],
+        coverage_error="cached SLA snapshot coverage is invalid",
+    )
+    records = [pair["baseline"] for pair in pairs]
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
     window = matched[offset:] if args.all else matched[offset : offset + limit]
@@ -875,13 +912,16 @@ def _emit_object(
     meta: dict[str, Any],
     fields: list[str] | None,
 ) -> int:
+    meta = prepare_result(
+        meta, require_complete=getattr(args, "require_complete", False)
+    )
     if fields is not None:
         record = {name: record[name] for name in fields if name in record}
     if args.format == "table":
         columns = fields if fields is not None else capability.table_columns
         sys.stdout.write(render_table([record], columns, meta) + "\n")
     else:
-        _emit(record, meta)
+        _emit(record, meta, prepared=True)
     return EXIT_OK
 
 
@@ -916,12 +956,20 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
         now=_now(),
     )
     detail: dict[str, Any] | None = None
-    for _, body in cached.stored:
-        row = parse(body)
+    pairs = cached.validated_records(
+        validate_cached_pair,
+        lambda row: row["id"],
+        coverage_error="cached SLA snapshot coverage is invalid",
+    )
+    for row in pairs:
         if row["id"] == args.id:
             detail = row["detail"]
             break
     if detail is None:
+        if not cached.snapshot.backend_complete:
+            raise CliError(
+                INCOMPLETE_RESULT, "cannot confirm absence in incomplete SLA snapshot"
+            )
         raise CliError(
             NOT_FOUND,
             f"SLA baseline {args.id} is not present in the cached snapshot",
@@ -981,8 +1029,12 @@ def cmd_refresh_collection_sla(args: argparse.Namespace) -> int:
                 cap.default_scope,
                 progress=_progress,
             )
-            if not result.complete:
-                raise CliError(INCOMPLETE_RESULT, "collection SLA list is incomplete")
+            evidence = evidence_for(result)
+            check_complete(
+                evidence,
+                require_complete=getattr(args, "require_complete", False),
+                mode="refresh",
+            )
             transport = session.transport(collection_sla.COLLECTION_SLA_DETAIL)
             pairs = []
             for record in cap.sort_records(result.records):
@@ -1004,12 +1056,13 @@ def cmd_refresh_collection_sla(args: argparse.Namespace) -> int:
             snapshot_id=hashlib.sha256(canonical(pairs).encode()).hexdigest(),
             dataset_id=None,
             simulated=False,
-            backend_complete=True,
-            dataset_complete=True,
+            backend_complete=evidence.scope_complete,
+            dataset_complete=evidence.dataset_complete,
             fetched_at=fetched_at,
             loaded_at=_now().isoformat(),
             source_observed_from=None,
             source_observed_to=None,
+            acquisition=evidence.record(),
             row_count=len(pairs),
         )
         collect_mod.remaining_seconds(result.deadline)
@@ -1047,13 +1100,18 @@ def cmd_collection_sla_list(args: argparse.Namespace) -> int:
             result = collect_mod.collect_scope(
                 cap, session.transport(cap), cap.default_scope
             )
-        if not result.complete:
-            raise CliError(INCOMPLETE_RESULT, "collection SLA list is incomplete")
+        check_complete(evidence_for(result), require_complete=args.require_complete)
         records = cap.sort_records(cap.filter_records(result.records, filters))
         window = records[offset:] if args.all else records[offset : offset + limit]
         meta = _live_meta(
-            source, cap.default_scope, True, len(records), len(window), offset
+            source,
+            cap.default_scope,
+            result.complete,
+            len(records),
+            len(window),
+            offset,
         )
+        meta.update(evidence_for(result).meta())
     else:
         cached, pairs = _collection_sla_cached(args, config, source)
         records = cap.sort_records(
@@ -1118,6 +1176,7 @@ def cmd_refresh_collection_va(args: argparse.Namespace) -> int:
         config,
         source,
         session_factory=lambda: inquiry_session(config_file=config_mod.config_path()),
+        require_complete=getattr(args, "require_complete", False),
         now=_now,
         progress=_progress,
         detail_progress=lambda message: print(message, file=sys.stderr),
@@ -1147,13 +1206,18 @@ def cmd_collection_va_rules_list(args: argparse.Namespace) -> int:
             result = collect_mod.collect_scope(
                 cap, session.transport(cap), cap.default_scope
             )
-        if not result.complete:
-            raise CliError(INCOMPLETE_RESULT, "collection VA rule list is incomplete")
+        check_complete(evidence_for(result), require_complete=args.require_complete)
         records = cap.sort_records(result.records)
         window = records[offset:] if args.all else records[offset : offset + limit]
         meta = _live_meta(
-            source, cap.default_scope, True, len(records), len(window), offset
+            source,
+            cap.default_scope,
+            result.complete,
+            len(records),
+            len(window),
+            offset,
         )
+        meta.update(evidence_for(result).meta())
     else:
         snapshot = va_rule_inquiry.read_snapshot(
             config,
@@ -1237,11 +1301,13 @@ def _collection_va_capacity_cached(
     )
 
 
-def _refresh_complete_list(
+def _refresh_validated_list(
     cap: Capability,
     scope_name: str,
+    *,
+    require_complete: bool = False,
 ) -> int:
-    """Publish one complete acquisition using each capability's own contract."""
+    """Publish one validated acquisition using each capability's own contract."""
     config = config_mod.load([cap.source_config_key])
     source = _cdp_source(config, cap.source_config_key)
     store = Cache(config.cache_path)
@@ -1254,11 +1320,8 @@ def _refresh_complete_list(
                 cap.default_scope,
                 progress=_progress,
             )
-        if not result.complete:
-            raise CliError(
-                INCOMPLETE_RESULT,
-                f"{scope_name} scope is incomplete; the previous cache is retained",
-            )
+        evidence = evidence_for(result)
+        check_complete(evidence, require_complete=require_complete, mode="refresh")
         records = cap.sort_records(result.records)
         fetched_at = _now().isoformat()
         snapshot = SnapshotMeta(
@@ -1269,12 +1332,13 @@ def _refresh_complete_list(
             snapshot_id=hashlib.sha256(canonical(records).encode()).hexdigest(),
             dataset_id=None,
             simulated=False,
-            backend_complete=True,
-            dataset_complete=True,
+            backend_complete=evidence.scope_complete,
+            dataset_complete=evidence.dataset_complete,
             fetched_at=fetched_at,
             loaded_at=_now().isoformat(),
             source_observed_from=None,
             source_observed_to=None,
+            acquisition=evidence.record(),
             row_count=len(records),
         )
         collect_mod.remaining_seconds(result.deadline)
@@ -1292,8 +1356,10 @@ def _refresh_complete_list(
 
 
 def cmd_refresh_collection_va_capacity(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
-        collection_va_capacity.COLLECTION_VA_CAPACITY, "collection VA capacity"
+    return _refresh_validated_list(
+        collection_va_capacity.COLLECTION_VA_CAPACITY,
+        "collection VA capacity",
+        require_complete=getattr(args, "require_complete", False),
     )
 
 
@@ -1308,15 +1374,18 @@ def cmd_collection_va_capacity_list(args: argparse.Namespace) -> int:
             result = collect_mod.collect_scope(
                 cap, session.transport(cap), cap.default_scope
             )
-        if not result.complete:
-            raise CliError(
-                INCOMPLETE_RESULT, "collection VA capacity list is incomplete"
-            )
+        check_complete(evidence_for(result), require_complete=args.require_complete)
         records = cap.sort_records(cap.filter_records(result.records, filters))
         window = records[offset:] if args.all else records[offset : offset + limit]
         meta = _live_meta(
-            source, cap.default_scope, True, len(records), len(window), offset
+            source,
+            cap.default_scope,
+            result.complete,
+            len(records),
+            len(window),
+            offset,
         )
+        meta.update(evidence_for(result).meta())
     else:
         cached, records = _collection_va_capacity_cached(args, config, source)
         records = cap.sort_records(cap.filter_records(records, filters))
@@ -1367,13 +1436,18 @@ def _list_configuration(
             result = collect_complete_scope(
                 cap, session.transport(cap), cap.default_scope
             )
-        if not result.complete:
-            raise CliError(INCOMPLETE_RESULT, f"{cap.name} is incomplete")
+        check_complete(evidence_for(result), require_complete=args.require_complete)
         records = cap.sort_records(cap.filter_records(result.records, filters))
         window = records[offset:] if args.all else records[offset : offset + limit]
         meta = _live_meta(
-            source, cap.default_scope, True, len(records), len(window), offset
+            source,
+            cap.default_scope,
+            result.complete,
+            len(records),
+            len(window),
+            offset,
         )
+        meta.update(evidence_for(result).meta())
     else:
         cached, records = _configuration_cached(args, config, source, cap)
         records = cap.sort_records(cap.filter_records(records, filters))
@@ -1391,14 +1465,18 @@ def cmd_collection_account_isolation_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_collection_account_isolation(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
-        account_isolation.ACCOUNT_ISOLATION, "account-isolation configuration"
+    return _refresh_validated_list(
+        account_isolation.ACCOUNT_ISOLATION,
+        "account-isolation configuration",
+        require_complete=getattr(args, "require_complete", False),
     )
 
 
 def cmd_refresh_collection_clearing_system(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
-        network_config.CLEARING_SYSTEM, "collection network configuration"
+    return _refresh_validated_list(
+        network_config.CLEARING_SYSTEM,
+        "collection network configuration",
+        require_complete=getattr(args, "require_complete", False),
     )
 
 
@@ -1407,8 +1485,10 @@ def cmd_collection_card_template_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_collection_card_template(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(
-        network_config.CARD_TEMPLATE, "collection network configuration"
+    return _refresh_validated_list(
+        network_config.CARD_TEMPLATE,
+        "collection network configuration",
+        require_complete=getattr(args, "require_complete", False),
     )
 
 
@@ -1419,7 +1499,11 @@ def cmd_payment_ptr_orders_list(args: argparse.Namespace) -> int:
 
 def cmd_refresh_payment_ptr_orders(args: argparse.Namespace) -> int:
     cap = payment_ptr_orders.bind_window(args.updated_from, args.updated_to)
-    return _refresh_complete_list(cap, "outflow PTR order interval")
+    return _refresh_validated_list(
+        cap,
+        "outflow PTR order interval",
+        require_complete=getattr(args, "require_complete", False),
+    )
 
 
 def cmd_payment_ptr_cases_list(args: argparse.Namespace) -> int:
@@ -1427,7 +1511,11 @@ def cmd_payment_ptr_cases_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_payment_ptr_cases(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(payment_ptr.CASES, "outflow PTR case library")
+    return _refresh_validated_list(
+        payment_ptr.CASES,
+        "outflow PTR case library",
+        require_complete=getattr(args, "require_complete", False),
+    )
 
 
 def cmd_payment_rules_same_bank_transfer_list(args: argparse.Namespace) -> int:
@@ -1435,7 +1523,11 @@ def cmd_payment_rules_same_bank_transfer_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_payment_rules_same_bank_transfer(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(payment_rules.SAME_BANK_TRANSFER, "same-bank rules")
+    return _refresh_validated_list(
+        payment_rules.SAME_BANK_TRANSFER,
+        "same-bank rules",
+        require_complete=getattr(args, "require_complete", False),
+    )
 
 
 def cmd_payment_rules_cost_reduction_list(args: argparse.Namespace) -> int:
@@ -1443,7 +1535,11 @@ def cmd_payment_rules_cost_reduction_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_payment_rules_cost_reduction(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(payment_rules.COST_REDUCTION, "cost-reduction rules")
+    return _refresh_validated_list(
+        payment_rules.COST_REDUCTION,
+        "cost-reduction rules",
+        require_complete=getattr(args, "require_complete", False),
+    )
 
 
 def cmd_payment_rules_retry_list(args: argparse.Namespace) -> int:
@@ -1451,7 +1547,11 @@ def cmd_payment_rules_retry_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_payment_rules_retry(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(payment_rules.RETRY, "retry rules")
+    return _refresh_validated_list(
+        payment_rules.RETRY,
+        "retry rules",
+        require_complete=getattr(args, "require_complete", False),
+    )
 
 
 def cmd_payment_rules_bank_switch_list(args: argparse.Namespace) -> int:
@@ -1459,7 +1559,11 @@ def cmd_payment_rules_bank_switch_list(args: argparse.Namespace) -> int:
 
 
 def cmd_refresh_payment_rules_bank_switch(args: argparse.Namespace) -> int:
-    return _refresh_complete_list(payment_rules.BANK_SWITCH, "bank-switch source nodes")
+    return _refresh_validated_list(
+        payment_rules.BANK_SWITCH,
+        "bank-switch source nodes",
+        require_complete=getattr(args, "require_complete", False),
+    )
 
 
 def cmd_liquidity_list(args: argparse.Namespace) -> int:
@@ -1538,6 +1642,8 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
     try:
         return handler(args)
     except CliError as error:
+        if node.path[0] == "refresh" and error.meta is None:
+            error.meta = {"published": False}
         return _emit_error(error, getattr(args, "format", "json"))
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)

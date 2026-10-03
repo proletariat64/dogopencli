@@ -130,12 +130,12 @@ def test_holdings_retention_uses_capture_history_and_warns_for_trimmed_scope(
     before = cache.read_bytes()
     code, out, err = run_cli(query())
     result = parse(out)
-    assert code == 1
+    assert code == 0
     assert result["data"] == rows[1:]
     assert result["meta"]["complete"] is False
     assert result["meta"]["reported_total"] == 3
     assert result["meta"]["collected_total"] == 2
-    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert result["error"] is None
     assert "warning: INCOMPLETE_RESULT" in err
     code, out, _ = run_cli([*query(), "--require-complete"])
     assert code == 1

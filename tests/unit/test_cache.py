@@ -1,5 +1,7 @@
 """Unit tests for the SQLite snapshot cache."""
 
+from dataclasses import replace
+
 import pytest
 
 from dogopencli.cache import Cache, SnapshotMeta, namespace
@@ -25,6 +27,29 @@ def meta(ns: str, snapshot_id: str = "snap-1", row_count: int = 2) -> SnapshotMe
 
 
 ROWS = [(1, '{"seqid":1,"a":1}'), (2, '{"seqid":2,"a":2}')]
+
+
+def test_partial_quality_survives_atomic_publication_and_offline_read(tmp_path):
+    from dogopencli.result_policy import AcquisitionEvidence
+
+    store = Cache(tmp_path / "cache.sqlite3")
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False, reported_total=3, collected_total=2, arrivals=2
+    )
+    snapshot = replace(
+        meta("partial"), dataset_complete=False, acquisition=evidence.record()
+    )
+    store.publish(snapshot, ROWS)
+    loaded, rows = store.read("partial")
+    assert loaded.acquisition == evidence.record()
+    assert loaded.row_count == 2 and loaded.backend_complete is False
+    assert rows == ROWS
+
+
+def test_missing_cache_read_does_not_create_database(tmp_path):
+    path = tmp_path / "absent" / "cache.sqlite3"
+    assert Cache(path).read("missing") == (None, [])
+    assert not path.parent.exists()
 
 
 def test_publish_and_read_roundtrip(tmp_path):
@@ -158,10 +183,7 @@ def test_existing_cache_schema_preserves_records(tmp_path):
     path = tmp_path / "cache.sqlite3"
     connection = sqlite3.connect(path)
     connection.executescript(
-        SCHEMA.replace(
-            "row_count INTEGER NOT NULL,\n    source_path TEXT",
-            "row_count INTEGER NOT NULL",
-        )
+        SCHEMA.replace(",\n    source_path TEXT,\n    acquisition TEXT", "")
     )
     connection.execute("INSERT INTO records VALUES (?, ?, ?)", ("test", 1, "{}"))
     connection.commit()
@@ -169,11 +191,15 @@ def test_existing_cache_schema_preserves_records(tmp_path):
 
     store = Cache(path)
     assert store.records("test") == [(1, "{}")]
+    assert store.read("test") == (None, [(1, "{}")])
     connection = sqlite3.connect(path)
-    assert "source_path" in [
+    assert "source_path" not in [
         row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
     ]
     connection.close()
+    store.publish(meta("migrated"), ROWS)
+    assert store.current("migrated").acquisition is None
+    assert store.records("test") == [(1, "{}")]
 
 
 def test_concurrent_old_schema_migration(tmp_path, monkeypatch):
@@ -187,10 +213,7 @@ def test_concurrent_old_schema_migration(tmp_path, monkeypatch):
     connection = sqlite3.connect(path)
     connection.execute("PRAGMA journal_mode=WAL")
     connection.executescript(
-        SCHEMA.replace(
-            "row_count INTEGER NOT NULL,\n    source_path TEXT",
-            "row_count INTEGER NOT NULL",
-        )
+        SCHEMA.replace(",\n    source_path TEXT,\n    acquisition TEXT", "")
     )
     connection.execute("INSERT INTO records VALUES (?, ?, ?)", ("test", 1, "{}"))
     connection.commit()
@@ -215,8 +238,15 @@ def test_concurrent_old_schema_migration(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sqlite3, "connect", synchronized_connect)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(lambda _: Cache(path).records("test"), range(2)))
-    assert results == [[(1, "{}")], [(1, "{}")]]
+        results = list(
+            pool.map(
+                lambda i: Cache(path).publish(meta(f"migrated-{i}"), ROWS), range(2)
+            )
+        )
+    assert results == [None, None]
+    monkeypatch.setattr(sqlite3, "connect", connect)
+    assert Cache(path).records("test") == [(1, "{}")]
+    assert Cache(path).current("migrated-0").row_count == 2
 
 
 def test_refresh_lock_preserves_os_error_cause(tmp_path, monkeypatch):
@@ -275,7 +305,7 @@ def test_wal_initialization_retries_only_within_deadline(
         monkeypatch.setattr("dogopencli.cache.monotonic", lambda: next(ticks))
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            result = pool.submit(Cache(path).read, "test")
+            result = pool.submit(Cache(path).publish, meta("test"), ROWS)
             try:
                 assert busy.wait(5)
             finally:
@@ -283,7 +313,7 @@ def test_wal_initialization_retries_only_within_deadline(
                     holder.rollback()
                     released.set()
             if release_lock:
-                assert result.result(timeout=5) == (None, [])
+                assert result.result(timeout=5) is None
             else:
                 with pytest.raises(CliError) as caught:
                     result.result(timeout=5)

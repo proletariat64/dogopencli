@@ -68,7 +68,7 @@ def test_refresh_then_list_offline(run_cli, envelope, small_setup, tmp_path: Pat
 
     code, out, err = listing(run_cli)
     assert code == 0
-    assert err == ""
+    assert "INCOMPLETE_RESULT" in err
     result = envelope(out)
     assert result["error"] is None
     rows = result["data"]
@@ -88,6 +88,24 @@ def test_refresh_then_list_offline(run_cli, envelope, small_setup, tmp_path: Pat
     assert meta["fetched_at"] == meta["source_observed_from"]
     assert meta["source_observed_from"] is not None
     assert meta["loaded_at"] is not None
+
+
+def test_strict_snapshot_refresh_preserves_cache_and_reports_diagnostics(
+    run_cli, envelope, small_setup
+):
+    assert refresh(run_cli)[0] == 0
+    before = envelope(listing(run_cli)[1])
+    code, out, _ = refresh(run_cli, "--require-complete")
+    assert code == 1
+    result = envelope(out)
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert result["meta"]["published"] is False
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["warnings"][0]["code"] == "INCOMPLETE_RESULT"
+    after = envelope(listing(run_cli)[1])
+    assert after["data"] == before["data"]
+    assert after["meta"]["loaded_at"] == before["meta"]["loaded_at"]
 
 
 def test_refresh_rejects_missing_dataset(

@@ -337,7 +337,7 @@ def test_table_shows_quality_markers(run_cli, refreshed):
         run_cli, "--format", "table", "--status", "ENABLE", "--limit", "2"
     )
     assert code == 0
-    assert err == ""
+    assert "INCOMPLETE_RESULT" in err
     for marker in (
         "source: cache",
         "backend: snapshot",

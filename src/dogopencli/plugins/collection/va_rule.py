@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...errors import (
-    INCOMPLETE_RESULT,
     INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
     CliError,
@@ -40,6 +39,7 @@ LIST_CONTRACT = EndpointContract(
     one_based=True,
     allowed_body_keys=frozenset({"pageNo", "pageSize"}),
     fixed_body_values=(("pageNo", 1), ("pageSize", PAGE_SIZE)),
+    single_page=True,
 )
 DETAIL_CONTRACT = EndpointContract(
     method="GET",
@@ -202,18 +202,6 @@ class CollectionVaRuleCapability:
             _validate_row(row)
         if total == 0 and rows:
             raise CliError(INVALID_RESPONSE, "inconsistent empty result")
-        if (
-            total > PAGE_SIZE
-            or len(rows) != total
-            or len({row[self.id_field] for row in rows}) != len(rows)
-        ):
-            raise CliError(
-                INCOMPLETE_RESULT,
-                (
-                    "VA rule response does not prove complete unique coverage; "
-                    "no pagination fallback is verified"
-                ),
-            )
         return ParsedPage(rows, 1, PAGE_SIZE, total, 1 if total else 0)
 
 
@@ -240,7 +228,7 @@ COLLECTION_VA_RULE_LIST_NODE = BizNode(
         CACHE_SEMANTICS,
         DISPLAY_WINDOW,
         (
-            "Live fetches the complete unfiltered scope before local "
+            "Live acquires the verified unfiltered response before local "
             "stable-ID sorting and display windowing. ASCII digit IDs sort "
             "numerically, with original string as the tie-breaker; other IDs "
             "sort lexically afterward. Original string IDs remain unchanged. "
@@ -258,13 +246,14 @@ COLLECTION_VA_RULE_LIST_NODE = BizNode(
             "are never merged or equated."
         ),
         (
-            "Live acquisition validates one complete "
+            "Live acquisition validates one "
             "pageNo=1/pageSize=1000 response; no speculative paging "
-            "or implicit refresh."
+            "or implicit refresh. Safe incomplete coverage warns; "
+            "--require-complete rejects."
         ),
         (
             "A detail the backend refuses (success=false) still publishes its "
-            "list row with a null detail: backend_complete stays true, "
+            "list row with a null detail: list coverage is unchanged, "
             "dataset_complete becomes false, and --require-complete rejects "
             "such a snapshot."
         ),
@@ -326,21 +315,20 @@ REFRESH_NODE = BizNode(
     output=dict(REFRESH_OUTPUT),
     path=("refresh", "collection", "va"),
     summary=(
-        "Refresh collection VA rules: full list and every true detail; "
-        "publishes atomically, or partially with INCOMPLETE_RESULT when the "
-        "backend refuses a detail."
+        "Refresh collection VA rules and every acquired rule's true detail; "
+        "safe partial lists and refused details publish with a warning."
     ),
     constraints=(
         *REFRESH_CDP_CONSTRAINTS,
         (
-            "Any list failure and any detail failure other than an explicit "
+            "Any hard list failure and any detail failure other than an explicit "
             "backend refusal (success=false) preserves the previous snapshot."
         ),
         (
             "A refused detail publishes that rule's real list row with a null "
-            "detail, leaves backend_complete true, sets dataset_complete false, "
-            "and the refresh then fails with INCOMPLETE_RESULT naming the "
-            "counts instead of reporting success."
+            "detail, preserves list completeness, sets dataset_complete false, "
+            "and warns with DETAIL_REFUSED. --require-complete rejects partial "
+            "list or detail quality before any publication."
         ),
         (
             "One verified 1000-row acquisition; no business filters "

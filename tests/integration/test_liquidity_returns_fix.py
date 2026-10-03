@@ -1,4 +1,4 @@
-"""Returns count deficits fail truthfully and retain complete offline evidence."""
+"""Returns count deficits publish usable rows with durable quality evidence."""
 
 from pathlib import Path
 
@@ -29,7 +29,7 @@ def returns_source(tmp_path: Path, monkeypatch):
 
 
 @pytest.mark.parametrize("basis", ["accrual", "cash"])
-def test_returns_partial_contract_preserves_prior_complete_capture(
+def test_returns_partial_contract_publishes_truthful_offline_capture(
     returns_source, run_cli, basis
 ):
     browser, cache = returns_source
@@ -67,10 +67,10 @@ def test_returns_partial_contract_preserves_prior_complete_capture(
     total = 3
 
     code, out, err = run_cli([*query, "--live", "--all"])
-    assert code == 1
+    assert code == 0
     result = parse(out)
     assert result["data"] == records
-    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert result["error"] is None
     assert result["meta"]["complete"] is False
     assert result["meta"]["reported_total"] == 3
     assert result["meta"]["collected_total"] == 2
@@ -84,22 +84,23 @@ def test_returns_partial_contract_preserves_prior_complete_capture(
     assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
 
     code, out, _ = run_cli(refresh)
-    assert code == 1
+    assert code == 0
     result = parse(out)
-    assert result["data"] == records
-    assert result["meta"]["published"] is False
+    assert result["data"]["published"] is True
+    assert result["meta"]["published"] is True
     assert result["meta"]["complete"] is False
     assert result["meta"]["reported_total"] == 3
     assert result["meta"]["collected_total"] == 2
-    assert cache.read_bytes() == before
+    assert cache.read_bytes() != before
+    before = cache.read_bytes()
     assert all(r["rowStart"] == 0 and r["pageSize"] == 5000 for r in requests)
 
     def disconnected(*args, **kwargs):
         pytest.fail("offline returns query contacted the browser")
 
     cdp.set_transport_factory(disconnected)
-    code, out, _ = run_cli([*query, "--all", "--require-complete"])
+    code, out, _ = run_cli([*query, "--all"])
     assert code == 0
     assert parse(out)["data"] == records
-    assert parse(out)["meta"]["complete"] is True
+    assert parse(out)["meta"]["complete"] is False
     assert cache.read_bytes() == before

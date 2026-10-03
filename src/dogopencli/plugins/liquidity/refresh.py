@@ -1,8 +1,8 @@
 """Liquidity refresh flows: explicit list and per-object detail acquisition.
 
-Only these root refresh commands publish local captures. List acquisition
-must be complete and validated before anything is published; incomplete or
-failed acquisition preserves the previous valid cache (ADR 0003 practice).
+Only these root refresh commands publish local captures. Validated partial
+list acquisition is usable by default; strict refresh rejects both acquisition
+and proposed retention gaps before committing. Hard failures preserve the cache.
 Retention eviction, when it occurs, is deliberate: it warns on stderr,
 keeps stdout parseable and publishes records, eviction and coverage in one
 transaction (ADR 0017). Detail refresh is independent and object-scoped
@@ -15,8 +15,9 @@ from typing import Any
 
 from ... import config as config_mod
 from ...cache import Cache
-from ...errors import EXIT_FAILURE, EXIT_OK, INCOMPLETE_RESULT, CliError
+from ...errors import EXIT_OK
 from ...inquiry import inquiry_session
+from ...result_policy import check_complete, evidence_for, prepare_result
 from . import details as detail_store
 from . import store as capture_store
 from .collect import collect_liquidity_scope
@@ -43,53 +44,12 @@ def run_refresh_list(args: argparse.Namespace) -> int:
                     f"refresh: collected page {done}/{total}", file=sys.stderr
                 ),
             )
-        if not result.complete:
-            if variant.schema_version or variant.path in (
-                ("cash", "accounts"),
-                ("investment", "holdings"),
-                ("investment", "returns"),
-            ):
-                message = (
-                    f"{variant.leaf} acquisition is incomplete (collected"
-                    f" {len(result.records)}, reported {result.total_count});"
-                    " returning available rows; the previous cache is retained"
-                )
-                error = {
-                    "code": INCOMPLETE_RESULT,
-                    "message": message,
-                    "retryable": False,
-                }
-                print(f"warning: {INCOMPLETE_RESULT}: {message}", file=sys.stderr)
-                emit(
-                    result.records,
-                    {
-                        "source": "live",
-                        "backend": "cdp",
-                        "kind": variant.kind,
-                        "simulated": False,
-                        "capability": variant.name,
-                        "scope": resolved.scope_key,
-                        "fetched_at": now().isoformat(),
-                        "loaded_at": None,
-                        "snapshot_id": None,
-                        "complete": False,
-                        "published": False,
-                        "reported_total": result.total_count,
-                        "collected_total": len(result.records),
-                        "matched_total": len(result.records),
-                        "returned_count": len(result.records),
-                        "has_more": False,
-                        "warnings": [error],
-                    },
-                    error,
-                )
-                return EXIT_FAILURE
-            raise CliError(
-                INCOMPLETE_RESULT,
-                f"{variant.leaf} acquisition is incomplete (collected"
-                f" {len(result.records)}, reported {result.total_count}); the previous"
-                " cache is retained",
-            )
+        evidence = evidence_for(result)
+        check_complete(
+            evidence,
+            require_complete=getattr(args, "require_complete", False),
+            mode="refresh",
+        )
         fetched_at = now().isoformat()
         loaded_at = now().isoformat()
         plan = capture_store.plan_capture_publish(
@@ -101,6 +61,15 @@ def run_refresh_list(args: argparse.Namespace) -> int:
             result.total_count,
             fetched_at,
             loaded_at,
+            acquisition=evidence,
+        )
+        final_evidence = capture_store.retained_evidence(
+            plan, variant, resolved.scope_key, resolved.window
+        )
+        check_complete(
+            final_evidence,
+            require_complete=getattr(args, "require_complete", False),
+            mode="refresh",
         )
         capture_store.commit_plan(store, variant.name, plan, loaded_at)
     row_count = len(plan.capture_records)
@@ -138,14 +107,15 @@ def run_refresh_list(args: argparse.Namespace) -> int:
         "fetched_at": fetched_at,
         "loaded_at": loaded_at,
         "stale": False,
-        "complete": True,
-        "dataset_complete": None,
+        **final_evidence.meta(),
+        "published": True,
         "reported_total": result.total_count,
         "matched_total": row_count,
         "returned_count": row_count,
         "has_more": False,
         "retention": eviction,
     }
+    meta = prepare_result(meta, mode="refresh")
     emit(
         {
             "namespace": plan.capture_meta.namespace,
@@ -191,6 +161,7 @@ def run_refresh_detail(args: argparse.Namespace) -> int:
         "kind": detail.kind,
         "simulated": False,
         "capability": detail.name,
+        "published": True,
         "identity": dict(values),
         "snapshot_id": snapshot.snapshot_id,
         "fetched_at": snapshot.fetched_at,

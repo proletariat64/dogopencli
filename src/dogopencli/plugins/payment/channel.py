@@ -48,6 +48,11 @@ CONTRACT = EndpointContract(
     one_based=True,
     scope_field="payoutType",
     consistency_field="abilityId",
+    consistency_version_field="configVersion",
+    # abilityId is not a verified primary key. Preserve list row occurrences
+    # without canonical-content deduplication or invented unique counts.
+    has_identity=False,
+    total_semantics="occurrences",
     allowed_body_keys=frozenset(
         {
             "payoutType",
@@ -96,6 +101,16 @@ def assign_seqids(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _invalid(message: str) -> CliError:
     return CliError(INVALID_RESPONSE, message)
+
+
+def validate_cached_record(record: Any, scope: str) -> None:
+    """Validate the stored local row identity without claiming a native PK."""
+    if not isinstance(record, dict):
+        raise _invalid("cached channel row is not an object")
+    if type(record.get("seqid")) is not int or record["seqid"] < 1:
+        raise _invalid("cached channel row requires a positive integer seqid")
+    if record.get("payoutType") != scope:
+        raise _invalid("cached channel row scope differs from the snapshot")
 
 
 @dataclass(frozen=True)
@@ -151,8 +166,11 @@ class ChannelCapability:
         return sorted(records, key=lambda record: record["seqid"])
 
     def identity_key(self, record: dict[str, Any]) -> Any:
-        """abilityId is not a proven primary key: dedup by exact full content;
-        different content or versions are always preserved."""
+        """Legacy exact-content key; live acquisition preserves row occurrences.
+
+        abilityId is not a proven primary key, so the contract explicitly
+        disables deduplication in the shared collector.
+        """
         return canonical(record)
 
     def parse_page(self, body: bytes) -> ParsedPage:

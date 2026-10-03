@@ -64,8 +64,8 @@ def listing(run_cli, *flags):
     return run_cli(["collection", "va", "capacity", "list", *flags])
 
 
-def refresh(run_cli):
-    return run_cli(["refresh", "collection", "va", "capacity"])
+def refresh(run_cli, *flags):
+    return run_cli(["refresh", "collection", "va", "capacity", *flags])
 
 
 def seed(run_cli, setup):
@@ -184,7 +184,11 @@ def test_list_rejects_incomplete_or_bad_data(
 ):
     old = seed(run_cli, setup)
     setup.state.business_script.append(page(**changes))
-    result = listing(run_cli, "--live") if live else refresh(run_cli)
+    result = (
+        listing(run_cli, "--live", "--require-complete")
+        if live
+        else refresh(run_cli, "--require-complete")
+    )
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == code
     assert listing(run_cli)[1] == old
@@ -245,7 +249,7 @@ def test_converged_total_mismatch_is_incomplete(run_cli, envelope, setup):
             page(bulk_rows(500), pageNo=2, totalCount=1400),
         ]
     )
-    result = refresh(run_cli)
+    result = refresh(run_cli, "--require-complete")
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == "INCOMPLETE_RESULT"
     assert listing(run_cli)[1] == old
@@ -319,7 +323,9 @@ def test_offline_help_describe_and_bare_navigation(run_cli, envelope, monkeypatc
     refresh_help = envelope(
         run_cli(["help", "refresh", "collection", "va", "capacity"])[1]
     )
-    assert refresh_help["options"] == []
+    assert {flag for option in refresh_help["options"] for flag in option["flags"]} == {
+        "--require-complete"
+    }
     # Bare refresh collection va keeps its executable rule refresh contract.
     va_help = envelope(run_cli(["help", "refresh", "collection", "va"])[1])
     assert any(child["name"] == "capacity" for child in va_help["children"])
@@ -508,7 +514,9 @@ def test_freshness_and_completeness_requirements(run_cli, envelope, setup):
     assert listing(run_cli, "--require-complete")[0] == 0
     with sqlite3.connect(setup.cache_path) as connection:
         # Synthetic incomplete metadata; production snapshots remain untouched.
-        connection.execute("UPDATE snapshots SET backend_complete = 0")
+        connection.execute(
+            "UPDATE snapshots SET backend_complete = 0, acquisition = NULL"
+        )
     assert envelope(listing(run_cli, "--require-complete")[1])["error"]["code"] == (
         "INCOMPLETE_RESULT"
     )

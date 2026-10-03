@@ -1,5 +1,6 @@
 """Capture store and the 1,000,000-record retention policy (ADR 0017)."""
 
+import sqlite3
 from dataclasses import replace
 
 import pytest
@@ -58,9 +59,14 @@ def test_capture_rejects_snapshot_count_mismatch(tmp_path):
         store, CASH_WATERLEVELS, "", (None, None), [], 0, T1, T1
     )
     capture_store.commit_plan(store, CASH_WATERLEVELS.name, plan, T1)
-    store.publish(replace(plan.capture_meta, row_count=1), [])
-    with pytest.raises(CliError, match="coverage is invalid"):
+    with sqlite3.connect(tmp_path / "cache.sqlite3") as connection:
+        connection.execute(
+            "UPDATE snapshots SET row_count=1 WHERE namespace=?",
+            (plan.capture_meta.namespace,),
+        )
+    with pytest.raises(CliError) as rejected:
         capture_store.read_capture(store, plan.index.captures[0])
+    assert rejected.value.code == "INVALID_RESPONSE"
 
 
 def test_cashflow_retention_uses_native_datetime_day(tmp_path):
@@ -678,3 +684,391 @@ def test_all_records_evicted_preserves_verified_empty_days(tmp_path):
     assert not capture_store.select_captures(
         index, INVESTMENT_HOLDINGS, "", ("20260929", "20260929")
     )[1]
+
+
+def test_latest_partial_dated_capture_revokes_older_complete_coverage(tmp_path):
+    from dogopencli.result_policy import AcquisitionEvidence
+
+    cache = Cache(tmp_path / "cache.sqlite3")
+    publish_dated(cache, ("20260928", "20260930"), [holding(1, "20260929")], T1)
+    partial = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=2,
+        collected_total=1,
+    )
+    plan = capture_store.plan_capture_publish(
+        cache,
+        INVESTMENT_HOLDINGS,
+        "",
+        ("20260929", "20260929"),
+        [holding(2, "20260929")],
+        2,
+        T2,
+        T2,
+        acquisition=partial,
+    )
+    capture_store.commit_plan(cache, INVESTMENT_HOLDINGS.name, plan, T2)
+    index = capture_store.read_index(cache, INVESTMENT_HOLDINGS.name)
+    assert not capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", ("20260928", "20260930")
+    )[1]
+    assert capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", ("20260928", "20260928")
+    )[1]
+    assert capture_store.read_capture(cache, index.captures[-1]) == [
+        holding(2, "20260929")
+    ]
+    assert index.captures[-1].evidence.reasons == ("COUNT_SHORTFALL",)
+
+
+@pytest.mark.parametrize("new_reasons", [(), ("DUPLICATE_ROWS",)])
+def test_dated_refresh_quality_uses_only_current_window_authority(
+    tmp_path, new_reasons
+):
+    from dogopencli.result_policy import AcquisitionEvidence, evaluate_result
+
+    cache = Cache(tmp_path / "cache.sqlite3")
+    old_rows = [holding(1, "20260929"), holding(2, "20260930")]
+    partial = AcquisitionEvidence.for_collection(
+        complete=False, reported_total=3, collected_total=2
+    )
+    old = capture_store.plan_capture_publish(
+        cache,
+        INVESTMENT_HOLDINGS,
+        "",
+        ("20260929", "20260930"),
+        old_rows,
+        3,
+        T1,
+        T1,
+        acquisition=partial,
+    )
+    capture_store.commit_plan(cache, INVESTMENT_HOLDINGS.name, old, T1)
+    window = ("20260929", "20260929")
+    new = capture_store.plan_capture_publish(
+        cache,
+        INVESTMENT_HOLDINGS,
+        "",
+        window,
+        [holding(3, "20260929")],
+        1,
+        T2,
+        T2,
+        acquisition=AcquisitionEvidence(
+            scope_complete=True,
+            dataset_complete=True,
+            collected_total=1,
+            reported_total=1,
+            reasons=new_reasons,
+        ),
+    )
+    evidence = capture_store.retained_evidence(new, INVESTMENT_HOLDINGS, "", window)
+    assert evidence.scope_complete and evidence.dataset_complete
+    assert evidence.reasons == new_reasons
+    assert evidence.reported_total == 1
+    decision = evaluate_result(evidence, mode="refresh", require_complete=True)
+    assert decision.publishable and decision.exit_code == 0
+    assert bool(decision.warnings) is bool(new_reasons)
+    if new_reasons:
+        assert decision.warnings[0]["reason_codes"] == list(new_reasons)
+
+    # The older acquisition still owns the second day and keeps its gap.
+    entries, covered = capture_store.select_captures(
+        new.index, INVESTMENT_HOLDINGS, "", ("20260929", "20260930")
+    )
+    wider = capture_store.query_evidence(
+        entries, covered, 2, window=("20260929", "20260930")
+    )
+    assert not wider.scope_complete
+    assert "COUNT_SHORTFALL" in wider.reasons
+    assert evaluate_result(wider, mode="cache", require_complete=True).exit_code == 1
+
+
+def test_trim_inherits_acquisition_gap_and_reports_retention_separately(tmp_path):
+    from dogopencli.result_policy import AcquisitionEvidence
+
+    cache = Cache(tmp_path / "cache.sqlite3")
+    partial = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=3,
+        collected_total=2,
+    )
+    plan = capture_store.plan_capture_publish(
+        cache,
+        FORECAST_ADJUSTMENTS,
+        "",
+        (None, None),
+        [adjustment(1), adjustment(2)],
+        3,
+        T1,
+        T1,
+        cap=1,
+        acquisition=partial,
+    )
+    capture_store.commit_plan(cache, FORECAST_ADJUSTMENTS.name, plan, T1)
+    index = capture_store.read_index(cache, FORECAST_ADJUSTMENTS.name)
+    entry = index.captures[0]
+    snapshot = cache.current(entry.namespace)
+    assert entry.evidence == partial
+    assert snapshot.backend_complete is False
+    assert snapshot.acquisition == partial.record()
+    assert capture_store.read_capture(cache, entry) == [adjustment(2)]
+    final = capture_store.retained_evidence(
+        plan, FORECAST_ADJUSTMENTS, "", (None, None)
+    )
+    assert final.scope_complete is False
+    assert final.reasons == ("COUNT_SHORTFALL", "RETENTION_GAP")
+    assert final.collected_total == 1
+
+
+def test_cached_capture_rejects_quality_disagreement_with_index(tmp_path):
+    from dogopencli.result_policy import AcquisitionEvidence
+
+    cache = Cache(tmp_path / "cache.sqlite3")
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=2,
+        collected_total=1,
+    )
+    plan = capture_store.plan_capture_publish(
+        cache,
+        CASH_ACCOUNTS,
+        "",
+        (None, None),
+        [{"aliasName": "A1"}],
+        2,
+        T1,
+        T1,
+        acquisition=evidence,
+    )
+    capture_store.commit_plan(cache, CASH_ACCOUNTS.name, plan, T1)
+    with sqlite3.connect(tmp_path / "cache.sqlite3") as connection:
+        connection.execute(
+            "UPDATE snapshots SET backend_complete=1 WHERE namespace=?",
+            (plan.capture_meta.namespace,),
+        )
+    entry = capture_store.read_index(cache, CASH_ACCOUNTS.name).captures[0]
+    with pytest.raises(CliError) as rejected:
+        capture_store.read_capture(cache, entry)
+    assert rejected.value.code == "INVALID_RESPONSE"
+
+
+def test_history_retention_without_reported_total_uses_acquired_row_count(tmp_path):
+    from dogopencli.result_policy import AcquisitionEvidence
+
+    cache = Cache(tmp_path / "cache.sqlite3")
+    evidence = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=None,
+        collected_total=2,
+    )
+    plan = capture_store.plan_capture_publish(
+        cache,
+        FORECAST_ADJUSTMENTS,
+        "",
+        (None, None),
+        [adjustment(1), adjustment(2)],
+        None,
+        T1,
+        T1,
+        cap=1,
+        acquisition=evidence,
+    )
+    capture_store.commit_plan(cache, FORECAST_ADJUSTMENTS.name, plan, T1)
+    index = capture_store.read_index(cache, FORECAST_ADJUSTMENTS.name)
+    assert not capture_store.select_captures(
+        index,
+        FORECAST_ADJUSTMENTS,
+        "",
+        (None, None),
+    )[1]
+    final = capture_store.retained_evidence(
+        plan, FORECAST_ADJUSTMENTS, "", (None, None)
+    )
+    assert final.scope_complete is False
+    assert final.reasons == ("RETENTION_GAP",)
+    assert final.reported_total is None
+
+
+def test_actual_legacy_master_reader_accepts_old_index_and_rejects_new_format(
+    tmp_path,
+    monkeypatch,
+):
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    from dogopencli.jsonutil import canonical
+    from dogopencli.result_policy import AcquisitionEvidence
+
+    module_name = "dogopencli.plugins.liquidity._legacy_master_index_reader"
+    module_spec = importlib.util.spec_from_file_location(
+        module_name,
+        Path(__file__).with_name("legacy_master_index_reader.py"),
+    )
+    legacy_reader = importlib.util.module_from_spec(module_spec)
+    monkeypatch.setitem(sys.modules, module_name, legacy_reader)
+    module_spec.loader.exec_module(legacy_reader)
+
+    cache = Cache(tmp_path / "cache.sqlite3")
+    rows = [{"aliasName": "A1"}, {"aliasName": "A2"}]
+    complete = capture_store.plan_capture_publish(
+        cache,
+        CASH_ACCOUNTS,
+        "",
+        (None, None),
+        rows,
+        2,
+        T1,
+        T1,
+    )
+    capture_store.commit_plan(cache, CASH_ACCOUNTS.name, complete, T1)
+    # Re-create an index with the actual legacy serializer, rather than assuming
+    # that today's serializer happens to produce a legacy-compatible shape.
+    index_namespace = legacy_reader.index_namespace(CASH_ACCOUNTS.name)
+    index_meta = cache.current(index_namespace)
+    legacy_entry = legacy_reader.CaptureEntry.from_record(
+        complete.index.captures[0].record()
+    )
+    cache.publish(
+        replace(index_meta, row_count=1),
+        [(1, canonical(legacy_entry.record()))],
+    )
+    before = (tmp_path / "cache.sqlite3").read_bytes()
+    old_index = legacy_reader.read_index(cache, CASH_ACCOUNTS.name)
+    assert len(old_index.captures) == 1
+    assert old_index.captures[0].row_count == 2
+    assert (
+        capture_store.read_index(cache, CASH_ACCOUNTS.name)
+        .captures[0]
+        .evidence.scope_complete
+        is True
+    )
+    assert (tmp_path / "cache.sqlite3").read_bytes() == before
+
+    partial = capture_store.plan_capture_publish(
+        cache,
+        CASH_ACCOUNTS,
+        "",
+        (None, None),
+        rows[:1],
+        2,
+        T2,
+        T2,
+        acquisition=AcquisitionEvidence.for_collection(
+            complete=False,
+            reported_total=2,
+            collected_total=1,
+        ),
+    )
+    capture_store.commit_plan(cache, CASH_ACCOUNTS.name, partial, T2)
+    new_index = capture_store.read_index(cache, CASH_ACCOUNTS.name)
+    assert new_index.captures[0].evidence.scope_complete is False
+    assert capture_store.read_capture(cache, new_index.captures[0]) == rows[:1]
+    after = (tmp_path / "cache.sqlite3").read_bytes()
+    with pytest.raises(CliError, match="cached capture index is invalid") as rejected:
+        legacy_reader.read_index(cache, CASH_ACCOUNTS.name)
+    assert rejected.value.code == "INVALID_RESPONSE"
+    assert (tmp_path / "cache.sqlite3").read_bytes() == after
+
+
+@pytest.mark.parametrize(
+    "backend_complete,dataset_complete", [(False, True), (True, False), (False, False)]
+)
+def test_legacy_capture_inherits_existing_false_snapshot_quality_without_rewrite(
+    tmp_path,
+    backend_complete,
+    dataset_complete,
+):
+    from dogopencli.jsonutil import canonical
+
+    cache_path = tmp_path / "cache.sqlite3"
+    cache = Cache(cache_path)
+    plan = capture_store.plan_capture_publish(
+        cache,
+        CASH_ACCOUNTS,
+        "",
+        (None, None),
+        [{"aliasName": "A1"}],
+        1,
+        T1,
+        T1,
+    )
+    capture_store.commit_plan(cache, CASH_ACCOUNTS.name, plan, T1)
+    old_entry = plan.index.captures[0].record()
+    for key in ("acquisition", "requested_from", "requested_to"):
+        old_entry.pop(key)
+    index_namespace = capture_store.index_namespace(CASH_ACCOUNTS.name)
+    with sqlite3.connect(cache_path) as connection:
+        connection.execute(
+            "UPDATE snapshots SET backend_complete=?,dataset_complete=?,"
+            "acquisition=NULL WHERE namespace=?",
+            (backend_complete, dataset_complete, plan.capture_meta.namespace),
+        )
+        connection.execute("DELETE FROM records WHERE namespace=?", (index_namespace,))
+        connection.execute(
+            "INSERT INTO records VALUES (?,?,?)",
+            (index_namespace, 1, canonical(old_entry)),
+        )
+        connection.execute(
+            "UPDATE snapshots SET row_count=1 WHERE namespace=?", (index_namespace,)
+        )
+    before = cache_path.read_bytes()
+    index = capture_store.read_index(cache, CASH_ACCOUNTS.name)
+    selected, complete = capture_store.select_captures(
+        index, CASH_ACCOUNTS, "", (None, None)
+    )
+    assert complete is False
+    evidence = selected[0].evidence
+    assert evidence.scope_complete is backend_complete
+    assert evidence.dataset_complete is dataset_complete
+    assert evidence.reasons == ("COVERAGE_UNPROVEN",)
+    assert capture_store.read_capture(cache, selected[0]) == [{"aliasName": "A1"}]
+    assert cache_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("reported_total", [None, 2])
+def test_snapshot_rejects_lost_record_even_when_storage_counts_are_adjusted(
+    tmp_path,
+    reported_total,
+):
+    from dogopencli.jsonutil import canonical
+
+    cache_path = tmp_path / "cache.sqlite3"
+    cache = Cache(cache_path)
+    rows = [{"aliasName": "A1"}, {"aliasName": "A2"}]
+    plan = capture_store.plan_capture_publish(
+        cache,
+        CASH_ACCOUNTS,
+        "",
+        (None, None),
+        rows,
+        reported_total,
+        T1,
+        T1,
+    )
+    capture_store.commit_plan(cache, CASH_ACCOUNTS.name, plan, T1)
+    corrupted_entry = plan.index.captures[0].record()
+    corrupted_entry["row_count"] = 1
+    with sqlite3.connect(cache_path) as connection:
+        connection.execute(
+            "UPDATE snapshots SET row_count=1 WHERE namespace=?",
+            (plan.capture_meta.namespace,),
+        )
+        connection.execute(
+            "DELETE FROM records WHERE namespace=? AND seqid=2",
+            (plan.capture_meta.namespace,),
+        )
+        connection.execute(
+            "UPDATE records SET body=? WHERE namespace=? AND seqid=2",
+            (
+                canonical(corrupted_entry),
+                capture_store.index_namespace(CASH_ACCOUNTS.name),
+            ),
+        )
+    before = cache_path.read_bytes()
+    index = capture_store.read_index(cache, CASH_ACCOUNTS.name)
+    with pytest.raises(CliError) as rejected:
+        capture_store.read_capture(cache, index.captures[0])
+    assert rejected.value.code == "INVALID_RESPONSE"
+    assert cache_path.read_bytes() == before

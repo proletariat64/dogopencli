@@ -35,8 +35,8 @@ def listing(run_cli, *flags):
     return run_cli(["collection", "cost", "list", *flags])
 
 
-def refresh(run_cli):
-    return run_cli(["refresh", "collection", "cost"])
+def refresh(run_cli, *flags):
+    return run_cli(["refresh", "collection", "cost", *flags])
 
 
 def seed(run_cli, setup):
@@ -121,7 +121,7 @@ def test_cache_miss_live_no_write_and_no_fallback(run_cli, envelope, setup):
         (
             {"resultDataList": [row(), row(status="OTHER")], "totalCount": 2},
             False,
-            "INCOMPLETE_RESULT",
+            "INVALID_RESPONSE",
         ),
         ({"resultDataList": [cost_row("1")]}, False, "INVALID_RESPONSE"),
         (
@@ -143,7 +143,11 @@ def test_invalid_or_empty_response(
         response["body"].pop("resultDataList")
     setup.state.business_script.append(response)
     before = len(setup.state.business_requests)
-    code, out, _ = listing(run_cli, "--live") if live else refresh(run_cli)
+    code, out, _ = (
+        listing(run_cli, "--live", "--require-complete")
+        if live
+        else refresh(run_cli, "--require-complete")
+    )
     assert len(setup.state.business_requests) == before + 1
     assert code == (1 if expected else 0)
     if expected:
@@ -152,6 +156,32 @@ def test_invalid_or_empty_response(
         assert listing(run_cli)[1] == old
     else:
         assert envelope(listing(run_cli)[1])["data"] == []
+
+
+def test_empty_fixed_response_with_nonzero_total_replaces_cache_as_partial(
+    run_cli,
+    envelope,
+    setup,
+):
+    seed(run_cli, setup)
+    setup.state.business_script.append(page([], total_count=2))
+    code, out, err = refresh(run_cli)
+    assert code == 0, out
+    result = envelope(out)
+    assert result["meta"]["published"] is True
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["missing_count"] == 2
+    assert result["data"]["row_count"] == 0
+    assert "INCOMPLETE_RESULT" in err
+    setup.state.running = False
+    code, out, err = listing(run_cli)
+    assert code == 0
+    assert envelope(out)["data"] == []
+    assert envelope(out)["meta"]["complete"] is False
+    assert "INCOMPLETE_RESULT" in err
+    code, out, _ = listing(run_cli, "--require-complete")
+    assert code == 1
+    assert envelope(out)["data"] is None
 
 
 @pytest.mark.parametrize(

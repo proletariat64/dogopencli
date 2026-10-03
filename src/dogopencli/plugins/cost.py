@@ -37,6 +37,17 @@ def sort_cost_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(records, key=_record_key)
 
 
+def validate_cost_record(record: Any, cost_type: str) -> None:
+    """Shared native cost row safety for acquisition and cached reads."""
+    if not isinstance(record, dict):
+        raise _invalid("cost row is not an object")
+    if record.get("itemType") != cost_type:
+        raise _invalid("row itemType is outside the fixed cost type")
+    item_id = record.get("itemId")
+    if not isinstance(item_id, str) or not item_id.strip():
+        raise _invalid("row is missing itemId")
+
+
 def parse_cost_page(
     body: bytes, cost_type: str, *, allow_omitted_empty: bool = False
 ) -> ParsedPage:
@@ -64,11 +75,7 @@ def parse_cost_page(
     if len(rows) > paging["pageSize"]:
         raise _invalid("page returned more rows than pageSize")
     for row in rows:
-        if row.get("itemType") != cost_type:
-            raise _invalid("row itemType is outside the fixed cost type")
-        item_id = row.get("itemId")
-        if not isinstance(item_id, str) or not item_id:
-            raise _invalid("row is missing itemId")
+        validate_cost_record(row, cost_type)
     total_pages = -(-paging["totalCount"] // paging["pageSize"])
     return ParsedPage(
         records=list(rows),

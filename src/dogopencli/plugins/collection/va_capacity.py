@@ -2,15 +2,14 @@
 
 One row is one VA rule's capacity/warning projection. The verified endpoint
 reports a running-estimate totalCount on interim pages; only the final
-converged total validates completeness, and duplicate or drifting ruleId
-identities fail the acquisition instead of publishing a partial scope.
+converged total validates completeness. Identical duplicates produce incomplete
+evidence; conflicting ruleId content and invalid responses fail acquisition.
 """
 
 from dataclasses import dataclass
 from typing import Any
 
 from ...errors import (
-    INCOMPLETE_RESULT,
     INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
     CliError,
@@ -154,11 +153,7 @@ class CollectionVaCapacityCapability:
         # requested size remains invalid under any total semantics.
         if len(rows) > PAGE_SIZE:
             raise CliError(
-                INCOMPLETE_RESULT, "VA capacity page exceeds its declared scope"
-            )
-        if len({row[self.id_field] for row in rows}) != len(rows):
-            raise CliError(
-                INCOMPLETE_RESULT, "duplicate ruleId within one VA capacity page"
+                INVALID_RESPONSE, "VA capacity page exceeds its declared scope"
             )
         return ParsedPage(
             rows, document["pageNo"], document["pageSize"], total, total_pages
@@ -220,9 +215,9 @@ COLLECTION_VA_CAPACITY_LIST_NODE = BizNode(
             "filtering, stable-ID sorting and display windowing. Acquisition "
             "pages with pageSize=1000 from page 1 until the first short page; "
             "interim totalCount is a backend running estimate and only the "
-            "final converged total validates completeness. Duplicate or "
-            "drifting ruleId identities fail instead of publishing or "
-            "returning a partial scope. Refresh is unfiltered."
+            "final converged total validates completeness. Safe coverage gaps or "
+            "identical duplicates warn; --require-complete rejects. Conflicting "
+            "ruleId content fails. Refresh is unfiltered."
         ),
         (
             "Capacity and warning counters are live backend values; the "
@@ -263,9 +258,10 @@ REFRESH_NODE = BizNode(
         (
             "Pages the verified endpoint with pageSize=1000 until the first "
             "short page; only the final converged totalCount validates "
-            "completeness. Any failure — authentication, refusal, malformed "
-            "data, changing totals, duplicate identities, lock or timeout — "
-            "preserves the previous snapshot."
+            "completeness. Safe incomplete coverage publishes with a warning. "
+            "--require-complete and hard failures (authentication, refusal, "
+            "malformed data, identity conflicts, lock or timeout) preserve "
+            "the previous snapshot."
         ),
     ),
     effects=dict(REFRESH_CDP_EFFECTS),

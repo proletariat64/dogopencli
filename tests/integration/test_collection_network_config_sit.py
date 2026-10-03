@@ -80,8 +80,8 @@ def listing(run_cli, slug, *flags):
     return run_cli(["collection", slug, "list", *flags])
 
 
-def refresh(run_cli, slug):
-    return run_cli(["refresh", "collection", slug])
+def refresh(run_cli, slug, *flags):
+    return run_cli(["refresh", "collection", slug, *flags])
 
 
 def seed(run_cli, slug, setup):
@@ -232,7 +232,7 @@ def test_zeroed_empty_echo_is_supported(run_cli, envelope, setup, slug):
         ({"resultDataList": [row(), row()], "totalCount": 2}, "INCOMPLETE_RESULT"),
         (
             {"resultDataList": [row(), row(costLevel="changed")], "totalCount": 2},
-            "INCOMPLETE_RESULT",
+            "INVALID_RESPONSE",
         ),
         ({"resultDataList": [], "totalCount": 0, "pageNo": 99}, "INVALID_RESPONSE"),
     ],
@@ -243,7 +243,11 @@ def test_bad_acquisition_preserves_snapshot(
 ):
     old = seed(run_cli, slug, setup)
     setup.state.business_script.append(page(**changes))
-    result = listing(run_cli, slug, "--live") if live else refresh(run_cli, slug)
+    result = (
+        listing(run_cli, slug, "--live", "--require-complete")
+        if live
+        else refresh(run_cli, slug, "--require-complete")
+    )
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == error
     assert listing(run_cli, slug)[1] == old
@@ -291,9 +295,12 @@ def test_help_inventory_and_navigation(run_cli, envelope, slug, monkeypatch):
         else {"--bank", "--template-name", "--template-id"}
     )
     assert flags == expected
-    assert (
-        envelope(run_cli(["help", "refresh", "collection", slug])[1])["options"] == []
-    )
+    refresh_options = envelope(run_cli(["help", "refresh", "collection", slug])[1])[
+        "options"
+    ]
+    assert {flag for option in refresh_options for flag in option["flags"]} == {
+        "--require-complete"
+    }
     for extra in [["--unknown"], ["--warning-state", "Y"], ["--profile", "x"]]:
         assert listing(run_cli, slug, *extra)[0] == 2
     for extra in [["--currency", "GBP"], ["--all"], ["extra"]]:
@@ -352,7 +359,9 @@ def test_freshness_and_completeness_requirements(run_cli, slug, envelope, setup)
     assert listing(run_cli, slug, "--require-complete")[0] == 0
     with sqlite3.connect(setup.cache_path) as connection:
         # Synthetic incomplete metadata; production snapshots remain untouched.
-        connection.execute("UPDATE snapshots SET backend_complete = 0")
+        connection.execute(
+            "UPDATE snapshots SET backend_complete = 0, acquisition = NULL"
+        )
     assert envelope(listing(run_cli, slug, "--require-complete")[1])["error"][
         "code"
     ] == ("INCOMPLETE_RESULT")

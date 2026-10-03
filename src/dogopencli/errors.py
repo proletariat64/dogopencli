@@ -32,9 +32,11 @@ class CliError(Exception):
         message: str,
         retryable: bool = False,
         exit_code: int = EXIT_FAILURE,
+        meta: dict | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.retryable = retryable
         self.exit_code = exit_code
+        self.meta = meta

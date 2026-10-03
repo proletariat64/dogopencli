@@ -15,8 +15,11 @@ from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from time import monotonic, sleep
+from typing import Any
 
-from .errors import LOCKED, CliError
+from .errors import INVALID_RESPONSE, LOCKED, CliError
+from .jsonutil import canonical, parse
+from .result_policy import AcquisitionEvidence
 
 # SQLite lock messages matched when sqlite_errorcode is unavailable.
 _SQLITE_LOCKED_MESSAGES = ("database is locked", "database table is locked")
@@ -37,7 +40,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     source_observed_from TEXT,
     source_observed_to TEXT,
     row_count INTEGER NOT NULL,
-    source_path TEXT
+    source_path TEXT,
+    acquisition TEXT
 );
 CREATE TABLE IF NOT EXISTS records (
     namespace TEXT NOT NULL,
@@ -69,10 +73,20 @@ class SnapshotMeta:
     source_observed_to: str | None
     row_count: int
     source_path: str | None = None
+    acquisition: dict[str, Any] | None = None
 
 
 def _snapshot_from_row(row: tuple) -> SnapshotMeta:
-    return SnapshotMeta(
+    acquisition = None
+    if row[15] is not None:
+        try:
+            document = parse(row[15])
+        except ValueError as error:
+            raise CliError(
+                INVALID_RESPONSE, "cached acquisition metadata is not valid JSON"
+            ) from error
+        acquisition = AcquisitionEvidence.from_record(document).record()
+    snapshot = SnapshotMeta(
         namespace=row[0],
         capability=row[1],
         scope=row[2],
@@ -88,7 +102,17 @@ def _snapshot_from_row(row: tuple) -> SnapshotMeta:
         source_observed_to=row[12],
         row_count=row[13],
         source_path=row[14],
+        acquisition=acquisition,
     )
+    if snapshot.acquisition is not None:
+        evidence = AcquisitionEvidence.from_record(snapshot.acquisition)
+        if (
+            evidence.scope_complete != snapshot.backend_complete
+            or evidence.dataset_complete != snapshot.dataset_complete
+            or evidence.collected_total < snapshot.row_count
+        ):
+            raise CliError(INVALID_RESPONSE, "cached acquisition metadata conflicts")
+    return snapshot
 
 
 def _sqlite_errors(method):
@@ -118,6 +142,30 @@ def _sqlite_errors(method):
 class Cache:
     def __init__(self, path: Path) -> None:
         self._path = path
+
+    def _connect_readonly(self) -> sqlite3.Connection:
+        return sqlite3.connect(
+            self._path.resolve().as_uri() + "?mode=ro",
+            uri=True,
+            isolation_level=None,
+            timeout=10.0,
+        )
+
+    @staticmethod
+    def _snapshot_columns(connection: sqlite3.Connection) -> str | None:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(snapshots)")}
+        if not columns:
+            return None
+        optional = ", ".join(
+            name if name in columns else f"NULL AS {name}"
+            for name in ("source_path", "acquisition")
+        )
+        return (
+            "namespace, capability, scope, source_kind, snapshot_id,"
+            " dataset_id, simulated, backend_complete, dataset_complete,"
+            " fetched_at, loaded_at, source_observed_from,"
+            " source_observed_to, row_count, " + optional
+        )
 
     def _connect(self) -> sqlite3.Connection:
         parent = self._path.parent
@@ -158,7 +206,7 @@ class Cache:
             columns = {
                 row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
             }
-            if "source_path" not in columns:
+            if not {"source_path", "acquisition"} <= columns:
                 # Another connection may have migrated since our first check.
                 connection.execute("BEGIN IMMEDIATE")
                 columns = {
@@ -167,6 +215,10 @@ class Cache:
                 if "source_path" not in columns:
                     connection.execute(
                         "ALTER TABLE snapshots ADD COLUMN source_path TEXT"
+                    )
+                if "acquisition" not in columns:
+                    connection.execute(
+                        "ALTER TABLE snapshots ADD COLUMN acquisition TEXT"
                     )
                 connection.execute("COMMIT")
             return connection
@@ -206,14 +258,15 @@ class Cache:
 
     @_sqlite_errors
     def current(self, namespace_name: str) -> SnapshotMeta | None:
-        connection = self._connect()
+        if not self._path.exists():
+            return None
+        connection = self._connect_readonly()
         try:
+            columns = self._snapshot_columns(connection)
+            if columns is None:
+                return None
             row = connection.execute(
-                "SELECT namespace, capability, scope, source_kind, snapshot_id,"
-                " dataset_id, simulated, backend_complete, dataset_complete,"
-                " fetched_at, loaded_at, source_observed_from,"
-                " source_observed_to, row_count, source_path"
-                " FROM snapshots WHERE namespace = ?",
+                "SELECT " + columns + " FROM snapshots WHERE namespace = ?",
                 (namespace_name,),
             ).fetchone()
         finally:
@@ -224,7 +277,9 @@ class Cache:
 
     @_sqlite_errors
     def records(self, namespace_name: str) -> list[tuple[int, str]]:
-        connection = self._connect()
+        if not self._path.exists():
+            return []
+        connection = self._connect_readonly()
         try:
             rows = connection.execute(
                 "SELECT seqid, body FROM records WHERE namespace = ? ORDER BY seqid",
@@ -239,17 +294,23 @@ class Cache:
         self, namespace_name: str
     ) -> tuple[SnapshotMeta | None, list[tuple[int, str]]]:
         """One consistent point-in-time view: snapshot meta plus its records."""
-        connection = self._connect()
+        if not self._path.exists():
+            return None, []
+        connection = self._connect_readonly()
         try:
             connection.execute("BEGIN DEFERRED")
+            columns = self._snapshot_columns(connection)
+            if columns is None:
+                return None, []
             row = connection.execute(
-                "SELECT namespace, capability, scope, source_kind, snapshot_id,"
-                " dataset_id, simulated, backend_complete, dataset_complete,"
-                " fetched_at, loaded_at, source_observed_from,"
-                " source_observed_to, row_count, source_path"
-                " FROM snapshots WHERE namespace = ?",
+                "SELECT " + columns + " FROM snapshots WHERE namespace = ?",
                 (namespace_name,),
             ).fetchone()
+            records_exist = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE name = 'records'"
+            ).fetchone()
+            if records_exist is None and row is None:
+                return None, []
             rows = connection.execute(
                 "SELECT seqid, body FROM records WHERE namespace = ? ORDER BY seqid",
                 (namespace_name,),
@@ -284,6 +345,16 @@ class Cache:
                 connection.execute("DELETE FROM records WHERE namespace = ?", (name,))
                 connection.execute("DELETE FROM snapshots WHERE namespace = ?", (name,))
             for meta, records in writes:
+                if meta.acquisition is not None:
+                    evidence = AcquisitionEvidence.from_record(meta.acquisition)
+                    if (
+                        evidence.scope_complete != meta.backend_complete
+                        or evidence.dataset_complete != meta.dataset_complete
+                        or evidence.collected_total < meta.row_count
+                    ):
+                        raise CliError(
+                            "INVALID_RESPONSE", "acquisition metadata conflicts"
+                        )
                 connection.execute(
                     "DELETE FROM records WHERE namespace = ?", (meta.namespace,)
                 )
@@ -291,8 +362,12 @@ class Cache:
                     "DELETE FROM snapshots WHERE namespace = ?", (meta.namespace,)
                 )
                 connection.execute(
-                    "INSERT INTO snapshots VALUES"
-                    " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO snapshots (namespace, capability, scope,"
+                    " source_kind, snapshot_id, dataset_id, simulated,"
+                    " backend_complete, dataset_complete, fetched_at, loaded_at,"
+                    " source_observed_from, source_observed_to, row_count,"
+                    " source_path, acquisition) VALUES"
+                    " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         meta.namespace,
                         meta.capability,
@@ -309,6 +384,9 @@ class Cache:
                         meta.source_observed_to,
                         meta.row_count,
                         meta.source_path,
+                        canonical(meta.acquisition)
+                        if meta.acquisition is not None
+                        else None,
                     ),
                 )
                 connection.executemany(

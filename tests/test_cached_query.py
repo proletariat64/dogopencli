@@ -90,7 +90,10 @@ def test_exact_ttl_boundary_is_fresh(cached_scope):
     assert result.stale is False
 
 
-@pytest.mark.parametrize("mode", ["valid", "duplicate", "missing", "invalid"])
+@pytest.mark.parametrize(
+    "mode",
+    ["valid", "duplicate", "missing", "invalid", "malformed_json", "seqid_gap"],
+)
 def test_validated_snapshot_records(cached_scope, mode):
     """Read-time integrity uses real stored data and preserves domain failures."""
     import sqlite3
@@ -103,6 +106,12 @@ def test_validated_snapshot_records(cached_scope, mode):
             connection.execute("DELETE FROM records WHERE seqid = 2")
         elif mode == "invalid":
             connection.execute("UPDATE records SET body = 'null' WHERE seqid = 2")
+        elif mode == "malformed_json":
+            connection.execute(
+                "UPDATE records SET body = '{BROKEN-PRIVATE}' WHERE seqid = 2"
+            )
+        elif mode == "seqid_gap":
+            connection.execute("UPDATE records SET seqid = 3 WHERE seqid = 2")
 
     def validate(record):
         if not isinstance(record, dict):
@@ -119,5 +128,8 @@ def test_validated_snapshot_records(cached_scope, mode):
                 validate, lambda row: row["id"], coverage_error="invalid coverage"
             )
         assert caught.value.code == (
-            "INVALID_RESPONSE" if mode == "invalid" else "INCOMPLETE_RESULT"
+            "INVALID_RESPONSE"
+            if mode in ("invalid", "malformed_json")
+            else "INCOMPLETE_RESULT"
         )
+        assert "BROKEN-PRIVATE" not in caught.value.message

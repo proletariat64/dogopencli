@@ -68,8 +68,8 @@ def getting(run_cli, *flags):
     return run_cli(["collection", "sla", "configs", "get", *flags])
 
 
-def refresh(run_cli):
-    return run_cli(["refresh", "collection", "sla"])
+def refresh(run_cli, *flags):
+    return run_cli(["refresh", "collection", "sla", *flags])
 
 
 def seed(run_cli, setup):
@@ -158,7 +158,7 @@ def test_cache_miss_live_nonwriting_and_null_not_missing(run_cli, envelope, setu
         ({"resultDataList": [row(), row()], "totalCount": 2}, "INCOMPLETE_RESULT"),
         (
             {"resultDataList": [row(), row(endToEndSla=7)], "totalCount": 2},
-            "INCOMPLETE_RESULT",
+            "INVALID_RESPONSE",
         ),
         ({"resultDataList": [row(slaConfigId=" ")]}, "INVALID_RESPONSE"),
         ({"resultDataList": [row(slaConfigId=1)]}, "INVALID_RESPONSE"),
@@ -171,7 +171,11 @@ def test_list_rejects_incomplete_or_bad_data(
 ):
     old = seed(run_cli, setup)
     setup.state.business_script.append(page(**changes))
-    result = listing(run_cli, "--live") if live else refresh(run_cli)
+    result = (
+        listing(run_cli, "--live", "--require-complete")
+        if live
+        else refresh(run_cli, "--require-complete")
+    )
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == code
     assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
@@ -315,7 +319,9 @@ def test_freshness_and_incomplete_cache_requirements(run_cli, envelope, setup):
         assert query("--require-complete")[0] == 0
     with sqlite3.connect(setup.cache_path) as connection:
         # Synthetic incomplete metadata; production snapshots remain untouched.
-        connection.execute("UPDATE snapshots SET backend_complete = 0")
+        connection.execute(
+            "UPDATE snapshots SET backend_complete = 0, acquisition = NULL"
+        )
     for query in [
         lambda *flags: listing(run_cli, *flags),
         lambda *flags: getting(run_cli, "--id", "1", *flags),
