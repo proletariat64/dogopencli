@@ -25,7 +25,7 @@ from ..browser.cdp import (
 from ..browser.probe import is_login_landing
 from ..errors import AUTH_REQUIRED, INVALID_RESPONSE, REQUEST_NOT_ALLOWED, CliError
 from ..jsonutil import canonical
-from ..plugins import Capability
+from ..plugins import TransportCapability
 from . import OriginMetadata, QueryRequest, TransportResponse, validate_request
 
 QUERY_TIMEOUT_SECONDS = 60.0
@@ -46,7 +46,9 @@ class FetchFailed(Exception):
     """Network-level failure of the in-page fetch (timeout, reset, abort)."""
 
 
-def _fetch_expression(request: QueryRequest, timeout_seconds: float) -> str:
+def _fetch_expression(
+    request: QueryRequest, timeout_seconds: float, *, encoding: str = "json"
+) -> str:
     url = f"https://{request.host}{request.path}"
     payload = canonical(request.body)
     timeout_ms = int(timeout_seconds * 1000)
@@ -60,6 +62,17 @@ def _fetch_expression(request: QueryRequest, timeout_seconds: float) -> str:
         )
         options = (
             f'method: "{request.method}", credentials: "include", '
+            "signal: controller.signal"
+        )
+    elif encoding == "form":
+        # Verified form contract: scalar values url-encode into the request
+        # body; nested query VOs travel as JSON strings inside one field.
+        prepare = ""
+        target = f'"{url}?ctoken=" + encodeURIComponent(ctoken)'
+        options = (
+            f'method: "{request.method}", credentials: "include", '
+            'headers: {"Content-Type": "application/x-www-form-urlencoded"}, '
+            "body: new URLSearchParams(payload).toString(), "
             "signal: controller.signal"
         )
     else:
@@ -96,7 +109,7 @@ class CdpQueryTransport:
     def __init__(
         self,
         cdp: CdpTransport,
-        capability: Capability,
+        capability: TransportCapability,
         *,
         page_url: str,
         query_timeout: float = QUERY_TIMEOUT_SECONDS,
@@ -140,7 +153,11 @@ class CdpQueryTransport:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise FetchFailed("business query budget exhausted during session setup")
-        expression = _fetch_expression(request, min(self._query_timeout, remaining))
+        expression = _fetch_expression(
+            request,
+            min(self._query_timeout, remaining),
+            encoding=self._capability.contract.encoding,
+        )
         try:
             result = session.evaluate(expression, remaining)
         except CdpError as error:
@@ -170,7 +187,8 @@ class CdpQueryTransport:
             raise CliError(
                 AUTH_REQUIRED, "backend redirected to login; run dogopencli login"
             )
-        if result.get("redirected") is True:
+        redirected = result.get("redirected")
+        if isinstance(redirected, bool) and redirected:
             raise CliError(
                 INVALID_RESPONSE,
                 "business query redirected to an unverified destination",

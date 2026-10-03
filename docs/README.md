@@ -2,6 +2,10 @@
 
 ## 产品规格
 
+- [Liquidity v0.2.3 inquiry specification (GitHub Issue #76)](https://github.com/proletariat64/dogopencli/issues/76)：spec 从 v0.2.1 增加 0.0.2；依据新 cash/forecast probe 接受 8 项实施目标、保留 7 项延期、撤回 3 项 getter 设计。[新版完整命令树与本地规格](design/liquidity-v0.2.3.md)；[实施与 CLI UAT](research/general/2026-10-02-liquidity-spec76-implementation-uat.md)：8 项已实施放行：7 项完整 UAT，预测按 accounts 语义兼容已知后端缺陷；新全范围 UAT 20135/20129、跨页重复与 count 变化均保留非零失败/缓存保护。[后端报告与关联建议](research/general/2026-10-02-forecast-results-backend-count-bug.md)。
+
+- [Liquidity v0.2.1 inquiry specification (GitHub Issue #71)](https://github.com/proletariat64/dogopencli/issues/71): every business leaf has a kind; bounded live evidence, unresolved contracts and release gates. Verified inquiry slice implemented on the current source branch (#72); deferred leaves remain unsupported, and per-leaf production UAT/release are pending.
+
 - [v0.1.0 付款只读 CLI 规格（GitHub Issue #1）](https://github.com/proletariat64/dogopencli/issues/1)：已发布，标签 `ready-for-agent`；公开 CLI＋假 CDP 为 SIT，生产只读验收为 UAT。
 - [DI 风格渐进式 CLI 帮助（GitHub Issue #13）](https://github.com/proletariat64/dogopencli/issues/13)：计划与规格已发布，标签 `ready-for-agent`；无参数导航、JSON/text、完整命令目录及离线帮助验收，尚未实现。
 
@@ -25,7 +29,23 @@
 
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
+| General | [Liquidity v0.2.3 完整 CLI UAT](research/general/2026-10-03-liquidity-full-cli-uat.md) | 68 个可执行叶子的本轮 native live、独立 refresh、断开传输 offline 验收，以及 65 个延期叶子的非执行检查；[完整彩色地图](assets/general/2026-10-03-liquidity-full-cli-uat-roadmap.svg) |
+| General | [可按时间查询历史的运行数据源对照](research/general/2026-10-03-historical-runtime-source-comparison.md) | Forecast 十个历史日期查询证据；对照已执行命令的源端日期/时间过滤、运行数据类型与本地历史缓存边界 |
+| General | [采集兼容与完整性处理的整体架构研究](research/general/2026-10-03-acquisition-compatibility-architecture.md) | 统一结果证据、live/refresh 策略与退出码；保留域分页、VA 详情发布和 PTR 稳定校验；分步迁移与验收矩阵，尚未实施 |
 | General | [运营平台访问与通用发现](research/general/2026-09-08-platform-access.md) | CDP、登录、聚合应用结构、查询协议、只读约束与技术参考 |
+| General | [Liquidity v0.2.1 live probes](research/general/2026-10-01-liquidity-live-probes.md) | All 134 draft leaves audited; scoped timings, decoded payload sizes, sampled schemas, pagination defects, permission gaps and actual SQLite measurements |
+| General | [Liquidity inherited CLI UAT](research/general/2026-10-02-liquidity-inherited-cli-uat.md) | 60 个 inherited 叶子的累计验收：55 PASS、1 EMPTY、3 PARTIAL、1 BLOCKED；利率/决策历史修复通过，returns accrual 通过、cash 不完整，ledger 后端 999；holdings 采用用户已验证的 500 页宽，保留历史 UAT；附彩色地图 |
+| General | [Forecast results 后端收敛性缺陷](research/general/2026-10-02-forecast-results-backend-count-bug.md) | 历史 7504/7502；新 UAT 20135/20129、跨页重复与 count 变化；accounts 式兼容及关联排查建议，不宣称同根因 |
+| General | [Liquidity v0.2.3 实施与 UAT](research/general/2026-10-02-liquidity-spec76-implementation-uat.md) | 8 个契约实现、7 项 UAT 通过、3 个 getter 目录迁移；本地 CI 与 apex 复审通过；8 项放行（7 完整、1 后端兼容），缓存与源端完整性不混同 |
+| General | [Liquidity v0.2.3 投影字段证据](research/general/2026-10-02-liquidity-spec76-field-evidence.md) | 仅字段名及类型、独立 pool detail 嵌套白名单；可复现 describe 生成输入 |
+| General | [Cash / Forecast 业务 probe](research/general/2026-10-02-cash-forecast-business-probe.md) | 18延期叶子、57次只读请求；8项可进入实现，后端异常及语义/样本缺口分别记录，支撑spec v0.2.3 |
+| General | [账户原生详情后台异常](research/general/2026-10-02-cash-accounts-detail-backend-bug.md) | 原生View身份返回业务999，界面复现步骤与证据限制 |
+| General | [准确率跨页重复后台异常](research/general/2026-10-02-forecast-accuracy-pagination-backend-bug.md) | pageSize1000到达4419但唯一4416；Network只读复现及5000未测边界 |
+| General | [Liquidity UAT 执行记录](research/general/2026-10-01-liquidity-uat.md) | 6,328 CASE；原始失败 1,062 条，区分脚本误判、前置阻塞及实际异常；验收未通过 |
+| General | [银行账户列表后端数量异常](research/general/2026-10-01-cash-accounts-backend-count-bug.md) | count 3691、实际 3690；界面短页定位与单页 5000 复现证据 |
+| General | [Cash 与 Forecast 分页配置验证](research/general/2026-10-01-cash-forecast-page-sizes.md) | accounts 5000；waterlevels、intraday、adjustments 1000；cashflows 不带分页参数 |
+| General | [分页能力后续事项](research/general/2026-10-01-pagination-followups.md) | 大页失败后缩小分页待实现；各查询独立页宽已按后续要求配置 |
+| General | [FX 查询插件交接背景](research/general/2026-09-09-fx-handoff.md) | SIM 历史观察、FX 领域边界、查询插件候选范围与未验证事项；尚未实施 |
 | General | [DI 渐进式帮助参考](research/general/2026-09-12-cli-help-reference.md) | 无参数入口、JSON/text、逐层导航与 dogopencli 帮助差距 |
 | General | [CLI 帮助验收矩阵](research/general/2026-09-12-cli-help-acceptance-matrix.md) | 全部 20 条命令路径的验收规范、20 次探针 before 基线与 Task 4 覆盖清单 |
 | General | [收款成本全参数 UAT](research/general/2026-09-26-collection-cost-argument-uat.md) | 84 个 CLI 验收用例；全部选项、帮助/描述、边界与错误组合，区分生产查询和本地状态检查 |
@@ -52,6 +72,8 @@
 
 - [付款规则查询契约](research/payment/2026-09-27-payment-rules-contract.md)：四项独立采集、全部筛选、嵌套关联和证据边界。
 - [付款规则实施与验收](research/payment/2026-09-27-payment-rules-implementation-uat.md)：424 项生产／私有缓存断言、全部参数与合成失败覆盖。
+- [已发布 v0.1.13 付款规则 UAT](research/payment/2026-09-27-payment-rules-v0113-uat.md)：隔离安装的发布产物、424 项断言与缓存不变证明。
+- [Issues 52–59 发布验收状态](research/general/2026-09-27-issues-52-59-uat.md)：547 项成功断言、延期能力拒绝检查与历史阻塞的证据边界。
 - [付款流量规则阻塞](research/payment/2026-09-27-payment-flow-rule-blocker.md)：真实详情身份不一致的重复验证（#54）。
 - [付款 PTR 研究与 Graphify/wiki 交叉核验](research/payment/2026-09-27-payment-ptr-research.md)：七类查询对象、术语与状态纠正、候选命令及生产契约验证缺口；初始研究阶段浏览器不可用，后续证据见下方。
 - [付款 PTR 原生契约发现与实施阻塞](research/payment/2026-09-27-payment-ptr-contract-discovery.md)：七个列表接口及首屏结构已观察；后续导航 reset/timeout 阻止分页、详情及完整范围验证。
@@ -98,6 +120,12 @@
 - [ADR 0013: Account isolation](adr/0013-collection-account-isolation.md): independent source, verified envelope and whole-string filtering.
 
 - [ADR 0014：付款规则列表边界](adr/0014-payment-rule-list-boundaries.md)：完整首批采集、银存切换来源节点与关联筛选、flow 阻塞。
+
+- [ADR 0015: Peer domain plugins and shared auth](adr/0015-peer-domain-plugins-and-shared-auth.md): payment, collection and liquidity share core CDP/OAuth while declaring independent origins.
+- [ADR 0016: Liquidity list and detail caches](adr/0016-liquidity-independent-list-and-detail-caches.md): independent explicit acquisition; genuine native details and existing incomplete-result policy.
+- [ADR 0017: Liquidity retention cap](adr/0017-liquidity-one-million-record-retention.md): 1,000,000 records per leaf; oldest-first time-series eviction with warning and truthful retained coverage.
+
+- [ADR 0018: Liquidity capture store and retention implementation](adr/0018-liquidity-capture-store-and-retention.md): index/capture namespaces, snapshot/history/dated profiles and atomic eviction.
 
 ## 协作规范
 

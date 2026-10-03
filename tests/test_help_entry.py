@@ -37,6 +37,7 @@ def test_python_m_entry_returns_root_json() -> None:
         "payment",
         "refresh",
         "collection",
+        "liquidity",
         "describe",
         "auth",
         "login",

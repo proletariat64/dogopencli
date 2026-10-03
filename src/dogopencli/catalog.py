@@ -116,8 +116,8 @@ _REFRESH_SLA_NODE = BizNode(
 _GROUPS: dict[tuple[str, ...], BizNode] = {
     (): BizNode(
         (),
-        "Inquiry-only, read-only payment and collection operations queries; the default"
-        " reads the local cache.",
+        "Inquiry-only, read-only payment, collection and liquidity operations"
+        " queries; the default reads the local cache.",
         constraints=(
             "Business queries never modify production business configuration.",
         ),
@@ -223,6 +223,20 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
         ("refresh", "collection"),
         "Rebuild collection product caches.",
         next=("dogopencli help refresh collection cost",),
+    ),
+    ("liquidity",): BizNode(
+        ("liquidity",),
+        "Read-only liquidity inquiries: cash, forecast, operations, investment,"
+        " risk, rules, network, ledger, pricing and reference data. Every"
+        " business leaf declares one kind: runtimes, settings or reference.",
+        examples=("dogopencli liquidity investment holdings list",),
+        next=("dogopencli help liquidity cash",),
+    ),
+    ("refresh", "liquidity"): BizNode(
+        ("refresh", "liquidity"),
+        "Rebuild liquidity caches; list and per-object detail acquisition are"
+        " independent.",
+        next=("dogopencli help refresh liquidity investment",),
     ),
 }
 

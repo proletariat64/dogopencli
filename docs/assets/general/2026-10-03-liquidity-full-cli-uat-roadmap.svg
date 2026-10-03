@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="4144" viewBox="0 0 1800 4144">
+<title>Liquidity v0.2.3 full UAT: 133 design leaves, observed 2026-10-03</title>
+<desc>Full current results supersede the prior map; the original October 2 report remains historical.</desc>
+<rect width="100%" height="100%" fill="#fff"/>
+<g font-family="DejaVu Sans Mono,monospace" font-size="16">
+<text x="20" y="32" fill="#111827">Liquidity v0.2.3 | Full CLI UAT | observed 2026-10-03</text>
+<text x="20" y="59" fill="#374151">Updated original 2026-10-02 map; original 60-leaf report remains historical</text>
+<text x="20" y="86" fill="#111827">133 design leaves = 68 freshly attempted (46 lists + 22 details/history) + 65 deferred guards</text>
+<text x="20" y="113" fill="#111827">PASS: 62 | EMPTY: 1 | PARTIAL: 4 | BLOCKED: 1 | DEFERRED: 65</text>
+<text x="20" y="140" fill="#374151">Green complete 3-mode UAT | Yellow empty/available warning | Red blocked | Gray non-executing</text>
+<text x="20" y="167" fill="#a16207">PARTIAL: ordinary live may serve; incomplete refresh does not publish; offline can CACHE_MISS</text>
+<text x="20" y="194" fill="#374151">All observations use native read-only source and isolated local cache; production cache protected</text>
+<text x="20" y="221" fill="#111827">cash (PASS 8, PARTIAL 2, DEFERRED 6)</text>
+<text x="20" y="248" fill="#6b7280">  accounts get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="275" fill="#a16207">  accounts list | PARTIAL | live WARN 3690/3691 | warning retained; check refresh/offline</text>
+<text x="20" y="302" fill="#15803d">  balances list | PASS | live OK 12/12</text>
+<text x="20" y="329" fill="#a16207">  credit-lines list | PARTIAL | live WARN 83/84 | warning retained; check refresh/offline</text>
+<text x="20" y="356" fill="#6b7280">  credit-usage list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="383" fill="#15803d">  group-balances list | PASS | live OK 1/1</text>
+<text x="20" y="410" fill="#15803d">  groups list | PASS | live OK 1/1</text>
+<text x="20" y="437" fill="#6b7280">  pool-balances list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="464" fill="#15803d">  pools get | PASS | live OK 1; OK 1</text>
+<text x="20" y="491" fill="#15803d">  pools list | PASS | live OK 43/43</text>
+<text x="20" y="518" fill="#15803d">  statements end-of-day list | PASS | live OK 6/6; OK 0/0</text>
+<text x="20" y="545" fill="#15803d">  statements intraday list | PASS | live OK 5/5</text>
+<text x="20" y="572" fill="#6b7280">  wallet-balances list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="599" fill="#6b7280">  wallets get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="626" fill="#6b7280">  wallets list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="653" fill="#15803d">  waterlevels list | PASS | live OK 1/1</text>
+<text x="20" y="680" fill="#111827">forecast (PASS 2, PARTIAL 1, DEFERRED 1)</text>
+<text x="20" y="707" fill="#6b7280">  accuracy list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="734" fill="#15803d">  adjustments list | PASS | live OK 13/13</text>
+<text x="20" y="761" fill="#15803d">  cashflows list | PASS | live OK 1/1</text>
+<text x="20" y="788" fill="#a16207">  results list | PARTIAL | live OK 6/6; WARN 22273/22276 | warning retained; check refresh/offline</text>
+<text x="20" y="815" fill="#111827">investment (PASS 12, EMPTY 1, PARTIAL 1, DEFERRED 14)</text>
+<text x="20" y="842" fill="#6b7280">  benchmark-values list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="869" fill="#6b7280">  benchmarks get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="896" fill="#15803d">  benchmarks list | PASS | live OK 50/50</text>
+<text x="20" y="923" fill="#15803d">  compound-ledger get | PASS | live OK 1</text>
+<text x="20" y="950" fill="#15803d">  compound-ledger list | PASS | live OK 16/16</text>
+<text x="20" y="977" fill="#15803d">  holdings get | PASS | live OK 1</text>
+<text x="20" y="1004" fill="#15803d">  holdings list | PASS | live OK 1078/1078 | 500; date scope cache fix; independently rerun</text>
+<text x="20" y="1031" fill="#6b7280">  interest-rates get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1058" fill="#15803d">  interest-rates list | PASS | live OK 139/139</text>
+<text x="20" y="1085" fill="#6b7280">  investable-funds list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1112" fill="#6b7280">  offers list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1139" fill="#15803d">  products get | PASS | live OK 1</text>
+<text x="20" y="1166" fill="#a16207">  products history | EMPTY | live OK 1</text>
+<text x="20" y="1193" fill="#15803d">  products list | PASS | live OK 908/908</text>
+<text x="20" y="1220" fill="#6b7280">  quote-groups get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1247" fill="#6b7280">  quote-groups list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1274" fill="#6b7280">  quote-sessions list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1301" fill="#6b7280">  quotes get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1328" fill="#6b7280">  quotes list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1355" fill="#a16207">  returns list | PARTIAL | live OK 1232/1232; WARN 595/662 | warning retained; check refresh/offline</text>
+<text x="20" y="1382" fill="#6b7280">  rfqs get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1409" fill="#6b7280">  rfqs list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1436" fill="#15803d">  strategies get | PASS | live OK 1</text>
+<text x="20" y="1463" fill="#15803d">  strategies list | PASS | live OK 2/2</text>
+<text x="20" y="1490" fill="#6b7280">  strategy-results get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1517" fill="#6b7280">  strategy-results list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1544" fill="#15803d">  transactions get | PASS | live OK 1</text>
+<text x="20" y="1571" fill="#15803d">  transactions list | PASS | live OK 2241/2241</text>
+<text x="20" y="1598" fill="#111827">ledger (PASS 3, BLOCKED 1, DEFERRED 1)</text>
+<text x="20" y="1625" fill="#6b7280">  accounts get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1652" fill="#15803d">  accounts list | PASS | live OK 105/105; OK 2620/2620</text>
+<text x="20" y="1679" fill="#dc2626">  balances list | BLOCKED | live BUSINESS_QUERY_FAILED; BUSINESS_QUERY_FAILED | native 999 investigation remains blocked</text>
+<text x="20" y="1706" fill="#15803d">  customers get | PASS | live OK 1</text>
+<text x="20" y="1733" fill="#15803d">  customers list | PASS | live OK 8/8</text>
+<text x="20" y="1760" fill="#111827">network (PASS 4, DEFERRED 6)</text>
+<text x="20" y="1787" fill="#15803d">  account-capabilities get | PASS | live OK 1</text>
+<text x="20" y="1814" fill="#15803d">  account-capabilities list | PASS | live OK 29/29</text>
+<text x="20" y="1841" fill="#15803d">  bank-baselines get | PASS | live OK 1</text>
+<text x="20" y="1868" fill="#15803d">  bank-baselines list | PASS | live OK 3690/3690</text>
+<text x="20" y="1895" fill="#6b7280">  product-baselines get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1922" fill="#6b7280">  product-baselines list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1949" fill="#6b7280">  realtime get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="1976" fill="#6b7280">  realtime list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2003" fill="#6b7280">  routes get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2030" fill="#6b7280">  routes list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2057" fill="#111827">operations (PASS 8, DEFERRED 10)</text>
+<text x="20" y="2084" fill="#6b7280">  asset-trades get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2111" fill="#15803d">  asset-trades list | PASS | live OK 2/2</text>
+<text x="20" y="2138" fill="#15803d">  decisions get | PASS | live OK 1</text>
+<text x="20" y="2165" fill="#15803d">  decisions history | PASS | live OK 1</text>
+<text x="20" y="2192" fill="#6b7280">  decisions list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2219" fill="#6b7280">  demands get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2246" fill="#6b7280">  demands list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2273" fill="#6b7280">  executions get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2300" fill="#6b7280">  executions list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2327" fill="#15803d">  forwards get | PASS | live OK 1</text>
+<text x="20" y="2354" fill="#15803d">  forwards list | PASS | live OK 17/17</text>
+<text x="20" y="2381" fill="#15803d">  prefunds get | PASS | live OK 1</text>
+<text x="20" y="2408" fill="#15803d">  prefunds list | PASS | live OK 70/70; OK 22/22</text>
+<text x="20" y="2435" fill="#6b7280">  rule-status list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2462" fill="#6b7280">  swaps get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2489" fill="#6b7280">  swaps list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2516" fill="#15803d">  transfers get | PASS | live OK 1</text>
+<text x="20" y="2543" fill="#6b7280">  transfers list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2570" fill="#111827">pricing (PASS 4, DEFERRED 8)</text>
+<text x="20" y="2597" fill="#6b7280">  bills get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2624" fill="#6b7280">  bills list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2651" fill="#6b7280">  client-prices get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2678" fill="#15803d">  client-prices list | PASS | live OK 39/39</text>
+<text x="20" y="2705" fill="#15803d">  cost-prices list | PASS | live OK 800/800</text>
+<text x="20" y="2732" fill="#15803d">  factor-values list | PASS | live OK 1431/1431</text>
+<text x="20" y="2759" fill="#6b7280">  factors get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2786" fill="#6b7280">  factors list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2813" fill="#6b7280">  strategies get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2840" fill="#15803d">  strategies list | PASS | live OK 78/78</text>
+<text x="20" y="2867" fill="#6b7280">  valuations get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2894" fill="#6b7280">  valuations list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2921" fill="#111827">reference (PASS 4, DEFERRED 4)</text>
+<text x="20" y="2948" fill="#6b7280">  areas list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="2975" fill="#6b7280">  banks get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3002" fill="#15803d">  banks list | PASS | live OK 928/928</text>
+<text x="20" y="3029" fill="#15803d">  business-lines list | PASS | live OK 335/335</text>
+<text x="20" y="3056" fill="#6b7280">  calendars get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3083" fill="#15803d">  calendars list | PASS | live OK 270/270</text>
+<text x="20" y="3110" fill="#6b7280">  entities get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3137" fill="#15803d">  entities list | PASS | live OK 71/71</text>
+<text x="20" y="3164" fill="#111827">risk (PASS 4, DEFERRED 6)</text>
+<text x="20" y="3191" fill="#6b7280">  account-capacity list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3218" fill="#6b7280">  anomalies get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3245" fill="#6b7280">  anomalies list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3272" fill="#6b7280">  events get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3299" fill="#6b7280">  events list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3326" fill="#15803d">  metrics list | PASS | live OK 96/96; OK 92/92</text>
+<text x="20" y="3353" fill="#15803d">  sla get | PASS | live OK 1</text>
+<text x="20" y="3380" fill="#6b7280">  sla list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3407" fill="#15803d">  thresholds get | PASS | live OK 1</text>
+<text x="20" y="3434" fill="#15803d">  thresholds list | PASS | live OK 21/21</text>
+<text x="20" y="3461" fill="#111827">rules (PASS 13, DEFERRED 9)</text>
+<text x="20" y="3488" fill="#6b7280">  action-mapping get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3515" fill="#15803d">  action-mapping list | PASS | live OK 225/225</text>
+<text x="20" y="3542" fill="#6b7280">  forecast get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3569" fill="#15803d">  forecast list | PASS | live OK 4/4</text>
+<text x="20" y="3596" fill="#6b7280">  funding get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3623" fill="#15803d">  funding list | PASS | live OK 123/123</text>
+<text x="20" y="3650" fill="#6b7280">  fx-settlement get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3677" fill="#15803d">  fx-settlement list | PASS | live OK 1071/1071</text>
+<text x="20" y="3704" fill="#6b7280">  monitoring get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3731" fill="#6b7280">  monitoring list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3758" fill="#15803d">  notification get | PASS | live OK 1</text>
+<text x="20" y="3785" fill="#15803d">  notification list | PASS | live OK 17/17</text>
+<text x="20" y="3812" fill="#15803d">  operation get | PASS | live OK 1</text>
+<text x="20" y="3839" fill="#15803d">  operation list | PASS | live OK 235/235</text>
+<text x="20" y="3866" fill="#15803d">  realtime get | PASS | live OK 1</text>
+<text x="20" y="3893" fill="#15803d">  realtime list | PASS | live OK 15/15</text>
+<text x="20" y="3920" fill="#15803d">  transfer get | PASS | live OK 1</text>
+<text x="20" y="3947" fill="#6b7280">  transfer list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="3974" fill="#6b7280">  treasury-transfer get | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="4001" fill="#6b7280">  treasury-transfer list | DEFERRED | help + disconnected refusal PASS; no source execution</text>
+<text x="20" y="4028" fill="#15803d">  waterlevel get | PASS | live OK 1</text>
+<text x="20" y="4055" fill="#15803d">  waterlevel list | PASS | live OK 533/533</text>
+<text x="20" y="4082" fill="#374151">Prior 10 historical forecast dates are separate evidence, excluded from fresh UAT counts</text>
+<text x="20" y="4109" fill="#374151">Selected genuine scopes only. Empty does not prove universal absence; partial does not prove completeness.</text>
+</g>
+</svg>

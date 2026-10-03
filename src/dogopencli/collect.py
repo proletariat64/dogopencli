@@ -33,7 +33,7 @@ from .errors import (
     CliError,
 )
 from .jsonutil import canonical
-from .plugins import Capability
+from .plugins import Capability, TransportCapability
 from .transport import QueryRequest, TransportResponse, validate_request
 from .transport.cdp import FetchFailed
 
@@ -270,7 +270,7 @@ def execute_before_deadline(transport: Any, request: QueryRequest, deadline: flo
 
 
 def execute_bounded(
-    capability: Capability,
+    capability: TransportCapability,
     transport: Any,
     body: dict[str, Any],
     deadline: float | None = None,

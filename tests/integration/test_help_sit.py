@@ -17,6 +17,7 @@ ROOT_CHILDREN = [
     "payment",
     "refresh",
     "collection",
+    "liquidity",
     "describe",
     "auth",
     "login",
@@ -57,7 +58,7 @@ GROUP_CHILDREN = {
     ("payment", "cost"): ["list"],
     ("payment", "sla"): ["baselines"],
     ("payment", "sla", "baselines"): ["list", "get"],
-    ("refresh",): ["payment", "collection"],
+    ("refresh",): ["payment", "collection", "liquidity"],
     ("refresh", "payment"): ["ptr", "rules", "channel", "cost", "sla"],
     ("refresh", "payment", "ptr"): ["cases", "orders"],
     ("collection",): [

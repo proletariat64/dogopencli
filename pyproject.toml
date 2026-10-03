@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dogopencli"
-version = "0.1.15"
-description = "Inquiry-only CLI for payment and collection product operations"
+version = "0.2.3"
+description = "Inquiry-only CLI for payment, collection and liquidity operations"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -41,3 +41,5 @@ select = ["E", "F", "I", "UP", "B"]
 "tests/integration/channel_pages_probe.py" = ["E501"]
 "tests/test_doc_guard.py" = ["E501"]
 "tests/test_prepare_channel_snapshot.py" = ["E741"]
+# Generated sampled-field evidence: native field names exceed the limit.
+"src/dogopencli/plugins/liquidity/fields.py" = ["E501"]

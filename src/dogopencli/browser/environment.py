@@ -19,11 +19,20 @@ from .errors import CONFIG_INVALID, AuthError
 try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10
-    import tomli as tomllib
+    import tomli as tomllib  # type: ignore[import-not-found]
 
 PAYMENT_STARTUP_URL = (
     "https://ifundcontrol.alipay.com/productOperation/paymentProductManagement/"
 )
+
+# Verified liquidity production entry (issue #71, observed 2026-10-01). The
+# liquidity plugin declares its own origin; sharing the core never assumes
+# the payment base URL applies to liquidity (ADR 0015).
+LIQUIDITY_STARTUP_URL = "https://iliquidity.alipay.com/GUAPW3SG/menu/PortfolioMgmt"
+LIQUIDITY_ORIGIN = "https://iliquidity.alipay.com"
+
+#: Selectable auth-check domains; each verdict names the domain checked.
+STARTUP_URLS = {"payment": PAYMENT_STARTUP_URL, "liquidity": LIQUIDITY_STARTUP_URL}
 
 DEFAULT_CDP_URL = "http://127.0.0.1:9222"
 DEFAULT_CHROME_BIN = "google-chrome"
