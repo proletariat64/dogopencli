@@ -2014,7 +2014,13 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("investment", "investable-funds", "list"),
         RUNTIMES,
         "empty-scope",
-        f"Investable funds: {_EMPTY}.",
+        "Spec #82 investable funds: the native JSON list inquiry"
+        " /queryInvestableFundList.json is known; five bounded report/range"
+        " probes returned zero rows. Successful empty scopes"
+        " do not establish a nonempty record schema, unique identity, amount"
+        " and currency semantics, report/forecast date meaning, or complete"
+        " pagination. Standalone production UAT has not passed; list, live"
+        " acquisition and refresh remain unavailable.",
     ),
     DeferredLeaf(
         ("investment", "interest-rates", "get"),
