@@ -14,6 +14,7 @@ from ...helpspec import BizNode
 from . import spec
 from .fields import SAMPLED_FIELDS, VARIANT_SAMPLED_FIELDS
 from .leaves import DEFERRED_BY_PATH, DETAIL_LEAVES
+from .operations_batch import SWAP_ORDERS
 
 
 def _field_schema(fields: dict[str, str]) -> dict[str, Any]:
@@ -110,7 +111,9 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             **_source_guide(
                 capability,
                 contract,
-                "2026-10-02" if variant.schema_version else "2026-10-01",
+                "2026-10-03"
+                if variant.name == SWAP_ORDERS.name
+                else ("2026-10-02" if variant.schema_version else "2026-10-01"),
             ),
             "projection": variant.projection or None,
             "schema_version": variant.schema_version or None,

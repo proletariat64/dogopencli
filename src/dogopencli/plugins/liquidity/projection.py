@@ -19,6 +19,7 @@ cashPoolMemberId), when present, must match the parent id.
 
 import re
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -686,6 +687,54 @@ def _project_forecast_results(row: Any) -> dict[str, Any]:
     return _pick(record, _FORECAST_FIELDS)
 
 
+def _project_swap_orders(row: Any) -> dict[str, Any]:
+    """Preserve native swap records and precision, validating observed fields."""
+    record = _require_row(row, "swap_orders")
+    deal_id = record.get("dealId")
+    if not isinstance(deal_id, str) or not deal_id.strip():
+        raise _invalid("swap_orders.dealId: native identity is a nonempty string")
+    amount_fields = (
+        "nearLegCreditAmount",
+        "nearLegDebitAmount",
+        "farLegCreditAmount",
+        "farLegDebitAmount",
+        "nearLegFxRate",
+        "farLegFxRate",
+        "expectNearLegFxRate",
+        "expectFarLegFxRate",
+    )
+    for field in amount_fields:
+        value = record.get(field)
+        if value is not None and not isinstance(value, str):
+            raise _invalid(f"swap_orders.{field}: expected native decimal string")
+    _validate_amounts(record, amount_fields, "swap_orders")
+    for field in ("nearLegValueDate", "farLegValueDate"):
+        value = record.get(field)
+        if value is None or value == "":
+            continue
+        try:
+            if (
+                not isinstance(value, str)
+                or len(value) != 8
+                or not value.isascii()
+                or not value.isdigit()
+            ):
+                raise ValueError
+            datetime.strptime(value, "%Y%m%d")
+        except ValueError as error:
+            raise _invalid(f"swap_orders.{field}: invalid YYYYMMDD") from error
+    for field in ("gmtCreate", "gmtModified", "gmtSend", "gmtReturn", "nodeNum"):
+        value = record.get(field)
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int)
+        ):
+            raise _invalid(f"swap_orders.{field}: invalid native integer")
+    value = record.get("needReview")
+    if value is not None and not isinstance(value, bool):
+        raise _invalid("swap_orders.needReview: invalid native boolean")
+    return record
+
+
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "groups_settings": _project_groups_settings,
     "group_balances": _project_group_balances,
@@ -694,6 +743,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "balances": _project_balances,
     "eod": _project_eod,
     "forecast_results": _project_forecast_results,
+    "swap_orders": _project_swap_orders,
 }
 
 
