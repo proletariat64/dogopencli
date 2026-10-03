@@ -28,15 +28,17 @@ def snapshot_setup(tmp_path, monkeypatch):
     return path, config
 
 
-def publish(path, capability, scope="scope", *, count=2, complete=True, age=0):
+def publish(
+    path, capability, scope="scope", *, count=2, complete=True, age=0, source="cdp"
+):
     acquired = datetime.now(timezone.utc) - timedelta(hours=age)
     timestamp = acquired.isoformat()
-    name = namespace(capability, scope, "cdp")
+    name = namespace(capability, scope, source)
     meta = SnapshotMeta(
         namespace=name,
         capability=capability,
         scope=scope,
-        source_kind="cdp",
+        source_kind=source,
         snapshot_id="PRIVATE-SNAPSHOT-ID",
         dataset_id=None,
         simulated=False,
@@ -238,7 +240,61 @@ def test_human_formats_use_same_counts_status_and_time(run_cli, snapshot_setup):
         )
         assert code == 0, err
         assert "supported" in out
+        assert "dogopencli payment cost list" in out
         assert "complete" in out and "fresh" in out
         assert "7" in out
         assert timestamp in out
         assert "PRIVATE-" not in out + err
+
+
+def test_snapshot_source_preserves_dataset_and_source_quality(run_cli, snapshot_setup):
+    path, _ = snapshot_setup
+    _, acquired = publish(
+        path,
+        "payment.channel.list",
+        "EXTERNAL",
+        count=3,
+        complete=False,
+        age=96,
+        source="snapshot",
+    )
+    code, result, err = report(run_cli, "payment", "channel", "list")
+    assert code == 0, err
+    leaf = result["tree"]
+    assert leaf["updated"] == acquired
+    capture = leaf["cache"]["captures"][0]
+    assert capture["variant"] == "snapshot"
+    assert capture["source_complete"] is False
+    assert capture["dataset_complete"] is True
+    assert capture["complete"] is False
+    assert capture["freshness"] == "stale"
+
+
+def test_liquidity_return_routes_are_distinct_cache_variants(run_cli, snapshot_setup):
+    from dogopencli.plugins.liquidity import leaves as declared
+    from dogopencli.plugins.liquidity import store
+    from dogopencli.plugins.liquidity.capability import encode_scope
+
+    path, _ = snapshot_setup
+    now = datetime.now(timezone.utc).isoformat()
+    for basis, specification in (
+        ("accrual", declared.INVESTMENT_RETURNS_ACCRUAL),
+        ("cash", declared.INVESTMENT_RETURNS_CASH),
+    ):
+        plan = store.plan_capture_publish(
+            Cache(path),
+            specification,
+            encode_scope({"basis": basis}),
+            ("20261001", "20261001"),
+            [],
+            0,
+            now,
+            now,
+        )
+        store.commit_plan(Cache(path), specification.name, plan, now)
+    code, result, err = report(run_cli, "liquidity", "investment", "returns", "list")
+    assert code == 0, err
+    assert result["tree"]["rows"] == 0
+    captures = result["tree"]["cache"]["captures"]
+    assert len(captures) == 2
+    assert {c["contract_variant"] for c in captures} == {"accrual", "cash"}
