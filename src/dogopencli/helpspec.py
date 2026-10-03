@@ -108,6 +108,9 @@ class BizNode:
     next: tuple[str, ...] = ()
     # Execution binding in cli.py; kept static so help needs no runtime setup.
     handler: str | None = None
+    # Optional explicit cache owner for shared refresh controls registered
+    # outside a domain plugin. This is an internal discovery association.
+    cache_capability: str | None = None
 
 
 # Shared query options (declared once, reused by every query leaf).
