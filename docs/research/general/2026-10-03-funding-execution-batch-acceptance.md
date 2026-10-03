@@ -117,6 +117,12 @@ accepted. The login recovery wait expired after 600 seconds without SSO completi
 the subsequent independent auth check still reported `auth_required` and a login
 redirect. A headed Chrome remains available for completing that authentication.
 
+A subsequent login attempt reopened company SSO and explicitly switched Chrome
+to headed mode (PID `677330`); it is waiting for the human SSO step. Read-only
+CDP 9222 `/json/version` was reachable (Chrome `148.0.7778.96`, protocol `1.3`);
+portal authorization remains unverified, the latest auth check before this retry
+was still `auth_required`, and no new production UAT occurred.
+
 Separately, the corrected **11 offline prerequisites passed 11/11** against the
 integrated implementation at `8cb55d2`, using the private harness and process-only
 candidate catalog. The eight missing, one-sided and reversed scope cases for
