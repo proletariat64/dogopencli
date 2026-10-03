@@ -255,6 +255,16 @@ def get_description(node: BizNode) -> dict[str, Any]:
     return _DESCRIPTIONS[node.path](node)
 
 
+def cache_bindings() -> dict[tuple[str, ...], NamedCapability]:
+    """Discover inquiry/refresh ownership from the installed registrations."""
+    return {
+        node.path: _REGISTRY[name]
+        for declarations in (_COMMANDS, _REFRESH_COMMANDS)
+        for name, nodes in declarations.items()
+        for node in nodes
+    }
+
+
 def get_capability(name: str) -> Capability:
     """Full acquisition capability; only valid for complete-list plugins."""
     return cast(Capability, _REGISTRY[name])

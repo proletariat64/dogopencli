@@ -1596,6 +1596,12 @@ def cmd_liquidity_unsupported(args: argparse.Namespace) -> int:
     return run_unsupported(args)
 
 
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    from .snapshot import main as snapshot_main
+
+    return snapshot_main(["--format", args.format])
+
+
 def cmd_describe(args: argparse.Namespace) -> int:
     from .describe import describe, render_text
 
@@ -1670,6 +1676,10 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
 def main(argv: list[str] | None = None) -> int:
     values = list(sys.argv[1:] if argv is None else argv)
     word, index = leading_command(values)
+    if word == "snapshot" and not any(token in ("--help", "-h") for token in values):
+        from .snapshot import main as snapshot_main
+
+        return snapshot_main(values[:index] + values[index + 1 :])
     if word == "help":
         return help_main(values[:index] + values[index + 1 :])
     if word in AUTH_COMMANDS:
