@@ -210,6 +210,16 @@ def capture(
         ):
             acquired = entry.reported_total
         if evidence is not None:
+            if (
+                meta.acquisition != evidence.record()
+                or meta.backend_complete != evidence.scope_complete
+                or meta.dataset_complete != evidence.dataset_complete
+                or (
+                    entry.profile == liquidity_spec.PROFILE_SNAPSHOT
+                    and entry.row_count != evidence.collected_total
+                )
+            ):
+                raise ValueError("capture acquisition evidence mismatch")
             source_complete = evidence.scope_complete
             dataset_complete = evidence.dataset_complete
             acquired = evidence.collected_total
@@ -239,18 +249,12 @@ def capture(
             meta.snapshot_id != entry.snapshot_id
             or meta.scope != entry.scope
             or count != entry.row_count
+            or count != meta.row_count
             or meta.source_kind != "cdp"
             or meta.simulated
             or meta.fetched_at != entry.fetched_at
             or entry.source_origin not in (None, f"https://{liquidity_spec.HOST}")
             or entry.tenant not in (None, liquidity_spec.TENANT)
-            or (
-                entry.acquisition is not None
-                and (
-                    entry.acquisition.scope_complete != meta.backend_complete
-                    or entry.acquisition.dataset_complete != meta.dataset_complete
-                )
-            )
         ):
             raise ValueError("capture generation mismatch")
     elif not detail and count != meta.row_count:

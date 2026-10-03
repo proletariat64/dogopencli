@@ -10,6 +10,7 @@ from threading import Thread
 import pytest
 
 from dogopencli.cache import Cache, SnapshotMeta, namespace
+from dogopencli.errors import CliError
 from dogopencli.jsonutil import canonical
 from dogopencli.plugins.collection.va_rule import COLLECTION_VA_RULES
 from dogopencli.plugins.liquidity import details, leaves, store
@@ -279,3 +280,54 @@ def test_snapshot_uses_one_sqlite_view_during_atomic_capture_publication(
     assert leaf["cache"]["captures"][0]["rows"] == first.capture_meta.row_count
     after, _ = snapshot(run_cli, "liquidity", "cash", "waterlevels", "list")
     assert (after["rows"], after["updated"]) == (4, new)
+
+
+@pytest.mark.parametrize("mismatch", ["evidence", "snapshot_count"])
+def test_snapshot_rejects_inconsistent_published_acquisition(
+    domain_cache, run_cli, mismatch
+):
+    # History may retain fewer records than it acquired, but its index and
+    # capture must still publish identical evidence. Snapshot profiles cannot
+    # trim the acquisition even when both evidence records agree.
+    spec = leaves.CASH_WATERLEVELS
+    if mismatch == "snapshot_count":
+        spec = next(
+            leaf.variants[0]
+            for leaf in leaves.LIST_LEAVES.values()
+            if leaf.variants[0].profile == "snapshot" and len(leaf.variants) == 1
+        )
+    at = datetime.now(timezone.utc).isoformat()
+    plan = publish_capture(domain_cache, spec, [{"aliasName": "private-alias"}], at)
+    altered = AcquisitionEvidence.for_collection(
+        complete=True, reported_total=2, collected_total=2, has_identity=True
+    ).record()
+    with sqlite3.connect(domain_cache._path) as connection:
+        index_name = store.index_namespace(spec.name)
+        seqid, body = connection.execute(
+            "SELECT seqid, body FROM records WHERE namespace = ?"
+            " AND json_extract(body, '$.type') = 'capture'",
+            (index_name,),
+        ).fetchone()
+        record = json.loads(body)
+        record["acquisition"] = altered
+        connection.execute(
+            "UPDATE records SET body = ? WHERE namespace = ? AND seqid = ?",
+            (canonical(record), index_name, seqid),
+        )
+        if mismatch == "snapshot_count":
+            connection.execute(
+                "UPDATE snapshots SET acquisition = ? WHERE namespace = ?",
+                (canonical(altered), plan.capture_meta.namespace),
+            )
+    entry = store.read_index(domain_cache, spec.name).captures[0]
+    with pytest.raises(CliError, match="acquisition"):
+        store.read_capture(domain_cache, entry)
+    code, out, err = run_cli(
+        ["snapshot", "liquidity", *spec.path, "list", "--format", "json"]
+    )
+    report = json.loads(out)
+    assert code == 1
+    assert report["inspection_complete"] is False
+    assert report["tree"]["cache"]["status"] == "read_error"
+    assert report["tree"]["rows"] is None
+    assert "private-alias" not in out + err
