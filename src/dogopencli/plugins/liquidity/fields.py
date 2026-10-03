@@ -6,6 +6,9 @@ Samples are not
 complete schemas, validation assertions, or nullability guarantees.
 """
 
+from .decision_list import DECISIONS
+from .decision_list import RELEASED as DECISIONS_RELEASED
+from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
@@ -3313,3 +3316,7 @@ SAMPLED_FIELDS.update(
         if name in OPERATIONS_RELEASED
     }
 )
+
+CANDIDATE_SAMPLED_FIELDS[DECISIONS.name] = DECISION_FIELDS
+if DECISIONS.name in DECISIONS_RELEASED:
+    SAMPLED_FIELDS[DECISIONS.name] = DECISION_FIELDS

@@ -46,6 +46,8 @@ from .cash_forecast import (
     UAT_PASSED,
     WITHDRAWN_GETTERS,
 )
+from .decision_list import DECISIONS, validate_decision_query
+from .decision_list import RELEASED as DECISIONS_RELEASED
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .spec import (
@@ -2344,6 +2346,12 @@ _TICKET_DEFERRED: tuple[DeferredLeaf, ...] = (
     ),
 )
 
+if DECISIONS.name in DECISIONS_RELEASED:
+    LIST_SPECS += (DECISIONS,)
+    _TICKET_DEFERRED = tuple(
+        item for item in _TICKET_DEFERRED if item.path != (*DECISIONS.path, "list")
+    )
+
 # Spec #82 swap declaration stays non-executing until its own UAT/CI gate.
 if SWAP_ORDERS.name in OPERATIONS_RELEASED:
     LIST_SPECS += (SWAP_ORDERS,)
@@ -2474,6 +2482,8 @@ class ListLeaf:
             )
         variant = candidates[0]
         request_values, window = scope_values(variant.scope_options, provided)
+        if variant.projection == "decision_reports":
+            validate_decision_query(request_values)
         if variant.projection == "swap_orders":
             validate_swap_query(request_values)
         window_fields = {
