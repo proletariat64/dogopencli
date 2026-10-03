@@ -1098,3 +1098,76 @@ def test_partial_day_rows_do_not_enter_restored_complete_result(
     code, out, err = run_cli([*query, "--require-fresh"])
     assert code == 0, err
     assert parse(out)["data"] == refreshed_rows
+
+
+@pytest.mark.parametrize("scenario", ["new", "existing", "empty"])
+def test_eviction_keeps_newer_complete_day_readable_offline(
+    setup, run_cli, monkeypatch, scenario
+):
+    from functools import partial
+
+    from dogopencli.plugins.liquidity import store as capture_store
+    from dogopencli.plugins.liquidity.common import now
+
+    older_at = (now() - timedelta(hours=100)).isoformat()
+    newer_at = now().isoformat()
+    old_rows = [
+        _returns_row("T1", "20260929", "OLD1"),
+        _returns_row("T2", "20260929", "OLD2"),
+    ]
+    new_rows = (
+        []
+        if scenario == "empty"
+        else [
+            _returns_row("T1", "20260929", "NEW1"),
+            _returns_row("T2", "20260929", "NEW2"),
+        ]
+    )
+    _seed_returns_captures(
+        setup,
+        [(("20260928", "20260930"), old_rows, older_at)],
+    )
+    original_publish = capture_store.plan_capture_publish
+    cap = len(old_rows) + len(new_rows) - 1
+    if scenario != "existing":
+        monkeypatch.setattr(
+            capture_store, "plan_capture_publish", partial(original_publish, cap=cap)
+        )
+    _seed_returns_captures(setup, [(("20260929", "20260929"), new_rows, newer_at)])
+    if scenario == "existing":
+        monkeypatch.setattr(
+            capture_store,
+            "plan_capture_publish",
+            partial(original_publish, cap=cap + 1),
+        )
+        _seed_returns_captures(
+            setup,
+            [
+                (
+                    ("20261001", "20261001"),
+                    [_returns_row("T3", "20261001", "OTHER")],
+                    newer_at,
+                )
+            ],
+        )
+
+    def disconnected(*args, **kwargs):
+        raise AssertionError("offline query opened browser transport")
+
+    cdp.set_transport_factory(disconnected)
+    query = [
+        *RETURNS_QUERY,
+        "--from-date",
+        "20260929",
+        "--to-date",
+        "20260929",
+        "--require-complete",
+        "--require-fresh",
+    ]
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    envelope = parse(out)
+    assert envelope["data"] == new_rows
+    assert envelope["meta"]["complete"] is True
+    assert envelope["meta"]["stale"] is False
+    assert setup.state.transports == []

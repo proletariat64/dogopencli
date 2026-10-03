@@ -214,17 +214,9 @@ def _index_snapshot(
     data: IndexData,
     loaded_at: str,
 ) -> tuple[SnapshotMeta, list[tuple[int, str]]]:
-    records: list[dict[str, Any]] = [
-        entry.record()
-        for entry in sorted(
-            data.captures,
-            key=lambda entry: (
-                entry.window_to or "",
-                entry.fetched_at,
-                entry.namespace,
-            ),
-        )
-    ]
+    # Keep publication order across reloads so equal acquisition timestamps
+    # still distinguish a later complete capture from older retained evidence.
+    records: list[dict[str, Any]] = [entry.record() for entry in data.captures]
     records.extend(data.evictions[-8:])
     meta = SnapshotMeta(
         namespace=index_namespace(capability),
@@ -584,20 +576,28 @@ def plan_capture_publish(
         survivors.append(trimmed_entry)
         evicted.append(_eviction_record(entry, len(lost), partial=True))
     if profile == spec.PROFILE_DATED:
-        # A record lost from one capture is not recovered by another capture's
-        # older or different record set. Invalidate overlapping coverage in
-        # the same scope atomically; a complete refresh can restore it later.
-        lost_days: dict[str, set[str]] = {}
+        # Older captures cannot repair a newer capture's lost day, but a newer
+        # complete acquisition can. Publication order breaks fetched_at ties.
+        generations = {
+            entry.namespace: (entry.fetched_at, index)
+            for index, entry in enumerate(entries)
+        }
+        lost_days: dict[str, dict[str, tuple[str, int]]] = {}
         scopes = {entry.namespace: entry.scope for entry in entries}
         for item in evicted_records:
-            lost_days.setdefault(scopes[item.namespace], set()).add(item.series)
+            scope_days = lost_days.setdefault(scopes[item.namespace], {})
+            generation = generations[item.namespace]
+            previous = scope_days.get(item.series)
+            if previous is None or generation > previous:
+                scope_days[item.series] = generation
         for index, entry in enumerate(survivors):
             affected = [
                 day
-                for day in lost_days.get(entry.scope, ())
+                for day, lost_generation in lost_days.get(entry.scope, {}).items()
                 if entry.window_from is not None
                 and entry.window_to is not None
                 and entry.window_from <= day <= entry.window_to
+                and generations[entry.namespace] <= lost_generation
             ]
             if affected:
                 survivors[index] = replace(

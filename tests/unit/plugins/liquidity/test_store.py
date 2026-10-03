@@ -458,6 +458,44 @@ def test_eviction_prefers_the_newer_correction_of_one_record(tmp_path):
     assert [row["amount"] for row in rows] == ["NEW"]
 
 
+@pytest.mark.parametrize("empty_newer", [False, True])
+@pytest.mark.parametrize("later_eviction", [False, True])
+@pytest.mark.parametrize("same_fetch_time", [False, True])
+def test_eviction_preserves_newer_complete_day(
+    tmp_path, empty_newer, later_eviction, same_fetch_time
+):
+    store = Cache(tmp_path / "cache.sqlite3")
+    older_rows = [holding(i, "20260929") for i in (1, 2)]
+    newer_rows = [] if empty_newer else [{**row, "amount": "NEW"} for row in older_rows]
+    publish_dated(store, ("20260928", "20260930"), older_rows, T1)
+    fetched = T1 if same_fetch_time else T2
+    cap = len(older_rows) + len(newer_rows) - 1
+    publish_dated(
+        store,
+        ("20260929", "20260929"),
+        newer_rows,
+        fetched,
+        cap=spec_mod.RETENTION_CAP if later_eviction else cap,
+    )
+    if later_eviction:
+        publish_dated(
+            store,
+            ("20261001", "20261001"),
+            [holding(3, "20261001")],
+            T3,
+            cap=cap + 1,
+        )
+    index = capture_store.read_index(store, INVESTMENT_HOLDINGS.name)
+    older = next(e for e in index.captures if e.window_from == "20260928")
+    newer = next(e for e in index.captures if e.window_from == "20260929")
+    assert older.missing_days == ("20260929",)
+    assert newer.missing_days == ()
+    assert capture_store.read_capture(store, newer) == newer_rows
+    assert capture_store.select_captures(
+        index, INVESTMENT_HOLDINGS, "", ("20260929", "20260929")
+    )[1]
+
+
 def test_detail_key_canonicalizes_integer_identities():
     from dogopencli.plugins.liquidity.leaves import detail_leaf
 
