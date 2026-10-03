@@ -563,3 +563,5 @@ rtk proxy make doc-guard test-doc-guard
 - [Releases](https://github.com/proletariat64/dogopencli/releases)：安装包与版本记录。
 
 契约与 UAT 报告记录特定日期、账号权限下的验证结果；生产行为变化后需要重新验证。
+
+Batch A ([#87](https://github.com/proletariat64/dogopencli/issues/87)) 当前为两个有界列表候选：必需放行 **0/2**，报价组调查 **1/1**，可选列表放行 **0/1**。实际查询支持数仍为 **69/133**；生产 CLI UAT 和转账完整性尚未通过，三个列表继续 unsupported。见[本批证据与 blocker](docs/research/general/2026-10-04-liquidity-batch-a-acceptance.md)。

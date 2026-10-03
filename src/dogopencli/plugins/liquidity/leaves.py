@@ -2311,18 +2311,19 @@ _TICKET_DEFERRED: tuple[DeferredLeaf, ...] = (
     DeferredLeaf(
         ("operations", "decisions", "list"),
         RUNTIMES,
-        "pagination-unverified",
-        "Decision list: populated previous-day scope observed, but no offset"
-        " pagination evidence exists and the current-day scope was empty;"
-        " complete acquisition is unverified. get/history remain available.",
+        "production-uat-pending",
+        "Decision list: bounded native offset acquisition verified on 2026-10-04"
+        " (264 arrivals, 264 unique ids, total 264); registered production CLI"
+        " UAT is pending. get/history remain independently available.",
     ),
     DeferredLeaf(
         ("operations", "transfers", "list"),
         RUNTIMES,
         "pagination-unverified",
-        "Transfer list: populated previous-day scope observed, but no offset"
-        " pagination evidence exists; complete acquisition is unverified."
-        " get remains available.",
+        "Transfer list: nonempty native rows and offset queries observed;"
+        " complete acquisition and registered production CLI UAT remain"
+        " unverified. Native transaction query bounds and displayed gmtCreate"
+        " have no verified time mapping. get remains independently available.",
     ),
     DeferredLeaf(
         ("risk", "sla", "list"),
@@ -2342,9 +2343,9 @@ _TICKET_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("investment", "quote-groups", "list"),
         SETTINGS,
         "total-unverified",
-        "Quote-group list: 54 rows arrived in one response that reports no"
-        " total, and the effect of rowStart is unverified; completeness is"
-        " unprovable.",
+        "Quote-group list: offsets 0 and 10 return identical 54 rows without"
+        " a total or verified ending protocol; full-response completeness"
+        " is unproven. quotationGroupId repeats across versions.",
     ),
 )
 

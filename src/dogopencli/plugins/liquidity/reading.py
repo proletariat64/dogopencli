@@ -118,6 +118,8 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                 contract,
                 DECISION_VERIFIED_DATE
                 if variant.name == DECISIONS.name
+                else "2026-10-04"
+                if variant.projection == "transfer_orders"
                 else "2026-10-03"
                 if variant.name == SWAP_ORDERS.name
                 else ("2026-10-02" if variant.schema_version else "2026-10-01"),
