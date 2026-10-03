@@ -1,6 +1,16 @@
 # 变更记录
 
-## 未发布：统一 incomplete 结果策略
+## v0.2.4（2026-10-03）
+
+新增 `dogopencli snapshot`，离线查看当前命令树及本地缓存元数据，支持 JSON、
+文本树和表格。报告命令 supported/unsupported、记录数、采集时间、完整性、
+新鲜度与留存范围；保留延期叶子及原因，不读取业务行、不启动浏览器或刷新缓存。
+支持子树和叶子选择，详情缓存独立统计。规格 #80，实现 PR #81。
+
+本次发布同时包含此前合并的 Liquidity v0.2.3 查询能力及以下统一 incomplete
+结果策略。版本由 0.2.3 增加至 0.2.4；wheel 与源码分发包随 GitHub Release 提供。
+
+### 统一 incomplete 结果策略
 
 默认 live、离线列表及 refresh 可以使用经过验证的 incomplete 数据：返回
 `error=null`、退出 0，JSON `meta.warnings` 与 stderr 每次告警，完整性仍为 false。
@@ -23,4 +33,4 @@ Liquidity dated 按最新同范围请求窗口确定有效行与覆盖证明；�
 [ADR 0019](docs/adr/0019-usable-incomplete-acquisitions.md)。离线回归及新策略的
 [生产只读 UAT](docs/research/general/2026-10-03-unified-incomplete-production-uat.md) 已完成：
 82/83 个目标命令通过，Payment channel EXTERNAL 源端阻塞，ledger balances 按用户要求跳过。
-本节不表示已发布版本。
+后端阻塞与跳过项仍按原报告保留，不因发布版本而视为通过。

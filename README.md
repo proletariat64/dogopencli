@@ -13,12 +13,12 @@ WSL 用户应使用 Linux 磁盘目录。
 ### 1. 安装
 
 从 [Releases](https://github.com/proletariat64/dogopencli/releases) 下载 wheel，
-在虚拟环境中安装。以下以 v0.1.15 为例，在下载目录执行：
+在虚拟环境中安装。以下以 v0.2.4 为例，在下载目录执行：
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install ./dogopencli-0.1.15-py3-none-any.whl
+python -m pip install ./dogopencli-0.2.4-py3-none-any.whl
 dogopencli --version
 ```
 
@@ -141,7 +141,7 @@ SLA 是配置目标，不是观测到账耗时。
 
 ## 流动性查询（当前源码分支）
 
-当前源码版本为 **v0.2.3**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)
+当前版本为 **v0.2.4**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)
 和 [#76](https://github.com/proletariat64/dogopencli/issues/76) 已实现 68 个查询叶子：
 32 settings、29 runtimes、7 reference；另有 65 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
