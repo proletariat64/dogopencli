@@ -12,7 +12,7 @@ from . import __version__, config
 from .auth.spec import SPECS as AUTH_SPECS
 from .catalog import NODES
 from .errors import CliError
-from .plugins import cache_bindings
+from .plugins import cache_bindings, get_capability
 from .plugins.liquidity.capability import (
     LiquidityDetailCapability,
     LiquidityListCapability,
@@ -33,17 +33,9 @@ class Parser(argparse.ArgumentParser):
 
 def bindings() -> dict[tuple[str, ...], Any]:
     discovered = cache_bindings()
-    # The oldest shared refresh declarations predate plugin registration.
-    # Their help links identify their inquiry without duplicating inventory.
     for path, node in NODES.items():
-        if path[:1] == ("refresh",) and node.handler and path not in discovered:
-            for hint in node.next:
-                prefix = "dogopencli help "
-                if hint.startswith(prefix):
-                    owner = discovered.get(tuple(hint[len(prefix) :].split()))
-                    if owner is not None:
-                        discovered[path] = owner
-                        break
+        if node.cache_capability is not None:
+            discovered[path] = get_capability(node.cache_capability)
     return discovered
 
 
@@ -247,10 +239,11 @@ def build_report(
 
     try:
         configured = config.load([])
-        if not math.isfinite(configured.ttl_hours):
-            raise ValueError("invalid freshness policy")
-        timedelta(hours=configured.ttl_hours)
-    except (CliError, OSError, ValueError, OverflowError):
+        if configured.ttl_hours is not None:
+            if not math.isfinite(configured.ttl_hours):
+                raise ValueError("invalid freshness policy")
+            timedelta(hours=configured.ttl_hours)
+    except (CliError, OSError, ValueError, OverflowError, TypeError):
         for _, leaf in applicable:
             fail(leaf, "CONFIG_ERROR", "configuration could not be inspected")
         return report

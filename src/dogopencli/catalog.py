@@ -21,6 +21,9 @@ from .helpspec import (
 )
 from .helpspec import REFRESH_OUTPUT as _REFRESH_OUTPUT
 from .plugins import command_nodes, group_nodes, refresh_nodes
+from .plugins.payment.channel import CHANNEL_CAPABILITY
+from .plugins.payment.cost import COST_CAPABILITY
+from .plugins.payment.sla import SLA_CAPABILITY
 
 # The shared root is business-owned; auth retains its own help protocol.
 AUTH_PATHS = frozenset(path for path in AUTH_SPECS if path)
@@ -87,6 +90,7 @@ _REFRESH_CHANNEL_NODE = BizNode(
     ),
     next=("dogopencli help payment channel list",),
     handler="cmd_refresh_channel",
+    cache_capability=CHANNEL_CAPABILITY.name,
 )
 
 _REFRESH_COST_NODE = BizNode(
@@ -99,6 +103,7 @@ _REFRESH_COST_NODE = BizNode(
     examples=("dogopencli refresh payment cost",),
     next=("dogopencli help payment cost list",),
     handler="cmd_refresh_cost",
+    cache_capability=COST_CAPABILITY.name,
 )
 
 _REFRESH_SLA_NODE = BizNode(
@@ -112,6 +117,7 @@ _REFRESH_SLA_NODE = BizNode(
     examples=("dogopencli refresh payment sla",),
     next=("dogopencli help payment sla baselines list",),
     handler="cmd_refresh_sla",
+    cache_capability=SLA_CAPABILITY.name,
 )
 
 _GROUPS: dict[tuple[str, ...], BizNode] = {
