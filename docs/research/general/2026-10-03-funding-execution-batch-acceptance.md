@@ -64,8 +64,10 @@ Swaps uses POST `/swapOrderQuery.json` with the native form encoding, tenant and
 JSON query VO. The list has its own offset pagination, `dealId` and distinct
 trade/near/far date dimensions. The initial native default permits an undated
 query; date-constrained checks below do not prove that default scope complete.
-Cross-page repetitions are recorded, not converted into complete acquisition
-by deduplication, smaller-page retries or a guessed backend correction.
+The seven repeated arrivals are recorded, not converted into complete
+acquisition by deduplication, smaller-page retries or a guessed backend
+correction. Saved deduplicated records do not locate the repetitions within
+or between pages.
 
 Investable funds uses POST `/queryInvestableFundList.json` with an explicit JSON
 body. Report date, forecast date and selected timezone are source dimensions;
@@ -108,11 +110,24 @@ existing deferred `UNSUPPORTED_CAPABILITY`/exit 1 behavior; no getter was added.
 The first candidate attempt completed **10/21 expected cases** before the getter
 expectation correction: eight malformed-scope live/refresh rejections and offline
 help/describe. The deferred getter also behaved correctly, but failed that
-attempt's incorrect expectation. The corrected plan has not passed a rerun.
+attempt's incorrect expectation. The full corrected 21-case plan has not passed
+a rerun.
 No count is presented as 21/21, and no native action from that attempt is UAT
 accepted. The login recovery wait expired after 600 seconds without SSO completion;
 the subsequent independent auth check still reported `auth_required` and a login
 redirect. A headed Chrome remains available for completing that authentication.
+
+Separately, the corrected **11 offline prerequisites passed 11/11** against the
+integrated implementation at `8cb55d2`, using the private harness and process-only
+candidate catalog. The eight missing, one-sided and reversed scope cases for
+live/refresh rejected invalid arguments with exit 2 before transport access;
+offline help/describe exited 0, and the unavailable getter correctly returned
+`UNSUPPORTED_CAPABILITY` with exit 1. All 11 cases had CDP transport blocked,
+made no transport attempt and left cache bytes unchanged; no SQLite cache was
+created. Actual and isolated profile/CDP/Chrome settings matched. Cached-list
+cases requiring a successful refresh were excluded. This independent 11/11
+offline run does not convert the earlier 10/21 attempt into a successful full
+production UAT or release any leaf.
 
 The private UAT harness invokes the existing public CLI and redirects only the
 cache path to a fresh isolated SQLite file. Its config retains the actual
@@ -131,13 +146,27 @@ it does not establish that a deferred command is publicly supported.
 
 ## Automated validation and local Kimi CLI
 
-Code review corrections are integrated at `8cb55d2`. Whole-tree Ruff check and
-Ruff format check passed (256 Python files). Earlier focused/nearest Liquidity
-CLI, projection and capability verification passed 169 tests before those final
-review corrections; this historical result is not labeled a final full-suite
-pass. The integrated full pytest run was started and its outcome is pending at
-this report's commit. Documentation guard verifies this acceptance artifact
-and its index link.
+Code review corrections were integrated at `8cb55d2`, with the final sampled-field
+registry correction integrated at `6c4973d`. Whole-tree Ruff check and Ruff format
+check passed on the corrected source (257 Python files). Integrated focused
+verification across seven modules passed 195 tests;
+the separate focused review-fix gate passed 107 tests. These are distinct local
+checks, not a combined test count or production UAT. The first integrated full
+pytest run finished with **1 failed, 1808 passed, 28 subtests passed** in 954.75
+seconds. The failing published-field registry check found sampled fields for the
+unreleased swap candidate in `SAMPLED_FIELDS`; the correction removes its premature
+public field entry while preserving native evidence and the unchanged strict
+installed-field invariant. No production leaf was enabled by that entry.
+
+Final full verification on `6c4973d` passed **1809 tests and 28 subtests** across
+four independent pytest shards: 457 + 511 + 457 + 384 tests, all exiting 0. All
+64 collected test files were covered exactly once, with isolated temporary
+directories and no added dependencies. The shard durations were 220.09, 275.57,
+167.14 and 290.17 seconds; these are individual shard durations, not an asserted
+end-to-end wall time. Post-correction code review found no remaining code defects.
+Documentation guard passed for all 100 Markdown files, including this acceptance
+artifact and its index link. These local gates do not establish production UAT
+or fulfillment of the four-leaf specification.
 
 The user-required **local Kimi CLI CI/review has not executed**. Automatic approval
 review rejected the proposed private-source transmission to its configured
@@ -158,13 +187,17 @@ protection, but do not supply missing production records or business semantics.
    independent refresh and same-capture offline equivalence, verified empty
    acquisition, live cache preservation, strict mode, date boundaries and offline
    help/describe. Keep all getters deferred.
-3. Complete the integrated full pytest result and the approved local Kimi CLI
-   CI/review. Address any findings before activating the bounded swap candidate.
+3. Complete the approved local Kimi CLI CI/review and address any findings before
+   activating the bounded swap candidate. Integrated full pytest, Ruff and
+   documentation gates have passed; they do not replace Kimi or production UAT.
 4. Obtain each missing nonempty/native contract for demands, both execution
    variants and investable funds, then independently implement and production
    UAT those lists. Keep business errors and unavailable evidence as blockers.
-5. Populate only individually passed release entries. Keep #82, #84, #85 and #86
-   open and the PR draft while fewer than four leaves satisfy the specification.
+5. Populate only individually passed release entries. When enabling the swap
+   candidate, publish its verified sampled field contract alongside that release
+   entry and recheck installed-field/description consistency. Keep #82, #84, #85
+   and #86 open and the PR draft while fewer than four leaves satisfy the
+   specification.
 
 ## Follow-up boundary
 
@@ -174,8 +207,13 @@ interfaces, getters, forecast accuracy, wallets, pool balance or credit usage.
 ADR 0019 permits safe incomplete runtime results in supported capabilities;
 it does not waive this batch's first-enable nonempty and complete UAT gates.
 
-Private research and native acquisition artifacts are retained outside Git
-under `/tmp/issue82-contract-research.md` and `/tmp/issue82-native-evidence/`.
-Their availability is local and temporary. Public evidence contains aggregate
-counts, reviewed paths and blockers only; raw identifiers and financial records
-remain private.
+Private native acquisition, CLI UAT and replay artifacts are preserved in the
+main worktree's ignored `tmp/issue82-evidence/` continuation directory, with
+directories mode 0700 and files mode 0600. The private research and original
+native artifacts also remain at `/tmp/issue82-contract-research.md` and
+`/tmp/issue82-native-evidence/`; the independent corrected offline run is at
+`tmp/issue82-evidence/swaps-offline-uat/`, with its original copy at
+`/tmp/issue82-swaps-offline-uat/`. Final full-suite logs and the collection manifest
+are at `tmp/issue82-evidence/final-pytest/`. These locations are local evidence, not
+committed fixtures. Public evidence contains aggregate counts, reviewed paths
+and blockers only; raw identifiers and financial records remain private.
