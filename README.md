@@ -284,6 +284,8 @@ dogopencli describe liquidity operations swaps list
 没有已验证查询合同的叶子继续延期，如 wallets、pool-balances、credit-usage、
 forecast accuracy、risk sla list、transfer rules list、quote-groups；
 独立验证过的详情不受此影响。
+[#98 本轮核验](docs/research/general/2026-10-04-liquidity-issue98-gates.md)记录池余额、
+授信使用、产品基线和报价的逐项门槛；调查记录不等于新增能力或生产 CLI UAT。
 [证据与未验证事项](docs/research/general/2026-10-01-liquidity-live-probes.md)，
 [缓存决策](docs/adr/0016-liquidity-independent-list-and-detail-caches.md)。
 

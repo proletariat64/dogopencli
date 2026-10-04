@@ -1,5 +1,10 @@
 # 变更记录
 
+## 未发布
+
+记录 #98 的有界原生核验及剩余业务契约门槛，更新延期原因。
+未新增或启用查询命令；本分支目录仍为 75 supported、58 unsupported，#98 保持开放。
+
 ## v0.2.6（2026-10-04）
 
 合并 PR #94、#95、#96，新增有界 decisions、transfers、risk events、risk anomalies、
