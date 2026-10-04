@@ -1,5 +1,6 @@
 """Native Efficient Service fee-order contract, independently verified for #97."""
 
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -159,6 +160,14 @@ def project_fee_order(row: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError
         except (InvalidOperation, ValueError):
             invalid(field)
+    for amount, currency in (
+        ("feeAmount", "pricingCurrency"),
+        ("transAmount", "currency"),
+    ):
+        if row.get(amount) not in (None, ""):
+            unit = row.get(currency)
+            if not isinstance(unit, str) or not re.fullmatch(r"[A-Z]{3}", unit):
+                invalid(currency)
     for field in ("serviceTime", "gmtCreate", "gmtModified"):
         value = row.get(field)
         if value is None or value == "":

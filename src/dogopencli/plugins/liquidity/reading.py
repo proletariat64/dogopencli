@@ -255,6 +255,7 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
                 contract,
                 "2026-10-04"
                 if detail.projection == "strategy_detail"
+                or detail.schema_version == "risk-detail-v1"
                 else "2026-10-02"
                 if detail.schema_version
                 else "2026-10-01",

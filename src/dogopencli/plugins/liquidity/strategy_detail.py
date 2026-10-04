@@ -1,10 +1,11 @@
 """Verified task-result details, independently cached from task lists (#97)."""
 
+import re
 from decimal import Decimal
 from typing import Any
 
 from ...errors import INVALID_RESPONSE, CliError
-from .investment_batch import TASK_TYPES
+from .investment_batch import TASK_TYPES, validate_business_date
 from .spec import ENC_FORM, ENV_SUCCESS, RUNTIMES, DetailSpec, IdentityOption
 
 STRATEGY_DETAIL = DetailSpec(
@@ -93,10 +94,23 @@ def _strings(value: dict[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
     return result
 
 
+def _currency(value: Any) -> None:
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Z]{3}", value):
+        raise _invalid("currency")
+
+
 def _money(value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
     native = _object(value, "amount object")
+    amount = native.get("amount")
+    if (
+        isinstance(amount, bool)
+        or not isinstance(amount, (int, float, Decimal))
+        or not Decimal(str(amount)).is_finite()
+    ):
+        raise _invalid("amount")
+    _currency(native.get("currency"))
     result = _strings(native, _MONEY[3:])
     for field in _MONEY[:3]:
         if field not in native:
@@ -134,6 +148,9 @@ def project_strategy_detail(row: Any) -> dict[str, Any]:
             for item in _rows(
                 fund["currencyFundResultVoList"], "currency fund results"
             ):
+                _currency(item.get("currency"))
+                if "amount" not in item:
+                    raise _invalid("currency fund amount")
                 total = _strings(item, ("currency", "tenor"))
                 for field in (
                     "amount",
@@ -151,16 +168,17 @@ def project_strategy_detail(row: Any) -> dict[str, Any]:
             )
             entries = {}
             for currency, items in by_currency.items():
-                if (
-                    not isinstance(currency, str)
-                    or len(currency) != 3
-                    or not currency.isascii()
-                    or not currency.isupper()
-                    or not currency.isalpha()
-                ):
-                    raise _invalid("fund detail currency")
+                _currency(currency)
                 details = []
                 for item in _rows(items, "fund detail rows"):
+                    if item.get("currency") != currency:
+                        raise _invalid("fund detail currency")
+                    try:
+                        validate_business_date(item.get("valueDate"))
+                    except ValueError:
+                        raise _invalid("valueDate") from None
+                    if "sumAmount" not in item:
+                        raise _invalid("sumAmount")
                     detail = _strings(item, ("currency", "valueDate"))
                     if "sumAmount" in item:
                         detail["sumAmount"] = _money(item["sumAmount"])
