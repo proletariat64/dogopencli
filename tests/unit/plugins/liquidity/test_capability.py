@@ -248,7 +248,7 @@ def test_parse_detail_list_payload_echoes_each_row():
 
 
 def test_every_shipped_leaf_builds_a_valid_contract():
-    assert len(LIST_LEAVES) == 51  # includes swaps, decisions, transfers and risk
+    assert len(LIST_LEAVES) == 52  # includes strategy results and both task variants
     for leaf in LIST_LEAVES.values():
         for variant in leaf.variants:
             capability = leaf.capability(variant)

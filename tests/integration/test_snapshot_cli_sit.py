@@ -89,10 +89,13 @@ def test_full_tree_missing_cache_is_success_and_never_creates_files(
     assert "dogopencli payment channel list" in by_path
     assert "dogopencli liquidity cash balances list" in by_path
     unsupported = [leaf for leaf in items if leaf["availability"] == "unsupported"]
-    assert len(unsupported) == 60
+    assert len(unsupported) == 59
     swaps_list = by_path["dogopencli liquidity operations swaps list"]
     assert swaps_list["availability"] == "supported"
     assert swaps_list["cache"]["status"] == "missing"
+    strategy_list = by_path["dogopencli liquidity investment strategy-results list"]
+    assert strategy_list["availability"] == "supported"
+    assert strategy_list["cache"]["status"] == "missing"
     assert (
         by_path["dogopencli liquidity operations swaps get"]["availability"]
         == "unsupported"

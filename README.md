@@ -145,8 +145,9 @@ SLA 是配置目标，不是观测到账耗时。
 [#76](https://github.com/proletariat64/dogopencli/issues/76) 和
 [PR #83](https://github.com/proletariat64/dogopencli/pull/83) 和
 [#87](https://github.com/proletariat64/dogopencli/issues/87) 和
-[#88](https://github.com/proletariat64/dogopencli/issues/88) 已实现 73 个查询叶子：
-32 settings、34 runtimes、7 reference；另有 60 个延期叶子可通过帮助发现，
+[#88](https://github.com/proletariat64/dogopencli/issues/88) 和
+[#89](https://github.com/proletariat64/dogopencli/issues/89) 已实现 74 个查询叶子：
+32 settings、35 runtimes、7 reference；另有 59 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.4 wheel 不包含新增的 swaps 列表。已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
@@ -213,6 +214,7 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `forecast cashflows` | `list` |
 | `forecast results` | `list` |
 | `investment benchmarks` | `list` |
+| `investment strategy-results` | `list` |
 | `investment compound-ledger` | `list`, `get` |
 | `investment holdings` | `list`, `get` |
 | `investment interest-rates` | `list` |
@@ -299,6 +301,30 @@ dogopencli refresh liquidity operations transfers \
 dogopencli liquidity operations transfers list \
   --transaction-from 20260930 --transaction-to 20260930 --all
 ```
+
+### 投资基准、策略结果与计价账单（batch C）
+
+[#89](https://github.com/proletariat64/dogopencli/issues/89) 四列表当前交付 **1/4**：
+`investment strategy-results list` 支持 `FUND_DECISION_TASK` 与
+`PRODUCT_DECISION_TASK`，必须显式提供 `--task-type`、`--trigger-from` 和
+`--trigger-to`（`YYYYMMDD`，原生 GMT+08，包含两端）。两个变体与精确触发日期范围
+独立缓存；原生 `id` 是任务身份，策略 ID 是独立引用。任务状态不代表投资执行成功。
+
+```bash
+dogopencli refresh liquidity investment strategy-results --task-type FUND_DECISION_TASK --trigger-from 20260706 --trigger-to 20261004
+dogopencli liquidity investment strategy-results list --task-type FUND_DECISION_TASK --trigger-from 20260706 --trigger-to 20261004 --all
+dogopencli describe liquidity investment strategy-results list
+```
+
+CDP 9223 正式注册 CLI 生产只读 UAT：资金任务 **50/50**、产品任务 **7/7**，
+独立完整采集；离线读取同一 capture 一致，live 不写缓存。金额保留原生字符串与精度；
+`investmentAmount` 来源标签为等值 USD，不做本地换算；`triggerDate` / `resultTime`
+为 epoch 毫秒，业务日期与 `fetched_at` 分开。用户与自由文本字段不进入输出及缓存。
+
+其余三叶子继续 unsupported：基准值非空样本的原生 `id` 全为空，不能猜组合身份；
+`valuations` 非空对象实际为 fee-order，需单独命名／兼容决策；DEPOSIT / LOAN
+账单查询仍为空，不能据此放行。没有新增 get/history；#89 保持开放。
+见[逐叶证据与继续条件](docs/research/general/2026-10-04-liquidity-batch-c-gates.md)。
 
 ## 缓存、实时查询与刷新
 

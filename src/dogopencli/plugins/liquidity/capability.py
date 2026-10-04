@@ -228,6 +228,10 @@ class LiquidityListCapability:
             from .risk_batch import risk_request_dates
 
             body = risk_request_dates(body)
+        if self._spec.projection == "strategy_results":
+            from .investment_batch import strategy_wire_dates
+
+            strategy_wire_dates(body)
         return body
 
     def parse_rows(self, body: bytes) -> tuple[list[dict[str, Any]], int | None]:
@@ -276,6 +280,10 @@ class LiquidityListCapability:
             from .transfer_list import validate_transfer_rows_scope
 
             validate_transfer_rows_scope(rows)
+        if self._spec.projection == "strategy_results":
+            from .investment_batch import validate_strategy_rows_scope
+
+            validate_strategy_rows_scope(rows, decode_scope(scope))
         if not (self._spec.schema_version and self._spec.profile == spec.PROFILE_DATED):
             return
         # Use the retention reader's native series parser so acquisition and
