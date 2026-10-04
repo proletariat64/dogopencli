@@ -26,6 +26,7 @@ from ...errors import INVALID_ARGUMENT, INVALID_RESPONSE, CliError
 from .decision_list import project_decision_record
 from .operations_batch import validate_swap_business_date
 from .risk_batch import project_risk_record
+from .risk_detail import project_risk_detail
 from .transfer_list import project_transfer_order
 
 # The verified group-balances request scope fixes the equivalent currency
@@ -808,6 +809,8 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "eod": _project_eod,
     "forecast_results": _project_forecast_results,
     "swap_orders": _project_swap_orders,
+    "risk_events_detail": lambda row: project_risk_detail(row, "RISK_EVENT"),
+    "risk_anomalies_detail": lambda row: project_risk_detail(row, "RISK_ALERT"),
     "risk_events": lambda row: project_risk_record(row, "RISK_EVENT"),
     "risk_anomalies": lambda row: project_risk_record(row, "RISK_ALERT"),
     "transfer_orders": project_transfer_order,

@@ -55,6 +55,7 @@ from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import RELEASED as RISK_RELEASED
+from .risk_detail import RISK_DETAIL_SPECS
 from .spec import (
     ENC_FORM,
     ENV_BASE_RESULT,
@@ -2419,6 +2420,14 @@ if SWAP_ORDERS.name not in OPERATIONS_RELEASED:
             " local Kimi CLI CI/review must pass before release.",
         ),
     )
+
+# Issue #97 independently verified event and alert native details.
+DETAIL_SPECS += RISK_DETAIL_SPECS
+_AUDIT_DEFERRED = tuple(
+    item
+    for item in _AUDIT_DEFERRED
+    if item.path not in {(*spec.path, spec.action) for spec in RISK_DETAIL_SPECS}
+)
 
 # Spec #88 releases only the independently verified bounded risk list scopes.
 LIST_SPECS += tuple(item for item in RISK_LIST_SPECS if item.name in RISK_RELEASED)
