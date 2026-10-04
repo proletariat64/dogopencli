@@ -137,9 +137,16 @@ failure to the Liquidity target; it does not prove missing authentication or a
 specific renderer/network cause. The isolated session was returned to headed
 mode for human inspection. The original profile/session was left unchanged.
 
-Restore a responsive Liquidity target in the separate session, re-check independent
-Liquidity authorization, then acquire a complete representative transfer scope and
-resolve native date
+After an execution-session reset, CDP 9228 was no longer reachable. Restarting
+only the isolated owned profile restored headed Chrome. The next bounded
+Liquidity probe responded and returned **`auth_required`**: the entry redirected
+to a verified login page. This latest observation supersedes the websocket
+timeout as the immediate blocker for the new session. Human company SSO is now
+required in the separate visible Chrome; no credentials or cookies were copied.
+
+Complete human SSO in the separate session, re-check independent Liquidity
+authorization, then acquire a complete representative transfer scope and resolve
+native date
 boundaries. Run candidate and actual registered public CLI nonempty/empty lifecycle
 matrices for each releasable leaf, including its own refresh/offline equivalence,
 live no-write behavior and detail-cache independence. Enable each leaf only after
