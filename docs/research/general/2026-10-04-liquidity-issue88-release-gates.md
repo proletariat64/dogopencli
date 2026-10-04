@@ -5,185 +5,167 @@ Scope: general
 Status: snapshot
 
 Feature: [issue #88](https://github.com/proletariat64/dogopencli/issues/88).
-Actual enabled targets: **0/3**. Investigation and offline refusal checks do
-not constitute delivery of these lists. The current worktree's liquidity registry
-remains 69 supported and 64 unsupported query leaves. No version bump,
-new executable endpoint, populated schema, `get` or `history` is introduced.
+Enabled targets: **2/3**. Risk events and risk anomalies expose independently
+verified bounded lists. Monitoring rules remain unsupported; the issue remains
+open. Registry: 71 supported (32 settings, 32 runtimes, 7 reference) and 62
+unsupported query leaves. No new get/history, version bump or framework.
 
-## Evidence boundary
+## Native contracts and evidence
 
-The 2026-10-01 inquiry report records only empty responses for all three
-targets. On 2026-10-04, the previously saved published UI bundle was inspected
-locally; it was not fetched again or verified against current production.
-The saved bundle SHA256 is
+Liquidity authorization was verified separately from Payment SSO. User completed
+interactive login on isolated CDP port **9223**; occupied port 9222 stayed
+untouched. Exclusive browser coordination remains mandatory; busy locks abort.
+The current UI bundle was fetched again, SHA256
 `cd59b985d544dff8fb7ab89c6081fd1d9713187886db9abccdc554d82eddbf03`.
-Static caller declarations are discovery evidence, not proof of populated
-record types, identity uniqueness, backend range enforcement or completeness.
+Native Risk Event/Risk Alert tabs and actual request/response pairs were observed.
 
-| Target | Kind | Historical source evidence | Remaining first-release gates |
-| --- | --- | --- | --- |
-| `risk events list` | runtimes | JSON `POST /api/risk/event/getAll.json`; UI caller sets `riskMode=RISK_EVENT`; observed container `data.data`, total `data.totalCount` | Current caller and native scope; nonempty record types and native identity with tenant/scope; event observation dates, timezone and boundaries; complete representative acquisition; independent production UAT |
-| `risk anomalies list` | runtimes | Same endpoint and empty envelope; separate UI caller sets `riskMode=RISK_ALERT` | Current business distinction and backend enforcement of mode; nonempty anomaly structure and native identity; observation dates/timezone; complete representative acquisition; independent production UAT |
-| `rules monitoring list` | settings | `GET /queryRules.json`, query fields `tntInstId` and JSON-string `ruleQueryVO`; empty `result.ruleVOList`, total `count` | Current monitoring rule-type filter and object mapping; nonempty structure and native rule identity; configuration status/time semantics; count unit and completion protocol; complete representative acquisition; independent production UAT |
-
-The risk list callers set `rowStart=0`, `pageSize=10`, the native tenant and
-environment timezone. They format selected `riskDate` bounds as `YYYY-MM-DD`;
-when absent, start is the browser day minus 90 days and end is an empty string.
-These historical defaults do not establish inclusion boundaries, timezone
-conversion, observation-time semantics or a supported CLI date parameter.
-Events and anomalies must never be two copies of one unscoped query, or a
-classification inferred from record contents.
-
-The historical monitoring caller serializes a form VO into `ruleQueryVO`,
-including pagination and entity/form filters. Its table displays Rule ID
-using `ruleNo`, while view navigation uses `ruleId`. Neither is a verified
-unique record identity from a nonempty sample. Generic `queryRules` must not
-be enabled until the monitoring-specific native rule type/scope is established.
-Rule status and next-trigger/update times describe configuration, not an
-occurred risk event. Source severity/status values must stay open; unknown
-values cannot be locally translated into a risk score or a closed enum.
-
-Knowledge-base graph queries led to the July operations/risk product solution
-and September risk-event upgrade PRD. They describe risk observations and
-rule configuration separately. They do not prove current production API
-fields, enums, mode mappings or read-only/completion contracts. Saved UI
-caller evidence is the source of the historical mode values above.
-
-## Browser availability and production UAT
-
-Only discovery metadata was read from the configured CDP endpoint on port
-9222. It was reachable and reported headless Chrome. Target inventory already
-contained multiple Liquidity and login pages. Local profile coordination
-locks were idle, which does not establish availability of an externally
-shared browser. Given the user's other development sessions, the browser
-was conservatively treated as occupied.
-
-Per the user's instruction, production probing and UAT were **skipped**.
-No target was created, attached, navigated or closed; no authentication flow,
-profile change or business inquiry was performed. The inventory observation
-is not liquidity authorization proof or a conclusive lock-owner diagnosis.
-Production UAT passed targets: **0/3**, with all three unattempted this session.
-
-## Offline implementation and verification
-
-The three existing deferred registrations now expose individual scope and
-release blockers through offline help, describe, execution errors and snapshot.
-Evidence status remains `empty-scope`; populated `data_schema` properties and
-query options remain absent. Cached list returns `UNSUPPORTED_CAPABILITY`;
-undeclared live/strict options and refresh routes are rejected before transport.
-Existing deferred `get` remains unavailable and no `history` is registered.
-
-Public CLI tests use disconnected fake CDP and temporary real SQLite,
-missing and corrupt cache files. They check offline discovery, default/live/
-strict/refresh refusal, unchanged or absent cache files, detail/history refusal,
-and snapshot availability of all three targets. The discovery test failed
-before the blocker descriptions were added, then passed. These tests prove
-release gates and preservation, not enabled list lifecycle contracts T01–T12.
-
-Local automated checks and Kimi review results are recorded below. They do
-not substitute for production UAT. No typechecking gate is
-configured in `pyproject.toml` or the repository CI workflow; do not claim a
-Python-version matrix or static type check from one local pytest run.
-
-## Local verification record
-
-Comparison base: remote default branch `master`, `origin/master` SHA
-`f8ada67215d164a745817a1627672639c7028002`, verified against GitHub. The change
-was staged but uncommitted during review, so the comparison is
-`rtk proxy git diff origin/master`, including staged and working-tree files.
-
-| Check | Actual command | Result |
+| Leaf | Native contract | Identity/completion |
 | --- | --- | --- |
-| CLI release gates | `rtk proxy env PYTHONPATH=src /home/ubuntu/dev/dogopencli/.venv/bin/python -m pytest -q tests/integration/test_liquidity_issue88_gate.py` | 73 passed; final assertion change also passed 73 tests in 2.41s |
-| Ruff (executed by Kimi) | `rtk proxy ruff check .` | Passed, exit 0 |
-| Format (executed by Kimi) | `rtk proxy ruff format --check .` | Passed, exit 0; 260 files already formatted |
-| Diff (executed by Kimi and primary agent) | `rtk proxy git diff origin/master --check` | Passed, exit 0 |
-| Document gate (primary agent) | `rtk proxy make doc-guard PYTHON=/home/ubuntu/dev/dogopencli/.venv/bin/python` | Passed, 102 Markdown files |
-| Full suite (Kimi) | `rtk proxy env PYTHONPATH=src /home/ubuntu/dev/dogopencli/.venv/bin/python -m pytest -q` | Interrupted; last saved output contains 544/1882 outcomes with four failure markers; no final summary, not passed |
-| Production UAT | None | Skipped; 0/3 targets attempted or passed |
+| risk events list | JSON POST `/api/risk/event/getAll.json`, `riskMode=RISK_EVENT` | Nonempty string `id`; `data.data`, fixed `data.totalCount`, offset pages |
+| risk anomalies list | Same endpoint, source `riskMode=RISK_ALERT` | Independently populated and complete; no local anomaly classification |
+| rules monitoring list | GET `/queryRules.json`, serialized `ruleQueryVO` | Current zero rows; monitoring type/filter, nonempty schema and identity unverified |
 
-The first discovery-only run used the same focused-test command before the
-three descriptions were updated: **6 failed**, because historical mode/filter
-evidence was absent from help/describe. After the descriptions changed, that
-run passed **6 tests**. Later refusal/snapshot cases expanded the file to
-73 tests. These are recorded session observations, not a new production sample.
+Risk requests contain exactly fixed `tntInstId=GUAPW3SG`, mode, `timeZone=GMT+08`,
+`rowStart`, `pageSize=10`, `startTime` and `endTime`. CLI bounds are required
+YYYYMMDD, converted to native YYYY-MM-DD. Only adjacent dates are executable:
+`--to-date` must be one day after `--from-date`. Same-day queries returned zero;
+the broad native 90-day default had duplicate arrivals and is excluded.
 
-Kimi Code CLI version `2.1.1` loaded the user's `/code-review` skill; output
-used `--output-format stream-json`. This version rejects combining `--auto`
-with `-p`, so the executed review omitted `--auto`. An earlier review stopped
-with `ECOMPROMISED` after its OAuth lock file disappeared; its full-suite and
-final-review results cannot be claimed. The retry used the same installed
-environment, with no authentication or browser changes. Python is `3.12.3`;
-the remote Python 3.10/3.11/3.12 matrix has not been run here.
+`id` is scoped to tenant, native mode and exact acquisition bounds. The UI's
+Risk Time is `gmtCreate`, preserved as `YYYY-MM-DD HH:mm:ss（GMT+08）`.
+`gmtModified`, `firstAlertTime`, `nextAlertTime`, `closeRiskTime` remain separate
+source times; optional close time may be blank. `riskProcessingTime` is an
+integer displayed in minutes; `alertNum` retains its integer counter. Status,
+level, category/scenario, event and object strings retain source values without
+closed enums or scoring. Projection publishes 17 fields and excludes operators,
+free text, nested treatments/logs and unknown additive fields.
 
-The retry's Standards subagent additionally launched `rtk pytest -q` despite
-the full-suite-once instruction and then waited on it. The Kimi process and
-both task processes subsequently no longer existed, while persisted task
-metadata still said `running`. Those stale states cannot prove an active
-test run or a passing result. Recovery resumes only the review and explicitly
-forbids another full suite or waiting on those stale tasks.
+For Sep 25–26, all source creation times fall on Sep 25 if interpreted as UTC;
+seven anomaly display dates are Sep 26 in GMT+08. Changing request timezone to
+GMT+00 changed neither timestamps nor identities. These observations **do not
+prove** the backend boundary clock, inclusivity, or that creation time alone
+drives filtering. Native date filters remain native filters; help states the
+limit. No guessed local date membership or timezone conversion is applied.
+Existing history profile retains exact-scope captures by acquisition time;
+source-observed coverage stays unknown. `fetched_at` is never business time.
 
-Mapping the main run's four failure markers to the unchanged collected test
-order identified the existing Collection cases below. They passed individually
-without Collection code changes: **4 passed in 7.08s**. This is a focused
-reproduction attempt, not proof that the interrupted full suite is green or
-that its failure cause is established.
+## Complete acquisition and independent CLI UAT
 
-```bash
-rtk proxy env PYTHONPATH=src /home/ubuntu/dev/dogopencli/.venv/bin/python -m pytest -q --tb=short \
-  tests/integration/test_collection_va_capacity_cli_sit.py::test_namespace_isolation_vs_other_caches \
-  'tests/integration/test_collection_va_rule_cli_sit.py::test_list_rejects_incomplete_or_bad_data[False-changes3-INVALID_RESPONSE]' \
-  'tests/integration/test_collection_va_rule_cli_sit.py::test_list_rejects_incomplete_or_bad_data[False-changes4-INVALID_RESPONSE]' \
-  'tests/integration/test_collection_va_rule_cli_sit.py::test_list_rejects_incomplete_or_bad_data[True-changes12-INVALID_RESPONSE]'
-```
+| Native bounds | Events arrivals / unique / reported | Anomalies arrivals / unique / reported |
+| --- | --- | --- |
+| 2026-09-25 to 2026-09-26 | **3 / 3 / 3**, one page | **95 / 95 / 95**, ten pages (9×10 + 5) |
+| 2026-10-01 to 2026-10-02 | 2 / 2 / 2 | 128 / 122 / 128, incomplete |
+| 2026-10-03 to 2026-10-04 | 3 / 3 / 3 | 35 / 33 / 35, incomplete |
+| 2099-01-01 to 2099-01-02 | 0 / 0 / 0 | 0 / 0 / 0 |
 
-Kimi's Spec axis requested concrete validation records and exact refusal
-exit-code assertions. The records above address the first item. Focused tests
-now assert exit 1 for unsupported list/get and exit 2 for undeclared options,
-refresh and history; all 73 passed. The recovered aggregate review found no
-documented-standard violations or open correctness findings. Three minor
-Standards suggestions concerned repeated reason text, overlapping test fixtures
-and unused parametrized arguments; they do not require broader refactoring.
-The red-step record remains explicitly a session observation.
+Totals were stable within requests; no observed repeated identity had conflicting
+content. Broad events: 214 arrivals, 213 unique, 214 reported. Broad anomalies:
+bounded at 100 pages, 1000 arrivals, 975 unique, 12162 reported; never called
+complete. No duplicate tolerance, unlimited retry or large-page fallback added.
+Duplicates keep incomplete warnings; identity conflicts and total drift fail.
 
-Kimi's single overall CI-pass confidence is **3/5**. Completed focused checks
-passed, but the interrupted full suite and unrun Python-version matrix prevent
-a passing-CI claim. Production UAT remains unrun and all three targets remain
-unsupported. No per-finding confidence scores were requested. Final commit
-identification is supplied by the Git commit containing this report; no issue
-closure is implied.
+Private candidate registration used the actual public CLI, restricted transport
+and separate ignored SQLite cache. Each risk leaf passed strict Sep 25–26 refresh,
+offline all-record readback with CDP forbidden, matching count/scope/fetched_at,
+full-content equality with complete live inquiry, and unchanged cache bytes after
+live. Each passed complete future empty live, empty refresh/offline readback and
+preservation of its original date scope. Events: 3 records; anomalies: 95.
+An initial anomaly assertion failed without stage information; cause was not
+established. Full anomaly rerun with stage diagnostics passed all assertions.
+This limitation is retained instead of claiming the initial attempt passed.
 
-## Continue conditions
+Monitoring has not passed UAT: no populated identity or monitoring-specific
+filter. Generic rules cannot substitute for monitoring definitions. Its offline
+help/describe/snapshot explain the blocker; get/history remain unavailable for
+all three targets. Only synthetic fixtures, schema/count summaries enter Git.
+Production rows, browser profiles, credentials and private caches remain ignored.
 
-Once the shared CDP is available, independently verify liquidity authorization
-and each current native UI caller before inquiry-only production requests.
-Obtain a nonempty sanitized sample and establish native identity, scope and
-time semantics per leaf. Verify events/anomalies modes separately, and establish
-the monitoring rule-type filter. Preserve raw/unique/reported counts and verify
-representative completion with no duplicated, omitted or conflicting records.
+## Local implementation and verification
 
-Only then register the evidenced `ListSpec`, projection, allowlist and appropriate
-snapshot/history/dated profile using the existing collector and capture store.
-Use the agreed public CLI + fake CDP + temporary SQLite seam to implement T01–T12,
-including refresh/offline equality for one capture, empty publication, live
-isolation, partial/strict behavior, hard-failure rollback and retention isolation.
-Complete independent production UAT before enabling each leaf. Report enabled
-targets as a numerator over three; keep issue #88 open until all three pass.
+Reused ListSpec, capability allowlists, collector, projections, offline discovery,
+atomic capture store and shared incomplete-result policy. Public CLI + fake CDP
++ real temporary SQLite tests cover multi-page completion, full offline equality,
+empty captures, live isolation, default/strict partial publication, conflicts,
+total drift, bad identity/time/mode, authentication/transport/envelope failure
+preservation, invalid bounds before transport, scope isolation and snapshot.
+Existing shared-store tests cover history retention and atomic eviction.
+Additional public CLI cases for both risk modes verify empty live over a populated
+same-scope capture, aggregate history retention across two exact date scopes,
+retention gaps/strict refusal, and matching snapshot/acquisition metadata.
+The expanded risk suite passed **35 tests in 37.13s**, while the already-running
+full suite retained its original 1,877-case collection. These added cases were
+checked separately; they are not counted as part of that full-suite run.
+
+Initial red step: native date conversion absent. Later red: private candidate
+snapshot ownership absent; registering actual capability ownership fixed it.
+Candidate suite passed **31 tests in 32.72s**. Monitoring refusal and no-get/history
+release gates remain separate.
+
+Actual default `master` advanced to
+`06689d759bc7c64fe65cd80f90d716453ec08b40` during this session, verified against
+GitHub. Feature comparison uses its merge-base
+`f8ada67215d164a745817a1627672639c7028002`, including staged changes, so newer
+issue #87/CI changes are not mistaken for feature deletions. Those later master
+changes are not integrated into this worktree. Existing Python 3.12.3 environment;
+remote Python 3.10/3.11/3.12 matrix unrun locally. No configured static typecheck
+or coverage threshold. Completed checks and review are recorded below.
+
+| Local check | Command | Result |
+| --- | --- | --- |
+| Issue #88 focused CLI | `rtk proxy env PYTHONPATH=src /home/ubuntu/dev/dogopencli/.venv/bin/python -m pytest -q tests/integration/test_liquidity_issue88_gate.py tests/integration/test_liquidity_issue88_risk.py` | 68 passed in 33.12s |
+| Snapshot CLI | Same Python, `-m pytest -q tests/integration/test_snapshot_cli_sit.py` | 18 passed in 0.38s after unsupported count changed 64 to 62 |
+| Expanded risk acceptance | Same Python, `-m pytest -q tests/integration/test_liquidity_issue88_risk.py` | 35 passed in 37.13s, including four added empty-live/retention cases |
+| Full suite | Same Python, `-m pytest -q` | 1,875 passed, 1 skipped, 1 failed; 28 subtests passed in 995.47s |
+| Registry contract correction | Same Python, `-m pytest -q tests/unit/plugins/liquidity/test_capability.py` | 13 passed in 0.07s after stale list count changed 46 to 49 |
+| Installed console entry | `rtk proxy env PATH=/home/ubuntu/dev/dogopencli/.venv/bin:"$PATH" PYTHONPATH=src /home/ubuntu/dev/dogopencli/.venv/bin/python -m pytest -q tests/test_help_entry.py::test_installed_console_script` | 1 passed in 0.14s; existing venv reused, no install |
+| Ruff | `rtk proxy ruff check .` | Passed |
+| Formatting | `rtk proxy ruff format --check .` | Passed, 262 Python files |
+| Documentation | `rtk proxy make doc-guard PYTHON=/home/ubuntu/dev/dogopencli/.venv/bin/python` | Passed, 102 Markdown files |
+| Diff | `rtk proxy git diff --check` | Passed |
+
+The first full-suite attempt was interrupted after identifying the stale snapshot
+count; it is not a passing result. The completed run's only failure was the
+contract smoke test's stale list-leaf count: expected 46 versus actual 49 (swaps
+and two risk lists). Updating that assertion made all 13 tests in its file pass.
+No production code changed after this failure; the full suite was not rerun.
+Its skipped console-entry test was caused by the executable being absent from
+the original PATH. Adding the existing venv to PATH made that individual test
+pass; no environment rebuild or installation was needed.
+Verification combines the completed full run, its corrected focused file, and
+the separately passing expanded risk/console tests. Do not describe the original full
+run as green or count its four later-added cases as executed in that run.
+
+Local Kimi Code CLI 2.1.1 loaded the user's `/code-review` skill and returned valid
+stream-json, exit 0. Actual invocation used `rtk proxy kimi --output-format
+stream-json -p '/code-review ...'`; this installed version rejects `--auto` with
+`-p`. Review inspected the production diff and saved validation evidence without
+rerunning tests, production UAT, authentication or Greptile. No correctness
+defects were found. Minor import/date-selection style observations were left
+alone. Monitoring's missing contract and unproven server date edges were accepted
+only as the explicitly documented partial-delivery boundary, not full completion.
+
+Kimi's **single overall CI-pass confidence: 4/5**. At review time the full suite
+was still running; Python 3.10/3.11 were unrun, and the first anomaly UAT assertion
+remains unexplained despite a passing complete rerun. This is one CI score, not
+per-finding scores or a claim that all three spec targets passed UAT.
+
+Earlier discovery-only commit `a9db73c` had 0/3 enabled, skipped shared-browser
+UAT and interrupted full suite. Its Kimi 3/5 score does not describe this work.
+
+## Monitoring continue conditions
+
+Verify native monitoring type/filter and object mapping; obtain nonempty
+sanitized structure, rule identity, configuration status/time semantics and
+complete representative acquisition. Implement/prove its public CLI lifecycle,
+then independent inquiry-only UAT and local Kimi review. #88 completes at 3/3.
 
 ## Sources
 
-- [Issue #88 specification](https://github.com/proletariat64/dogopencli/issues/88).
-- [Historical inquiry report](2026-10-01-liquidity-live-probes.md): risk events
-  `business-05-r1/r2/r3`, `previous-day-05-r1`; risk anomalies
-  `business-06-r1/r2/r3`, `previous-day-06-r1`; monitoring
-  `core-39-r1/r2/r3`. No populated record schema was verified in these cases.
-- Saved published UI bundle: risk inquiry wrapper character offset `1516395`,
-  anomaly caller around `7037486`, event caller around `7067707`; rules wrapper
-  `1490903`, list caller `3082374`, VO/table mapping around `3083900`.
-- Knowledge-base source documents `434365484` (July risk product solution) and
-  `550788372` (September risk-event upgrade), located through read-only
-  `graphify query`; product requirements, not production verification.
-- ADRs [0016](../../adr/0016-liquidity-independent-list-and-detail-caches.md),
-  [0018](../../adr/0018-liquidity-capture-store-and-retention.md) and
-  [0019](../../adr/0019-usable-incomplete-acquisitions.md). Usable partial results
-  remain valid for enabled capabilities; this does not relax first-release gates.
+- [Issue #88](https://github.com/proletariat64/dogopencli/issues/88).
+- [Historical empty inquiries](2026-10-01-liquidity-live-probes.md): starting
+  evidence only, superseded for the two populated bounded risk contracts.
+- Current `umi.js` SHA above: wrapper offset 1516395, endpoint map 1560677,
+  event caller 7067707, alert caller 7037486, event table 7070123, alert table
+  7040831. Actual network observations confirmed modes, fields and counts.
+- ADRs 0016–0019: independent list/detail, bounded retention, capture store and
+  safe incomplete-result policy.

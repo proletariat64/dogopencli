@@ -224,6 +224,10 @@ class LiquidityListCapability:
             if self._spec.paged_request:
                 body["rowStart"] = row_start
                 body["pageSize"] = page_size
+        if self._spec.projection in {"risk_events", "risk_anomalies"}:
+            from .risk_batch import risk_request_dates
+
+            body = risk_request_dates(body)
         return body
 
     def parse_rows(self, body: bytes) -> tuple[list[dict[str, Any]], int | None]:

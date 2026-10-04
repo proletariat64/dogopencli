@@ -1,4 +1,4 @@
-"""Batch B's first-release gates through the public, disconnected CLI."""
+"""Batch B's remaining release gate through the public, disconnected CLI."""
 
 from pathlib import Path
 
@@ -13,6 +13,7 @@ TARGETS = (
     (("risk", "anomalies"), "runtimes", "riskMode=RISK_ALERT"),
     (("rules", "monitoring"), "settings", "monitoring rule-type filter"),
 )
+BLOCKED_TARGETS = (TARGETS[-1],)
 
 
 @pytest.fixture(params=["sqlite", "missing", "corrupt"])
@@ -59,7 +60,7 @@ def disconnected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request):
         cdp.set_transport_factory(None)
 
 
-@pytest.mark.parametrize("path,kind,scope_evidence", TARGETS)
+@pytest.mark.parametrize("path,kind,scope_evidence", BLOCKED_TARGETS)
 @pytest.mark.parametrize("command", ["help", "describe"])
 def test_batch_b_discovery_explains_each_native_scope_and_release_blocker(
     disconnected, run_cli, path, kind, scope_evidence, command
@@ -89,7 +90,7 @@ def test_batch_b_discovery_explains_each_native_scope_and_release_blocker(
     assert (cache.read_bytes() if cache.exists() else None) == before
 
 
-@pytest.mark.parametrize("path,kind,scope_evidence", TARGETS)
+@pytest.mark.parametrize("path,kind,scope_evidence", BLOCKED_TARGETS)
 @pytest.mark.parametrize("mode", ["cached", "live", "strict", "refresh"])
 def test_batch_b_queries_refuse_without_browser_or_cache_access(
     disconnected, run_cli, path, kind, scope_evidence, mode
@@ -130,7 +131,9 @@ def test_batch_b_lists_cannot_release_detail_or_history(
 
 
 @pytest.mark.parametrize("disconnected", ["missing"], indirect=True)
-def test_batch_b_snapshot_reports_zero_enabled_targets(disconnected, run_cli):
+def test_batch_b_snapshot_reports_two_risk_lists_and_monitoring_blocker(
+    disconnected, run_cli
+):
     cache, before = disconnected
     code, out, err = run_cli(["snapshot", "liquidity", "--format", "json"])
     assert code == 0, err
@@ -149,7 +152,12 @@ def test_batch_b_snapshot_reports_zero_enabled_targets(disconnected, run_cli):
     }
     found = [node for node in leaves(document["tree"]) if node["command"] in targets]
     assert len(found) == 3
-    assert all(node["availability"] == "unsupported" for node in found)
-    assert all(node["cache"]["status"] == "not_applicable" for node in found)
-    assert all("production UAT" in node["availability_reason"] for node in found)
+    risk_lists = [node for node in found if " risk " in node["command"]]
+    monitoring = next(node for node in found if " rules monitoring " in node["command"])
+    assert len(risk_lists) == 2
+    assert all(node["availability"] == "supported" for node in risk_lists)
+    assert all(node["cache"]["status"] == "missing" for node in risk_lists)
+    assert monitoring["availability"] == "unsupported"
+    assert monitoring["cache"]["status"] == "not_applicable"
+    assert "production UAT" in monitoring["availability_reason"]
     assert (cache.read_bytes() if cache.exists() else None) == before

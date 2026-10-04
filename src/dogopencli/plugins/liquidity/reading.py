@@ -114,7 +114,9 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             **_source_guide(
                 capability,
                 contract,
-                "2026-10-03"
+                "2026-10-04"
+                if variant.projection in {"risk_events", "risk_anomalies"}
+                else "2026-10-03"
                 if variant.name == SWAP_ORDERS.name
                 else ("2026-10-02" if variant.schema_version else "2026-10-01"),
             ),

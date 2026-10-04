@@ -7,6 +7,9 @@ complete schemas, validation assertions, or nullability guarantees.
 """
 
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
+from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
+from .risk_batch import FIELDS as RISK_FIELDS
+from .risk_batch import RELEASED as RISK_RELEASED
 
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
     "liquidity.cash.accounts.list": {
@@ -3306,10 +3309,16 @@ CANDIDATE_SAMPLED_FIELDS["liquidity.operations.swaps.list"] = {
 
 # Observed candidate records do not make a business leaf executable. Keep the
 # shipped evidence catalog aligned with the production release registration.
+for _risk_spec in RISK_LIST_SPECS:
+    CANDIDATE_SAMPLED_FIELDS[_risk_spec.name] = {
+        field: "int" if field in {"riskProcessingTime", "alertNum"} else "str"
+        for field in RISK_FIELDS
+    }
+
 SAMPLED_FIELDS.update(
     {
         name: fields
         for name, fields in CANDIDATE_SAMPLED_FIELDS.items()
-        if name in OPERATIONS_RELEASED
+        if name in OPERATIONS_RELEASED or name in RISK_RELEASED
     }
 )
