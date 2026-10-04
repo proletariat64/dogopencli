@@ -545,14 +545,11 @@ def test_invalid_or_unbounded_scope_is_rejected_before_transport(setup, run_cli,
 
 
 @pytest.mark.parametrize("resource", ["events", "anomalies"])
-def test_candidate_does_not_enable_get_or_history(setup, run_cli, resource):
-    for action in ("get", "history"):
-        code, out, _ = run_cli(["liquidity", "risk", resource, action])
-        assert code == (1 if action == "get" else 2)
-        assert parse(out)["data"] is None
-        assert parse(out)["error"]["code"] == (
-            "UNSUPPORTED_CAPABILITY" if action == "get" else "INVALID_ARGUMENT"
-        )
+def test_candidate_does_not_enable_history(setup, run_cli, resource):
+    code, out, _ = run_cli(["liquidity", "risk", resource, "history"])
+    assert code == 2
+    assert parse(out)["data"] is None
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     assert setup.state.transports == []
     assert setup.state.business_requests == []
     assert not setup.cache_path.exists()

@@ -20,6 +20,7 @@ from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import FIELDS as RISK_FIELDS
 from .risk_batch import RELEASED as RISK_RELEASED
+from .risk_detail import DETAIL_FIELDS, RISK_DETAIL_SPECS
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
 from .transfer_list import TRANSFER_ORDERS
@@ -3358,3 +3359,15 @@ SAMPLED_FIELDS.update(
 CANDIDATE_SAMPLED_FIELDS[DECISIONS.name] = DECISION_FIELDS
 if DECISIONS.name in DECISIONS_RELEASED:
     SAMPLED_FIELDS[DECISIONS.name] = DECISION_FIELDS
+
+# Native risk detail business projection; private text and owners are omitted.
+
+for _risk_detail_spec in RISK_DETAIL_SPECS:
+    SAMPLED_FIELDS[_risk_detail_spec.name] = {
+        field: "list[object]"
+        if field == "treatmentRiskSourceObject"
+        else "int"
+        if field in {"riskProcessingTime", "alertNum"}
+        else "str"
+        for field in DETAIL_FIELDS
+    }
