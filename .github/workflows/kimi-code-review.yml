@@ -44,12 +44,13 @@ jobs:
           npm install --global @moonshot-ai/kimi-code@2.1.1
           kimi --version
 
-      - name: Fetch actual default branch
+      - name: Resolve actual default branch
         id: base
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          git fetch origin "$DEFAULT_BRANCH"
+          # checkout with fetch-depth: 0 already fetched the default branch.
+          # Its credentials are removed before the agent starts.
           base_sha=$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")
           echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
 
