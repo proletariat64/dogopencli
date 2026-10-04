@@ -81,7 +81,7 @@ jobs:
             exit 1
           fi
           prompt="/code-review Compare HEAD $REVIEW_HEAD against the actual remote default branch pinned at $REVIEW_BASE using git diff $REVIEW_BASE...HEAD. Review Standards and Spec separately. Run required CI checks once using the existing environment: python -m pytest -q, ruff check ., ruff format --check ., make doc-guard, and git diff --check $REVIEW_BASE...HEAD. This GitHub runner does not have rtk or code-review-graph installed: use the direct commands above and available code inspection tools, and record that graph verification was not run. Do not install additional tools. Do not modify tracked files, commit, push, post comments, run production UAT, inspect credentials/configuration, or access business endpoints. If no spec can be retrieved, report that limitation without asking interactive questions. Return ONLY one final JSON object with comparison_base and head containing the exact SHAs, checks as an array of {command, exit_code, result}, standards and spec each containing {status, findings} with evidence-backed findings containing file, line, severity and evidence, confidence formatted as ?/5 (integer 0..5), and confidence_reason explaining verified results, unrun checks and remaining uncertainty. Give exactly one overall confidence, never per-finding scores. Keep the final JSON under 20000 characters. An unrun check must have exit_code null, never a fabricated pass."
-          timeout 40m kimi --auto --skills-dir "$RUNNER_TEMP/kimi-skills" \
+          timeout 40m kimi --skills-dir "$RUNNER_TEMP/kimi-skills" \
             --output-format stream-json -p "$prompt" \
             2> >(tee "$RUNNER_TEMP/kimi-review.stderr" >&2) | tee "$RUNNER_TEMP/kimi-review.jsonl"
 
