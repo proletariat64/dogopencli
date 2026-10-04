@@ -32,7 +32,7 @@
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
 | General | [Liquidity Batch C 投资查询与剩余门槛](research/general/2026-10-04-liquidity-batch-c-gates.md) | #89：基准值与策略结果已启用，交付 2/4；计价估值与账单保持 unsupported，规格继续开放 |
-| General | [Liquidity #97 详情、地区与费用订单门槛](research/general/2026-10-04-liquidity-issue97-gates.md) | 当前原生契约调查；详情与费用订单实现中，地区因跨页重复暂不启用 |
+| General | [Liquidity #97 详情、地区与费用订单门槛](research/general/2026-10-04-liquidity-issue97-gates.md) | 三个真实详情与独立费用订单，候选 4/5；CLI UAT 24/24，地区因跨页重复暂不启用 |
 | General | [Issue #82 资金需求与执行查询最新验收](research/general/2026-10-04-funding-execution-batch-acceptance.md) | 10 月 4 日 Liquidity 认证恢复，有界 swap 正式注册生产 CLI UAT 21/21、Kimi 基线通过；当前 1/4 启用，追加 Kimi 权限待确认，其他三个列表保持 unsupported |
 | General | [Issue #82 10 月 3 日验收历史快照](research/general/2026-10-03-funding-execution-batch-acceptance.md) | 当时 0/4 放行、UAT 认证阻塞、Kimi 未执行；保留原生采集、本地验证及当时门槛，不作为最新授权状态 |
 | General | [Issue #82 资金需求／执行／swap 原生契约](research/general/2026-10-03-liquidity-issue82-operations-contract.md) | 10 月 3 日资金需求与两类执行记录的空样本／099 阻塞；swap 原生全范围 959 次到达、952 个唯一身份、7 次重复到达，有界交易日期范围 15/15 完整采集；后续放行见 10 月 4 日验收 |

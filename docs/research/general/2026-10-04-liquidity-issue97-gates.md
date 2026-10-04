@@ -25,13 +25,13 @@ existing restricted transport and explicit inquiry contracts.
 
 | Candidate / variant | Current evidence | Gate status |
 | --- | --- | --- |
-| strategy-results get / fund | Form POST `/api/increment/decision/task/taskDetail.json`, only `taskId` from list `id`; nonempty detail echoes `taskId` and `FUND_DECISION_TASK` | Native identity passed; implementation and CLI UAT pending |
-| strategy-results get / product | Independently queried same true detail caller; echoes `taskId` and `PRODUCT_DECISION_TASK`; native `investableFundResultVo=null` | Native identity passed; implementation and CLI UAT pending |
-| risk events get | Form POST `/api/risk/event/detail.json`, only `riskEventId` from event list `id`; detail `id` and `RISK_EVENT` match | Native identity passed; implementation and CLI UAT pending |
-| risk anomalies get | Independently queried alert detail; detail `id` and `RISK_ALERT` match | Native identity passed; implementation and CLI UAT pending |
+| strategy-results get / fund | Form POST `/api/increment/decision/task/taskDetail.json`, only `taskId` from list `id`; nonempty detail echoes `taskId` and `FUND_DECISION_TASK` | Implemented; registered CLI UAT 4/4 passed |
+| strategy-results get / product | Independently queried same true detail caller; echoes `taskId` and `PRODUCT_DECISION_TASK`; native `investableFundResultVo=null` | Implemented; registered CLI UAT 4/4 passed |
+| risk events get | Form POST `/api/risk/event/detail.json`, only `riskEventId` from event list `id`; detail `id` and `RISK_EVENT` match | Implemented; registered CLI UAT 4/4 passed |
+| risk anomalies get | Independently queried alert detail; detail `id` and `RISK_ALERT` match | Implemented; registered CLI UAT 4/4 passed |
 | reference areas list / city | GET `/queryParaCity.json`, width 10, 17 pages: 161 arrivals / 144 distinct IDs / 161 reported; stable total, repeated records, no conflicting duplicate content | Deferred: complete coverage not proven |
 | reference areas list / country | GET `/queryParaCountry.json`, width 10, 6 pages: 52 arrivals / 48 distinct IDs / 52 reported; stable total, repeated records, no conflicting duplicate content | Deferred: complete coverage not proven |
-| pricing fee-orders list | GET `/getFeeOrderList.json`, August 1–31: 2 arrivals / 2 IDs / 2 reported; independent single-day and empty-day inquiries passed | Native bounded contract passed; implementation and CLI UAT pending |
+| pricing fee-orders list | GET `/getFeeOrderList.json`, August 1–31: 2 arrivals / 2 IDs / 2 reported; independent single-day and empty-day inquiries passed | Implemented; registered CLI UAT 8/8 passed |
 
 The current strategy and risk parents remove their historical missing-parent
 blocker, but list refresh must still never fetch details. Native detail callers
@@ -72,9 +72,33 @@ unsupported, with no alias, redirect or cache migration.
 
 ## Delivery evidence
 
-Implementation, focused checks, independent review and registered CLI production
-UAT are pending. Native investigations above are not substitutes for those gates.
-No release/version change or issue closure has occurred.
+Candidate assessment is 5/5; implementation is 4/5. Three existing unsupported
+get leaves are enabled, and one fee-order list is new. Areas are deferred with
+both types unproven. The resulting catalog has 134 query leaves: 79 supported
+(54 lists, 25 detail/history; 32 settings, 40 runtimes, 7 reference) and 55
+unsupported. Adding fees does not close the original valuation gap.
+
+Registered production CLI UAT passed 24/24 commands on 2026-10-04:
+
+| Variant | Commands | Evidence |
+| --- | --- | --- |
+| risk events get | 4/4 | refresh, cached read, disconnected read, live; exact id/mode |
+| risk anomalies get | 4/4 | independently verified same lifecycle and native id/mode |
+| strategy-results get / fund | 4/4 | independent refresh/offline/live; exact taskId/taskType |
+| strategy-results get / product | 4/4 | independent lifecycle; native null result retained |
+| fee-orders list | 8/8 | strict full refresh/read/disconnected/live (2 records), strict single day live (1), empty live/refresh/disconnected (0) |
+
+Each disconnected read used a transport factory that raises on any browser
+contact, and matched the same cached records and fetched_at. Every live read
+left its isolated SQLite file byte for byte unchanged. Detail variants used
+one shared private detail UAT cache to exercise independent object storage; fees
+used a separate private dated cache. Neither cache is the user's normal cache.
+The registered CLI retained the normal browser coordination and restricted
+transport; no production response was printed or committed.
+
+Focused integration checks and independent review are recorded below when
+complete. Native investigation, local checks and production UAT remain distinct.
+No release/version change, default-branch merge or issue closure has occurred.
 
 ## Sources
 

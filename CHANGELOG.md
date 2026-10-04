@@ -1,5 +1,18 @@
 # 变更记录
 
+## 未发布
+
+#97 新增真实策略任务详情（fund/product 两类）和风险事件／告警详情，按原生身份与
+类型校验，独立刷新、离线读取，live 不写缓存。新增准确命名的 `pricing fee-orders list`，
+支持最多 31 日的有界 Service Date 范围；费用与交易币种分别保留，不作为 valuations 别名。
+
+本批候选实现 4/5：三个旧 unsupported 已解除，另新增一个费用订单叶子。
+目录为 79 supported / 55 unsupported，共 134 项。地区 city/country 因跨页重复仍
+不能证明完整采集，province 未重新探测；valuations 保持 unsupported。
+注册公共 CLI 生产 UAT 24/24 通过；本地检查和审查见
+[验收报告](docs/research/general/2026-10-04-liquidity-issue97-gates.md)。
+未升级版本、发布包或关闭 #97。
+
 ## v0.2.6（2026-10-04）
 
 合并 PR #94、#95、#96，新增有界 decisions、transfers、risk events、risk anomalies、
