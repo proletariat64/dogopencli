@@ -76,6 +76,7 @@ from .spec import (
     ListSpec,
     ScopeOption,
 )
+from .strategy_detail import STRATEGY_DETAIL
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import TRANSFER_ORDERS, map_transfer_query
 
@@ -2449,6 +2450,13 @@ _AUDIT_DEFERRED = tuple(
     }
 )
 
+DETAIL_SPECS += (STRATEGY_DETAIL,)
+_AUDIT_DEFERRED = tuple(
+    item
+    for item in _AUDIT_DEFERRED
+    if item.path != (*STRATEGY_DETAIL.path, STRATEGY_DETAIL.action)
+)
+
 # Spec #76 replaces old cash/forecast deferrals, not other domains' contracts.
 _ACCEPTED_PATHS = {(*item.path, "list") for item in ACCEPTED_LIST_SPECS} | {
     (*item.path, item.action) for item in ACCEPTED_DETAIL_SPECS
@@ -2751,6 +2759,7 @@ def detail_query_node(leaf: DetailLeaf) -> BizNode:
                     option.summary,
                     "str",
                     required=True,
+                    choices=option.choices,
                 )
                 for option in detail.identity
             ),
@@ -2832,6 +2841,7 @@ def refresh_detail_node(leaf: DetailLeaf) -> BizNode:
                 option.summary,
                 "str",
                 required=True,
+                choices=option.choices,
             )
             for option in detail.identity
         ),

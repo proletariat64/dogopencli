@@ -21,6 +21,7 @@ from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import FIELDS as RISK_FIELDS
 from .risk_batch import RELEASED as RISK_RELEASED
 from .risk_detail import DETAIL_FIELDS, RISK_DETAIL_SPECS
+from .strategy_detail import STRATEGY_DETAIL, STRATEGY_DETAIL_FIELDS
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
 from .transfer_list import TRANSFER_ORDERS
@@ -3371,3 +3372,7 @@ for _risk_detail_spec in RISK_DETAIL_SPECS:
         else "str"
         for field in DETAIL_FIELDS
     }
+
+# Current genuine native task details (2026-10-04), both task variants.
+
+SAMPLED_FIELDS[STRATEGY_DETAIL.name] = STRATEGY_DETAIL_FIELDS

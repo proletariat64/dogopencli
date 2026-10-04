@@ -219,6 +219,8 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
                 "native_field": option.field,
                 "type": option.kind,
                 "response_echo": option.echo,
+                "virtual": option.virtual,
+                "choices": list(option.choices),
             }
             for option in detail.identity
         ],
@@ -230,7 +232,11 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
             **_source_guide(
                 detail.name,
                 contract,
-                "2026-10-02" if detail.schema_version else "2026-10-01",
+                "2026-10-04"
+                if detail.projection == "strategy_detail"
+                else "2026-10-02"
+                if detail.schema_version
+                else "2026-10-01",
             ),
             "projection": detail.projection or None,
             "schema_version": detail.schema_version or None,

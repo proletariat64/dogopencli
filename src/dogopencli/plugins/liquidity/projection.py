@@ -27,6 +27,7 @@ from .decision_list import project_decision_record
 from .operations_batch import validate_swap_business_date
 from .risk_batch import project_risk_record
 from .risk_detail import project_risk_detail
+from .strategy_detail import project_strategy_detail
 from .transfer_list import project_transfer_order
 
 # The verified group-balances request scope fixes the equivalent currency
@@ -801,6 +802,7 @@ def _project_strategy_results(row: Any) -> dict[str, Any]:
 
 
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
+    "strategy_detail": project_strategy_detail,
     "groups_settings": _project_groups_settings,
     "group_balances": _project_group_balances,
     "pools_settings": _project_pools_settings,
