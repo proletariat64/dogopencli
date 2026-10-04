@@ -24,6 +24,7 @@ from typing import Any
 
 from ...errors import INVALID_ARGUMENT, INVALID_RESPONSE, CliError
 from .decision_list import project_decision_record
+from .fee_orders import project_fee_order
 from .operations_batch import validate_swap_business_date
 from .risk_batch import project_risk_record
 from .transfer_list import project_transfer_order
@@ -814,6 +815,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "decision_reports": project_decision_record,
     "strategy_results": _project_strategy_results,
     "benchmark_values": _project_benchmark_values,
+    "fee_orders": project_fee_order,
 }
 
 

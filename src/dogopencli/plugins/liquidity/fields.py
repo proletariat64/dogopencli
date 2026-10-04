@@ -9,6 +9,8 @@ complete schemas, validation assertions, or nullability guarantees.
 from .decision_list import DECISIONS
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
+from .fee_orders import FEE_ORDERS
+from .fee_orders import FIELDS as FEE_ORDER_FIELDS
 from .investment_batch import (
     BENCHMARK_FIELDS,
     BENCHMARK_VALUES,
@@ -3358,3 +3360,7 @@ SAMPLED_FIELDS.update(
 CANDIDATE_SAMPLED_FIELDS[DECISIONS.name] = DECISION_FIELDS
 if DECISIONS.name in DECISIONS_RELEASED:
     SAMPLED_FIELDS[DECISIONS.name] = DECISION_FIELDS
+
+# Observed source fields; optional status is not claimed as sampled.
+
+SAMPLED_FIELDS[FEE_ORDERS.name] = {field: "str" for field in FEE_ORDER_FIELDS}

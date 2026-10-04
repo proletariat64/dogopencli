@@ -86,6 +86,26 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
             },
         }
         return schema
+    if item.projection == "fee_orders":
+        properties = schema["properties"]
+        properties["serviceDate"]["x-format"] = "YYYYMMDD"
+        properties["serviceDate"]["description"] = (
+            "Inclusive native Service Date query day; fixed query zone GMT+08"
+        )
+        for field in ("serviceTime", "gmtCreate", "gmtModified"):
+            properties[field]["x-format"] = "YYYY-MM-DD HH:mm:ss"
+            properties[field]["description"] = (
+                "Naive source timestamp; no inferred UTC offset or conversion"
+            )
+        for field, currency in (
+            ("feeAmount", "pricingCurrency"),
+            ("transAmount", "currency"),
+        ):
+            properties[field]["x-currency-field"] = currency
+            properties[field]["x-evidence"]["unit"] = "native UI currency column"
+        properties["feeAmount"]["description"] = "Fee(Pricing CCY)"
+        properties["transAmount"]["description"] = "Transaction Amount"
+        return schema
     if item.projection != "strategy_results":
         return schema
     properties = schema["properties"]
@@ -178,6 +198,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     "risk_events",
                     "risk_anomalies",
                     "benchmark_values",
+                    "fee_orders",
                 }
                 or variant.schema_version == INVESTMENT_VERSION
                 else "2026-10-03"
