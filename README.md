@@ -313,6 +313,13 @@ dogopencli liquidity operations transfers list \
 原生 `id` 为空，保留原值但不用于合并。利率 `value` 单位为百分数，保留原始字符串
 精度，不参与身份。同次采集同键不同值拒绝；后续刷新可以修订该基准。
 
+新增本地派生 `primaryId`，便于单字段引用：
+`bmv1:GUAPW3SG:20261002:passiveInterestBenchmark:USD:GREEN`。
+固定顺序为版本前缀、租户、生效日期、策略类型、币种、资金颜色；各段使用 UTF-8
+百分号编码，仅保留 RFC 3986 非保留字符。利率修订、刷新时间和查询范围不改变 ID；
+原生 `id` 和四字段业务身份保留。新字段进入输出、表格及缓存，支持
+`--fields primaryId`。缓存契约升级到 v2，已有 v1 缓存保留，先 refresh 再离线读取。
+
 `investment strategy-results list` 支持 `FUND_DECISION_TASK` 与
 `PRODUCT_DECISION_TASK`，必须显式提供 `--task-type`、`--trigger-from` 和
 `--trigger-to`（`YYYYMMDD`，原生 GMT+08，包含两端）。两个变体与精确触发日期范围

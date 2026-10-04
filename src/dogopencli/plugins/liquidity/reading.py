@@ -70,6 +70,21 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
         for field, meaning in meanings.items():
             properties[field]["description"] = meaning
             properties[field]["x-evidence"]["meaning"] = "operator confirmed 2026-10-04"
+        properties["primaryId"] = {
+            "type": "string",
+            "description": "Local stable reference: bmv1:<tenant>:<effectiveDate>:"
+            "<strategyBenchmarkType>:<currency>:<colorType>; each UTF-8 component "
+            "is percent-encoded, leaving only RFC 3986 unreserved characters literal.",
+            "x-origin": "local derivation",
+            "x-derived-from": ["tenant", *item.identity],
+            "x-evidence": {
+                "type": "derived",
+                "presence": "guaranteed",
+                "nullability": "non-null",
+                "unit": "not applicable",
+                "meaning": "single-field reference to the confirmed business identity",
+            },
+        }
         return schema
     if item.projection != "strategy_results":
         return schema

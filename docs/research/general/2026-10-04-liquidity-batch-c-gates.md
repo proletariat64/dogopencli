@@ -153,6 +153,9 @@ publication or issue closure.
 
 ## Benchmark business identity and incremental acceptance
 
+This section records the initial benchmark delivery at `cb5fe77`, before the
+locally derived primaryId follow-up below.
+
 On 2026-10-04 the operator confirmed that a benchmark denotes the market interest
 baseline for one business day, fund nature (red/yellow/green), investment strategy
 (passive interest or tenor interest) and currency. Those native dimensions form
@@ -220,6 +223,59 @@ tests and separate production UAT. Raw output is retained in ignored
 `kimi-benchmark-review.raw.log`; 24 JSON events were normalized into
 `kimi-benchmark-review.jsonl`, and the final structured report is retained in
 `kimi-benchmark-final-review.json`. No Greptile command was used.
+
+## Locally derived benchmark primaryId
+
+The operator approved a stable single-field reference for the confirmed business
+identity. Public and cached records now add `primaryId`; native `id` and the
+four-field collector/store identity are preserved. Its fixed format is
+`bmv1:<tenant>:<effectiveDate>:<strategyBenchmarkType>:<currency>:<colorType>`.
+Each component is UTF-8 percent-encoded, leaving only RFC 3986 unreserved
+characters literal, before colon joining. Colons, percent signs, slashes and
+Unicode therefore round-trip without ambiguous component boundaries. The ID
+does not include the interest value, fetched_at or query window, and is generated
+locally even if an untrusted source field also happens to be named primaryId.
+
+Default tables include the field and `--fields primaryId` selects it offline or
+live. Describe explicitly marks a derived string with its source dimensions;
+it makes no sampled-backend-type claim. The native sampled-fields catalog remains
+six fields. Cache schema `investment-benchmark-values-v2` isolates seven-field
+projected captures from existing v1 captures, which are retained; users explicitly
+refresh before v2 cached reads. The ID encoding version remains bmv1, independent
+of the cache schema version. No shared query/store/retention behavior changes.
+
+Local validation: **176 passed** for benchmark CLI and collector/store/field/
+projection regressions; **57 passed, 20 subtests passed** for strategy CLI,
+snapshot and documentation. New public-seam tests prove an exact representative
+ID, source-field override resistance, stability across refresh/value/window
+changes, reversible delimiter/percent/Unicode encoding, distinct ambiguous-looking
+tuples, cached/live equality, and local provenance in describe. Existing conflict,
+malformed scope/value, partial/strict and empty-cache gates still pass. Ruff lint
+and formatting passed; the historical full suite was not repeated for this
+bounded additive field change.
+
+CDP 9223 was free. Registered CLI UAT passed **5/5 commands**: strict v2 full
+refresh, full cached read, disconnected primaryId-only read, disconnected
+single-day read and strict single-day live. The full capture contains **165 unique
+reversible IDs for 165 records**; native ids remain blank, fetched_at matches the
+same published capture, the 20261002 **33-record** subwindow has identical cached
+and live primaryId sets, and live leaves SQLite bytes unchanged. Count/equality
+summaries are private under ignored `tmp/issue89/primary-id-uat-summary.jsonl`.
+Local Kimi completed with exit 0 against the three-file incremental production
+diff from `HEAD cb5fe77`; actual default branch remains `origin/master 045c384`.
+Both axes found no confirmed correctness/spec defects or hard standards breaches.
+Two non-blocking judgement calls concern repetition of the ID format in code,
+help and describe, and default-table width; the latter is explicitly requested.
+Neither warrants a correctness change. Kimi independently passed Ruff lint and
+format, traced versioned scope selection and local field provenance, and reported
+**confidence: 4/5**, relying on parent pytest and separate production UAT. It did
+not repeat pytest or contact production. Raw output is retained privately in
+`kimi-primary-id-review.raw.log`; 33 JSON events were normalized into
+`kimi-primary-id-review.jsonl` and the final structured report is in
+`kimi-primary-id-final-review.json`, all under ignored `tmp/issue89/`.
+
+An offline index inspection additionally confirmed 165 retained v1 rows alongside
+165 v2 rows after the new refresh; the schema change did not delete old captures.
 
 ## Remaining decisions
 

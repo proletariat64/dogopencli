@@ -735,6 +735,7 @@ def _project_benchmark_values(row: Any) -> dict[str, Any]:
     from .investment_batch import (
         BENCHMARK_FIELDS,
         BENCHMARK_IDENTITY,
+        benchmark_primary_id,
         validate_business_date,
     )
     from .spec import TENANT
@@ -757,7 +758,9 @@ def _project_benchmark_values(row: Any) -> dict[str, Any]:
     except ValueError as error:
         raise _invalid("benchmark_values.effectiveDate: invalid YYYYMMDD") from error
     _validate_amounts(record, ("value",), "benchmark_values")
-    return _pick(record, BENCHMARK_FIELDS)
+    projected = _pick(record, BENCHMARK_FIELDS)
+    projected["primaryId"] = benchmark_primary_id(projected)
+    return projected
 
 
 def _project_strategy_results(row: Any) -> dict[str, Any]:

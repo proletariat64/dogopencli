@@ -61,6 +61,64 @@ def ordered(rows):
     return sorted(rows, key=lambda row: tuple(row[field] for field in FIELDS[1:5]))
 
 
+def test_primary_id_is_derived_and_stable_across_refresh_value_and_window(
+    setup, run_cli
+):
+    expected = "bmv1:GUAPW3SG:20261002:passiveInterestBenchmark:USD:RED"
+    setup.state.business_handler = listing([benchmark(primaryId="UNTRUSTED SOURCE ID")])
+    code, out, err = run_cli(command("--live", "--all"))
+    assert code == 0, err
+    assert parse(out)["data"][0]["primaryId"] == expected
+    assert parse(out)["data"][0]["id"] == ""
+    code, _, err = run_cli(command(refresh=True))
+    assert code == 0, err
+    setup.state.reachable = False
+    code, out, err = run_cli(command("--all", "--fields", "primaryId"))
+    assert code == 0, err
+    assert parse(out)["data"] == [{"primaryId": expected}]
+    setup.state.reachable = True
+    setup.state.business_handler = listing([benchmark(value="3.00000")])
+    day = ["--from-date", "20261002", "--to-date", "20261002"]
+    code, _, err = run_cli(command(refresh=True, options=day))
+    assert code == 0, err
+    setup.state.reachable = False
+    code, out, err = run_cli(command("--all", options=day))
+    assert code == 0, err
+    assert parse(out)["data"] == [dict(benchmark(value="3.00000"), primaryId=expected)]
+
+
+def test_primary_id_escaping_is_reversible_and_component_boundaries_do_not_collide(
+    setup, run_cli
+):
+    from urllib.parse import unquote
+
+    rows = [
+        benchmark(strategyBenchmarkType="passive:interest", currency="USD"),
+        benchmark(strategyBenchmarkType="passive", currency="interest:USD"),
+        benchmark(strategyBenchmarkType="策:略", currency="U%SD", colorType="绿/色"),
+    ]
+    expected = {
+        "bmv1:GUAPW3SG:20261002:passive%3Ainterest:USD:RED",
+        "bmv1:GUAPW3SG:20261002:passive:interest%3AUSD:RED",
+        "bmv1:GUAPW3SG:20261002:%E7%AD%96%3A%E7%95%A5:U%25SD:%E7%BB%BF%2F%E8%89%B2",
+    }
+    setup.state.business_handler = listing(rows)
+    code, out, err = run_cli(command("--live", "--all"))
+    assert code == 0, err
+    output = parse(out)["data"]
+    assert {row["primaryId"] for row in output} == expected
+    for row in output:
+        components = row["primaryId"].split(":")
+        assert len(components) == 6
+        assert tuple(unquote(part) for part in components[1:]) == (
+            "GUAPW3SG",
+            row["effectiveDate"],
+            row["strategyBenchmarkType"],
+            row["currency"],
+            row["colorType"],
+        )
+
+
 def test_composite_identity_wire_precision_privacy_and_offline_live_isolation(
     setup, run_cli
 ):
@@ -90,14 +148,23 @@ def test_composite_identity_wire_precision_privacy_and_offline_live_isolation(
     before = setup.cache_path.read_bytes()
     code, out, err = run_cli(command("--live", "--all", "--require-complete"))
     assert code == 0, err
-    assert ordered(parse(out)["data"]) == ordered(rows)
+    live = parse(out)["data"]
+    assert ordered(
+        [{field: row[field] for field in FIELDS} for row in live]
+    ) == ordered(rows)
+    assert len({row["primaryId"] for row in live}) == 12
     assert setup.cache_path.read_bytes() == before
     count = len(setup.state.business_requests)
     setup.state.reachable = False
     code, out, err = run_cli(command("--all", "--require-complete"))
     assert code == 0, err
     cached = parse(out)
-    assert ordered(cached["data"]) == ordered(rows)
+    assert ordered(
+        [{field: row[field] for field in FIELDS} for row in cached["data"]]
+    ) == ordered(rows)
+    assert {row["primaryId"] for row in cached["data"]} == {
+        row["primaryId"] for row in live
+    }
     assert cached["meta"]["fetched_at"] == refreshed["meta"]["fetched_at"]
     assert len(setup.state.business_requests) == count
     assert b"SYNTHETIC PRIVATE" not in setup.cache_path.read_bytes()
@@ -122,7 +189,11 @@ def test_later_refresh_revises_same_identity_and_offline_subwindow_uses_business
         )
     )
     assert code == 0, err
-    assert parse(out)["data"] == [revised]
+    assert parse(out)["data"] == [
+        dict(
+            revised, primaryId="bmv1:GUAPW3SG:20261002:passiveInterestBenchmark:USD:RED"
+        )
+    ]
     code, out, err = run_cli(
         command(
             "--all",
@@ -292,7 +363,12 @@ def test_offline_help_describe_documents_business_identity_and_percent(setup, ru
     assert guide["series_time"] == "effectiveDate"
     assert guide["live_verified"] == "2026-10-04"
     properties = document["data_schema"]["properties"]
-    assert set(properties) == set(FIELDS)
+    assert set(properties) == {*FIELDS, "primaryId"}
+    assert properties["primaryId"]["type"] == "string"
+    assert properties["primaryId"]["x-origin"] == "local derivation"
+    assert properties["primaryId"]["x-derived-from"] == ["tenant", *guide["identity"]]
+    assert "x-observed-type" not in properties["primaryId"]
+    assert guide["schema_version"] == "investment-benchmark-values-v2"
     assert properties["value"]["x-unit"] == "percent"
     assert properties["effectiveDate"]["x-format"] == "YYYYMMDD"
     assert (

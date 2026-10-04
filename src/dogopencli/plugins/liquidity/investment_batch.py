@@ -3,6 +3,7 @@
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import quote
 
 from ...errors import EXIT_USAGE, INVALID_ARGUMENT, INVALID_RESPONSE, CliError
 from .spec import (
@@ -53,9 +54,9 @@ BENCHMARK_VALUES = ListSpec(
             window="to",
         ),
     ),
-    table_columns=(*BENCHMARK_IDENTITY, "value"),
+    table_columns=("primaryId", *BENCHMARK_IDENTITY, "value"),
     projection="benchmark_values",
-    schema_version="investment-benchmark-values-v1",
+    schema_version="investment-benchmark-values-v2",
     notes=(
         "Native inquiry: JSON POST, fixed tenant GUAPW3SG and timeZone GMT+08, "
         "rowStart offsets of width 10, data.data and data.totalCount.",
@@ -71,8 +72,15 @@ BENCHMARK_VALUES = ListSpec(
         "not fetched_at. Dated captures preserve source coverage.",
         "Same-identity conflicting content within one acquisition is a hard "
         "failure. A later refresh may publish a revised value for that identity.",
-        "Only the six observed benchmark business fields enter public/cache "
-        "records. Strategy definitions and investment execution are separate.",
+        "primaryId is locally derived: bmv1 followed by tenant, effectiveDate, "
+        "strategyBenchmarkType, currency and colorType, separated by colons. "
+        "Each UTF-8 component is percent-encoded with only RFC 3986 unreserved "
+        "characters left literal. Value, capture time and query window are "
+        "excluded; native id is preserved and the four-field identity is unchanged.",
+        "Only the six observed benchmark business fields and local primaryId "
+        "enter public/cache records. The v2 cache contract requires refresh; "
+        "existing v1 captures are retained. Strategy definitions and investment "
+        "execution are separate.",
     ),
 )
 STRATEGY_FIELDS = (
@@ -180,6 +188,12 @@ CANDIDATES = (BENCHMARK_VALUES, FUND_RESULTS, PRODUCT_RESULTS)
 # Both variants passed nonempty native collection and CLI UAT on CDP 9223.
 # Final local checks, review and registered CLI UAT gate each release commit.
 RELEASED: frozenset[str] = frozenset({BENCHMARK_VALUES.name, FUND_RESULTS.name})
+
+
+def benchmark_primary_id(record: dict[str, Any]) -> str:
+    """Encode the validated business identity for stable single-field references."""
+    components = (TENANT, *(record[field] for field in BENCHMARK_IDENTITY))
+    return "bmv1:" + ":".join(quote(component, safe="") for component in components)
 
 
 def validate_business_date(value: Any) -> None:
