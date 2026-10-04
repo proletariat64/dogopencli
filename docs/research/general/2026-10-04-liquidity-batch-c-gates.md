@@ -1,5 +1,9 @@
 # Liquidity batch C: verified benchmarks, strategy results and remaining gates
 
+Observed: 2026-10-04
+Scope: general
+Status: snapshot
+
 Specification: [issue #89](https://github.com/proletariat64/dogopencli/issues/89).
 Baseline: `f8ada67215d164a745817a1627672639c7028002`, version `0.2.5`.
 Actual enabled/target lists: **2/4**. Strategy variants accepted: **2/2**.
