@@ -5,7 +5,6 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
-  pull-requests: write
   contents: read
 
 concurrency:
@@ -16,7 +15,7 @@ jobs:
   kimi-review:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,46 +23,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-
-      - name: Install Kimi Code CLI
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Install pinned Kimi version
-        run: |
-          npm install --global @moonshot-ai/kimi-code@2.1.1
-          kimi --version
+      - name: Install Kimi
+        run: npm install --global @moonshot-ai/kimi-code@2.1.1
 
-      - name: Resolve actual default branch
-        id: base
-        env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          # checkout with fetch-depth: 0 already fetched the default branch.
-          # Its credentials are removed before the agent starts.
-          base_sha=$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")
-          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
-
-      - name: Install code-review skill
-        run: |
-          git clone --no-checkout https://github.com/mattpocock/skills.git "$RUNNER_TEMP/skills-source"
-          git -C "$RUNNER_TEMP/skills-source" checkout --detach d81f3a183412e71a5b1e84ca21bc1a35eea03a60
-          mkdir -p "$RUNNER_TEMP/kimi-skills"
-          cp -R "$RUNNER_TEMP/skills-source/skills/engineering/code-review" "$RUNNER_TEMP/kimi-skills/code-review"
-          test -s "$RUNNER_TEMP/kimi-skills/code-review/SKILL.md"
-
-      - name: Run Kimi Code Review
-        id: kimi
+      - name: Review PR
         env:
           KIMI_MODEL_API_KEY: ${{ secrets.KIMI_API_KEY }}
           KIMI_MODEL_NAME: ${{ vars.KIMI_MODEL_NAME || 'k3' }}
@@ -71,111 +38,50 @@ jobs:
           KIMI_CODE_HOME: ${{ runner.temp }}/kimi-code
           KIMI_DISABLE_TELEMETRY: '1'
           KIMI_CODE_NO_AUTO_UPDATE: '1'
-          REVIEW_BASE: ${{ steps.base.outputs.sha }}
-          REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$KIMI_MODEL_API_KEY" ]; then
-            echo "KIMI_API_KEY repository secret is missing."
-            exit 1
-          fi
-          prompt="/code-review Compare HEAD $REVIEW_HEAD against the actual remote default branch pinned at $REVIEW_BASE using git diff $REVIEW_BASE...HEAD. Review Standards and Spec separately. Run required CI checks once using the existing environment: python -m pytest -q, ruff check ., ruff format --check ., make doc-guard, and git diff --check $REVIEW_BASE...HEAD. This GitHub runner does not have rtk or code-review-graph installed: use the direct commands above and available code inspection tools, and record that graph verification was not run. Do not install additional tools. Do not modify tracked files, commit, push, post comments, run production UAT, inspect credentials/configuration, or access business endpoints. If no spec can be retrieved, report that limitation without asking interactive questions. Return ONLY one final JSON object with comparison_base and head containing the exact SHAs, checks as an array of {command, exit_code, result}, standards and spec each containing {status, findings} with evidence-backed findings containing file, line, severity and evidence, confidence formatted as ?/5 (integer 0..5), and confidence_reason explaining verified results, unrun checks and remaining uncertainty. Give exactly one overall confidence, never per-finding scores. Keep the final JSON under 20000 characters. An unrun check must have exit_code null, never a fabricated pass."
-          timeout 40m kimi --skills-dir "$RUNNER_TEMP/kimi-skills" \
-            --output-format stream-json -p "$prompt" \
-            2> >(tee "$RUNNER_TEMP/kimi-review.stderr" >&2) | tee "$RUNNER_TEMP/kimi-review.jsonl"
+          test -n "$KIMI_MODEL_API_KEY" || { echo "::error::KIMI_API_KEY is missing"; exit 1; }
+          base=$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")
+          head=$(git rev-parse HEAD)
+          timeout --kill-after=30s 15m kimi --auto \
+            --skills-dir .github/kimi-skills --output-format stream-json \
+            -p "/code-review Review git diff $base...$head in this checkout. Report base $base and head $head." \
+            2> >(tee "$RUNNER_TEMP/kimi-review.stderr" >&2) \
+            | tee "$RUNNER_TEMP/kimi-review.jsonl"
 
-      - name: Parse and post review to PR
-        if: always()
-        uses: actions/github-script@v7
+      - name: Publish review summary
         env:
-          REVIEW_OUTCOME: ${{ steps.kimi.outcome }}
-          REVIEW_BASE: ${{ steps.base.outputs.sha }}
-          REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          REVIEW_LOG: ${{ runner.temp }}/kimi-review.jsonl
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          messages = []
+          for line in Path(os.environ["REVIEW_LOG"]).read_text().splitlines():
+              try:
+                  event = json.loads(line)
+              except ValueError:
+                  continue
+              if (isinstance(event, dict) and event.get("role") == "assistant"
+                      and not event.get("tool_calls")
+                      and isinstance(event.get("content"), str)
+                      and event["content"].strip()):
+                  messages.append(event["content"].strip())
+          if not messages:
+              raise SystemExit("No final Kimi review received")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("## Kimi Code Review\n\n" + messages[-1] + "\n")
+          PY
+
+      - name: Save review logs
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-            const marker = '<!-- kimi-code-review -->';
-            const logFile = path.join(process.env.RUNNER_TEMP, 'kimi-review.jsonl');
-            let result;
-            let failure;
-            try {
-              if (process.env.REVIEW_OUTCOME !== 'success') {
-                throw new Error('Kimi execution did not complete successfully.');
-              }
-              const entries = fs.readFileSync(logFile, 'utf8').split('\n')
-                .filter(line => line.trim()).map(line => JSON.parse(line));
-              const messages = entries.filter(entry => entry.role === 'assistant'
-                && !entry.tool_calls?.length && typeof entry.content === 'string'
-                && entry.content.trim());
-              if (!messages.length) throw new Error('No final assistant response found.');
-              let text = messages.at(-1).content.trim();
-              if (text.startsWith('```json\n') && text.endsWith('\n```')) {
-                text = text.slice(8, -4).trim();
-              }
-              result = JSON.parse(text);
-              if (result.comparison_base !== process.env.REVIEW_BASE
-                  || result.head !== process.env.REVIEW_HEAD
-                  || !/^[0-5]\/5$/.test(result.confidence)
-                  || typeof result.confidence_reason !== 'string'
-                  || !result.confidence_reason.trim()
-                  || !Array.isArray(result.checks) || !result.checks.length
-                  || !['standards', 'spec'].every(axis => result[axis]
-                    && typeof result[axis].status === 'string'
-                    && Array.isArray(result[axis].findings)
-                    && result[axis].findings.every(finding => typeof finding.file === 'string'
-                      && Number.isInteger(finding.line) && finding.line > 0
-                      && /^P[0-3]$/.test(finding.severity)
-                      && typeof finding.evidence === 'string'))
-                  || !result.checks.every(check => typeof check.command === 'string'
-                    && (check.exit_code === null || Number.isInteger(check.exit_code)))) {
-                throw new Error('Final review JSON failed schema or commit validation.');
-              }
-              const required = ['python -m pytest -q', 'ruff check .', 'ruff format --check .',
-                'make doc-guard', `git diff --check ${process.env.REVIEW_BASE}...HEAD`];
-              if (!required.every(command => result.checks.some(check => check.command.trim().startsWith(command)))) {
-                throw new Error('Final review omitted a required CI check.');
-              }
-              if (JSON.stringify(result, null, 2).length > 40000) {
-                throw new Error('Final review exceeds the comment size limit.');
-              }
-            } catch (error) {
-              failure = error.message;
-              result = undefined;
-              core.setFailed(failure);
-            }
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const body = `${marker}\n## Kimi Code Review\n\n`
-              + (result ? '```json\n' + JSON.stringify(result, null, 2) + '\n```\n\n'
-                : `Review unavailable: ${failure}\n\nconfidence: 0/5\n\n`)
-              + `Commit: \`${process.env.REVIEW_HEAD}\`\n\n[Workflow run](${runUrl})`;
-            await core.summary.addRaw(body).write();
-            const {data: pr} = await github.rest.pulls.get({
-              owner: context.repo.owner, repo: context.repo.repo,
-              pull_number: context.issue.number,
-            });
-            if (pr.head.sha !== process.env.REVIEW_HEAD) {
-              core.info('A newer PR commit exists; skipping the stale review comment.');
-              return;
-            }
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: context.issue.number, per_page: 100,
-            });
-            const previous = comments.find(comment => comment.user?.login === 'github-actions[bot]'
-              && comment.body?.includes(marker));
-            if (previous) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                comment_id: previous.id, body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                issue_number: context.issue.number, body,
-              });
-            }
-            if (result && result.checks.some(check => check.exit_code !== 0)) {
-              core.setFailed('Review reports failed or unrun CI checks; see the JSON result.');
-            }
+          name: kimi-review
+          path: ${{ runner.temp }}/kimi-review.*
+          if-no-files-found: ignore
+          retention-days: 7
