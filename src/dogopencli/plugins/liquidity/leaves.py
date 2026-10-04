@@ -46,6 +46,8 @@ from .cash_forecast import (
     UAT_PASSED,
     WITHDRAWN_GETTERS,
 )
+from .decision_list import DECISIONS, validate_decision_query
+from .decision_list import RELEASED as DECISIONS_RELEASED
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .spec import (
@@ -68,6 +70,8 @@ from .spec import (
     ListSpec,
     ScopeOption,
 )
+from .transfer_list import RELEASED as TRANSFERS_RELEASED
+from .transfer_list import TRANSFER_ORDERS, map_transfer_query
 
 VERIFIED_DATE = "2026-10-01"
 _PAGE_ECHO_NOTE = (
@@ -2307,18 +2311,19 @@ _TICKET_DEFERRED: tuple[DeferredLeaf, ...] = (
     DeferredLeaf(
         ("operations", "decisions", "list"),
         RUNTIMES,
-        "pagination-unverified",
-        "Decision list: populated previous-day scope observed, but no offset"
-        " pagination evidence exists and the current-day scope was empty;"
-        " complete acquisition is unverified. get/history remain available.",
+        "production-uat-pending",
+        "Decision list: bounded native offset acquisition verified on 2026-10-04"
+        " (264 arrivals, 264 unique ids, total 264); registered production CLI"
+        " UAT is pending. get/history remain independently available.",
     ),
     DeferredLeaf(
         ("operations", "transfers", "list"),
         RUNTIMES,
         "pagination-unverified",
-        "Transfer list: populated previous-day scope observed, but no offset"
-        " pagination evidence exists; complete acquisition is unverified."
-        " get remains available.",
+        "Transfer list: nonempty native rows and offset queries observed;"
+        " complete acquisition and registered production CLI UAT remain"
+        " unverified. Native transaction query bounds and displayed gmtCreate"
+        " have no verified time mapping. get remains independently available.",
     ),
     DeferredLeaf(
         ("risk", "sla", "list"),
@@ -2338,11 +2343,24 @@ _TICKET_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("investment", "quote-groups", "list"),
         SETTINGS,
         "total-unverified",
-        "Quote-group list: 54 rows arrived in one response that reports no"
-        " total, and the effect of rowStart is unverified; completeness is"
-        " unprovable.",
+        "Quote-group list: offsets 0 and 10 return identical 54 rows without"
+        " a total or verified ending protocol; full-response completeness"
+        " is unproven. quotationGroupId repeats across versions.",
     ),
 )
+
+if TRANSFER_ORDERS.name in TRANSFERS_RELEASED:
+    LIST_SPECS += (TRANSFER_ORDERS,)
+    _TICKET_DEFERRED = tuple(
+        item
+        for item in _TICKET_DEFERRED
+        if item.path != (*TRANSFER_ORDERS.path, "list")
+    )
+if DECISIONS.name in DECISIONS_RELEASED:
+    LIST_SPECS += (DECISIONS,)
+    _TICKET_DEFERRED = tuple(
+        item for item in _TICKET_DEFERRED if item.path != (*DECISIONS.path, "list")
+    )
 
 # Spec #82 swap declaration stays non-executing until its own UAT/CI gate.
 if SWAP_ORDERS.name in OPERATIONS_RELEASED:
@@ -2474,8 +2492,12 @@ class ListLeaf:
             )
         variant = candidates[0]
         request_values, window = scope_values(variant.scope_options, provided)
+        if variant.projection == "decision_reports":
+            validate_decision_query(request_values)
         if variant.projection == "swap_orders":
             validate_swap_query(request_values)
+        if variant.projection == "transfer_orders":
+            map_transfer_query(request_values)
         window_fields = {
             option.field for option in variant.scope_options if option.window
         }

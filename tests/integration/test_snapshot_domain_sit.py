@@ -161,8 +161,10 @@ def test_native_detail_and_history_count_documents_not_nested_entries(
     )
     assert "secret-object" not in out and "hidden-business" not in out
     list_leaf, _ = snapshot(run_cli, "liquidity", *path[:-1], "list")
-    expected = "not_applicable" if path[-1] == "history" else "missing"
-    assert list_leaf["cache"]["status"] == expected
+    # Released lists have their own empty cache, even when a native detail or
+    # history document is populated; a history document never supplies list rows.
+    assert list_leaf["cache"]["status"] == "missing"
+    assert list_leaf["rows"] is None
 
 
 def test_collection_refused_details_preserve_source_and_dataset_distinction(

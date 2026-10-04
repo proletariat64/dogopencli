@@ -6,7 +6,13 @@ Samples are not
 complete schemas, validation assertions, or nullability guarantees.
 """
 
+from .decision_list import DECISIONS
+from .decision_list import RELEASED as DECISIONS_RELEASED
+from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
+from .transfer_list import RELEASED as TRANSFERS_RELEASED
+from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
+from .transfer_list import TRANSFER_ORDERS
 
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
     "liquidity.cash.accounts.list": {
@@ -3304,12 +3310,18 @@ CANDIDATE_SAMPLED_FIELDS["liquidity.operations.swaps.list"] = {
     "tradeDate": "str",
 }
 
+CANDIDATE_SAMPLED_FIELDS[TRANSFER_ORDERS.name] = TRANSFER_FIELDS
+
 # Observed candidate records do not make a business leaf executable. Keep the
 # shipped evidence catalog aligned with the production release registration.
 SAMPLED_FIELDS.update(
     {
         name: fields
         for name, fields in CANDIDATE_SAMPLED_FIELDS.items()
-        if name in OPERATIONS_RELEASED
+        if name in OPERATIONS_RELEASED | TRANSFERS_RELEASED
     }
 )
+
+CANDIDATE_SAMPLED_FIELDS[DECISIONS.name] = DECISION_FIELDS
+if DECISIONS.name in DECISIONS_RELEASED:
+    SAMPLED_FIELDS[DECISIONS.name] = DECISION_FIELDS
