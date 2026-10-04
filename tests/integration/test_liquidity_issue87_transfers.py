@@ -12,7 +12,7 @@ import pytest
 from dogopencli import catalog, helptree
 from dogopencli.jsonutil import parse
 from dogopencli.plugins.liquidity import leaves
-from dogopencli.plugins.liquidity.transfer_list import TRANSFER_ORDERS
+from dogopencli.plugins.liquidity.transfer_list import RELEASED, TRANSFER_ORDERS
 
 pytest_plugins = ["test_liquidity_cli_sit"]
 
@@ -30,7 +30,16 @@ def transfer_candidate_catalog(monkeypatch):
     monkeypatch.delitem(
         leaves.DEFERRED_BY_PATH, (*TRANSFER_ORDERS.path, "list"), raising=False
     )
-    monkeypatch.setattr(leaves, "LIST_SPECS", (*leaves.LIST_SPECS, TRANSFER_ORDERS))
+    monkeypatch.setattr(
+        leaves,
+        "LIST_SPECS",
+        (
+            *tuple(
+                spec for spec in leaves.LIST_SPECS if spec.name != TRANSFER_ORDERS.name
+            ),
+            TRANSFER_ORDERS,
+        ),
+    )
     for node in (
         leaves.list_query_node(leaf),
         leaves.refresh_list_node(leaf),
@@ -418,7 +427,18 @@ def test_scoped_transfers_distinct_date_scopes_keep_independent_captures(
     assert len(setup.state.business_requests) == count
 
 
-def test_transfer_production_gate_stays_deferred(setup, run_cli):
+def test_transfer_registration_matches_release_evidence(setup, run_cli):
+    released = TRANSFER_ORDERS.name in RELEASED
+    assert (TRANSFER_ORDERS.path in leaves.LIST_LEAVES) is released
+    assert ((*TRANSFER_ORDERS.path, "list") in leaves.DEFERRED_BY_PATH) is not released
+    if released:
+        code, out, err = run_cli(
+            ["describe", "liquidity", "operations", "transfers", "list"]
+        )
+        assert code == 0, err
+        assert parse(out)["read_guide"]["identity"] == ["orderNo"]
+        assert setup.state.business_requests == []
+        return
     code, out, _ = run_cli(["liquidity", "operations", "transfers", "list"])
     assert code == 1
     assert parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
