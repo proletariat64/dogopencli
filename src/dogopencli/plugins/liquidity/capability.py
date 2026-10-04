@@ -362,7 +362,7 @@ class LiquidityDetailCapability:
             one_based=False,
             allowed_body_keys=frozenset(
                 ({"tntInstId"} if self._spec.sends_tenant else set())
-                | {option.field for option in self._spec.identity}
+                | {option.field for option in self._spec.identity if not option.virtual}
                 | set(self._spec.template)
             ),
             fixed_body_values=tuple(
@@ -390,6 +390,13 @@ class LiquidityDetailCapability:
                 raise _usage(
                     f"--{option.flag.replace('_', '-')} is required and nonempty",
                 )
+            if option.choices and raw not in option.choices:
+                raise _usage(
+                    f"--{option.flag.replace('_', '-')} must be one of "
+                    + ", ".join(option.choices)
+                )
+            if option.virtual:
+                continue
             if option.kind == "int":
                 if not raw.isdigit():
                     raise _usage(
@@ -433,7 +440,11 @@ class LiquidityDetailCapability:
         for option in self._spec.identity:
             if option.echo is None:
                 continue
-            expected = request_identity[option.field]
+            expected = (
+                values[option.flag]
+                if option.virtual
+                else request_identity[option.field]
+            )
             actual = detail.get(option.echo)
             if actual is None or isinstance(actual, (dict, list, bool)):
                 raise _invalid("detail identity does not match the request")

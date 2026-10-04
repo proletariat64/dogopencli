@@ -129,6 +129,8 @@ class IdentityOption:
     summary: str
     kind: str = "str"  # str | int
     echo: str | None = None  # response field that must repeat the value
+    choices: tuple[str, ...] = ()
+    virtual: bool = False  # cache/echo identity only; never sent to the backend
 
 
 @dataclass(frozen=True)
