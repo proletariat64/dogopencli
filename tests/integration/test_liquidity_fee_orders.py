@@ -186,3 +186,23 @@ def test_previous_cache_not_migrated_or_deleted(setup, run_cli):
         assert connection.execute(
             "SELECT value FROM previous_valuation_capture"
         ).fetchall() == [("preserve",)]
+
+
+@pytest.mark.parametrize(
+    "amount,currency", [("feeAmount", "pricingCurrency"), ("transAmount", "currency")]
+)
+@pytest.mark.parametrize("unit", [None, "", "dollars", "missing"])
+def test_populated_zero_requires_currency_and_preserves_cache(
+    setup, run_cli, amount, currency, unit
+):
+    setup.state.business_handler = listing([ROW])
+    assert run_cli(args(refresh=True))[0] == 0
+    prior = setup.cache_path.read_bytes()
+    row = dict(ROW, **{amount: "0", currency: unit})
+    if unit == "missing":
+        del row[currency]
+    setup.state.business_handler = listing([row])
+    code, out, _ = run_cli(args(refresh=True))
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert setup.cache_path.read_bytes() == prior

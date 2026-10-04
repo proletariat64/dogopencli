@@ -126,6 +126,8 @@ def test_help_describe_and_missing_identity_are_offline(setup, run_cli, resource
         code, out, err = run_cli(args)
         assert code == 0, (out, err)
         assert "risk-event-id" in out or "risk_event_id" in out
+        if args[0] == "describe":
+            assert parse(out)["read_guide"]["live_verified"] == "2026-10-04"
     code, out, _ = run_cli(["liquidity", "risk", resource, "get"])
     assert code != 0
     assert not setup.state.business_requests

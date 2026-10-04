@@ -144,3 +144,63 @@ def test_same_task_id_in_two_variants_keeps_independent_records(setup, run_cli):
         code, out, _ = run_cli(command(task_type))
         assert code == 0
         assert parse(out)["data"]["taskType"] == task_type
+
+
+@pytest.mark.parametrize(
+    "target,field,value",
+    [
+        ("money", "amount", "missing"),
+        ("money", "currency", "missing"),
+        ("money", "currency", None),
+        ("money", "currency", ""),
+        ("money", "currency", "dollars"),
+        ("date", "valueDate", "missing"),
+        ("date", "valueDate", "20260230"),
+        ("date", "valueDate", "not-a-date"),
+        ("date", "currency", "EUR"),
+        ("date", "sumAmount", "missing"),
+        ("date", "sumAmount", {}),
+    ],
+)
+def test_monetary_and_dated_anchors_preserve_prior(
+    setup, run_cli, target, field, value
+):
+    native = fixture(TYPES[0])
+    answer(setup, native)
+    assert run_cli(command(refresh=True))[0] == 0
+    prior = setup.cache_path.read_bytes()
+    fund = native["data"]["investableFundResultVo"]
+    if target == "money":
+        item = fund["currencyFundResultVoList"][0]["amount"]
+        item["amount"] = 0
+    else:
+        item = fund["investableInvestableFundDetailMap"]["USD"][0]
+    if value == "missing":
+        del item[field]
+    else:
+        item[field] = value
+    code, out, _ = run_cli(command(refresh=True))
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert setup.cache_path.read_bytes() == prior
+
+
+def test_nullable_money_and_blank_optional_fields_preserved(setup, run_cli):
+    native = fixture(TYPES[0])
+    total = native["data"]["investableFundResultVo"]["currencyFundResultVoList"][0]
+    total["safetyBufferAmount"] = None
+    total["tenor"] = ""
+    total["amount"]["amount"] = 0
+    del total["amount"]["currencyValue"]
+    answer(setup, native)
+    code, out, err = run_cli(command(refresh=True))
+    assert code == 0, (out, err)
+    setup.state.reachable = False
+    code, out, err = run_cli(command())
+    assert code == 0, (out, err)
+    result = parse(out)["data"]["investableFundResultVo"]["currencyFundResultVoList"][0]
+    assert result["safetyBufferAmount"] is None
+    assert result["tenor"] == ""
+    assert result["amount"]["amount"] == 0
+    assert result["amount"]["currency"] == "USD"
+    assert "currencyValue" not in result["amount"]
