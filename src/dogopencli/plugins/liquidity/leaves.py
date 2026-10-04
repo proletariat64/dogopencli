@@ -50,6 +50,8 @@ from .decision_list import DECISIONS, validate_decision_query
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
+from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
+from .risk_batch import RELEASED as RISK_RELEASED
 from .spec import (
     ENC_FORM,
     ENV_BASE_RESULT,
@@ -2097,7 +2099,13 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Strategy-result detail: {_IDENTITY}.",
     ),
     DeferredLeaf(
-        ("risk", "events", "list"), RUNTIMES, "empty-scope", f"Risk events: {_EMPTY}."
+        ("risk", "events", "list"),
+        RUNTIMES,
+        "empty-scope",
+        "Risk events: historical UI caller uses riskMode=RISK_EVENT;"
+        " only empty responses observed. Release requires current native scope"
+        " verification, nonempty record types and identity, event observation"
+        " dates/timezone, complete acquisition and production UAT (#88).",
     ),
     DeferredLeaf(
         ("risk", "events", "get"),
@@ -2109,7 +2117,11 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("risk", "anomalies", "list"),
         RUNTIMES,
         "empty-scope",
-        f"Risk anomalies: {_EMPTY}.",
+        "Risk anomalies: historical UI caller uses riskMode=RISK_ALERT;"
+        " no local anomaly classification. Only empty responses observed."
+        " Release requires current native scope distinction from events,"
+        " nonempty record types and identity, observation dates/timezone,"
+        " complete acquisition and production UAT (#88).",
     ),
     DeferredLeaf(
         ("risk", "anomalies", "get"),
@@ -2163,7 +2175,12 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("rules", "monitoring", "list"),
         SETTINGS,
         "empty-scope",
-        f"Monitoring rules: {_EMPTY}.",
+        "Monitoring rules are settings, not observed risk events. Current"
+        " native queryRules also returned zero records (2026-10-04);"
+        " monitoring rule-type filter"
+        " unverified. Release requires current native scope verification,"
+        " nonempty record types and rule identity, configuration status/time"
+        " semantics, complete acquisition and production UAT (#88).",
     ),
     DeferredLeaf(
         ("rules", "monitoring", "get"),
@@ -2380,6 +2397,17 @@ if SWAP_ORDERS.name not in OPERATIONS_RELEASED:
         ),
     )
 
+# Spec #88 releases only the independently verified bounded risk list scopes.
+LIST_SPECS += tuple(item for item in RISK_LIST_SPECS if item.name in RISK_RELEASED)
+_AUDIT_DEFERRED = tuple(
+    item
+    for item in _AUDIT_DEFERRED
+    if item.path
+    not in {
+        (*spec.path, "list") for spec in RISK_LIST_SPECS if spec.name in RISK_RELEASED
+    }
+)
+
 # Spec #76 replaces old cash/forecast deferrals, not other domains' contracts.
 _ACCEPTED_PATHS = {(*item.path, "list") for item in ACCEPTED_LIST_SPECS} | {
     (*item.path, item.action) for item in ACCEPTED_DETAIL_SPECS
@@ -2496,6 +2524,10 @@ class ListLeaf:
             validate_decision_query(request_values)
         if variant.projection == "swap_orders":
             validate_swap_query(request_values)
+        if variant.projection in {"risk_events", "risk_anomalies"}:
+            from .risk_batch import validate_risk_query
+
+            validate_risk_query(request_values)
         if variant.projection == "transfer_orders":
             map_transfer_query(request_values)
         window_fields = {

@@ -10,6 +10,9 @@ from .decision_list import DECISIONS
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
+from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
+from .risk_batch import FIELDS as RISK_FIELDS
+from .risk_batch import RELEASED as RISK_RELEASED
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
 from .transfer_list import TRANSFER_ORDERS
@@ -3314,11 +3317,17 @@ CANDIDATE_SAMPLED_FIELDS[TRANSFER_ORDERS.name] = TRANSFER_FIELDS
 
 # Observed candidate records do not make a business leaf executable. Keep the
 # shipped evidence catalog aligned with the production release registration.
+for _risk_spec in RISK_LIST_SPECS:
+    CANDIDATE_SAMPLED_FIELDS[_risk_spec.name] = {
+        field: "int" if field in {"riskProcessingTime", "alertNum"} else "str"
+        for field in RISK_FIELDS
+    }
+
 SAMPLED_FIELDS.update(
     {
         name: fields
         for name, fields in CANDIDATE_SAMPLED_FIELDS.items()
-        if name in OPERATIONS_RELEASED | TRANSFERS_RELEASED
+        if name in OPERATIONS_RELEASED | TRANSFERS_RELEASED | RISK_RELEASED
     }
 )
 

@@ -144,11 +144,30 @@ SLA 是配置目标，不是观测到账耗时。
 当前源码版本为 **v0.2.5**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)、
 [#76](https://github.com/proletariat64/dogopencli/issues/76) 和
 [PR #83](https://github.com/proletariat64/dogopencli/pull/83) 和
-[#87](https://github.com/proletariat64/dogopencli/issues/87) 已实现 71 个查询叶子：
-32 settings、32 runtimes、7 reference；另有 62 个延期叶子可通过帮助发现，
+[#87](https://github.com/proletariat64/dogopencli/issues/87) 和
+[#88](https://github.com/proletariat64/dogopencli/issues/88) 已实现 73 个查询叶子：
+32 settings、34 runtimes、7 reference；另有 60 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.4 wheel 不包含新增的 swaps 列表。已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
+
+[#88](https://github.com/proletariat64/dogopencli/issues/88) batch B 的三个列表
+`risk events list`、`risk anomalies list`（runtimes）和 `rules monitoring list`
+（settings）当前放行 **2/3**。events/anomalies 分别固定原生
+`RISK_EVENT` / `RISK_ALERT`，使用字符串 `id`，不做本地异常分类。
+两者必须同时提供 `--from-date YYYYMMDD --to-date YYYYMMDD`，后者恰好比前者晚一天；
+请求发送原生 `YYYY-MM-DD`，缓存按命令、原生范围和采集时刻隔离。
+源端 `GMT+08` 时间原样保留，不能把显示日期或 `fetched_at` 当作服务端筛选边界。
+监控规则仍 unsupported：当前查询为空，监控规则类型筛选、非空结构和身份尚未验证。
+离线 help/describe/snapshot 说明实际支持范围和 blocker，详见
+[batch B 证据与继续条件](docs/research/general/2026-10-04-liquidity-issue88-release-gates.md)。
+
+```bash
+dogopencli refresh liquidity risk events --from-date 20260925 --to-date 20260926 --require-complete
+dogopencli liquidity risk events list --from-date 20260925 --to-date 20260926 --all
+dogopencli refresh liquidity risk anomalies --from-date 20260925 --to-date 20260926 --require-complete
+dogopencli liquidity risk anomalies list --from-date 20260925 --to-date 20260926 --all
+```
 
 ```toml
 [sources.liquidity]
