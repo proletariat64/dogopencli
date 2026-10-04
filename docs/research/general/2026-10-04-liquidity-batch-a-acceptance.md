@@ -21,8 +21,8 @@ The PR remains draft and the full specification stays open.
 
 | Leaf | Current evidence | Missing release evidence |
 | --- | --- | --- |
-| decisions list | current caller, nonempty types, independent inclusive start/creation bounds, full native 264/264 acquisition, gated implementation | registered production CLI lifecycle UAT and final local CI/review |
-| transfers list | current caller/encoding, nonempty types, separate raw states, bounded native queries, gated implementation | complete representative acquisition, transaction/display-time mapping, registered CLI lifecycle UAT and final local CI/review |
+| decisions list | current caller, nonempty types, independent inclusive start/creation bounds, full native 264/264 acquisition, gated implementation | field-necessity confirmation and registered production CLI lifecycle UAT |
+| transfers list | current caller/encoding, nonempty types, separate raw states, bounded native queries, gated implementation | complete representative acquisition, transaction/display-time mapping and registered CLI lifecycle UAT |
 | quote-groups list | investigation concludes offsets repeat and no native ending protocol is proven | authoritative complete-response or pagination protocol, identity/version scope and independent first-release gates |
 
 ## Native verification
@@ -88,9 +88,36 @@ precision, raw states, pagination, empty captures, live isolation, offline
 readback, partial/strict behavior, hard failures and independent detail caches.
 Worker Ruff/format/diff gates passed. A pre-existing registry-count test expected
 46 while the baseline already includes 47 list leaves; the integration corrects
-that count without enabling another leaf. Final local Kimi JSON CI and independent
-Standards/Spec review are pending. Their results will record exact source commits,
-actual commands and `confidence: ?/5`, separately from production acceptance.
+that count without enabling another leaf. Local Kimi CLI 2.1.1 ran in
+`stream-json` mode against source commit
+`43546e72877b5bbfc3552962d9de982f90456ed3`. CI passed **412 tests plus 20
+subtests**, Ruff, formatting, the 104-file Markdown guard and the diff check.
+CI confidence is **5/5**, restricted to those local checks. The independent
+Standards review passed at the same commit with **confidence: 4/5**; its five
+low-severity observations are explicitly judgment calls, with no confirmed
+correctness defect. The independent Spec review found the gated candidate
+implementation faithful to the specification, with **confidence: 4/5**. Its two
+low-severity observations cover the accurate baseline-count correction (no fix
+required) and a pre-release field-necessity check for decision entity, alias and
+bank-id fields. The latter is a judgment call, not a proven privacy breach; the
+aliases are not populated in the sanitized fixture. Confirm necessary business
+use or exclude unnecessary fields before first release. No confirmed correctness
+defect requires repair. Both independent review processes exited 0.
+
+Overall local CI/review **confidence: 4/5**. This confidence does not establish
+production acceptance. Review JSON preserves each reviewer's original pending-gate
+snapshot; those references to unfinished local checks are superseded by the
+completed CI and both reviews recorded here. The production gates remain open.
+
+The CI used `rtk proxy env PYTHONPATH=<worktree>/src
+/home/ubuntu/dev/dogopencli/.venv/bin/python -m pytest -q` for the two new
+candidate suites, existing Liquidity CLI/partial/history/operations suites,
+snapshot CLI/domain suites, Liquidity capability/projection/fields/envelope/
+collect/store suites, result policy and document guard. Other commands were
+`rtk proxy ruff check .`, `rtk proxy ruff format --check .`,
+`rtk proxy make doc-guard` and `rtk proxy git diff --check master...HEAD`.
+Private JSON summaries retain full commands and exit codes; CI/review evidence
+remains separate from production acceptance.
 
 ## Browser blocker and continuation
 
@@ -101,8 +128,18 @@ complete decision acquisition. Later sequential transfer preflight and the same
 recovery failed again before transfer business requests. CDP reachability and the
 earlier successful auth observation do not establish current availability.
 
-Restore the existing dedicated Chrome connection, re-check Liquidity authorization,
-then acquire a complete representative transfer scope and resolve native date
+The user authorized a separate Chrome session. The existing launcher started an
+isolated private profile on CDP **9228**, first headed and then headless for one
+bounded recovery. Both Liquidity authentication probes failed with the same
+websocket timeout. An existing Liquidity target also timed out, while a new
+`about:blank` target returned `readyState=complete`. This narrows the observed
+failure to the Liquidity target; it does not prove missing authentication or a
+specific renderer/network cause. The isolated session was returned to headed
+mode for human inspection. The original profile/session was left unchanged.
+
+Restore a responsive Liquidity target in the separate session, re-check independent
+Liquidity authorization, then acquire a complete representative transfer scope and
+resolve native date
 boundaries. Run candidate and actual registered public CLI nonempty/empty lifecycle
 matrices for each releasable leaf, including its own refresh/offline equivalence,
 live no-write behavior and detail-cache independence. Enable each leaf only after
