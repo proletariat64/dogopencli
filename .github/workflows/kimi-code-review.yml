@@ -33,7 +33,7 @@ jobs:
       - name: Review PR
         env:
           KIMI_MODEL_API_KEY: ${{ secrets.KIMI_API_KEY }}
-          KIMI_MODEL_NAME: ${{ vars.KIMI_MODEL_NAME || 'k3' }}
+          KIMI_MODEL_NAME: k3
           KIMI_MODEL_BASE_URL: ${{ vars.KIMI_BASE_URL || 'https://api.kimi.com/coding/v1' }}
           KIMI_CODE_HOME: ${{ runner.temp }}/kimi-code
           KIMI_DISABLE_TELEMETRY: '1'
@@ -45,7 +45,7 @@ jobs:
           test -n "$KIMI_MODEL_API_KEY" || { echo "::error::KIMI_API_KEY is missing"; exit 1; }
           base=$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")
           head=$(git rev-parse HEAD)
-          timeout --kill-after=30s 15m kimi --auto \
+          timeout --kill-after=30s 15m kimi \
             --skills-dir .github/kimi-skills --output-format stream-json \
             -p "/code-review Review git diff $base...$head in this checkout. Report base $base and head $head." \
             2> >(tee "$RUNNER_TEMP/kimi-review.stderr" >&2) \
