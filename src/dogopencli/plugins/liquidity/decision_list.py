@@ -27,8 +27,6 @@ STRING_FIELDS = (
     "decisionAmount",
     "debitEntity",
     "creditEntity",
-    "debitAliasName",
-    "creditAliasName",
     "debitBankId",
     "creditBankId",
     "debitCurrency",
@@ -109,6 +107,8 @@ DECISIONS = ListSpec(
         " and associated orderNo are separate identifiers.",
         "Amounts preserve native decimal strings without unit conversion;"
         " unknown statuses remain source values.",
+        "Native debit/credit entity and bank IDs identify the two business sides;"
+        " aliases are unnecessary for this list and are excluded.",
         "Only allowed business fields are published; operators, account numbers,"
         " free text and nested detail data are excluded.",
     ),
