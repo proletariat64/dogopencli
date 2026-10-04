@@ -1,5 +1,21 @@
 # 变更记录
 
+## v0.2.6（2026-10-04）
+
+合并 PR #94、#95、#96，新增有界 decisions、transfers、risk events、risk anomalies、
+investment benchmark-values 和 strategy-results 列表。默认离线读取，显式 refresh
+更新缓存，live 不写缓存；沿用原生范围、独立缓存与 partial／strict 规则。
+当前 Liquidity 查询叶子为 75 supported、58 unsupported。
+
+基准值以业务日期、策略、币种、资金性质构成身份，并提供稳定可逆的本地 `primaryId`。
+基准值 v2 缓存必须显式 refresh，原有 v1 captures 保留，不自动迁移或读取为 v2。
+策略结果分别支持 FUND_DECISION_TASK 和 PRODUCT_DECISION_TASK。
+Batch C 仅交付 2/4，valuations 与 bills 保持 unsupported，#89 继续开放。
+
+修复 Batch C 研究报告元数据与文档索引。PR #96 独立审查的 246 个聚焦测试通过；
+文档修复后 doc-guard 通过。发布检查与历史生产 UAT 分别记录。
+本次 GitHub Release 同时打包此前源码 v0.2.5 的有界 swaps 查询，附 wheel、源码包与 SHA256SUMS。
+
 ## v0.2.5（2026-10-04）
 
 合并 PR #83，新增 `liquidity operations swaps list` 与对应 refresh，必填
