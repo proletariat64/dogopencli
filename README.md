@@ -149,6 +149,14 @@ SLA 是配置目标，不是观测到账耗时。
 v0.2.4 wheel 不包含新增的 swaps 列表。已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
 
+[#88](https://github.com/proletariat64/dogopencli/issues/88) batch B 的三个列表
+`risk events list`、`risk anomalies list`（runtimes）和 `rules monitoring list`
+（settings）当前放行 **0/3**，均保持 unsupported。历史 UI 的 events/anomalies
+分别使用 `RISK_EVENT` / `RISK_ALERT`，不做本地异常分类；监控规则类型筛选仍未验证。
+非空结构、原生身份、完整采集和独立生产 UAT 未成立，规则定义不能作为实际风险观测。
+离线 help/describe/snapshot 会说明逐叶 blocker，详见
+[batch B 证据与继续条件](docs/research/general/2026-10-04-liquidity-issue88-release-gates.md)。
+
 ```toml
 [sources.liquidity]
 kind = "cdp"

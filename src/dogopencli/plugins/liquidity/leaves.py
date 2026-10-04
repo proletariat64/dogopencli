@@ -2093,7 +2093,13 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Strategy-result detail: {_IDENTITY}.",
     ),
     DeferredLeaf(
-        ("risk", "events", "list"), RUNTIMES, "empty-scope", f"Risk events: {_EMPTY}."
+        ("risk", "events", "list"),
+        RUNTIMES,
+        "empty-scope",
+        "Risk events: historical UI caller uses riskMode=RISK_EVENT;"
+        " only empty responses observed. Release requires current native scope"
+        " verification, nonempty record types and identity, event observation"
+        " dates/timezone, complete acquisition and production UAT (#88).",
     ),
     DeferredLeaf(
         ("risk", "events", "get"),
@@ -2105,7 +2111,11 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("risk", "anomalies", "list"),
         RUNTIMES,
         "empty-scope",
-        f"Risk anomalies: {_EMPTY}.",
+        "Risk anomalies: historical UI caller uses riskMode=RISK_ALERT;"
+        " no local anomaly classification. Only empty responses observed."
+        " Release requires current native scope distinction from events,"
+        " nonempty record types and identity, observation dates/timezone,"
+        " complete acquisition and production UAT (#88).",
     ),
     DeferredLeaf(
         ("risk", "anomalies", "get"),
@@ -2159,7 +2169,11 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("rules", "monitoring", "list"),
         SETTINGS,
         "empty-scope",
-        f"Monitoring rules: {_EMPTY}.",
+        "Monitoring rules are settings, not observed risk events. Historical"
+        " queryRules returned only empty responses; monitoring rule-type filter"
+        " unverified. Release requires current native scope verification,"
+        " nonempty record types and rule identity, configuration status/time"
+        " semantics, complete acquisition and production UAT (#88).",
     ),
     DeferredLeaf(
         ("rules", "monitoring", "get"),
