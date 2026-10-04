@@ -9,6 +9,8 @@ complete schemas, validation assertions, or nullability guarantees.
 from .decision_list import DECISIONS
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
+from .fee_orders import FEE_ORDERS
+from .fee_orders import FIELDS as FEE_ORDER_FIELDS
 from .investment_batch import (
     BENCHMARK_FIELDS,
     BENCHMARK_VALUES,
@@ -3376,3 +3378,7 @@ for _risk_detail_spec in RISK_DETAIL_SPECS:
 # Current genuine native task details (2026-10-04), both task variants.
 
 SAMPLED_FIELDS[STRATEGY_DETAIL.name] = STRATEGY_DETAIL_FIELDS
+
+# Observed source fields; optional status is not claimed as sampled.
+
+SAMPLED_FIELDS[FEE_ORDERS.name] = {field: "str" for field in FEE_ORDER_FIELDS}

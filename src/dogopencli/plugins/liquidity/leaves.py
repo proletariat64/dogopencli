@@ -48,6 +48,7 @@ from .cash_forecast import (
 )
 from .decision_list import DECISIONS, validate_decision_query
 from .decision_list import RELEASED as DECISIONS_RELEASED
+from .fee_orders import FEE_ORDERS, validate_fee_query
 from .investment_batch import CANDIDATES as INVESTMENT_CANDIDATES
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .investment_batch import validate_strategy_query
@@ -2430,6 +2431,8 @@ _AUDIT_DEFERRED = tuple(
     if item.path not in {(*spec.path, spec.action) for spec in RISK_DETAIL_SPECS}
 )
 
+LIST_SPECS += (FEE_ORDERS,)
+
 # Spec #88 releases only the independently verified bounded risk list scopes.
 LIST_SPECS += tuple(item for item in RISK_LIST_SPECS if item.name in RISK_RELEASED)
 # Spec #89 registers only the independently accepted investment list variants.
@@ -2579,6 +2582,8 @@ class ListLeaf:
             validate_risk_query(request_values)
         if variant.projection == "transfer_orders":
             map_transfer_query(request_values)
+        if variant.projection == "fee_orders":
+            validate_fee_query(request_values)
         if variant.projection == "strategy_results":
             validate_strategy_query(request_values)
         window_fields = {
