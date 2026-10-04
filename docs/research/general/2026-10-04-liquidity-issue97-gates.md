@@ -96,8 +96,35 @@ used a separate private dated cache. Neither cache is the user's normal cache.
 The registered CLI retained the normal browser coordination and restricted
 transport; no production response was printed or committed.
 
-Focused integration checks and independent review are recorded below when
-complete. Native investigation, local checks and production UAT remain distinct.
+Local integration gate at `b9637c5`: **595 tests passed in 133.51s** across the
+Liquidity unit suite, existing/new detail CLI, strategy/risk/fee lists, partial
+policy, snapshots, catalog, help and describe. Repository Ruff lint passed;
+format check passed for 282 Python files; doc-guard passed for 107 Markdown
+files; diff check passed. Existing Python environment was reused. No full-suite
+rerun or other Python-version claim is made.
+
+Independent Standards review found no documented architectural violation and
+one evidence-date correction. Spec review found two required validation fixes
+(populated amounts without usable currency, insufficient strategy money/date
+anchors) plus the same date correction. All three were fixed together in `7919a86`, integrated as `14acdca`.
+The affected strategy/fee/risk suites passed **60 tests in 52.57s**, including
+19 added malformed-refresh cases proving old-cache preservation and one added
+null/blank/zero preservation case. Risk describe tests now assert the actual
+October 4 evidence date. Changed-file Ruff lint/format and diff checks passed.
+These targeted checks supplement the earlier 595-test integration gate; the
+595-test run was not repeated after the narrow fixes. Bounded independent Spec
+re-review confirmed all three fixes with no regression identified. After the
+fixes, both strategy variants and fees repeated all **16/16 affected production
+CLI UAT steps** successfully; risk production parsing was unchanged, and its
+metadata correction passed offline tests. Final repository Ruff lint/format
+passed again.
+
+The installed local Kimi 2.1.1 review was not run: automatic approval review
+rejected sending private repository code and documents to the configured
+`api.kimi.com` destination without explicit payload-specific approval. User
+approval is pending. No workaround or alternate provider was used.
+
+Native investigation, local checks and production UAT remain distinct.
 No release/version change, default-branch merge or issue closure has occurred.
 
 ## Sources
