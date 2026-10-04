@@ -48,6 +48,9 @@ from .cash_forecast import (
 )
 from .decision_list import DECISIONS, validate_decision_query
 from .decision_list import RELEASED as DECISIONS_RELEASED
+from .investment_batch import CANDIDATES as INVESTMENT_CANDIDATES
+from .investment_batch import RELEASED as INVESTMENT_RELEASED
+from .investment_batch import validate_strategy_query
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
@@ -2083,14 +2086,22 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
     DeferredLeaf(
         ("investment", "benchmark-values", "list"),
         RUNTIMES,
-        "empty-scope",
-        f"Benchmark values: {_EMPTY}.",
+        "identity-unavailable",
+        "Benchmark values (#89): current non-empty rows have blank native id. "
+        "valueDate/timeZone map to effectiveDate and GMT+08; the UI value unit "
+        "is percent. Native identity across benchmarks remains unverified; "
+        "complete acquisition and production UAT are blocked. No guessed "
+        "composite identity or partial policy lowers this gate.",
     ),
     DeferredLeaf(
         ("investment", "strategy-results", "list"),
         RUNTIMES,
         "empty-scope",
-        f"Strategy results: {_EMPTY}.",
+        "Strategy results (#89): FUND_DECISION_TASK and PRODUCT_DECISION_TASK "
+        "each require a non-empty contract, native task identity, trigger "
+        "scope, status, complete acquisition and production UAT. Neither "
+        "variant's empty query releases the other. Task status is not proof "
+        "of investment execution; partial policy does not lower this gate.",
     ),
     DeferredLeaf(
         ("investment", "strategy-results", "get"),
@@ -2260,8 +2271,12 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
     DeferredLeaf(
         ("pricing", "valuations", "list"),
         RUNTIMES,
-        "empty-scope",
-        f"Valuations: {_EMPTY}.",
+        "naming-conflict",
+        "Valuations (#89): current non-empty source records are fee-order "
+        "objects under the native Efficient Service tab, with feeAmount and "
+        "pricingCurrency. These semantics do not establish investment valuation. "
+        "Resolve the naming/compatibility decision separately before complete "
+        "acquisition and production UAT can release this leaf.",
     ),
     DeferredLeaf(
         ("pricing", "valuations", "get"),
@@ -2270,7 +2285,15 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Valuation detail: {_UNVERIFIED}.",
     ),
     DeferredLeaf(
-        ("pricing", "bills", "list"), RUNTIMES, "empty-scope", f"Bills: {_EMPTY}."
+        ("pricing", "bills", "list"),
+        RUNTIMES,
+        "empty-scope",
+        "Bills (#89): current DEPOSIT and LOAN inquiries returned empty scopes; "
+        "this does not establish support for either bill type. First release "
+        "requires a "
+        "non-empty contract, native bill identity, verified type/period, "
+        "amount/currency, complete acquisition and production UAT; partial "
+        "policy does not lower this gate.",
     ),
     DeferredLeaf(
         ("pricing", "bills", "get"),
@@ -2399,12 +2422,21 @@ if SWAP_ORDERS.name not in OPERATIONS_RELEASED:
 
 # Spec #88 releases only the independently verified bounded risk list scopes.
 LIST_SPECS += tuple(item for item in RISK_LIST_SPECS if item.name in RISK_RELEASED)
+# Spec #89 registers only the independently accepted investment list variants.
+LIST_SPECS += tuple(
+    item for item in INVESTMENT_CANDIDATES if item.name in INVESTMENT_RELEASED
+)
 _AUDIT_DEFERRED = tuple(
     item
     for item in _AUDIT_DEFERRED
     if item.path
     not in {
         (*spec.path, "list") for spec in RISK_LIST_SPECS if spec.name in RISK_RELEASED
+    }
+    | {
+        (*candidate.path, "list")
+        for candidate in INVESTMENT_CANDIDATES
+        if candidate.name in INVESTMENT_RELEASED
     }
 )
 
@@ -2530,6 +2562,8 @@ class ListLeaf:
             validate_risk_query(request_values)
         if variant.projection == "transfer_orders":
             map_transfer_query(request_values)
+        if variant.projection == "strategy_results":
+            validate_strategy_query(request_values)
         window_fields = {
             option.field for option in variant.scope_options if option.window
         }

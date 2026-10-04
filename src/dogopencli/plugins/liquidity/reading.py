@@ -15,6 +15,7 @@ from . import spec
 from .decision_list import DECISIONS
 from .decision_list import VERIFIED_DATE as DECISION_VERIFIED_DATE
 from .fields import CANDIDATE_SAMPLED_FIELDS, SAMPLED_FIELDS, VARIANT_SAMPLED_FIELDS
+from .investment_batch import VERSION as INVESTMENT_VERSION
 from .leaves import DEFERRED_BY_PATH, DETAIL_LEAVES
 from .operations_batch import SWAP_ORDERS
 
@@ -50,6 +51,57 @@ def _source_guide(
         "request": contract,
         "live_verified": verified_date,
     }
+
+
+def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
+    schema = _field_schema(fields)
+    if item.projection == "benchmark_values":
+        properties = schema["properties"]
+        properties["effectiveDate"]["x-format"] = "YYYYMMDD"
+        properties["value"]["x-unit"] = "percent"
+        properties["value"]["x-evidence"]["unit"] = "native UI percent suffix"
+        meanings = {
+            "effectiveDate": "market benchmark business day in native GMT+08",
+            "strategyBenchmarkType": "investment strategy: passive interest or tenor",
+            "currency": "benchmark currency",
+            "colorType": "fund nature: red, yellow or green",
+            "value": "daily market interest benchmark",
+        }
+        for field, meaning in meanings.items():
+            properties[field]["description"] = meaning
+            properties[field]["x-evidence"]["meaning"] = "operator confirmed 2026-10-04"
+        properties["primaryId"] = {
+            "type": "string",
+            "description": "Local stable reference: bmv1:<tenant>:<effectiveDate>:"
+            "<strategyBenchmarkType>:<currency>:<colorType>; each UTF-8 component "
+            "is percent-encoded, leaving only RFC 3986 unreserved characters literal.",
+            "x-origin": "local derivation",
+            "x-derived-from": ["tenant", *item.identity],
+            "x-evidence": {
+                "type": "derived",
+                "presence": "guaranteed",
+                "nullability": "non-null",
+                "unit": "not applicable",
+                "meaning": "single-field reference to the confirmed business identity",
+            },
+        }
+        return schema
+    if item.projection != "strategy_results":
+        return schema
+    properties = schema["properties"]
+    for field in ("triggerDate", "resultTime"):
+        properties[field]["x-unit"] = "epoch milliseconds"
+        properties[field]["x-evidence"]["unit"] = "native UI timestamp renderer"
+    for field in ("valueDate", "expectedInvestStartDate", "expectedInvestEndDate"):
+        properties[field]["x-format"] = "YYYYMMDD"
+    properties["investmentAmount"]["x-unit"] = "equivalent USD"
+    properties["investmentAmount"]["x-evidence"]["unit"] = "native UI label"
+    if item.template["taskType"] == "PRODUCT_DECISION_TASK":
+        properties["maximumExceptedIncome"]["x-unit"] = "equivalent USD"
+        properties["maximumExceptedIncome"]["x-evidence"]["unit"] = (
+            "native product UI label"
+        )
+    return schema
 
 
 def _list_description(node: BizNode) -> dict[str, Any]:
@@ -90,10 +142,11 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     "pagination": item.pagination,
                     "page_size": item.page_size if item.paged_request else None,
                 },
-                "data_schema": _field_schema(
+                "data_schema": _list_schema(
+                    item,
                     VARIANT_SAMPLED_FIELDS.get(item.name, {}).get(
                         item.endpoint, sampled_fields.get(item.name, {})
-                    )
+                    ),
                 ),
                 "selectors": {
                     option.flag: option.match
@@ -111,7 +164,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
         )
     return {
         "schema_version": 1,
-        "data_schema": _field_schema(sampled_fields.get(capability, {})),
+        "data_schema": _list_schema(variant, sampled_fields.get(capability, {})),
         "read_guide": {
             **_source_guide(
                 capability,
@@ -120,7 +173,13 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                 if variant.name == DECISIONS.name
                 else "2026-10-04"
                 if variant.projection
-                in {"transfer_orders", "risk_events", "risk_anomalies"}
+                in {
+                    "transfer_orders",
+                    "risk_events",
+                    "risk_anomalies",
+                    "benchmark_values",
+                }
+                or variant.schema_version == INVESTMENT_VERSION
                 else "2026-10-03"
                 if variant.name == SWAP_ORDERS.name
                 else ("2026-10-02" if variant.schema_version else "2026-10-01"),

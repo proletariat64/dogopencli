@@ -9,6 +9,13 @@ complete schemas, validation assertions, or nullability guarantees.
 from .decision_list import DECISIONS
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
+from .investment_batch import (
+    BENCHMARK_FIELDS,
+    BENCHMARK_VALUES,
+    FUND_RESULTS,
+    STRATEGY_FIELDS,
+)
+from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import FIELDS as RISK_FIELDS
@@ -3323,11 +3330,28 @@ for _risk_spec in RISK_LIST_SPECS:
         for field in RISK_FIELDS
     }
 
+CANDIDATE_SAMPLED_FIELDS[BENCHMARK_VALUES.name] = {
+    field: "str" for field in BENCHMARK_FIELDS
+}
+CANDIDATE_SAMPLED_FIELDS[FUND_RESULTS.name] = {
+    field: (
+        "int | null"
+        if field == "resultTime"
+        else "int"
+        if field == "triggerDate"
+        else "str"
+    )
+    for field in STRATEGY_FIELDS
+}
 SAMPLED_FIELDS.update(
     {
         name: fields
         for name, fields in CANDIDATE_SAMPLED_FIELDS.items()
-        if name in OPERATIONS_RELEASED | TRANSFERS_RELEASED | RISK_RELEASED
+        if name
+        in OPERATIONS_RELEASED
+        | TRANSFERS_RELEASED
+        | RISK_RELEASED
+        | INVESTMENT_RELEASED
     }
 )
 
