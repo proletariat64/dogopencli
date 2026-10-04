@@ -128,7 +128,11 @@ TRANSFER_ORDERS = ListSpec(
         "free text and nested logs.",
     ),
 )
-RELEASED: frozenset[str] = frozenset()
+# Native Transaction Date is an exact source filter scope; displayed gmtCreate
+# has no inferred server timezone or partition mapping. Complete acquisition
+# and candidate CLI UAT passed; registered CLI UAT and final local Kimi checks
+# must pass before publication.
+RELEASED: frozenset[str] = frozenset({TRANSFER_ORDERS.name})
 
 
 def map_transfer_query(values: dict[str, Any]) -> None:

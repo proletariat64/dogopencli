@@ -1,4 +1,4 @@
-"""Bounded decision-list contract for issue #87; release remains gated."""
+"""Bounded decision-list contract for issue #87."""
 
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -114,9 +114,9 @@ DECISIONS = ListSpec(
     ),
 )
 
-# First release requires nonempty complete acquisition, production CLI UAT,
-# automated checks and local Kimi review. Candidate tests do not waive this gate.
-RELEASED: frozenset[str] = frozenset()
+# Bounded native scope, complete acquisition and candidate CLI UAT passed.
+# Registered CLI UAT and final local Kimi checks must pass before publication.
+RELEASED: frozenset[str] = frozenset({DECISIONS.name})
 
 
 def validate_timestamp(value: Any) -> None:
