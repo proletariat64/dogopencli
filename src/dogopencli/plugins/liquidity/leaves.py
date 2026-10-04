@@ -1930,8 +1930,10 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("cash", "pool-balances", "list"),
         RUNTIMES,
         "semantics-pending",
-        "Pool balances: native observation time and equivalent-currency/aggregate"
-        " semantics are unverified; gmtModified/billingTime are not balance times.",
+        "Pool balances (#98, 2026-10-04): BANK inquiry returned 43 pools and"
+        " 358 members. Parent valueDate does not establish member balance dates;"
+        " original/equivalent currency and temporal alignment remain unverified."
+        " gmtModified and billingTime are not balance observation times.",
     ),
     DeferredLeaf(
         ("cash", "credit-lines", "list"),
@@ -1949,8 +1951,10 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("cash", "credit-usage", "list"),
         RUNTIMES,
         "semantics-pending",
-        "Credit usage: shared/merged credit currency aggregation and usage"
-        " observation times are unverified; validity dates are not usage times.",
+        "Credit usage (#98, 2026-10-04): inquiry returned 84 lines and 667"
+        " members; mergeFlag groups share the displayed usage cell. Usage"
+        " observation time, shared amount ownership and currency association"
+        " remain unverified; configuration/validity dates are not usage times.",
     ),
     DeferredLeaf(
         ("forecast", "results", "get"),
@@ -2057,7 +2061,13 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"RFQ detail: {_IDENTITY}.",
     ),
     DeferredLeaf(
-        ("investment", "quotes", "list"), RUNTIMES, "empty-scope", f"Quotes: {_EMPTY}."
+        ("investment", "quotes", "list"),
+        RUNTIMES,
+        "contract-unverified",
+        "Quotes (#98, 2026-10-04): native QUOTED and WIN queries for"
+        " 20260927-20261004 succeeded with empty data but no totalCount."
+        " Complete-empty semantics, nonempty identity/version and native"
+        " date/timezone semantics remain unverified (caller timeZone was null).",
     ),
     DeferredLeaf(
         ("investment", "quotes", "get"),
@@ -2230,7 +2240,10 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("network", "product-baselines", "list"),
         SETTINGS,
         "empty-scope",
-        f"Product baselines: {_EMPTY}.",
+        "Product baselines (#98, 2026-10-04): native RUN, INIT and PAUSE"
+        " scopes each succeeded with 0/0 rows. Nonempty configuration schema,"
+        " typed identity/version and complete populated acquisition remain"
+        " unverified; configured baselines are not measured payment latency.",
     ),
     DeferredLeaf(
         ("network", "product-baselines", "get"),
