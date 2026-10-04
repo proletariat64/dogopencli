@@ -76,6 +76,12 @@ def decision(index, **changes):
         "decisionTime": None,
         "decisionCurrency": "USD",
         "decisionAmount": "123.4500",
+        "debitEntity": "synthetic-debit-entity",
+        "creditEntity": "synthetic-credit-entity",
+        "debitBankId": "synthetic-debit-bank",
+        "creditBankId": "synthetic-credit-bank",
+        "debitAliasName": "private-debit-alias",
+        "creditAliasName": "private-credit-alias",
         "operator": "private-user",
         "creditAccountNo": "private-account",
         "strategyName": "private-name",
@@ -155,6 +161,13 @@ def test_decision_refresh_live_offline_privacy_and_description(
     assert code == 0, err
     live = parse(out)
     assert live["data"] == published(rows)
+    for record in live["data"]:
+        assert "debitAliasName" not in record
+        assert "creditAliasName" not in record
+        assert record["debitEntity"] == "synthetic-debit-entity"
+        assert record["creditEntity"] == "synthetic-credit-entity"
+        assert record["debitBankId"] == "synthetic-debit-bank"
+        assert record["creditBankId"] == "synthetic-credit-bank"
     assert live["meta"]["reported_total"] == 12
     assert live["meta"]["complete"] is True
     assert live["meta"]["source_observed_from"] is None
@@ -180,13 +193,19 @@ def test_decision_refresh_live_offline_privacy_and_description(
                 description["data_schema"]["properties"]["id"]["x-observed-type"]
                 == "int"
             )
-            assert "operator" not in description["data_schema"]["properties"]
+            fields = description["data_schema"]["properties"]
+            for field in ("operator", "debitAliasName", "creditAliasName"):
+                assert field not in fields
+            for field in ("debitEntity", "creditEntity", "debitBankId", "creditBankId"):
+                assert fields[field]["x-observed-type"] == "str"
     assert len(setup.state.business_requests) == count
     for value in (
         b"private-user",
         b"private-account",
         b"private-name",
         b"private-text",
+        b"private-debit-alias",
+        b"private-credit-alias",
     ):
         assert value not in cache_before
 
