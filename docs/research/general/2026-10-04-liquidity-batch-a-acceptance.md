@@ -9,147 +9,174 @@ Tickets: [decisions #90](https://github.com/proletariat64/dogopencli/issues/90),
 [transfers #91](https://github.com/proletariat64/dogopencli/issues/91),
 [quote investigation #92](https://github.com/proletariat64/dogopencli/issues/92),
 [acceptance #93](https://github.com/proletariat64/dogopencli/issues/93).
-Implementation: [draft PR #94](https://github.com/proletariat64/dogopencli/pull/94).
+Implementation: [PR #94](https://github.com/proletariat64/dogopencli/pull/94).
 
 ## Release status
 
-Mandatory lists accepted: **0/2**. Quote investigation: **1/1 concluded**, optional
-quote list: **0/1 enabled**. Global actual counts remain **69 supported / 64
-unsupported**, out of 133 query leaves. The mandatory target would add two
-supported leaves; native samples and candidate code do not change actual counts.
-The PR remains draft and the full specification stays open.
+Mandatory production CLI lists accepted: **2/2**. Quote investigation: **1/1
+concluded**; optional quote list: **0/1 enabled**. The source registry contains
+**71 supported / 62 unsupported / 133 total** query leaves, including **49 list
+leaves**. Supported kinds are 32 settings, 32 runtimes and 7 reference. The baseline
+was 69 supported, 64 unsupported and 47 lists. This change does not publish a
+package version or perform a production business mutation. Final Standards and Spec reviews passed with no findings. All mandatory gates
+are complete; production acceptance and local review remain separate evidence.
 
-| Leaf | Current evidence | Missing release evidence |
+| Leaf | Accepted production evidence | Remaining boundary |
 | --- | --- | --- |
-| decisions list | current caller, nonempty types, independent inclusive start/creation bounds, full native 264/264 acquisition, gated implementation | field-necessity confirmation and registered production CLI lifecycle UAT |
-| transfers list | current caller/encoding, nonempty types, separate raw states, bounded native queries, gated implementation | complete representative acquisition, transaction/display-time mapping and registered CLI lifecycle UAT |
-| quote-groups list | investigation concludes offsets repeat and no native ending protocol is proven | authoritative complete-response or pagination protocol, identity/version scope and independent first-release gates |
+| decisions list | registered refresh, offline equivalence, complete live without writes, empty lifecycle, scope isolation; 264 unique rows | exact native timestamp strings; no inferred source timezone |
+| transfers list | registered refresh, offline equivalence, complete live without writes, empty lifecycle, scope isolation; 4,954 unique rows | native Transaction Date scope; display timestamp mapping is unproven |
+| quote-groups list | investigation concluded | unsupported: complete-response or ending protocol and identity/version scope remain unproven |
 
-## Native verification
+## Native contracts and boundaries
 
-An independent Liquidity auth check initially passed on the existing headless
-Chrome at CDP 9222; Payment authorization was not reused as proof. Current native
-UI source matched the saved source exactly: 15,763,128 bytes, SHA256
+Independent Liquidity authorization was verified; Payment authorization was not
+reused as proof. Current native UI source matched the saved source: 15,763,128
+bytes, SHA256
 `cd59b985d544dff8fb7ab89c6081fd1d9713187886db9abccdc554d82eddbf03`.
-Only the three reviewed inquiry endpoints were probed. No business mutation,
-detail cascade, new browser stack, credential copying or production-cache writes
-were performed. Raw production data remains private outside Git.
+Only reviewed inquiry endpoints were used. Raw production records, identifiers,
+responses, configuration and browser profiles remain private and outside Git.
 
-Decisions use POST JSON `/api/ai/decision/report/getAllNew.json`, success envelope,
-`data.data` records and `data.totalCount`. Native integer `id` is the identity;
-`reportId`, `groupId` and associated `orderNo` remain distinct. Start Time maps to
-`executionTimeStart`, while Created Time maps to `gmtCreate`. Both independent
-native timestamp ranges are inclusive: an exact start-time point returns records
-at that point and neighboring second points return none; exact creation-time
-points return records with that creation time. No source timezone is inferred.
-The candidate requires both pairs as `YYYY-MM-DD HH:mm:ss` strings.
+Decisions use POST JSON `/api/ai/decision/report/getAllNew.json`, `data.data`
+records and `data.totalCount`. Native integer `id` is the identity; `reportId`,
+`groupId` and associated `orderNo` remain distinct. Start Time maps to
+`executionTimeStart`, and Created Time maps to `gmtCreate`. Native point and
+neighboring-second probes verified both independent inclusive ranges. All four
+bounds are required as exact `YYYY-MM-DD HH:mm:ss` strings. No timezone conversion
+is inferred. The September 30 native acquisition completed 27 pages of width 10:
+**264 arrivals, 264 unique ids, fixed total 264, zero duplicate arrivals and zero
+identity conflicts**. Every row passed tenant, time-scope and typed projection
+checks. October 3 also returned eight rows in a separate native scope.
 
-The September 30 scope, with both ranges from 00:00:00 through 23:59:59, completed
-27 native pages of width 10: **264 arrivals, 264 unique ids, fixed reported total
-264, zero duplicate arrivals and zero identity conflicts**. All rows passed tenant
-and both time-range checks. All 264 native rows also passed the candidate business
-projection without copying native values into fixtures. A separate October 3
-scope returned eight rows, demonstrating another nonempty date scope; this is not
-CLI lifecycle acceptance or a cache-equivalence proof.
+Unnecessary debit and credit alias names were removed from the projection and
+schema. Entity and bank ids identify the corresponding debit and credit business
+sides; they remain distinct from account data. Populated sanitized fixtures prove
+alias omission from output, descriptions and SQLite. Operator, account, free-text
+and nested response fields remain excluded.
 
-Transfers use POST form `/transferOrderQuery.json` with `tntInstId` and a
-JSON-string `transferOrderQueryRequestVO`. The native jQuery wrapper passes a data
-object; its `type: json` marker does not turn the body into JSON. A JSON-body
-comparison returned a different failure envelope and is excluded. Native records
-are `result.data`, with matching top-level `count` and `result.count`. The typed
-identity is string `orderNo` within the tenant and exact query scope.
+Transfers use POST form `/transferOrderQuery.json`, with `tntInstId` and a
+JSON-string `transferOrderQueryRequestVO`. The native jQuery caller passes a data
+object; its `type: json` marker does not encode a JSON request body. JSON-body
+comparison failed and is excluded. Native `result.data` records use nonempty
+string `orderNo` identity within the tenant and exact native query scope.
+Top-level `count` must match `result.count` and remain fixed during acquisition.
+Required `YYYYMMDD` Transaction Date bounds map to native inclusive day strings;
+other debit and credit ranges remain blank as in the verified caller.
 
-Bounded September 30 offset queries returned nonempty pages against count 4,954;
-October 3 returned nonempty data against count 441. A known-order probe matched
-only its native September 30 scope and not adjacent days, but displayed `gmtCreate`
-was October 1 with a GMT+08 suffix. Exact display/shifted timestamp comparisons
-returned no match. These observations do not prove a timezone conversion or date
-mapping. The candidate retains exact native history scopes, never partitions or
-filters locally by displayed `gmtCreate`, and remains gated. `orderStatus`,
-`receiptStatus` and `executeResult` remain separate raw fields; Receipt Status is
-the verified UI label, and no bank-success meaning is invented.
+Independent October 3 native acquisition completed **470 arrivals, 470 unique
+order numbers and fixed total 470**, with width 10. A known-order native probe
+matched October 3 and overlapping ranges, but not either adjacent day; displayed
+`gmtCreate` was October 4. This establishes native query selection, not a server
+timezone or a mapping from displayed creation time to Transaction Date. The
+implementation preserves the exact native history scope and raw `gmtCreate`.
+It never filters or partitions by displayed creation time. `orderStatus`,
+`receiptStatus` and `executeResult` remain separate raw fields. Receipt Status is
+the verified UI label; no bank-success interpretation is invented.
 
-See the independent [quote investigation](2026-10-04-liquidity-batch-a-quote-groups-investigation.md)
-for the identical 54-row offset responses, identity/version distinctions and
-continuation conditions. No optional list is enabled.
+An active October 3 registered refresh correctly failed with `INVALID_RESPONSE`
+when total changed from 472 to 478 after 26 pages. A separate width-50 feasibility
+probe also encountered total drift; it did not prove complete acquisition and did
+not change the implementation. Both lists retain native width **10**. The
+previously verified September 30 scope provided the stable registered transfer
+acceptance below. Separate captures at different times are not required to have
+the same total; a single fixed-total acquisition is.
 
-## Implementation and local validation
+See the [quote investigation](2026-10-04-liquidity-batch-a-quote-groups-investigation.md)
+for identical 54-row offset responses, identity/version distinctions and
+continuation requirements. No optional quote list is registered.
 
-Both candidate implementations reuse the existing list registry, restricted
-transport, acquisition, history captures, atomic store, result policy and CLI.
-Default queries are offline; refresh alone publishes; live never writes or falls
-back. Strict partial acquisition refuses publication, default safe partial keeps
-warnings, and hard failures preserve old captures. List records do not replace
-native detail/history records. Both release allowlists remain empty.
+## Registered public CLI production UAT
 
-The merged public CLI/fake-CDP/temporary-SQLite candidate suites passed **58 tests**.
-They cover bounds before access, typed identities and tenant checks, privacy,
-precision, raw states, pagination, empty captures, live isolation, offline
-readback, partial/strict behavior, hard failures and independent detail caches.
-Worker Ruff/format/diff gates passed. A pre-existing registry-count test expected
-46 while the baseline already includes 47 list leaves; the integration corrects
-that count without enabling another leaf. Local Kimi CLI 2.1.1 ran in
-`stream-json` mode against source commit
-`43546e72877b5bbfc3552962d9de982f90456ed3`. CI passed **412 tests plus 20
-subtests**, Ruff, formatting, the 104-file Markdown guard and the diff check.
-CI confidence is **5/5**, restricted to those local checks. The independent
-Standards review passed at the same commit with **confidence: 4/5**; its five
-low-severity observations are explicitly judgment calls, with no confirmed
-correctness defect. The independent Spec review found the gated candidate
-implementation faithful to the specification, with **confidence: 4/5**. Its two
-low-severity observations cover the accurate baseline-count correction (no fix
-required) and a pre-release field-necessity check for decision entity, alias and
-bank-id fields. The latter is a judgment call, not a proven privacy breach; the
-aliases are not populated in the sanitized fixture. Confirm necessary business
-use or exclude unnecessary fields before first release. No confirmed correctness
-defect requires repair. Both independent review processes exited 0.
+Product source was pinned to
+`9476c93baf3388c9a9cd4789d97ebb2946fe9926`. The later
+`e02fd2ae1007d110b13588bee2dceb6c28769671` commit changes only two snapshot test
+expectations. Source release flags were used directly, without a registry
+bootstrap. A separate candidate-mode check had already passed decisions 264 and
+transfers 472; it is not counted as registered acceptance.
 
-Overall local CI/review **confidence: 4/5**. This confidence does not establish
-production acceptance. Review JSON preserves each reviewer's original pending-gate
-snapshot; those references to unfinished local checks are superseded by the
-completed CI and both reviews recorded here. The production gates remain open.
+Each registered test used the actual public CLI, the existing CDP transport and
+an independent private SQLite backup of the configured cache. The original cache
+was opened read-only and never refreshed. A recording wrapper retained private
+status/body evidence without cookies, tokens, evaluated expressions or final
+URLs. Offline commands used a transport factory that rejects all browser access.
 
-The CI used `rtk proxy env PYTHONPATH=<worktree>/src
-/home/ubuntu/dev/dogopencli/.venv/bin/python -m pytest -q` for the two new
-candidate suites, existing Liquidity CLI/partial/history/operations suites,
-snapshot CLI/domain suites, Liquidity capability/projection/fields/envelope/
-collect/store suites, result policy and document guard. Other commands were
-`rtk proxy ruff check .`, `rtk proxy ruff format --check .`,
-`rtk proxy make doc-guard` and `rtk proxy git diff --check master...HEAD`.
-Private JSON summaries retain full commands and exit codes; CI/review evidence
-remains separate from production acceptance.
+| Registered CLI check | Decisions | Transfers |
+| --- | --- | --- |
+| bounded nonempty scope | September 30; both full timestamp ranges | September 30 Transaction Date |
+| strict complete refresh | 27 pages, 264 arrivals/unique ids/total | 496 pages, 4,954 arrivals/unique ids/total |
+| offline full readback | exact allowlisted native projection, same scope/fetched-at | exact allowlisted native projection, same scope/fetched-at |
+| complete nonempty live | passed; database bytes unchanged | passed, 496 pages; database bytes unchanged |
+| October 10 empty live | complete zero; no write | complete zero; no write |
+| strict empty refresh and offline | complete zero published/read back | complete zero published/read back |
+| nonempty scope after empty refresh | original capture preserved and readable | original capture preserved and readable |
+| offline help and describe | passed without CDP | passed without CDP |
+| offline snapshot | supported/present, 264 rows, no write/CDP | supported/present, 4,954 rows, no write/CDP |
 
-## Browser blocker and continuation
+These private cache backups contained **zero** existing native decision/detail/
+history and transfer/detail namespaces. Production checks prove absence of detail
+cascades and no new native-detail writes; they do not prove preservation of
+populated native details. Meaningful public-CLI/fake-CDP/real-SQLite tests separately
+seed populated native detail/history caches and prove preservation and readability.
 
-Full-transfer acquisition and public CLI production UAT are blocked by repeated
-preflight `browser_unavailable: target websocket failure: Connection timed out`.
-An initial existing-login recovery returned authenticated headless and enabled the
-complete decision acquisition. Later sequential transfer preflight and the same
-recovery failed again before transfer business requests. CDP reachability and the
-earlier successful auth observation do not establish current availability.
+The original CDP 9222 session repeatedly timed out. With user authorization, an
+isolated dedicated Chrome profile on CDP **9228** was opened for human company
+SSO. The user confirmed sign-in. Independent Liquidity checks then passed in
+headed and headless modes, and routine UAT used headless Chrome. The original
+browser/profile was preserved; no credentials were copied and no SSO was
+automated. The earlier browser/authentication blocker is resolved for this run.
 
-The user authorized a separate Chrome session. The existing launcher started an
-isolated private profile on CDP **9228**, first headed and then headless for one
-bounded recovery. Both Liquidity authentication probes failed with the same
-websocket timeout. An existing Liquidity target also timed out, while a new
-`about:blank` target returned `readyState=complete`. This narrows the observed
-failure to the Liquidity target; it does not prove missing authentication or a
-specific renderer/network cause. The isolated session was returned to headed
-mode for human inspection. The original profile/session was left unchanged.
+## Implementation and local CI/review
 
-After an execution-session reset, CDP 9228 was no longer reachable. Restarting
-only the isolated owned profile restored headed Chrome. The next bounded
-Liquidity probe responded and returned **`auth_required`**: the entry redirected
-to a verified login page. This latest observation supersedes the websocket
-timeout as the immediate blocker for the new session. Human company SSO is now
-required in the separate visible Chrome; no credentials or cookies were copied.
+The two lists reuse the existing registry, restricted transport, acquisition,
+history captures, atomic store, result policy and CLI. Default queries are offline;
+refresh publishes atomically; live neither writes nor falls back. ADR-0019 safe
+partial behavior remains available, strict partial refuses publication, and
+hard contract failures preserve old captures. New list caches remain independent
+of native detail/history caches. No getter, quote/history protocol, cache schema,
+browser stack or shared error-policy rewrite is included.
 
-Complete human SSO in the separate session, re-check independent Liquidity
-authorization, then acquire a complete representative transfer scope and resolve
-native date
-boundaries. Run candidate and actual registered public CLI nonempty/empty lifecycle
-matrices for each releasable leaf, including its own refresh/offline equivalence,
-live no-write behavior and detail-cache independence. Enable each leaf only after
-all its first-release gates pass. Keep #87/#90/#91/#93 open while required delivery
-remains incomplete; quote investigation completion does not change the 2-list
-denominator. No package version bump or release is included.
+Local Kimi CLI ran with `/code-review` prompts for independent Standards and Spec
+reviews and **`stream-json`** output. Initial full reviews at `43546e7` passed;
+field-necessity feedback led to alias removal and documented business-id purpose.
+Incremental Standards review at `9476c93` passed with no findings, confidence 4/5.
+Final Standards addendum and Spec review at `e02fd2a`, including the synchronized
+working-tree README and acceptance report, both passed with no findings and
+confidence 4/5. They covered release flags, production evidence and snapshot
+expectations. Their pending-gate notes record the review-time snapshot; the
+completed companion review supersedes that workflow item. Review evidence is
+limited to sanitized source, tests and documents;
+private browser and production records are excluded.
+
+The first release CI at `9476c93` reported 410 passed and two failed snapshot
+assertions that still expected the unsupported baseline. Their failure evidence
+was retained. The assertions were updated to the released supported count and to
+list-cache independence from populated native history. Product code was unchanged.
+A fresh local Kimi JSON CI at **`e02fd2a`** passed **412 tests plus 20 subtests**,
+Ruff check, format check (265 files), document guard (104 Markdown files) and
+`git diff --check master...HEAD`. Every listed gate ran once with exit 0; process
+exit alone was not treated as a CI pass. CI result confidence is 5/5 for those
+observed checks.
+
+Tests use public CLI dispatch, fake CDP and temporary SQLite for typed identities,
+request rejection, independent ranges, pagination/total drift, precision, privacy,
+empty captures, live isolation, partial/strict behavior, hard failures, native
+cache independence and snapshot behavior. The 58 new-list tests are part of the
+412-test gate. A pre-existing registry assertion incorrectly expected 46 lists;
+the baseline had 47, and the released branch has 49.
+
+The pytest gate used `rtk proxy env PYTHONPATH=<worktree>/src
+/home/ubuntu/dev/dogopencli/.venv/bin/python -m pytest -q` for new-list suites,
+existing Liquidity CLI/partial/history/operations suites, snapshot CLI/domain
+suites, Liquidity capability/projection/fields/envelope/collect/store suites,
+result policy and document guard. Other gates were `rtk proxy ruff check .`,
+`rtk proxy ruff format --check .`, `rtk proxy make doc-guard` and
+`rtk proxy git diff --check master...HEAD`. Private JSON summaries retain exact
+commands and exit codes. Graph impact inspection covered the actual master diff;
+public-CLI tests cover the dynamically dispatched projection/scope paths that
+static call analysis does not resolve fully.
+
+Overall local CI/review **confidence: 4/5**. Both final review processes exited 0;
+the initial Spec storage restriction and the Standards API timeout were resolved
+by the authorized local invocation and automatic CLI retry, respectively. Neither
+failed attempt was treated as an approval.
+This rating does not substitute for production UAT. No package version bump,
+package release or PR merge is included. Quote groups remain unsupported.
