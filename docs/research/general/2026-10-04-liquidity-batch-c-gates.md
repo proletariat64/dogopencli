@@ -1,10 +1,10 @@
-# Liquidity batch C: verified strategy results and remaining gates
+# Liquidity batch C: verified benchmarks, strategy results and remaining gates
 
 Specification: [issue #89](https://github.com/proletariat64/dogopencli/issues/89).
 Baseline: `f8ada67215d164a745817a1627672639c7028002`, version `0.2.5`.
-Actual enabled/target lists: **1/4**. Strategy variants accepted: **2/2**.
+Actual enabled/target lists: **2/4**. Strategy variants accepted: **2/2**.
 Integration baseline after #87/#88: `045c3840cd072a1b6e8e3f72881bbb5b4bb0bd33`.
-Catalog: **74 supported / 59 unsupported** query leaves. #89 stays open.
+Catalog: **75 supported / 58 unsupported** query leaves. #89 stays open.
 
 ## Production browser and source evidence
 
@@ -23,7 +23,7 @@ native request scope. No mutation caller was invoked.
 
 | List | Current native evidence | Release decision |
 | --- | --- | --- |
-| benchmark-values | JSON POST `/queryStrategyBenchmarkList.json`; 20260928–20261004 reports 165, first 10 rows nonempty; all 10 native `id` values blank. Fields: id, strategyBenchmarkType, currency, colorType, effectiveDate, value; native renderer appends percent | Unsupported: no verified usable native identity; private candidate collection failed `INVALID_RESPONSE`, publishes nothing. Do not guess a composite from display columns |
+| benchmark-values | JSON POST `/queryStrategyBenchmarkList.json`; 20260928–20261004 yields 165/165 in 17 pages, 165 distinct four-field identities, no duplicates/conflicts; all native `id` values blank. Native renderer appends percent | Enabled after the operator confirmed the daily business identity; registered CLI UAT passed full/nonempty, single-day and complete empty scopes |
 | strategy-results | JSON POST `/api/increment/decision/task/queryPage.json`; fund 50/50 in five pages; product 7/7 in one page; independent nonempty native identity/type/time/amount evidence | Enabled for both explicit task variants with required trigger bounds |
 | valuations | Query GET `/getFeeOrderList.json`; current and September scopes empty, August 20260801–20260831 returns 2/2 fee orders. Native tab is Efficient Service; fields include feeAmount, pricingCurrency, transAmount, serviceDate, bizOrderNo, id | Unsupported: fee-order semantics conflict with valuation naming. Nonempty records do not waive that gate |
 | bills | Form POST `/accountBookQuery.json`; DEPOSIT current 90-day and 20200101–20261004 scopes empty; LOAN broad history also empty | Unsupported: neither type has first-release nonempty identity/amount/currency/period evidence |
@@ -90,7 +90,10 @@ Private sanitized evidence: `registered-uat-summary.jsonl`,
 `bounded-probe-summary.jsonl`, `day-scope-summary.jsonl`, and
 `acquisition-evidence-summary.jsonl` under ignored `tmp/issue89/`.
 
-## Local validation and review
+## Initial strategy delivery validation and review
+
+The following evidence belongs to the initial strategy delivery at `7342887`,
+before benchmark enablement. The incremental benchmark gates are recorded below.
 
 The public CLI + fake CDP + real temporary SQLite tests cover both registered
 variants: native date mapping, invalid scopes before contact, precision and
@@ -148,11 +151,78 @@ All shared registrations, projections and schema evidence were preserved when
 applying the saved #89 edits. There is no full #89 completion, version bump,
 publication or issue closure.
 
+## Benchmark business identity and incremental acceptance
+
+On 2026-10-04 the operator confirmed that a benchmark denotes the market interest
+baseline for one business day, fund nature (red/yellow/green), investment strategy
+(passive interest or tenor interest) and currency. Those native dimensions form
+the business identity `(effectiveDate, strategyBenchmarkType, currency, colorType)`
+within the fixed tenant namespace. This resolves the initial identity gate using
+an explicit business contract and nonempty native evidence, rather than guessing
+from display columns. Native `id` remains blank and is preserved as source data;
+neither `value` nor `fetched_at` participates in identity. The glossary records
+the business concept without implementation details.
+
+The accepted JSON POST contract fixes `tntInstId=GUAPW3SG` and `timeZone=GMT+08`,
+uses width-10 `rowStart` offsets and the success/data.data/data.totalCount envelope.
+Required inclusive `--from-date`/`--to-date` YYYYMMDD bounds map directly to native
+`valueDateStart`/`valueDateEnd`. Returned `effectiveDate` is the business date and
+is validated against those bounds. The dated profile retains verified window
+coverage and uses `effectiveDate` for the existing shared retention policy.
+The new schema version isolates this projected contract from old private candidates.
+
+Only six business fields are projected: id, effectiveDate, strategyBenchmarkType,
+currency, colorType and value. `value` is the native percent decimal string;
+precision, null, blank and zero are preserved without rate scaling or yield
+calculation. Field meaning is marked as operator-confirmed; percent unit is
+separately attributed to the native UI renderer. Same-identity differing content
+within one acquisition remains a hard failure; a later valid refresh may publish
+a revision for that identity. No shared duplicate tolerance or cache engine changes.
+
+Registered public CLI UAT on CDP 9223 passed **8/8 commands**: strict full refresh,
+cached full read, disconnected cached full read, strict full live, strict single-day
+live, strict empty live, strict empty refresh and disconnected empty cached read.
+The full window yielded **165/165 in 17 pages**, the 20261002 day **33/33**, and
+20261004 **0/0**. Cached content and fetched_at matched the same committed capture;
+all live reads left SQLite bytes unchanged. Offline acquisition evidence separately
+reports arrivals/unique/reported **165/165/165**, duplicate_count=0, scope_complete
+and dataset_complete=true. Each of five populated days has 33 records; the full
+165-row native audit found no invalid or duplicate four-field identities.
+
+Incremental local checks: **104 passed, 20 subtests passed** for benchmark/strategy
+CLI, deferred gates, snapshot, contracts and documentation; **174 passed** for
+shared collector/store/projection/field/partial regressions. Ruff lint and format
+passed (275 Python files). The new benchmark CLI tests cover identity dimensions,
+native scope, percent precision/privacy, later revisions, offline dated subwindows,
+complete empty publication, live no-write, invalid scopes, malformed fields,
+wrong tenant/date, identity conflicts, total drift, auth/business errors and
+default/strict partial publication. The previous full-suite run is historical
+evidence; it was not rerun for this bounded follow-up. No configured typechecker.
+
+Production records remain private; the ignored UAT helper prints only counts and
+equality checks to `tmp/issue89/benchmark-uat-summary.jsonl`. Graph coverage now
+indexes 167 Python files, including the new integration tests. Local Kimi review
+of the incremental production diff is recorded separately below.
+
+Local Kimi completed with exit 0 against working-tree `HEAD 7342887`; the actual
+default remains `origin/master 045c384`. Review was limited to the four changed
+production files; earlier strategy code already had its own review. Kimi traced
+the benchmark contract, business identity, dated-store hooks, projection and
+offline descriptions, and independently passed Ruff lint/format. It did not
+repeat pytest or contact production. Standards: no findings. Spec: one minor
+judgement call suggested declaring sampled `value` as `str | null`. This was
+not applied: the native records observed here contain strings, while null is
+supported parser behavior tested with synthetic fixtures; `x-observed-type`
+describes native observations and nullability remains explicitly unknown.
+There are no accepted correctness defects. **confidence: 4/5**, reflecting
+reviewed hooks and successful lint/format while relying on the parent's focused
+tests and separate production UAT. Raw output is retained in ignored
+`kimi-benchmark-review.raw.log`; 24 JSON events were normalized into
+`kimi-benchmark-review.jsonl`, and the final structured report is retained in
+`kimi-benchmark-final-review.json`. No Greptile command was used.
+
 ## Remaining decisions
 
-- Benchmark: obtain a native usable identity contract for the populated records,
-  then prove complete collection and separate registered CLI UAT. Display-column
-  combinations, hashes and row ordinals are not replacement identity evidence.
 - Valuations: propose a separate inquiry name such as `pricing fee-orders list`,
   with an explicit compatibility decision for the existing unsupported valuations
   leaf. Do not rename or enable it silently in this batch. Reverify amount/date

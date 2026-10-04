@@ -9,7 +9,6 @@ from dogopencli.browser import cdp
 from dogopencli.jsonutil import parse
 
 TARGETS = [
-    ("investment", "benchmark-values", ("valueDate", "timeZone", "unit")),
     ("pricing", "valuations", ("fee-order", "semantics", "naming")),
     ("pricing", "bills", ("DEPOSIT", "currency", "period")),
 ]

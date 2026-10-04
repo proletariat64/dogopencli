@@ -55,6 +55,22 @@ def _source_guide(
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.projection == "benchmark_values":
+        properties = schema["properties"]
+        properties["effectiveDate"]["x-format"] = "YYYYMMDD"
+        properties["value"]["x-unit"] = "percent"
+        properties["value"]["x-evidence"]["unit"] = "native UI percent suffix"
+        meanings = {
+            "effectiveDate": "market benchmark business day in native GMT+08",
+            "strategyBenchmarkType": "investment strategy: passive interest or tenor",
+            "currency": "benchmark currency",
+            "colorType": "fund nature: red, yellow or green",
+            "value": "daily market interest benchmark",
+        }
+        for field, meaning in meanings.items():
+            properties[field]["description"] = meaning
+            properties[field]["x-evidence"]["meaning"] = "operator confirmed 2026-10-04"
+        return schema
     if item.projection != "strategy_results":
         return schema
     properties = schema["properties"]
@@ -142,7 +158,12 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                 if variant.name == DECISIONS.name
                 else "2026-10-04"
                 if variant.projection
-                in {"transfer_orders", "risk_events", "risk_anomalies"}
+                in {
+                    "transfer_orders",
+                    "risk_events",
+                    "risk_anomalies",
+                    "benchmark_values",
+                }
                 or variant.schema_version == INVESTMENT_VERSION
                 else "2026-10-03"
                 if variant.name == SWAP_ORDERS.name

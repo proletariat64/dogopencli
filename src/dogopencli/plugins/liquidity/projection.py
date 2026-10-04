@@ -731,6 +731,35 @@ def _project_swap_orders(row: Any) -> dict[str, Any]:
     return record
 
 
+def _project_benchmark_values(row: Any) -> dict[str, Any]:
+    from .investment_batch import (
+        BENCHMARK_FIELDS,
+        BENCHMARK_IDENTITY,
+        validate_business_date,
+    )
+    from .spec import TENANT
+
+    record = _require_row(row, "benchmark_values")
+    if "tntInstId" in record and record["tntInstId"] != TENANT:
+        raise _invalid("benchmark_values: tenant is outside requested scope")
+    for field in BENCHMARK_FIELDS:
+        value = record.get(field)
+        if value is not None and not isinstance(value, str):
+            raise _invalid(f"benchmark_values.{field}: expected native string")
+        if field in BENCHMARK_IDENTITY and (
+            not isinstance(value, str) or not value.strip()
+        ):
+            raise _invalid(
+                f"benchmark_values.{field}: expected nonempty identity string"
+            )
+    try:
+        validate_business_date(record["effectiveDate"])
+    except ValueError as error:
+        raise _invalid("benchmark_values.effectiveDate: invalid YYYYMMDD") from error
+    _validate_amounts(record, ("value",), "benchmark_values")
+    return _pick(record, BENCHMARK_FIELDS)
+
+
 def _project_strategy_results(row: Any) -> dict[str, Any]:
     from .investment_batch import STRATEGY_FIELDS, TASK_TYPES, validate_business_date
     from .spec import TENANT
@@ -781,6 +810,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "transfer_orders": project_transfer_order,
     "decision_reports": project_decision_record,
     "strategy_results": _project_strategy_results,
+    "benchmark_values": _project_benchmark_values,
 }
 
 

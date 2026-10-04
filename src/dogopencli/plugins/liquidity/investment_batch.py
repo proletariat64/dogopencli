@@ -7,6 +7,7 @@ from typing import Any
 from ...errors import EXIT_USAGE, INVALID_ARGUMENT, INVALID_RESPONSE, CliError
 from .spec import (
     ENV_SUCCESS,
+    PROFILE_DATED,
     PROFILE_HISTORY,
     RUNTIMES,
     TENANT,
@@ -17,6 +18,63 @@ from .spec import (
 VERSION = "investment-batch-c-v0.1"
 TASK_TYPES = ("FUND_DECISION_TASK", "PRODUCT_DECISION_TASK")
 SOURCE_ZONE = timezone(timedelta(hours=8))
+BENCHMARK_IDENTITY = ("effectiveDate", "strategyBenchmarkType", "currency", "colorType")
+BENCHMARK_FIELDS = ("id", *BENCHMARK_IDENTITY, "value")
+BENCHMARK_VALUES = ListSpec(
+    path=("investment", "benchmark-values"),
+    kind=RUNTIMES,
+    title="daily market interest benchmarks by fund nature, strategy and currency",
+    endpoint="/queryStrategyBenchmarkList.json",
+    method="POST",
+    envelope=ENV_SUCCESS,
+    container=("data", "data"),
+    total=("data", "totalCount"),
+    identity=BENCHMARK_IDENTITY,
+    profile=PROFILE_DATED,
+    series_field="effectiveDate",
+    series_format="%Y%m%d",
+    page_size=10,
+    template={"tntInstId": TENANT, "timeZone": "GMT+08"},
+    scope_options=(
+        ScopeOption(
+            "from_date",
+            "valueDateStart",
+            "Inclusive effective day start (YYYYMMDD), native GMT+08.",
+            required=True,
+            date=True,
+            window="from",
+        ),
+        ScopeOption(
+            "to_date",
+            "valueDateEnd",
+            "Inclusive effective day end (YYYYMMDD), native GMT+08.",
+            required=True,
+            date=True,
+            window="to",
+        ),
+    ),
+    table_columns=(*BENCHMARK_IDENTITY, "value"),
+    projection="benchmark_values",
+    schema_version="investment-benchmark-values-v1",
+    notes=(
+        "Native inquiry: JSON POST, fixed tenant GUAPW3SG and timeZone GMT+08, "
+        "rowStart offsets of width 10, data.data and data.totalCount.",
+        "The operator confirmed one daily market interest benchmark per fund "
+        "nature (red/yellow/green), investment strategy (passive interest/tenor) "
+        "and currency. Identity is (effectiveDate, strategyBenchmarkType, "
+        "currency, colorType) within the tenant namespace; all 165 observed "
+        "records have blank native id and distinct business identities.",
+        "value is a native decimal string displayed with percent by the source "
+        "UI. Preserve precision, null, blank and zero; do not scale or derive "
+        "realized interest. value and capture time are not identity fields.",
+        "valueDateStart/valueDateEnd bound the native effectiveDate (YYYYMMDD), "
+        "not fetched_at. Dated captures preserve source coverage.",
+        "Same-identity conflicting content within one acquisition is a hard "
+        "failure. A later refresh may publish a revised value for that identity.",
+        "Only the six observed benchmark business fields enter public/cache "
+        "records. Strategy definitions and investment execution are separate.",
+    ),
+)
 STRATEGY_FIELDS = (
     "id",
     "taskType",
@@ -118,10 +176,10 @@ PRODUCT_RESULTS = replace(
         *FUND_RESULTS.scope_options[1:],
     ),
 )
-CANDIDATES = (FUND_RESULTS, PRODUCT_RESULTS)
+CANDIDATES = (BENCHMARK_VALUES, FUND_RESULTS, PRODUCT_RESULTS)
 # Both variants passed nonempty native collection and CLI UAT on CDP 9223.
-# Final local review and checks gate the commit; pricing and benchmarks stay deferred.
-RELEASED: frozenset[str] = frozenset({FUND_RESULTS.name})
+# Final local checks, review and registered CLI UAT gate each release commit.
+RELEASED: frozenset[str] = frozenset({BENCHMARK_VALUES.name, FUND_RESULTS.name})
 
 
 def validate_business_date(value: Any) -> None:
