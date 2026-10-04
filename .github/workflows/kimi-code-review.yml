@@ -66,8 +66,8 @@ jobs:
         id: kimi
         env:
           KIMI_MODEL_API_KEY: ${{ secrets.KIMI_API_KEY }}
-          KIMI_MODEL_NAME: ${{ vars.KIMI_MODEL_NAME || 'kimi-k2.5' }}
-          KIMI_MODEL_BASE_URL: ${{ vars.KIMI_BASE_URL || 'https://api.moonshot.ai/v1' }}
+          KIMI_MODEL_NAME: ${{ vars.KIMI_MODEL_NAME || 'kimi-for-coding' }}
+          KIMI_MODEL_BASE_URL: ${{ vars.KIMI_BASE_URL || 'https://api.kimi.com/coding/v1' }}
           KIMI_CODE_HOME: ${{ runner.temp }}/kimi-code
           KIMI_DISABLE_TELEMETRY: '1'
           KIMI_CODE_NO_AUTO_UPDATE: '1'
