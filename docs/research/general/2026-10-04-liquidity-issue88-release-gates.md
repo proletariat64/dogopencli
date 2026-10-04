@@ -7,7 +7,8 @@ Status: snapshot
 Feature: [issue #88](https://github.com/proletariat64/dogopencli/issues/88).
 Enabled targets: **2/3**. Risk events and risk anomalies expose independently
 verified bounded lists. Monitoring rules remain unsupported; the issue remains
-open. Registry: 71 supported (32 settings, 32 runtimes, 7 reference) and 62
+open. After master integration: 73 supported (32 settings, 34 runtimes,
+7 reference) and 60
 unsupported query leaves. No new get/history, version bump or framework.
 
 ## Native contracts and evidence
@@ -101,13 +102,16 @@ snapshot ownership absent; registering actual capability ownership fixed it.
 Candidate suite passed **31 tests in 32.72s**. Monitoring refusal and no-get/history
 release gates remain separate.
 
-Actual default `master` advanced to
+The initial review's actual default `master` advanced to
 `06689d759bc7c64fe65cd80f90d716453ec08b40` during this session, verified against
 GitHub. Feature comparison uses its merge-base
 `f8ada67215d164a745817a1627672639c7028002`, including staged changes, so newer
-issue #87/CI changes are not mistaken for feature deletions. Those later master
-changes are not integrated into this worktree. Existing Python 3.12.3 environment;
-remote Python 3.10/3.11/3.12 matrix unrun locally. No configured static typecheck
+issue #87/CI changes are not mistaken for feature deletions. PR preparation
+then integrates `06689d7`, preserving both batch A lists and both batch B risk
+lists. Six overlapping files were resolved, with 51 list leaves total and
+73/133 supported query leaves. Existing Python 3.12.3 environment;
+Python 3.10/3.11 unrun locally. Current master's CI requires Ruff and Kimi review;
+the earlier pytest matrix was removed upstream. No configured static typecheck
 or coverage threshold. Completed checks and review are recorded below.
 
 | Local check | Command | Result |
@@ -151,6 +155,43 @@ per-finding scores or a claim that all three spec targets passed UAT.
 
 Earlier discovery-only commit `a9db73c` had 0/3 enabled, skipped shared-browser
 UAT and interrupted full suite. Its Kimi 3/5 score does not describe this work.
+
+## PR integration verification
+
+Current master `06689d7` is integrated before PR publication. Resolved the six
+overlapping files by retaining both batch A decisions/transfers and batch B
+events/anomalies, with their separate native validation, projections, fields and
+verification dates. Combined registry and snapshot assertions now reflect
+73 supported, 60 unsupported and 51 list leaves. No production inquiry was
+repeated for this integration; the native risk contract and implementation remain
+the same as the accepted two-leaf source.
+
+Affected tests passed **540/540 in 102.31s** with the existing venv on PATH:
+
+```bash
+rtk proxy env PATH=/home/ubuntu/dev/dogopencli/.venv/bin:"$PATH" PYTHONPATH=src \
+  /home/ubuntu/dev/dogopencli/.venv/bin/python -m pytest -q \
+  tests/unit/plugins/liquidity \
+  tests/integration/test_liquidity_issue87_decisions.py \
+  tests/integration/test_liquidity_issue87_transfers.py \
+  tests/integration/test_liquidity_issue88_risk.py \
+  tests/integration/test_liquidity_issue88_gate.py \
+  tests/integration/test_snapshot_cli_sit.py \
+  tests/integration/test_snapshot_domain_sit.py \
+  tests/test_catalog.py tests/integration/test_help_sit.py \
+  tests/integration/test_describe_cli.py tests/test_help_entry.py
+```
+
+Ruff passed; formatting passed for 270 Python files; document guard passed for
+105 Markdown files; diff/conflict-marker checks passed. The full suite was not
+repeated for this merge. Local Kimi integration review completed in stream-json,
+exit 0, with Standards and Spec axes. Both merge sides and combined counts were
+verified preserved; no hard standards violation or confirmed correctness defect
+was found. Overall CI-pass confidence remains **4/5**, with the documented UAT
+and date-edge limitations and no post-merge full-suite rerun. Style judgements
+were not patched. Its minor non-null-schema allegation is not supported by the
+actual describe provider: `x-observed-type` records sampled types, nullability is
+explicitly unknown, and no required/non-null field assertion is emitted.
 
 ## Monitoring continue conditions
 

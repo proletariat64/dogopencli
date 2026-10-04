@@ -1,0 +1,87 @@
+name: Kimi Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kimi-code-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  kimi-review:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Kimi
+        run: npm install --global @moonshot-ai/kimi-code@2.1.1
+
+      - name: Review PR
+        env:
+          KIMI_MODEL_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          KIMI_MODEL_NAME: k3
+          KIMI_MODEL_BASE_URL: ${{ vars.KIMI_BASE_URL || 'https://api.kimi.com/coding/v1' }}
+          KIMI_CODE_HOME: ${{ runner.temp }}/kimi-code
+          KIMI_DISABLE_TELEMETRY: '1'
+          KIMI_CODE_NO_AUTO_UPDATE: '1'
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KIMI_MODEL_API_KEY" || { echo "::error::KIMI_API_KEY is missing"; exit 1; }
+          base=$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH")
+          head=$(git rev-parse HEAD)
+          timeout --kill-after=30s 15m kimi \
+            --skills-dir .github/kimi-skills --output-format stream-json \
+            -p "/code-review Review git diff $base...$head in this checkout. Report base $base and head $head." \
+            2> >(tee "$RUNNER_TEMP/kimi-review.stderr" >&2) \
+            | tee "$RUNNER_TEMP/kimi-review.jsonl"
+
+      - name: Publish review summary
+        env:
+          REVIEW_LOG: ${{ runner.temp }}/kimi-review.jsonl
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          messages = []
+          for line in Path(os.environ["REVIEW_LOG"]).read_text().splitlines():
+              try:
+                  event = json.loads(line)
+              except ValueError:
+                  continue
+              if (isinstance(event, dict) and event.get("role") == "assistant"
+                      and not event.get("tool_calls")
+                      and isinstance(event.get("content"), str)
+                      and event["content"].strip()):
+                  messages.append(event["content"].strip())
+          if not messages:
+              raise SystemExit("No final Kimi review received")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("## Kimi Code Review\n\n" + messages[-1] + "\n")
+          PY
+
+      - name: Save review logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kimi-review
+          path: ${{ runner.temp }}/kimi-review.*
+          if-no-files-found: ignore
+          retention-days: 7

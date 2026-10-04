@@ -144,8 +144,9 @@ SLA 是配置目标，不是观测到账耗时。
 当前源码版本为 **v0.2.5**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)、
 [#76](https://github.com/proletariat64/dogopencli/issues/76) 和
 [PR #83](https://github.com/proletariat64/dogopencli/pull/83) 和
-[#88](https://github.com/proletariat64/dogopencli/issues/88) 已实现 71 个查询叶子：
-32 settings、32 runtimes、7 reference；另有 62 个延期叶子可通过帮助发现，
+[#87](https://github.com/proletariat64/dogopencli/issues/87) 和
+[#88](https://github.com/proletariat64/dogopencli/issues/88) 已实现 73 个查询叶子：
+32 settings、34 runtimes、7 reference；另有 60 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.4 wheel 不包含新增的 swaps 列表。已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
@@ -225,11 +226,11 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `network account-capabilities` | `list`, `get` |
 | `network bank-baselines` | `list`, `get` |
 | `operations asset-trades` | `list` |
-| `operations decisions` | `get`, `history` |
+| `operations decisions` | `list`（必填启动与创建时间范围）, `get`, `history` |
 | `operations forwards` | `list`, `get` |
 | `operations prefunds` | `list`, `get` |
 | `operations swaps` | `list`（必填交易日期范围） |
-| `operations transfers` | `get` |
+| `operations transfers` | `list`（必填交易日期范围）, `get` |
 | `pricing client-prices` | `list` |
 | `pricing cost-prices` | `list` |
 | `pricing factor-values` | `list` |
@@ -278,10 +279,26 @@ dogopencli describe liquidity operations swaps list
 固定-total 合同内的后端 total 变化仍返回 `INVALID_RESPONSE`。
 `ledger balances list` 已有查询实现，但后端业务错误 999 仍阻塞完整采集。
 没有已验证查询合同的叶子继续延期，如 wallets、pool-balances、credit-usage、
-forecast accuracy、risk sla list、transfer rules list、quote-groups、decisions list、
-transfers list；独立验证过的详情不受此影响。
+forecast accuracy、risk sla list、transfer rules list、quote-groups；
+独立验证过的详情不受此影响。
 [证据与未验证事项](docs/research/general/2026-10-01-liquidity-live-probes.md)，
 [缓存决策](docs/adr/0016-liquidity-independent-list-and-detail-caches.md)。
+
+决策列表的启动时间与创建时间分别使用原生 `YYYY-MM-DD HH:mm:ss` 闭区间；
+四个边界均必填。转账列表使用原生交易日期 `YYYYMMDD` 闭区间；
+保留原始 `gmtCreate`，不据此转换时区、筛选或按展示日期分区。
+列表缓存独立于原生详情和历史缓存。以下刷新仅更新配置的本地缓存：
+
+```bash
+dogopencli refresh liquidity operations decisions \
+  --start-from "2026-09-30 00:00:00" --start-to "2026-09-30 23:59:59" \
+  --created-from "2026-09-30 00:00:00" --created-to "2026-09-30 23:59:59" \
+  --require-complete
+dogopencli refresh liquidity operations transfers \
+  --transaction-from 20260930 --transaction-to 20260930 --require-complete
+dogopencli liquidity operations transfers list \
+  --transaction-from 20260930 --transaction-to 20260930 --all
+```
 
 ## 缓存、实时查询与刷新
 
@@ -582,3 +599,5 @@ rtk proxy make doc-guard test-doc-guard
 - [Releases](https://github.com/proletariat64/dogopencli/releases)：安装包与版本记录。
 
 契约与 UAT 报告记录特定日期、账号权限下的验证结果；生产行为变化后需要重新验证。
+
+Batch A ([#87](https://github.com/proletariat64/dogopencli/issues/87)) 两个必需列表的注册生产 CLI UAT 已通过 **2/2**，报价组调查 **1/1**，可选列表放行 **0/1**。当前源码支持数为 **71/133**；报价组继续 unsupported。决策与转账完整刷新分别为 264 与 4,954 条，本地 Kimi 两轴复审均通过。见[本批验收证据](docs/research/general/2026-10-04-liquidity-batch-a-acceptance.md)。
