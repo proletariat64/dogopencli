@@ -63,3 +63,11 @@ Remaining candidates evaluated: 2/2. Quote newly enabled: 0. Product-baselines i
 The quote investigation now has populated native identity/schema and observed date-filter behavior. It still needs a reliable bounded full-response contract (including whether there is a server truncation cap), a decision on supported variants given WIN remains empty, and honest native timestamp/zone metadata. No quote implementation or production CLI UAT is claimed. Existing pool/credit settings and runtime caches are unchanged.
 
 Prior evidence: [October 4 gates](2026-10-04-liquidity-issue98-gates.md). The new populated scope and operator retirement supersede only the corresponding earlier gates; dated observations remain historical evidence.
+
+## Subsequent operator clarification and large-page comparison
+
+The operator confirmed that quote values are percentages, O/N means overnight, ticketSize is the minimum deposit amount, and source quote times use UTC+08:00. Preserve source tenor/date/value fields without business arithmetic validation. curMaxLimitAvailable retains its native name; no further business meaning was confirmed. WIN has no implemented backend and is withdrawn from the first release scope; QUOTED is the only candidate variant.
+
+The operator also confirmed that this page is designed without returned totals and authorized pageSize 1000 and5000 controls. With rowStart0, QUOTED, value dates20260101–20261005 and unchanged native timeZone null, both explicitly successful responses contained the exact same338 rows, order and unique identities as earlier captures, with no totalCount. Two additional business inquiries were issued (12 total across this investigation).
+
+The revised spec accepts the native bounded single-response contract without requiring a fabricated total. Use pageSize5000, do not iterate offsets or duplicate rows. This does not claim unbounded server capacity; the earlier lack of total alone no longer blocks implementation after the operator clarified the contract. Output timezone semantics and the native request field remain distinct. Public CLI implementation and production UAT are still separate pending steps.
