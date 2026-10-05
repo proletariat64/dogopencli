@@ -249,6 +249,11 @@ def _remaining_timeout(deadline: float) -> float:
     return remaining
 
 
+#: Poll interval for the readiness/settle sampling loops below. Module-level
+#: so tests can shrink it; production behavior is unchanged.
+POLL_INTERVAL_SECONDS = 0.25
+
+
 def await_target_settled(session: CdpSession, *, timeout: float = 15.0) -> str:
     """Wait for navigation to settle and return the final href (any origin).
 
@@ -273,7 +278,7 @@ def await_target_settled(session: CdpSession, *, timeout: float = 15.0) -> str:
         if href in {"", "about:blank"}:
             previous_href = None
             stable_samples = 0
-            time.sleep(min(0.25, _remaining_timeout(deadline)))
+            time.sleep(min(POLL_INTERVAL_SECONDS, _remaining_timeout(deadline)))
             continue
         if href.startswith("chrome-error://"):
             raise BrowserLoss("target navigation failed", reason="navigation_error")
@@ -286,7 +291,7 @@ def await_target_settled(session: CdpSession, *, timeout: float = 15.0) -> str:
         previous_href = href
         remaining = deadline - time.monotonic()
         if remaining > 0:
-            time.sleep(min(0.25, remaining))
+            time.sleep(min(POLL_INTERVAL_SECONDS, remaining))
     raise PageNotReady(last_ready_state)
 
 
@@ -344,7 +349,7 @@ def _confirm_entry_stability(
     expression = "({ready_state: document.readyState, href: location.href})"
     window_end = min(time.monotonic() + ENTRY_STABILITY_SECONDS, deadline)
     while time.monotonic() < window_end:
-        time.sleep(min(0.25, max(0.0, window_end - time.monotonic())))
+        time.sleep(min(POLL_INTERVAL_SECONDS, max(0.0, window_end - time.monotonic())))
         if time.monotonic() >= window_end:
             break
         remaining = _remaining_timeout(deadline)

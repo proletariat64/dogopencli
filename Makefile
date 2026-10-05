@@ -7,7 +7,7 @@ bootstrap:
 	$(PYTHON) -B scripts/bootstrap.py
 
 test:
-	$(DEV_PYTHON) -m pytest -q
+	$(DEV_PYTHON) -m pytest -q --durations=20
 
 lint:
 	$(DEV_PYTHON) -m ruff check .
