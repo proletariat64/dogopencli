@@ -274,6 +274,53 @@ CASH_CREDIT_LINES = ListSpec(
     ),
 )
 
+CASH_CREDIT_USAGE = ListSpec(
+    path=("cash", "credit-usage"),
+    kind=RUNTIMES,
+    title="credit line usage snapshots",
+    endpoint="/queryBankCreditLineByParams.json",
+    method="GET",
+    envelope=ENV_RESULT_FLAG,
+    container=("result", "data"),
+    total=("count",),
+    total_checks=(("result", "count"),),
+    require_inner_success=True,
+    identity=("id",),
+    page_size=100,
+    profile=PROFILE_HISTORY,
+    vo_field="bankCreditLineQuery",
+    template={"tntInstId": TENANT},
+    table_columns=(
+        "id",
+        "creditLineType",
+        "currency",
+        "amount",
+        "usedAmount",
+        "availableAmount",
+        "shareTag",
+    ),
+    projection="credit_usage",
+    schema_version="credit-usage-v1",
+    notes=(
+        "Inquiry-only native GET contract verified 2026-10-05; fixed tenant and"
+        " page width 100, no unverified filters or detail calls.",
+        "One source line per record, with bankAccountCreditLineList members"
+        " identified by (line.id, member.id). creditLineId echoes the parent.",
+        "Projected business values are preserved, not parsed, normalized"
+        " or checked against business rules. No sums, exchange rates, assigned"
+        " caps or used/available inequalities are computed.",
+        "Parent currency is Credit CCY; member creditCurrency is CreditLine CCY"
+        " and currency is the account currency. Both native amount families stay"
+        " separate; blank currencies and shared account limits are not inferred.",
+        "shareTag and member mergeFlag/isMasterAccount are source flags."
+        " mergeFlag is UI grouping, not a new identity or tree level; members"
+        " are never collapsed or summed.",
+        "Usage observation time is unknown. fetched_at is capture time;"
+        " gmtModified and validity dates are not usage observation times."
+        " Unknown business fields do not imply incomplete collection.",
+    ),
+)
+
 CASH_STATEMENTS_EOD = ListSpec(
     path=("cash", "statements", "end-of-day"),
     kind=RUNTIMES,
@@ -407,11 +454,12 @@ ACCEPTED_LIST_SPECS = (
     CASH_POOLS,
     CASH_POOL_BALANCES,
     CASH_CREDIT_LINES,
+    CASH_CREDIT_USAGE,
     CASH_STATEMENTS_EOD,
     FORECAST_RESULTS,
 )
 ACCEPTED_DETAIL_SPECS = (CASH_POOLS_GET,)
-# Eight contracts passed complete-scope CLI live/refresh/disconnected UAT.
+# Complete-scope contracts use the existing per-leaf UAT release gate.
 # The user separately accepts forecast's existing cash-accounts compatibility:
 # incomplete data remains nonzero/unpublished, and changing totals fail closed.
 # Fresh 2026-10-02 native UAT proves 20135 arrivals / 20129 unique records,
@@ -426,6 +474,7 @@ UAT_COMPLETE_PASSED: frozenset[str] = frozenset(
         CASH_POOL_BALANCES.name,
         CASH_POOLS_GET.name,
         CASH_CREDIT_LINES.name,
+        CASH_CREDIT_USAGE.name,
         CASH_STATEMENTS_EOD.name,
     }
 )

@@ -1939,15 +1939,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Credit-line detail: {_UNVERIFIED}.",
     ),
     DeferredLeaf(
-        ("cash", "credit-usage", "list"),
-        RUNTIMES,
-        "semantics-pending",
-        "Credit usage (#98, 2026-10-04): inquiry returned 84 lines and 667"
-        " members; mergeFlag groups share the displayed usage cell. Usage"
-        " observation time, shared amount ownership and currency association"
-        " remain unverified; configuration/validity dates are not usage times.",
-    ),
-    DeferredLeaf(
         ("forecast", "results", "get"),
         RUNTIMES,
         "unverified",

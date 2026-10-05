@@ -89,7 +89,10 @@ def test_full_tree_missing_cache_is_success_and_never_creates_files(
     assert "dogopencli payment channel list" in by_path
     assert "dogopencli liquidity cash balances list" in by_path
     unsupported = [leaf for leaf in items if leaf["availability"] == "unsupported"]
-    assert len(unsupported) == 57
+    assert len(unsupported) == 56
+    credit_usage = by_path["dogopencli liquidity cash credit-usage list"]
+    assert credit_usage["availability"] == "supported"
+    assert credit_usage["cache"]["status"] == "missing"
     pool_balances = by_path["dogopencli liquidity cash pool-balances list"]
     assert pool_balances["availability"] == "supported"
     assert pool_balances["cache"]["status"] == "missing"

@@ -612,6 +612,72 @@ def _project_credit_lines_settings(row: Any) -> dict[str, Any]:
     return projected
 
 
+# --- credit usage runtime ----------------------------------------------------
+
+_CREDIT_USAGE_FIELDS = (
+    "id",
+    "creditLineType",
+    "currency",
+    "amount",
+    "usedAmount",
+    "availableAmount",
+    "bankId",
+    "masterBankId",
+    "instId",
+    "shareTag",
+    "status",
+    "manageStatus",
+    "tntInstId",
+)
+_CREDIT_USAGE_MEMBER_FIELDS = (
+    "id",
+    "creditLineId",
+    "accountNo",
+    "aliasName",
+    "bankId",
+    "instId",
+    "creditAmount",
+    "usedCreditAmount",
+    "availableCreditAmount",
+    "creditCurrency",
+    "currency",
+    "equvAmount",
+    "usedAmount",
+    "availableAmount",
+    "isMasterAccount",
+    "mergeFlag",
+    "status",
+    "tntInstId",
+)
+
+
+def _credit_usage_tenant(record: dict[str, Any], context: str) -> dict[str, Any]:
+    from .spec import TENANT
+
+    if "tntInstId" in record and record["tntInstId"] != TENANT:
+        raise _invalid(f"{context}: tenant is outside requested scope")
+    return record
+
+
+def _project_credit_usage(row: Any) -> dict[str, Any]:
+    record = _require_row(row, "credit_usage")
+    _typed_id(record.get("id"), "credit_usage.id")
+    _credit_usage_tenant(record, "credit_usage")
+    projected = _pick(record, _CREDIT_USAGE_FIELDS)
+    # This reader deliberately does not parse or validate business field values.
+    members = _project_members(
+        record,
+        "bankAccountCreditLineList",
+        _CREDIT_USAGE_MEMBER_FIELDS,
+        "credit_usage",
+        echo_field="creditLineId",
+        nested=_credit_usage_tenant,
+    )
+    if members is not _ABSENT:
+        projected["bankAccountCreditLineList"] = members
+    return projected
+
+
 # --- balances runtime ----------------------------------------------------------
 
 _BALANCE_AMOUNT_FIELDS = (
@@ -899,6 +965,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "pools_settings": _project_pools_settings,
     "pool_balances": _project_pool_balances,
     "credit_lines_settings": _project_credit_lines_settings,
+    "credit_usage": _project_credit_usage,
     "balances": _project_balances,
     "eod": _project_eod,
     "forecast_results": _project_forecast_results,

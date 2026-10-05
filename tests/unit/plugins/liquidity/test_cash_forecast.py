@@ -99,7 +99,7 @@ def test_release_distinguishes_complete_and_backend_compatible_uat():
         UAT_COMPLETE_PASSED,
     )
 
-    assert len(UAT_COMPLETE_PASSED) == 8
+    assert len(UAT_COMPLETE_PASSED) == 9
     assert FORECAST_RESULTS.name not in UAT_COMPLETE_PASSED
     assert UAT_COMPATIBILITY_PASSED == {FORECAST_RESULTS.name}
     assert RELEASED == UAT_PASSED == UAT_COMPLETE_PASSED | UAT_COMPATIBILITY_PASSED
@@ -107,6 +107,8 @@ def test_release_distinguishes_complete_and_backend_compatible_uat():
         assert list_spec.schema_version == (
             "pool-balances-v1"
             if list_spec.path == ("cash", "pool-balances")
+            else "credit-usage-v1"
+            if list_spec.path == ("cash", "credit-usage")
             else VERSION
         )
         assert list_spec.path in LIST_LEAVES
@@ -743,7 +745,11 @@ def test_released_public_help_and_describe_do_not_contact_browser(path, monkeypa
                 assert document["data_schema"]["properties"]
                 assert document["read_guide"]["live_verified"] == (
                     "2026-10-05"
-                    if path == ("cash", "pool-balances", "list")
+                    if path
+                    in {
+                        ("cash", "pool-balances", "list"),
+                        ("cash", "credit-usage", "list"),
+                    }
                     else "2026-10-02"
                 )
                 if path == (*FORECAST_RESULTS.path, "list"):
