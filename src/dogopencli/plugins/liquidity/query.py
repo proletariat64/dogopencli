@@ -39,7 +39,7 @@ from ..envelope import is_business_refusal
 from . import details as detail_store
 from . import spec as spec_mod
 from . import store as capture_store
-from .collect import collect_liquidity_scope
+from .collect import acquire_liquidity_list
 from .common import emit, identity_values, load_config, now, provided, scope_flags
 from .leaves import DEFERRED_BY_PATH, DetailLeaf, ListLeaf, detail_leaf, list_leaf
 
@@ -379,9 +379,9 @@ def _run_list_live(
     with inquiry_session(
         config_file=config_mod.config_path(), startup_url=capability.page_url
     ) as session:
-        result = collect_liquidity_scope(
+        result = acquire_liquidity_list(
+            session,
             capability,
-            session.transport(capability),
             resolved.request_scope,
             progress=lambda done, total: print(
                 f"live: collected page {done}/{total}", file=sys.stderr

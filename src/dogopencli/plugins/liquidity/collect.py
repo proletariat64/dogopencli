@@ -195,3 +195,20 @@ def _collect_single(
         deadline=deadline,
         evidence=evidence,
     )
+
+
+def acquire_liquidity_list(
+    session: Any,
+    capability: LiquidityListCapability,
+    scope: str,
+    *,
+    progress: Callable[[int, int], None] | None = None,
+) -> CollectedScope:
+    """Acquire one list, including its leaf-specific native composition."""
+    if capability.descriptor.projection == "forecast_accuracy":
+        from .forecast_accuracy import collect_accuracy
+
+        return collect_accuracy(session, capability, scope, progress=progress)
+    return collect_liquidity_scope(
+        capability, session.transport(capability), scope, progress=progress
+    )

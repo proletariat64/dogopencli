@@ -49,6 +49,8 @@ from .cash_forecast import (
 from .decision_list import DECISIONS, validate_decision_query
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .fee_orders import FEE_ORDERS, validate_fee_query
+from .forecast_accuracy import FORECAST_ACCURACY
+from .forecast_accuracy import validate_query as validate_accuracy_query
 from .investment_batch import CANDIDATES as INVESTMENT_CANDIDATES
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .investment_batch import validate_quote_query, validate_strategy_query
@@ -2497,6 +2499,11 @@ DEFERRED: tuple[DeferredLeaf, ...] = (
 )
 
 
+LIST_SPECS += (FORECAST_ACCURACY,)
+DEFERRED = tuple(
+    item for item in DEFERRED if item.path != (*FORECAST_ACCURACY.path, "list")
+)
+
 LIST_SPECS += (TRANSFER_RULES,)
 DEFERRED = tuple(
     item for item in DEFERRED if item.path != (*TRANSFER_RULES.path, "list")
@@ -2575,6 +2582,8 @@ class ListLeaf:
             validate_risk_query(request_values)
         if variant.projection == "transfer_orders":
             map_transfer_query(request_values)
+        if variant.projection == "forecast_accuracy":
+            validate_accuracy_query(request_values)
         if variant.projection == "fee_orders":
             validate_fee_query(request_values)
         if variant.projection == "strategy_results":

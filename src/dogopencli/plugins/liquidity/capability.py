@@ -221,6 +221,14 @@ class LiquidityListCapability:
     ) -> dict[str, Any]:
         """One verified request body for the offset starting at row_start."""
         values = decode_scope(scope)
+        if self._spec.projection == "forecast_accuracy":
+            from .forecast_accuracy import base_body
+
+            if row_start != 0 or page_size not in (None, 5000):
+                raise CliError(
+                    REQUEST_NOT_ALLOWED, "accuracy has one fixed base request"
+                )
+            return base_body(values)
         if page_size is None:
             page_size = self._spec.page_size
         body = dict(self._spec.template)

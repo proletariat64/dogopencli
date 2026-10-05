@@ -55,6 +55,28 @@ def _source_guide(
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.projection == "forecast_accuracy":
+        from .forecast_accuracy import METRIC_FIELDS
+
+        schema["additionalProperties"] = False
+        schema["x-source-timezone"] = (
+            "unknown; GMT Create Date/Time is the native label"
+        )
+        schema["x-business-validation"] = (
+            "none; raw native metrics without formula checks or scaling"
+        )
+        schema["x-metric-association"] = (
+            "native request binding; no required backend record echo"
+        )
+        schema["properties"]["accuracy"] = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                field: {"x-observed-type": "str", "x-unit": "unknown"}
+                for field in METRIC_FIELDS
+            },
+        }
+        return schema
     if item.projection == "transfer_rules":
         schema["additionalProperties"] = False
         schema["x-business-validation"] = "none; source values preserved"
@@ -372,6 +394,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     "realtime_network",
                     "transfer_rules",
                     "factor_definitions",
+                    "forecast_accuracy",
                 }
                 else DECISION_VERIFIED_DATE
                 if variant.name == DECISIONS.name

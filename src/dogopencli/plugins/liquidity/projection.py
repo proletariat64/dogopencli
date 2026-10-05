@@ -30,6 +30,7 @@ from typing import Any
 from ...errors import INVALID_ARGUMENT, INVALID_RESPONSE, CliError
 from .decision_list import project_decision_record
 from .fee_orders import project_fee_order
+from .forecast_accuracy import project_accuracy
 from .operations_batch import validate_swap_business_date
 from .realtime_network import project_network
 from .risk_batch import project_risk_record
@@ -997,6 +998,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "balances": _project_balances,
     "eod": _project_eod,
     "forecast_results": _project_forecast_results,
+    "forecast_accuracy": project_accuracy,
     "swap_orders": _project_swap_orders,
     "risk_events_detail": lambda row: project_risk_detail(row, "RISK_EVENT"),
     "risk_anomalies_detail": lambda row: project_risk_detail(row, "RISK_ALERT"),
