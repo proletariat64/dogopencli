@@ -1945,8 +1945,8 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("cash", "wallets", "list"),
         REFERENCE,
         "filter-unverified",
-        "Wallets: the native wallet flag returned identical first-page account"
-        " data; wallet membership is not established.",
+        "Wallets: wallet=true/false returned identical ordered account rows at"
+        " pageSize 1000/5000; wallet membership is not established.",
     ),
     DeferredLeaf(
         ("cash", "wallets", "get"),
@@ -1958,7 +1958,8 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("cash", "wallet-balances", "list"),
         RUNTIMES,
         "unverified",
-        f"Wallet balances: {_UNVERIFIED}.",
+        "Wallet balances: no verified independent native wallet-balance caller"
+        " bound to wallet membership; normal-account balances are not renamed.",
     ),
     DeferredLeaf(
         ("cash", "pools", "list"),
