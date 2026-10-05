@@ -31,6 +31,7 @@ from ...errors import INVALID_ARGUMENT, INVALID_RESPONSE, CliError
 from .decision_list import project_decision_record
 from .fee_orders import project_fee_order
 from .operations_batch import validate_swap_business_date
+from .realtime_network import project_network
 from .risk_batch import project_risk_record
 from .risk_detail import project_risk_detail
 from .strategy_detail import project_strategy_detail
@@ -998,6 +999,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "benchmark_values": _project_benchmark_values,
     "quotes": _project_quotes,
     "fee_orders": project_fee_order,
+    "realtime_network": project_network,
 }
 
 

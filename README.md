@@ -148,8 +148,9 @@ SLA 是配置目标，不是观测到账耗时。
 [#88](https://github.com/proletariat64/dogopencli/issues/88) 和
 [#89](https://github.com/proletariat64/dogopencli/issues/89) 和
 [#97](https://github.com/proletariat64/dogopencli/issues/97) 和
-[#98](https://github.com/proletariat64/dogopencli/issues/98) 已实现 82 个查询叶子：
-32 settings、43 runtimes、7 reference；共 131 个查询叶子，另有 49 个延期叶子可通过帮助发现，
+[#98](https://github.com/proletariat64/dogopencli/issues/98) 和
+[#104](https://github.com/proletariat64/dogopencli/issues/104) 已实现 83 个查询叶子：
+33 settings、43 runtimes、7 reference；共 131 个查询叶子，另有 48 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.7 包含 #97/#98 的新增能力；具体支持范围与生产验收结果见下文。
 已实现命令的完整性、告警和后端阻塞须分别判断，
@@ -717,3 +718,12 @@ rtk proxy make doc-guard test-doc-guard
 契约与 UAT 报告记录特定日期、账号权限下的验证结果；生产行为变化后需要重新验证。
 
 Batch A ([#87](https://github.com/proletariat64/dogopencli/issues/87)) 两个必需列表的注册生产 CLI UAT 已通过 **2/2**，报价组调查 **1/1**，可选列表放行 **0/1**。当前源码支持数为 **71/133**；报价组继续 unsupported。决策与转账完整刷新分别为 264 与 4,954 条，本地 Kimi 两轴复审均通过。见[本批验收证据](docs/research/general/2026-10-04-liquidity-batch-a-acceptance.md)。
+
+### Realtime network 配置列表（#104）
+
+`liquidity network realtime list` 查询原生 decision network settings；先运行
+`refresh liquidity network realtime`，默认离线读取；`--live` 不写缓存。只发一次
+`rowStart=0/pageSize=5000` 原生请求，缺覆盖持续报告 incomplete；`--require-complete`
+拒绝 partial。原生 id 与 routeId 分开，状态不代表实际执行成功。动态性能指标及
+私有字段不公开；get/routes/rules monitoring 不随本列表启用。当前分支目录
+83 supported / 48 unsupported / 131 total；生产 CLI UAT 204/204 完整及全部 5,304 个投影值对照通过；版本不变。

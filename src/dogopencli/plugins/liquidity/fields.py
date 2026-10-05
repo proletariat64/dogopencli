@@ -21,6 +21,8 @@ from .investment_batch import (
 )
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
+from .realtime_network import REALTIME_NETWORK
+from .realtime_network import SAMPLED_FIELDS as NETWORK_FIELDS
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import FIELDS as RISK_FIELDS
 from .risk_batch import RELEASED as RISK_RELEASED
@@ -3454,3 +3456,6 @@ SAMPLED_FIELDS[STRATEGY_DETAIL.name] = STRATEGY_DETAIL_FIELDS
 # Observed source fields; optional status is not claimed as sampled.
 
 SAMPLED_FIELDS[FEE_ORDERS.name] = {field: "str" for field in FEE_ORDER_FIELDS}
+
+# Native realtime network settings; optional value types remain unconfirmed.
+SAMPLED_FIELDS[REALTIME_NETWORK.name] = NETWORK_FIELDS

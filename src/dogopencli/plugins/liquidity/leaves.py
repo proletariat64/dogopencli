@@ -54,6 +54,7 @@ from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .investment_batch import validate_quote_query, validate_strategy_query
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
+from .realtime_network import REALTIME_NETWORK
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import RELEASED as RISK_RELEASED
 from .risk_detail import RISK_DETAIL_SPECS
@@ -1408,6 +1409,7 @@ LIST_SPECS: tuple[ListSpec, ...] = (
     RULES_NOTIFICATION,
     RULES_FORECAST,
     RULES_WATERLEVEL,
+    REALTIME_NETWORK,
     NETWORK_BANK_BASELINES,
     NETWORK_ACCOUNT_CAPABILITIES,
     PRICING_CLIENT_PRICES,
@@ -2200,17 +2202,11 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         "Network route detail: route semantics unverified.",
     ),
     DeferredLeaf(
-        ("network", "realtime", "list"),
-        SETTINGS,
-        "observed-overlap",
-        "Realtime network list: offset pages overlapped exact row objects on"
-        " 2026-10-01; complete acquisition is unprovable.",
-    ),
-    DeferredLeaf(
         ("network", "realtime", "get"),
         SETTINGS,
         "observed-overlap",
-        "Realtime network detail: its parent list cannot prove complete coverage.",
+        "Realtime network detail: its native detail contract remains unverified "
+        "(#104 enables only the settings list).",
     ),
     DeferredLeaf(
         ("ledger", "accounts", "get"),

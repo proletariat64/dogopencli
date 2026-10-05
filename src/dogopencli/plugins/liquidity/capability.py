@@ -266,6 +266,10 @@ class LiquidityListCapability:
                 raise _invalid("reported totals disagree")
         for row in rows:
             self.identity_key(row)
+        if self._spec.projection == "realtime_network":
+            from .realtime_network import validate_native_rows
+
+            validate_native_rows(rows)
         if self._spec.projection:
             rows = [project_record(self._spec.projection, row) for row in rows]
         return list(rows), total
