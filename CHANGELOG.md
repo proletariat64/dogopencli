@@ -6,9 +6,10 @@
 类型校验，独立刷新、离线读取，live 不写缓存。新增准确命名的 `pricing fee-orders list`，
 支持最多 31 日的有界 Service Date 范围；费用与交易币种分别保留，不作为 valuations 别名。
 
-本批候选实现 4/5：三个旧 unsupported 已解除，另新增一个费用订单叶子。
-目录为 79 supported / 55 unsupported，共 134 项。地区 city/country 因跨页重复仍
-不能证明完整采集，province 未重新探测；valuations 保持 unsupported。
+本批被接受的候选实现 4/4：三个旧 unsupported 已解除，另新增一个费用订单叶子。
+国家／地区基础数据按用户决定从需求和目录撤除，不导入、不保留 unsupported 入口；
+撤除不计为实现。独立 #97 分支目录为 79 supported / 54 unsupported，共 133 项，
+未计入尚未合并的 #98；valuations 保持 unsupported。
 注册公共 CLI 生产 UAT 24/24 通过；本地检查和审查见
 [验收报告](docs/research/general/2026-10-04-liquidity-issue97-gates.md)。
 未升级版本、发布包或关闭 #97。

@@ -371,12 +371,12 @@ GMT+08 查询设置。费用使用 `pricingCurrency`，交易金额使用 `curre
 不计算投资估值。源端无时区的时间字符串不推断 UTC 偏移；旧 valuations 命令和缓存
 保持独立，不提供别名或迁移。
 
-本批五个候选实现 **4/5**：解除三个旧 unsupported，新增一个费用订单叶子；目录共
-134 项（79 supported / 55 unsupported）。地区仍 unsupported：city 为
-161 arrivals / 144 unique / 161 reported，country 为 52 / 48 / 52，跨页重复导致
-完整覆盖未证实；province 未重新探测。四个详情变体和费用订单注册 CLI 生产 UAT
+本批被接受的四个候选已实现 **4/4**：解除三个旧 unsupported，新增一个费用订单叶子。
+原第五项国家／地区基础数据已按用户决定从需求和目录撤除，不导入，也不保留
+unsupported 入口；撤除不计为实现。独立 #97 分支目录共 133 项
+（79 supported / 54 unsupported），未计入尚未合并的 #98。四个详情变体和费用订单注册 CLI 生产 UAT
 共 **24/24** 通过，详见[本次证据与验证](docs/research/general/2026-10-04-liquidity-issue97-gates.md)。
-这不是五项全部完成；#97 保持开放，待地区完成或用户明确接受延期。
+#97 保持开放，随 PR #99 合并关闭；尚未合并或发布。
 
 ## 缓存、实时查询与刷新
 

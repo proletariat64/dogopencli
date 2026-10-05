@@ -2317,15 +2317,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Bank detail: {_UNVERIFIED}.",
     ),
     DeferredLeaf(
-        ("reference", "areas", "list"),
-        REFERENCE,
-        "partial-permission",
-        "Areas: 2026-10-04 city pages returned 161 arrivals/144 unique IDs/161 "
-        "reported and country pages 52/48/52; cross-page repeats leave complete "
-        "coverage unproven. Neither type is enabled. Province remains denied "
-        "ILIQUIDITY_PARA_PROVINCE_QUERY and was not reprobed.",
-    ),
-    DeferredLeaf(
         ("reference", "calendars", "get"),
         REFERENCE,
         "unverified",

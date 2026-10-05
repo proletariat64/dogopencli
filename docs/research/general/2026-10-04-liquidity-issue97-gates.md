@@ -7,8 +7,30 @@ Status: snapshot
 Specification: [issue #97](https://github.com/proletariat64/dogopencli/issues/97).
 Baseline: `c15e35f`, version `0.2.6`, 75 supported / 58 unsupported leaves.
 This report separates native investigation from implementation and registered
-public CLI production UAT. Issue #97 remains open while an original candidate
-is deferred without the operator accepting that deferral.
+public CLI production UAT. The October 5 withdrawal below supersedes the
+historical areas deferral; issue #97 remains open pending PR #99 merge.
+
+## 2026-10-05 scope withdrawal
+
+The operator reviewed the country/region reference data and rejected its business
+value and quality. The entire `reference areas list` candidate, including all
+geographic types, is removed from the requirement and public catalog. It is not
+imported, repaired, enabled or retained as an unsupported placeholder. Withdrawal
+does not count as implementation or production UAT. Geographic fields already
+present in other business inquiries are unchanged.
+
+The accepted scope is four implemented candidates out of four; the original five
+comprise four implemented and one withdrawn. This independent #97 branch has
+133 query leaves: 79 supported and 54 unsupported, excluding the unmerged #98
+branch. Prior native observations below remain historical evidence only.
+
+Withdrawal verification: 32 focused snapshot/capability/help tests passed. Six
+additional public CLI checks with browser/auth factories disabled proved that
+reference help and snapshot omit areas, and the old query/help/describe/snapshot
+paths fail as unknown arguments rather than unsupported capabilities. No cache
+file was created. Ruff lint and formatting (282 Python files), doc guard
+(107 Markdown files) and diff checks passed. No production request or new UAT
+was needed for this catalog removal.
 
 ## Current native investigation
 
@@ -29,8 +51,8 @@ existing restricted transport and explicit inquiry contracts.
 | strategy-results get / product | Independently queried same true detail caller; echoes `taskId` and `PRODUCT_DECISION_TASK`; native `investableFundResultVo=null` | Implemented; registered CLI UAT 4/4 passed |
 | risk events get | Form POST `/api/risk/event/detail.json`, only `riskEventId` from event list `id`; detail `id` and `RISK_EVENT` match | Implemented; registered CLI UAT 4/4 passed |
 | risk anomalies get | Independently queried alert detail; detail `id` and `RISK_ALERT` match | Implemented; registered CLI UAT 4/4 passed |
-| reference areas list / city | GET `/queryParaCity.json`, width 10, 17 pages: 161 arrivals / 144 distinct IDs / 161 reported; stable total, repeated records, no conflicting duplicate content | Deferred: complete coverage not proven |
-| reference areas list / country | GET `/queryParaCountry.json`, width 10, 6 pages: 52 arrivals / 48 distinct IDs / 52 reported; stable total, repeated records, no conflicting duplicate content | Deferred: complete coverage not proven |
+| reference areas list / city (historical) | GET `/queryParaCity.json`, width 10, 17 pages: 161 arrivals / 144 distinct IDs / 161 reported; stable total, repeated records, no conflicting duplicate content | Withdrawn by operator on October 5 |
+| reference areas list / country (historical) | GET `/queryParaCountry.json`, width 10, 6 pages: 52 arrivals / 48 distinct IDs / 52 reported; stable total, repeated records, no conflicting duplicate content | Withdrawn by operator on October 5 |
 | pricing fee-orders list | GET `/getFeeOrderList.json`, August 1–31: 2 arrivals / 2 IDs / 2 reported; independent single-day and empty-day inquiries passed | Implemented; registered CLI UAT 8/8 passed |
 
 The current strategy and risk parents remove their historical missing-parent
@@ -39,10 +61,10 @@ do not send tenant, task type or risk mode; local expected-type validation must
 not invent those wire fields. Risk sub-events are a separate paginated inquiry
 and are outside the single-object detail contract.
 
-Areas retain their existing unsupported leaf. Deduplicating the observed pages
-would not prove that missing records were acquired. Neither type is enabled,
-no default all-types query is introduced, and province permission remains
-untouched. Safe-partial policy does not waive the first-release completeness gate.
+On October 4, areas retained their unsupported leaf because deduplicating the
+observed pages did not establish complete coverage. The operator's October 5
+withdrawal removes that leaf entirely; it is no longer a deferred requirement.
+No further area query or province permission investigation is needed.
 
 ## Fee-order scope and semantics
 
@@ -72,11 +94,13 @@ unsupported, with no alias, redirect or cache migration.
 
 ## Delivery evidence
 
-Candidate assessment is 5/5; implementation is 4/5. Three existing unsupported
-get leaves are enabled, and one fee-order list is new. Areas are deferred with
-both types unproven. The resulting catalog has 134 query leaves: 79 supported
+At the October 4 checkpoint, candidate assessment was 5/5 and implementation
+was 4/5. Three existing unsupported get leaves were enabled, and one fee-order
+list was new. Areas were deferred with both types unproven. That historical
+catalog had 134 query leaves: 79 supported
 (54 lists, 25 detail/history; 32 settings, 40 runtimes, 7 reference) and 55
-unsupported. Adding fees does not close the original valuation gap.
+unsupported. The current withdrawal and counts are recorded above. Adding fees
+does not close the original valuation gap.
 
 Registered production CLI UAT passed 24/24 commands on 2026-10-04:
 
