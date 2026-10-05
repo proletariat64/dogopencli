@@ -36,6 +36,7 @@ from .risk_batch import project_risk_record
 from .risk_detail import project_risk_detail
 from .strategy_detail import project_strategy_detail
 from .transfer_list import project_transfer_order
+from .transfer_rules import project_transfer_rule
 
 # The verified group-balances request scope fixes the equivalent currency
 # (spec #76: only the USD scope carries business evidence); it is declared
@@ -977,6 +978,14 @@ def _project_quotes(row: Any) -> dict[str, Any]:
     return _pick(record, QUOTE_FIELDS)
 
 
+def _project_factor_definitions(row: Any) -> dict[str, Any]:
+    record = _require_row(row, "factor_definitions")
+    code = record.get("code")
+    if not isinstance(code, str) or not code.strip():
+        raise _invalid("factor_definitions.code: expected nonempty native string")
+    return _pick(record, ("code", "description", "englishName"))
+
+
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "strategy_detail": project_strategy_detail,
     "groups_settings": _project_groups_settings,
@@ -994,10 +1003,12 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "risk_events": lambda row: project_risk_record(row, "RISK_EVENT"),
     "risk_anomalies": lambda row: project_risk_record(row, "RISK_ALERT"),
     "transfer_orders": project_transfer_order,
+    "transfer_rules": project_transfer_rule,
     "decision_reports": project_decision_record,
     "strategy_results": _project_strategy_results,
     "benchmark_values": _project_benchmark_values,
     "quotes": _project_quotes,
+    "factor_definitions": _project_factor_definitions,
     "fee_orders": project_fee_order,
     "realtime_network": project_network,
 }

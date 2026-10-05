@@ -31,8 +31,16 @@ from .strategy_detail import STRATEGY_DETAIL, STRATEGY_DETAIL_FIELDS
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
 from .transfer_list import TRANSFER_ORDERS
+from .transfer_rules import FIELDS as TRANSFER_RULE_FIELDS
+from .transfer_rules import TRANSFER_RULES
 
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
+    # Observed 2026-10-05; sampled label types are not validation guarantees.
+    "liquidity.pricing.factors.list": {
+        "code": "str",
+        "description": "str",
+        "englishName": "str",
+    },
     "liquidity.cash.credit-usage.list": {
         "id": "str",
         "creditLineType": "str",
@@ -3459,3 +3467,9 @@ SAMPLED_FIELDS[FEE_ORDERS.name] = {field: "str" for field in FEE_ORDER_FIELDS}
 
 # Native realtime network settings; optional value types remain unconfirmed.
 SAMPLED_FIELDS[REALTIME_NETWORK.name] = NETWORK_FIELDS
+
+# Transfer-rule list summary is independent from the genuine detail schema.
+SAMPLED_FIELDS[TRANSFER_RULES.name] = {
+    field: "native value" for field in TRANSFER_RULE_FIELDS
+}
+SAMPLED_FIELDS[TRANSFER_RULES.name]["ruleId"] = "str"

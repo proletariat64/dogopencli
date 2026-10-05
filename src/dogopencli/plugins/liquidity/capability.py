@@ -194,6 +194,22 @@ class LiquidityListCapability:
                 if self._spec.schema_version
                 and isinstance(value, (str, int))
                 and not isinstance(value, bool)
+            )
+            + (
+                (
+                    (
+                        self._spec.vo_field,
+                        json.dumps(
+                            {
+                                **self._spec.template[self._spec.vo_field],
+                                "rowStart": 0,
+                                "pageSize": self._spec.page_size,
+                            }
+                        ),
+                    ),
+                )
+                if self._spec.projection == "transfer_rules" and self._spec.vo_field
+                else ()
             ),
             encoding=(
                 spec.ENC_FORM if self._spec.encoding == spec.ENC_FORM else spec.ENC_JSON
@@ -264,8 +280,16 @@ class LiquidityListCapability:
                 or other_total != total
             ):
                 raise _invalid("reported totals disagree")
+        seen_raw: dict[tuple[str, ...], str] = {}
         for row in rows:
-            self.identity_key(row)
+            identity = self.identity_key(row)
+            if self._spec.projection in {"transfer_rules", "factor_definitions"}:
+                content = canonical(row)
+                if identity in seen_raw and seen_raw[identity] != content:
+                    if self._spec.projection == "transfer_rules":
+                        raise _invalid("conflicting content for transfer rule identity")
+                    raise _invalid("conflicting native factor definition content")
+                seen_raw[identity] = content
         if self._spec.projection == "realtime_network":
             from .realtime_network import validate_native_rows
 
