@@ -141,7 +141,7 @@ SLA 是配置目标，不是观测到账耗时。
 
 ## 流动性查询（当前源码分支）
 
-当前源码版本为 **v0.2.7**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)、
+当前源码版本为 **v0.2.8**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)、
 [#76](https://github.com/proletariat64/dogopencli/issues/76) 和
 [PR #83](https://github.com/proletariat64/dogopencli/pull/83) 和
 [#87](https://github.com/proletariat64/dogopencli/issues/87) 和
@@ -154,7 +154,7 @@ SLA 是配置目标，不是观测到账耗时。
 [#105](https://github.com/proletariat64/dogopencli/issues/105) 已实现 85 个查询叶子：
 34 settings、43 runtimes、8 reference；共 131 个查询叶子，另有 46 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
-v0.2.7 包含 #97/#98 的新增能力；具体支持范围与生产验收结果见下文。
+v0.2.8 包含 #97/#98 及 #103/#104/#105 的新增能力；具体支持范围与生产验收结果见下文。
 #105 因子类型定义目录属于 reference，CLI 生产 UAT 状态见[独立契约](docs/research/general/2026-10-05-factor-definitions-contract.md)。
 已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
@@ -733,6 +733,6 @@ Batch A ([#87](https://github.com/proletariat64/dogopencli/issues/87)) 两个必
 `rowStart=0/pageSize=5000` 原生请求，缺覆盖持续报告 incomplete；`--require-complete`
 拒绝 partial。原生 id 与 routeId 分开，状态不代表实际执行成功。动态性能指标及
 私有字段不公开；get/routes/rules monitoring 不随本列表启用。当前分支目录
-85 supported / 46 unsupported / 131 total；生产 CLI UAT 204/204 完整及全部 5,304 个投影值对照通过；版本不变。
+85 supported / 46 unsupported / 131 total；生产 CLI UAT 204/204 完整及全部 5,304 个投影值对照通过；已随 v0.2.8 发布。
 
 审查修复后独立生产 UAT 再次通过，见[契约与验收报告](docs/research/general/2026-10-05-realtime-network-contract.md)；用户已授权本地 Kimi/API 源码与规格审查；[9488a7f](https://github.com/proletariat64/dogopencli/commit/9488a7f55f604559285572940a36afe2a46e093c) 的静态审查通过，confidence 4/5，测试与生产 UAT 由 root 独立完成。后续纯文档提交未宣称经过 Kimi 复审。

@@ -1,5 +1,20 @@
 # 变更记录
 
+## v0.2.8（2026-10-05）
+
+合并 PR #106、#107、#108，新增三个独立 Liquidity 列表：
+
+- `liquidity rules transfer list`：原生转账规则配置和条件字段，固定租户及单响应范围。
+- `liquidity network realtime list`：Realtime network 配置，固定分页参数，排除运行指标。
+- `liquidity pricing factors list`：定价因子类型定义，保留 code/description/englishName，与每日 factor-values 独立缓存。
+
+三个列表的请求约束、原生身份冲突检查和缓存命名空间独立；相关详情、路由及监控能力维持原有边界。
+转账规则 `ruleName`、`title` 中的邮箱和 URL 不进入列表摘要；身份、编号及其他配置原值保持独立。
+目录统一为 85 supported / 46 unsupported，共 131 个叶子（34 settings、43 runtimes、8 reference）。
+各自生产 UAT 与本地 Kimi、Qoder 审查结果见已合并的契约和 UAT 报告；本次发布验证组合后的源码及包，不新增生产 UAT。
+上述隐私修复提交 `8e63575` 已另行通过 Standards/Spec 和本地 Kimi 审查（confidence 4/5）；修复后重新执行生产 CLI UAT，890/890 完整、离线 capture 一致、live 数据库不变且真实 get 缓存保留。最终组合源码的 201 项测试通过。
+本版本提供 wheel、源码包及 SHA256SUMS。
+
 ## v0.2.7（2026-10-05）
 
 合并 PR #99、#100、#102，发布以下 Liquidity 查询能力；移除 Kimi GitHub review workflow。
