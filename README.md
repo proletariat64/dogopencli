@@ -727,3 +727,5 @@ Batch A ([#87](https://github.com/proletariat64/dogopencli/issues/87)) 两个必
 拒绝 partial。原生 id 与 routeId 分开，状态不代表实际执行成功。动态性能指标及
 私有字段不公开；get/routes/rules monitoring 不随本列表启用。当前分支目录
 83 supported / 48 unsupported / 131 total；生产 CLI UAT 204/204 完整及全部 5,304 个投影值对照通过；版本不变。
+
+审查修复后独立生产 UAT 再次通过，见[契约与验收报告](docs/research/general/2026-10-05-realtime-network-contract.md)；本地 Kimi 外部源码/规格传输被自动审批拒绝，等待明确授权后审查。

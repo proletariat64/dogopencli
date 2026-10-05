@@ -158,3 +158,5 @@
 - [Collection cost PR review validation](research/general/2026-09-26-collection-cost-review.md)
 
 - [Liquidity Batch A 实施与验收](research/general/2026-10-04-liquidity-batch-a-acceptance.md)：#87，两个必需列表注册生产 UAT 2/2，报价组调查已结论；CI／Kimi／生产 UAT 分别记录。
+
+- [Realtime network 配置契约与生产 UAT](research/general/2026-10-05-realtime-network-contract.md)：#104 独立列表的原生范围、验收证据和限制。

@@ -6,7 +6,8 @@ Status: snapshot
 
 The authorized Liquidity PortfolioMgmt application's native default network
 configuration range is implemented for this list only. Independent production
-public CLI UAT passed; local Kimi review remains pending.
+public CLI UAT passed; local Kimi review remains blocked by automatic approval review of external
+source/spec transfer. No Kimi confidence is claimed.
 
 ## Native contract and evidence boundary
 
@@ -99,4 +100,23 @@ The private summary is `/tmp/dogopencli-uat-104-summary.json`; only aggregate
 counts and verdicts are recorded here. This result establishes this list's
 current native scope, not future pagination beyond the fixed response capacity,
 detail inquiry support, execution guarantees or dynamic status observation time.
-Local Kimi review and remote checks remain separate acceptance gates.
+Local Kimi review remains blocked as described above; remote checks remain
+separate acceptance gates.
+
+## Review fix and repeated production UAT
+
+The review found that the endpoint allowlist accepted changed or missing
+rowStart/pageSize values. The leaf template now pins exactly rowStart=0 and
+pageSize=5000 through existing shared fixed-body validation. Seven actual
+CdpQueryTransport regression cases reject missing/changed pagination and added
+tenant fields before target creation, expression evaluation or fetch. The
+public describe evidence date now correctly reports 2026-10-05.
+
+The root coordinator repeated independent production CLI UAT after these fixes:
+204 native arrivals = 204 unique IDs = reported total; all 5,304 projected values
+matched, with exactly one fixed request. Disconnected reads matched the capture
+fetched at 2026-10-05T10:41:47.647552+00:00; live SQLite byte hashes stayed unchanged.
+Focused CLI/capability tests passed 50 cases; the evidence-date assertion passed
+separately. Ruff, formatting, doc guard and whitespace checks passed. Independent
+Standards/Spec re-review closed the request-boundary and navigation findings.
+Kimi remains blocked by automatic approval review of external source/spec transfer.

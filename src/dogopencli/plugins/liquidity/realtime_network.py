@@ -51,6 +51,7 @@ REALTIME_NETWORK = ListSpec(
     identity=("id",),
     pagination=PAGE_SINGLE,
     page_size=5000,
+    template={"rowStart": 0, "pageSize": 5000},
     profile=PROFILE_SNAPSHOT,
     projection="realtime_network",
     schema_version="realtime-network-settings-v1",

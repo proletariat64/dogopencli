@@ -257,6 +257,7 @@ def test_unverified_request_arguments_are_rejected_before_browser(setup, run_cli
 def test_discovery_snapshot_and_unrelated_guards_stay_offline(setup, run_cli):
     code, out, err = run_cli(["describe", *ROOT, "list"])
     assert code == 0, err
+    assert parse(out)["read_guide"]["live_verified"] == "2026-10-05"
     description = parse(out)
     guide = description["read_guide"]
     assert guide["offline_profile"] == "snapshot"
@@ -305,3 +306,43 @@ def test_other_list_capture_isolation_and_partial_snapshot_quality(setup, run_cl
     assert snapshot["inspection_complete"] is True
     assert "incomplete" in str(snapshot)
     assert len(setup.state.business_requests) == count
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"rowStart": 0},
+        {"pageSize": 5000},
+        {"rowStart": 5000, "pageSize": 5000},
+        {"rowStart": 0, "pageSize": 1},
+        {"rowStart": 5000, "pageSize": 1},
+        {"rowStart": 0, "pageSize": 5000, "tntInstId": "SYN-TENANT"},
+    ],
+)
+def test_changed_or_missing_fixed_pagination_rejected_before_browser(setup, body):
+    from dogopencli.errors import CliError
+    from dogopencli.plugins.liquidity.capability import LiquidityListCapability
+    from dogopencli.plugins.liquidity.realtime_network import REALTIME_NETWORK
+    from dogopencli.transport import QueryRequest
+    from dogopencli.transport.cdp import CdpQueryTransport
+
+    capability = LiquidityListCapability(REALTIME_NETWORK)
+    transport = CdpQueryTransport(
+        setup.state.transport("http://127.0.0.1:9222"),
+        capability,
+        page_url=capability.page_url,
+    )
+    request = QueryRequest(
+        capability.name,
+        capability.contract.method,
+        capability.contract.host,
+        capability.contract.path,
+        body,
+    )
+    with pytest.raises(CliError) as caught:
+        transport.execute(request)
+    assert caught.value.code == "REQUEST_NOT_ALLOWED"
+    assert setup.state.business_requests == []
+    assert not any(t.created for t in setup.state.transports)
+    assert not any(t.expressions for t in setup.state.transports)
