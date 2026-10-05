@@ -1,6 +1,6 @@
 # 文档索引
 
-- [现金池余额契约](design/liquidity-pool-balances.md)：#98 BANK 原生余额快照，池/成员与账面/可用口径，独立缓存及 unknown 边界。
+- [现金池余额契约](design/liquidity-pool-balances-v0.1.0.md)：#98 BANK 原生余额快照，池/成员与账面/可用口径，独立缓存及 unknown 边界。[10 月 5 日生产 UAT](research/general/2026-10-05-cash-pool-balances-uat.md)：8/8 CLI 步骤通过，43 池、358 成员；其余三个候选保持 unsupported。
 
 ## 产品规格
 

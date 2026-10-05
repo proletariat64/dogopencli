@@ -1,4 +1,6 @@
-# Cash pool balance snapshots (#98)
+# Cash pool balance snapshots v0.1.0
+
+Authoritative specification: [GitHub Issue #98](https://github.com/proletariat64/dogopencli/issues/98).
 
 The 2026-10-05 operator clarification resolves the original/equivalent currency
 and book/available balance meanings. [Research](../research/general/2026-10-05-cash-pool-semantics.md)

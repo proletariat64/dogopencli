@@ -290,7 +290,7 @@ dogopencli describe liquidity operations swaps list
 池余额/valueDate 独立于成员金额和成员时间，不强制与成员求和相等；
 成员观察时间及空币种保持 unknown，不把采集时间当余额时间。
 保留负数、空字符串和 null；不提供业务日期查询、历史命令或资金归集操作。
-详见 [现金池余额契约](docs/design/liquidity-pool-balances.md)。
+详见 [现金池余额契约](docs/design/liquidity-pool-balances-v0.1.0.md)。
 
 没有已验证查询合同的叶子继续延期，如 wallets、credit-usage、
 forecast accuracy、risk sla list、transfer rules list、quote-groups；

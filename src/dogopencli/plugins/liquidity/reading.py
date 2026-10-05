@@ -224,7 +224,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             **_source_guide(
                 capability,
                 contract,
-                "2026-10-04"
+                "2026-10-05"
                 if variant.projection == "pool_balances"
                 else DECISION_VERIFIED_DATE
                 if variant.name == DECISIONS.name

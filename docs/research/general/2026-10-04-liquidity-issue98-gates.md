@@ -17,9 +17,10 @@ pool-level value date. Pool/member sum equality and synchronized member dates
 must not be release prerequisites for an honest native snapshot. See
 [the clarification and bank/knowledge-base research](2026-10-05-cash-pool-semantics.md).
 This supersedes those broad semantic blockers for `cash pool-balances list`;
-it does not claim that the command has been implemented or passed production UAT.
+The subsequent implementation and production CLI UAT are recorded in the
+[2026-10-05 delivery report](2026-10-05-cash-pool-balances-uat.md).
 
-## Delivery boundary
+## Delivery boundary at the original observation date
 
 This change records current native evidence and updates deferred reasons. No
 candidate is enabled, no new command or cache contract is introduced, and no

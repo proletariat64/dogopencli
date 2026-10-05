@@ -2,7 +2,7 @@
 
 Observed: 2026-10-05
 Scope: general
-Status: research
+Status: snapshot
 
 Related: [issue #98](https://github.com/proletariat64/dogopencli/issues/98).
 This is a semantics investigation, not implementation or production CLI UAT.

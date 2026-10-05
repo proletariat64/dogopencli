@@ -742,7 +742,7 @@ def test_released_public_help_and_describe_do_not_contact_browser(path, monkeypa
             if command == "describe":
                 assert document["data_schema"]["properties"]
                 assert document["read_guide"]["live_verified"] == (
-                    "2026-10-04"
+                    "2026-10-05"
                     if path == ("cash", "pool-balances", "list")
                     else "2026-10-02"
                 )
