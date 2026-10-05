@@ -45,14 +45,23 @@ def decode_scope(scope: str) -> dict[str, Any]:
     values: dict[str, Any] = {}
     if not scope:
         return values
-    for part in scope.split(";"):
-        field, separator, raw = part.partition("=")
-        if not separator or not field:
+    decoder = json.JSONDecoder()
+    position = 0
+    while position < len(scope):
+        separator = scope.find("=", position)
+        field = scope[position:separator]
+        if separator < 0 or not field:
             raise _usage(f"malformed scope: {scope}")
         try:
-            values[field] = json.loads(raw)
+            value, end = decoder.raw_decode(scope, separator + 1)
         except ValueError as error:
             raise _usage(f"malformed scope: {scope}") from error
+        if field in values or (end < len(scope) and scope[end] != ";"):
+            raise _usage(f"malformed scope: {scope}")
+        values[field] = value
+        position = end + 1
+        if end < len(scope) and position == len(scope):
+            raise _usage(f"malformed scope: {scope}")
     return values
 
 
@@ -262,6 +271,10 @@ class LiquidityListCapability:
             if not isinstance(inner_success, bool) or not inner_success:
                 raise _invalid("inner result success marker is not true")
         rows = dig(node, self._spec.container)
+        if self._spec.projection == "account_capacity":
+            if not isinstance(rows, dict) or not rows:
+                raise _invalid("capacity data is not a nonempty native object")
+            rows = [rows]
         if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
             raise _invalid("record container is not a list of objects")
         total: int | None = None

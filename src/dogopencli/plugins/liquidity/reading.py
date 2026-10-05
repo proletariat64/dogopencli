@@ -55,6 +55,33 @@ def _source_guide(
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.projection == "account_capacity":
+        schema["additionalProperties"] = False
+        schema["x-business-validation"] = "none; source values preserved"
+        schema["x-source-timezone"] = "unknown"
+        schema["x-coverage"] = "exact explicit requested alias set, never all accounts"
+        meanings = {
+            "aliasName": "Native identity within the authorized tenant and origin.",
+            "currency": "Separate native currency attribute; no currency audit.",
+            "accountAvailableBalance": "Native UI Avl Bal; raw value preserved.",
+            "availableIod": "Native UI Avl IOD; raw value preserved.",
+            "availableResource": "Native UI Outflow Capacity; raw value preserved.",
+            "outFlowCapacity": (
+                "Native field with unknown business definition; separate from "
+                "availableResource, without substitution or calculation."
+            ),
+            "cashPoolSupportAvailableResource": (
+                "Native field with unknown business definition; no inferred formula."
+            ),
+            "valueTime": (
+                "Original source-time string; unknown timezone, separate from "
+                "fetched_at capture time."
+            ),
+        }
+        for field, meaning in meanings.items():
+            schema["properties"][field]["description"] = meaning
+        schema["properties"]["valueTime"]["x-timezone"] = "unknown"
+        return schema
     if item.projection == "transfer_rules":
         schema["additionalProperties"] = False
         schema["x-business-validation"] = "none; source values preserved"
@@ -370,6 +397,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     "credit_usage",
                     "quotes",
                     "realtime_network",
+                    "account_capacity",
                     "transfer_rules",
                     "factor_definitions",
                 }

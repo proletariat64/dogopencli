@@ -28,6 +28,7 @@ from decimal import Decimal
 from typing import Any
 
 from ...errors import INVALID_ARGUMENT, INVALID_RESPONSE, CliError
+from .account_capacity import project_capacity
 from .decision_list import project_decision_record
 from .fee_orders import project_fee_order
 from .operations_batch import validate_swap_business_date
@@ -987,6 +988,7 @@ def _project_factor_definitions(row: Any) -> dict[str, Any]:
 
 
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
+    "account_capacity": project_capacity,
     "strategy_detail": project_strategy_detail,
     "groups_settings": _project_groups_settings,
     "group_balances": _project_group_balances,

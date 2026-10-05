@@ -39,6 +39,10 @@ def collect_liquidity_scope(
         collect_mod.REFRESH_BUDGET_SECONDS if budget_seconds is None else budget_seconds
     )
     deadline = time.monotonic() + budget
+    if capability.descriptor.projection == "account_capacity":
+        from .account_capacity import collect_capacity
+
+        return collect_capacity(capability, transport, scope, deadline, progress)
     if capability.descriptor.pagination == spec.PAGE_SINGLE:
         return _collect_single(capability, transport, scope, deadline, progress)
     return _collect_offset(capability, transport, scope, deadline, progress)

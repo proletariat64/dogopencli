@@ -6,6 +6,8 @@ Samples are not
 complete schemas, validation assertions, or nullability guarantees.
 """
 
+from .account_capacity import ACCOUNT_CAPACITY
+from .account_capacity import SAMPLED_FIELDS as CAPACITY_FIELDS
 from .decision_list import DECISIONS
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
@@ -3473,3 +3475,5 @@ SAMPLED_FIELDS[TRANSFER_RULES.name] = {
     field: "native value" for field in TRANSFER_RULE_FIELDS
 }
 SAMPLED_FIELDS[TRANSFER_RULES.name]["ruleId"] = "str"
+
+SAMPLED_FIELDS[ACCOUNT_CAPACITY.name] = CAPACITY_FIELDS
