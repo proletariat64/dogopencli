@@ -27,9 +27,12 @@ def test_deadline_is_passed_and_late_success_rejected(monkeypatch):
 
 
 def test_cdp_setup_and_fetch_receive_remaining_budget(monkeypatch):
+    from dogopencli.browser import cdp as browser_cdp
     from dogopencli.transport import QueryRequest
     from dogopencli.transport import cdp as transport_mod
 
+    # The expected fetch budget includes one production readiness poll.
+    monkeypatch.setattr(browser_cdp, "POLL_INTERVAL_SECONDS", 0.25)
     clock = [0.0]
     monkeypatch.setattr(transport_mod.time, "monotonic", lambda: clock[0])
     observed = []

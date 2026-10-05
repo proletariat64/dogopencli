@@ -158,6 +158,7 @@ def test_steady_entry_survives_stability_window(
     # A healthy session stays on the entry URL through the window and still
     # verifies as authenticated.
     monkeypatch.setattr(cdp, "ENTRY_STABILITY_SECONDS", 0.3)
+    monkeypatch.setattr(cdp, "POLL_INTERVAL_SECONDS", 0.25)
     install_transport(_Transport(href_flip=(100, IPAYBUSERVICE_LOGIN_URL)))
     result = check_authentication(environment)
     assert result["authenticated"] is True

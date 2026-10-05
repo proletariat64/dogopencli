@@ -744,6 +744,12 @@ rtk proxy make lint
 rtk proxy make doc-guard test-doc-guard
 ```
 
+测试使用缩短的浏览器轮询间隔，生产探测仍使用 0.25 秒间隔；
+验证稳定窗口的测试显式设置其窗口和时钟。`make test` 与 CI 输出最慢的
+20 项测试，便于定位新的耗时。CI 对 PR 的合并结果、master 推送和标签推送
+运行完整检查；功能分支通过 PR 验证，避免同一 PR 再运行一次分支 push CI。
+同一 PR 或引用的新运行会取消过期运行。
+
 业务插件位于 `src/dogopencli/plugins/payment/`、`src/dogopencli/plugins/collection/`
 与 `src/dogopencli/plugins/liquidity/`；
 认证、受限传输、缓存和输出由共享模块提供。测试使用公开 CLI、假 CDP 与临时 SQLite。
