@@ -35,6 +35,8 @@ A subsequent factor-definitions refresh preserved the same factor-values capture
 and its runtimes kind. This checks the existing value contract and cache isolation
 without claiming broader factor-values date coverage. Rules monitoring remains HOLD; factors get and broader pricing
 calculations are outside this delivery. Standards/Spec review and release status remain separate
-from the passing new-list production UAT. Local Kimi review remains blocked by
-automatic approval review of external source/spec transfer; no Kimi confidence
-is claimed.
+from the passing new-list production UAT. User authorization for local Kimi/API source-spec transfer was granted on 2026-10-05. The actual static Standards/Spec review of [source commit `fe33524`](https://github.com/proletariat64/dogopencli/commit/fe335248961838db52a0a263f10eff61abe7de1c) completed successfully with no confirmed correctness/spec defects; confidence: 4/5. Tests, lint, graph analysis and production UAT were run independently by the root coordinator, not by Kimi. This subsequent documentation-only commit is not claimed to have been re-reviewed by Kimi.
+
+The earlier automatic approval rejection is historical: the user subsequently
+authorized the source/spec transfer, enabling this completed review. The initial ten-minute review attempt timed out; a five-minute continuation
+completed with exit code 0 and produced the final review.
