@@ -27,6 +27,8 @@ from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .realtime_network import REALTIME_NETWORK
 from .realtime_network import SAMPLED_FIELDS as NETWORK_FIELDS
+from .rfqs import RFQS
+from .rfqs import SAMPLED_FIELDS as RFQ_FIELDS
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import FIELDS as RISK_FIELDS
 from .risk_batch import RELEASED as RISK_RELEASED
@@ -3497,3 +3499,5 @@ SAMPLED_FIELDS[FORECAST_ACCURACY.name] = {
     field: "native value" for field in ACCURACY_BASE_FIELDS
 } | {"id": "str", "accuracy": "dict"}
 SAMPLED_FIELDS[ACCOUNT_CAPACITY.name] = CAPACITY_FIELDS
+# Native TARGET_RFQ subtask evidence observed 2026-10-05.
+SAMPLED_FIELDS[RFQS.name] = RFQ_FIELDS

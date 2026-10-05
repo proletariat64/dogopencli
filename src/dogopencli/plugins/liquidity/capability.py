@@ -269,6 +269,10 @@ class LiquidityListCapability:
             from .investment_batch import quote_wire_dates
 
             quote_wire_dates(body)
+        if self._spec.projection == "rfq_subtasks":
+            from .rfqs import rfq_wire_dates
+
+            rfq_wire_dates(body)
         return body
 
     def parse_rows(self, body: bytes) -> tuple[list[dict[str, Any]], int | None]:
@@ -301,6 +305,8 @@ class LiquidityListCapability:
                 or other_total != total
             ):
                 raise _invalid("reported totals disagree")
+        if self._spec.projection == "rfq_subtasks" and not rows and total != 0:
+            raise _invalid("empty RFQ response does not cover its reported total")
         seen_raw: dict[tuple[str, ...], str] = {}
         for row in rows:
             identity = self.identity_key(row)

@@ -34,6 +34,7 @@ from .fee_orders import project_fee_order
 from .forecast_accuracy import project_accuracy
 from .operations_batch import validate_swap_business_date
 from .realtime_network import project_network
+from .rfqs import project_rfq_subtask
 from .risk_batch import project_risk_record
 from .risk_detail import project_risk_detail
 from .risk_sla import project_risk_sla
@@ -1013,6 +1014,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "strategy_results": _project_strategy_results,
     "benchmark_values": _project_benchmark_values,
     "quotes": _project_quotes,
+    "rfq_subtasks": project_rfq_subtask,
     "factor_definitions": _project_factor_definitions,
     "fee_orders": project_fee_order,
     "realtime_network": project_network,

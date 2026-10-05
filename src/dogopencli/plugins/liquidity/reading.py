@@ -172,6 +172,28 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
         for field, meaning in meanings.items():
             schema["properties"][field]["description"] = meaning
         return schema
+    if item.projection == "rfq_subtasks":
+        schema["additionalProperties"] = False
+        schema["x-source-timezone"] = "unknown"
+        schema["x-boundary-semantics"] = "unknown"
+        schema["x-business-validation"] = "none; source values preserved"
+        schema["x-coverage"] = (
+            "one fixed response; arrivals = unique inquirySubTaskId = totalCount"
+        )
+        properties = schema["properties"]
+        properties["inquirySubTaskId"]["description"] = (
+            "Native subtask string identity in exact tenant, TARGET_RFQ and date scope."
+        )
+        properties["inquiryTaskId"]["description"] = (
+            "Parent task reference; never a subtask identity or inferred quote session."
+        )
+        properties["inquiryType"]["description"] = "Fixed TARGET_RFQ response echo."
+        for field in ("inquiryStartTime", "inquiryEndTime", "modifyTime"):
+            properties[field]["x-timezone"] = "unknown"
+            properties[field]["description"] = (
+                "Raw source time; distinct from fetched_at."
+            )
+        return schema
     if item.projection == "quotes":
         schema["additionalProperties"] = False
         schema["x-source-timezone"] = "UTC+08:00"
@@ -450,6 +472,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     "pool_balances",
                     "credit_usage",
                     "quotes",
+                    "rfq_subtasks",
                     "realtime_network",
                     "account_capacity",
                     "transfer_rules",
