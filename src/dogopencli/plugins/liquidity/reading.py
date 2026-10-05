@@ -369,6 +369,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     "pool_balances",
                     "credit_usage",
                     "quotes",
+                    "realtime_network",
                     "transfer_rules",
                     "factor_definitions",
                 }

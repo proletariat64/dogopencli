@@ -150,8 +150,9 @@ SLA 是配置目标，不是观测到账耗时。
 [#97](https://github.com/proletariat64/dogopencli/issues/97) 和
 [#98](https://github.com/proletariat64/dogopencli/issues/98) 和
 [#103](https://github.com/proletariat64/dogopencli/issues/103) 和
-[#105](https://github.com/proletariat64/dogopencli/issues/105) 已实现 84 个查询叶子：
-33 settings、43 runtimes、8 reference；共 131 个查询叶子，另有 47 个延期叶子可通过帮助发现，
+[#104](https://github.com/proletariat64/dogopencli/issues/104) 和
+[#105](https://github.com/proletariat64/dogopencli/issues/105) 已实现 85 个查询叶子：
+34 settings、43 runtimes、8 reference；共 131 个查询叶子，另有 46 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.7 包含 #97/#98 的新增能力；具体支持范围与生产验收结果见下文。
 #105 因子类型定义目录属于 reference，CLI 生产 UAT 状态见[独立契约](docs/research/general/2026-10-05-factor-definitions-contract.md)。
@@ -415,7 +416,7 @@ GMT+08 查询设置。费用使用 `pricingCurrency`，交易金额使用 `curre
 本批被接受的四个候选已实现 **4/4**：解除三个旧 unsupported，新增一个费用订单叶子。
 原第五项国家／地区基础数据已按用户决定从需求和目录撤除，不导入，也不保留
 unsupported 入口；撤除不计为实现。整合 #97/#98 后目录共 131 项
-（84 supported / 47 unsupported）。四个详情变体和费用订单注册 CLI 生产 UAT
+（85 supported / 46 unsupported）。四个详情变体和费用订单注册 CLI 生产 UAT
 共 **24/24** 通过，详见[本次证据与验证](docs/research/general/2026-10-04-liquidity-issue97-gates.md)。
 #97 已随 PR #99 合并关闭；#98 等待 PR #100 合并，尚未发布新版本。
 
@@ -724,3 +725,14 @@ Batch A ([#87](https://github.com/proletariat64/dogopencli/issues/87)) 两个必
 转账规则配置列表（[#103](https://github.com/proletariat64/dogopencli/issues/103)）使用固定租户及默认 entity 范围的一次 GET 大页（5000）。原生 ruleCount、到达数和唯一 ruleId 数一致才 complete；没有自动分页或详情爬取。`refresh liquidity rules transfer` 显式发布 settings capture，普通 `liquidity rules transfer list` 离线读取，`--live` 不写缓存。配置摘要排除动作载荷、人员及运行调度信息；已有 `get --rule-id` 保持独立。生产 CLI UAT 已通过，见[独立验收报告](docs/research/general/2026-10-05-liquidity-transfer-rules-uat.md)；用户已授权本地 Kimi/API 源码与规格审查；[b622caf](https://github.com/proletariat64/dogopencli/commit/b622cafc8ffa06295e4dab8e37e9533963eac8c3) 的静态审查通过，confidence 4/5，测试与生产 UAT 由 root 独立完成。后续纯文档提交未宣称经过 Kimi 复审。
 
 #105 因子类型定义的生产 UAT 与已授权 Kimi 静态审查已通过（confidence 4/5）；审查源码为 [fe33524](https://github.com/proletariat64/dogopencli/commit/fe335248961838db52a0a263f10eff61abe7de1c)，测试与生产 UAT 由 root 独立完成，见[验收报告](docs/research/general/2026-10-05-factor-definitions-uat.md)。后续纯文档提交未宣称经过 Kimi 复审。
+
+### Realtime network 配置列表（#104）
+
+`liquidity network realtime list` 查询原生 decision network settings；先运行
+`refresh liquidity network realtime`，默认离线读取；`--live` 不写缓存。只发一次
+`rowStart=0/pageSize=5000` 原生请求，缺覆盖持续报告 incomplete；`--require-complete`
+拒绝 partial。原生 id 与 routeId 分开，状态不代表实际执行成功。动态性能指标及
+私有字段不公开；get/routes/rules monitoring 不随本列表启用。当前分支目录
+85 supported / 46 unsupported / 131 total；生产 CLI UAT 204/204 完整及全部 5,304 个投影值对照通过；版本不变。
+
+审查修复后独立生产 UAT 再次通过，见[契约与验收报告](docs/research/general/2026-10-05-realtime-network-contract.md)；用户已授权本地 Kimi/API 源码与规格审查；[9488a7f](https://github.com/proletariat64/dogopencli/commit/9488a7f55f604559285572940a36afe2a46e093c) 的静态审查通过，confidence 4/5，测试与生产 UAT 由 root 独立完成。后续纯文档提交未宣称经过 Kimi 复审。

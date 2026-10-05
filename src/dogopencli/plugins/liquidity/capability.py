@@ -290,6 +290,10 @@ class LiquidityListCapability:
                         raise _invalid("conflicting content for transfer rule identity")
                     raise _invalid("conflicting native factor definition content")
                 seen_raw[identity] = content
+        if self._spec.projection == "realtime_network":
+            from .realtime_network import validate_native_rows
+
+            validate_native_rows(rows)
         if self._spec.projection:
             rows = [project_record(self._spec.projection, row) for row in rows]
         return list(rows), total
