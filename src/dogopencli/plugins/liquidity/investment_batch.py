@@ -276,7 +276,7 @@ QUOTES = ListSpec(
 
 CANDIDATES = (BENCHMARK_VALUES, FUND_RESULTS, PRODUCT_RESULTS, QUOTES)
 # Strategy variants passed nonempty native collection and CLI UAT on CDP 9223.
-# QUOTED is provisionally registered for independent CLI UAT; that gate is pending.
+# QUOTED passed independent production CLI UAT on 2026-10-05 (9/9 steps).
 # Final local checks, review and registered CLI UAT gate each release commit.
 RELEASED: frozenset[str] = frozenset(
     {BENCHMARK_VALUES.name, FUND_RESULTS.name, QUOTES.name}

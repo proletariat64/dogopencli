@@ -5,8 +5,9 @@ Authoritative specification: [issue #98](https://github.com/proletariat64/dogope
 percent value, ticketSize as minimum deposit, UTC+08:00 as source time interpretation,
 and omission of totalCount as the native page design. WIN selection is unimplemented
 upstream and explicitly excluded. This contract enables only the QUOTED list;
-quotes get remains unsupported. Implementation, local checks and production CLI UAT
-are separate evidence, and this document does not claim UAT has passed.
+quotes get remains unsupported. Independent [production CLI UAT](../research/general/2026-10-05-quotes-uat.md)
+passed 9/9 steps on 2026-10-05, covering 338 unique rows and all 24 projected fields
+against the same native response. Local checks and review remain separate gates.
 
 ## Bounded request
 
@@ -32,8 +33,9 @@ empty response under this confirmed contract.
 
 The operator-authorized year-to-date range returned 338 unique quotations for
 page sizes 10/20/1000/5000 and offset 10, with equal decoded rows. A one-day query
-returned the exact 270-record subset; the known recent empty range is also available
-for separate production CLI UAT. This supports a bounded single-response contract,
+returned the exact 270-record subset. Production CLI UAT also accepted the empty
+2026-09-28 through 2026-10-05 scope without replacing the populated year-to-date
+capture. This supports a bounded single-response contract,
 not a guarantee that arbitrarily larger source datasets have no server capacity
 limit. Do not loop through ignored pagination or invent a total to satisfy a gate.
 
