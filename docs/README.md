@@ -1,8 +1,8 @@
 # 文档索引
 
-- [现金池余额契约](design/liquidity-pool-balances-v0.1.0.md)：#98 BANK 原生余额快照，池/成员与账面/可用口径，独立缓存及 unknown 边界。[10 月 5 日生产 UAT](research/general/2026-10-05-cash-pool-balances-uat.md)：8/8 CLI 步骤通过，43 池、358 成员；其余三个候选保持 unsupported。
+- [现金池余额契约](design/liquidity-pool-balances-v0.1.0.md)：#98 BANK 原生余额快照，池/成员与账面/可用口径，独立缓存及 unknown 边界。[10 月 5 日生产 UAT](research/general/2026-10-05-cash-pool-balances-uat.md)：8/8 CLI 步骤通过，43 池、358 成员。
 
-- [授信使用读取契约](design/liquidity-credit-usage-v0.1.0.md)：#98 原生授信/成员树、原值读取与独立缓存，不执行业务数据校验。
+- [授信使用读取契约](design/liquidity-credit-usage-v0.1.0.md)：#98 原生授信/成员树、原值读取与独立缓存，不执行业务数据校验。[10 月 5 日生产 UAT](research/general/2026-10-05-credit-usage-uat.md)：8 个步骤最终通过，84 条授信、667 个成员；首次 live 的 83/84 缺数被严格拒绝，一次同范围复查完整。#98 当前完成 2/4，产品基线和报价保持 unsupported。
 
 ## 产品规格
 

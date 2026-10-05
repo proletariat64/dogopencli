@@ -77,7 +77,8 @@ existing history capture profile. Keep the original line/member tree and source
 values; explicit refresh publishes, default reads remain offline and live does
 not publish or fall back. The `cash credit-lines` settings namespace is unchanged.
 Unknown time or empty amount/currency is not incomplete acquisition. Independent
-public CLI production UAT is still required before claiming this slice delivered.
+public CLI production UAT is recorded in the
+[subsequent delivery report](2026-10-05-credit-usage-uat.md).
 
 Live examples, account identifiers and raw responses remain private; no source
 amounts from those examples are included in this report or sanitized fixtures.

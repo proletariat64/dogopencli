@@ -19,6 +19,9 @@ must not be release prerequisites for an honest native snapshot. See
 This supersedes those broad semantic blockers for `cash pool-balances list`;
 The subsequent implementation and production CLI UAT are recorded in the
 [2026-10-05 delivery report](2026-10-05-cash-pool-balances-uat.md).
+The later [credit-usage clarification](2026-10-05-credit-usage-semantics.md) and
+[credit-usage UAT](2026-10-05-credit-usage-uat.md) supersede the credit-specific
+semantic gate below; the original dated probe remains historical evidence.
 
 ## Delivery boundary at the original observation date
 

@@ -18,11 +18,13 @@ and bank-equivalent amounts retain their own currencies. Pool totals and dates
 are independent source facts. Unknown member observation time and blank currency
 remain unknown. No aggregation, conversion or synchronization is inferred.
 
-The branch has 76 supported and 57 unsupported leaves against the independent
+At the pool-balances delivery checkpoint, the branch had 76 supported and 57 unsupported leaves against the independent
 v0.2.6 baseline (75/58). Of four #98 candidates, one is implemented and UAT-passed;
 credit usage, product baselines and quotes remain deferred. These branch counts
 do not include the separately unmerged #97 work. #98 stays open; no default-branch
-merge or version publication is claimed.
+merge or version publication is claimed. The subsequent
+[credit-usage delivery](2026-10-05-credit-usage-uat.md) records the next #98 slice
+and its updated counts separately.
 
 ## Production CLI UAT
 
