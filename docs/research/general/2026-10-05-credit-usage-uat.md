@@ -77,9 +77,13 @@ one low-severity stale module statement about amount validation; `37ba822` corre
 it to explicitly describe the raw credit-usage exception. No functional code
 changed in that follow-up.
 
-The local Kimi attempt for this new credit payload was rejected before execution:
-automatic approval review treated the earlier approval as covering only the pool
-payload. No credit source, tests or specifications were sent by that attempt.
-Local Kimi remains pending explicit authorization for the credit payload; no
-Kimi confidence score is claimed for this slice. Publication and remote checks
-are separate from these local and production results.
+After explicit user authorization for the credit payload, local Kimi completed
+review of `43802bd...c738a73` with no Standards or Spec findings and overall
+confidence **4/5**. This was static review only: Kimi did not execute the 201
+focused tests or eight-step production UAT reported above. Those remain separate
+coordinator-run evidence.
+
+Remote Kimi reviewed the full PR at `c738a73` and found only one low-severity stale
+pool-design paragraph that still called credit usage unsupported. This follow-up
+corrects that paragraph to the current 2/4 enabled state. Publication, remote
+checks and release remain separate from local review and production results.
