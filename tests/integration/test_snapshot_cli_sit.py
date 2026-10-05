@@ -89,7 +89,20 @@ def test_full_tree_missing_cache_is_success_and_never_creates_files(
     assert "dogopencli payment channel list" in by_path
     assert "dogopencli liquidity cash balances list" in by_path
     unsupported = [leaf for leaf in items if leaf["availability"] == "unsupported"]
-    assert len(unsupported) == 54
+    assert len(unsupported) == 49
+    quotes = by_path["dogopencli liquidity investment quotes list"]
+    assert quotes["availability"] == "supported"
+    assert quotes["cache"]["status"] == "missing"
+    assert (
+        by_path["dogopencli liquidity investment quotes get"]["availability"]
+        == "unsupported"
+    )
+    credit_usage = by_path["dogopencli liquidity cash credit-usage list"]
+    assert credit_usage["availability"] == "supported"
+    assert credit_usage["cache"]["status"] == "missing"
+    pool_balances = by_path["dogopencli liquidity cash pool-balances list"]
+    assert pool_balances["availability"] == "supported"
+    assert pool_balances["cache"]["status"] == "missing"
     assert "dogopencli liquidity reference areas list" not in by_path
     swaps_list = by_path["dogopencli liquidity operations swaps list"]
     assert swaps_list["availability"] == "supported"
@@ -312,3 +325,23 @@ def test_liquidity_return_routes_are_distinct_cache_variants(run_cli, snapshot_s
     captures = result["tree"]["cache"]["captures"]
     assert len(captures) == 2
     assert {c["contract_variant"] for c in captures} == {"accrual", "cash"}
+
+
+def test_retired_product_baselines_disappear_without_affecting_bank_or_sla(
+    run_cli, snapshot_setup
+):
+    code, result, err = report(run_cli, "liquidity", "network")
+    assert code == 0, err
+    commands = {leaf["command"] for leaf in leaves(result["tree"])}
+    assert not any("product-baselines" in command for command in commands)
+    assert "dogopencli liquidity network bank-baselines list" in commands
+    assert "dogopencli liquidity network bank-baselines get" in commands
+    code, out, err = run_cli(["help", "liquidity", "network"])
+    assert code == 0, err
+    assert "product-baselines" not in out
+    for action in ("list", "get"):
+        code, _, _ = run_cli(["liquidity", "network", "product-baselines", action])
+        assert code == 2  # Retired paths are unknown commands, not deferred leaves.
+    code, out, err = run_cli(["describe", "payment", "sla", "baselines", "list"])
+    assert code == 0, err
+    assert json.loads(out)["data_schema"]

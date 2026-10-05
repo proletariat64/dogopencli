@@ -185,6 +185,47 @@ CASH_POOLS = ListSpec(
     notes=(*NOTES, "Fixed BANK category; no per-row detail acquisition."),
 )
 
+CASH_POOL_BALANCES = ListSpec(
+    path=("cash", "pool-balances"),
+    kind=RUNTIMES,
+    title="BANK cash pool balance snapshots",
+    endpoint="/cashPoolList.json",
+    method="POST",
+    envelope=ENV_SUCCESS,
+    container=("data", "data"),
+    total=("data", "totalCount"),
+    identity=("id",),
+    page_size=100,
+    profile=PROFILE_HISTORY,
+    template={"tntInstId": TENANT, "cashPoolCategory": "BANK"},
+    table_columns=(
+        "id",
+        "cashPoolName",
+        "valueDate",
+        "currentBalance",
+        "currentAviBalance",
+    ),
+    projection="pool_balances",
+    schema_version="pool-balances-v1",
+    notes=(
+        *NOTES,
+        "One record per BANK pool; cashPoolMemberVOS contains members identified"
+        " by (pool.id, member.id). Pool totals are independent source values,"
+        " never recomputed from or added to members.",
+        "currentBalance is book balance; currentAviBalance is available for"
+        " payments. Neither equality nor ordering between them is required.",
+        "Native UI displays pool summary amounts in USD; mainCurrency remains"
+        " pool configuration and is not the summary amount currency.",
+        "Member original balances use currency; equv balances use bankCurrency."
+        " Empty/missing currencies remain unknown; no conversion is performed.",
+        "valueDate is the pool balance date only. Member observation times are"
+        " unknown. close balances refer to the previous statement day, not"
+        " necessarily yesterday. Capture time is not a balance observation time.",
+        "masterAccount and isShare remain member-level source flags."
+        " Unknown source fields do not imply incomplete collection.",
+    ),
+)
+
 CASH_POOLS_GET = DetailSpec(
     path=("cash", "pools"),
     action="get",
@@ -230,6 +271,53 @@ CASH_CREDIT_LINES = ListSpec(
         *NOTES,
         "Complete native list only; no unverified source filters."
         " Members are nested credit/account configuration, not a getter.",
+    ),
+)
+
+CASH_CREDIT_USAGE = ListSpec(
+    path=("cash", "credit-usage"),
+    kind=RUNTIMES,
+    title="credit line usage snapshots",
+    endpoint="/queryBankCreditLineByParams.json",
+    method="GET",
+    envelope=ENV_RESULT_FLAG,
+    container=("result", "data"),
+    total=("count",),
+    total_checks=(("result", "count"),),
+    require_inner_success=True,
+    identity=("id",),
+    page_size=100,
+    profile=PROFILE_HISTORY,
+    vo_field="bankCreditLineQuery",
+    template={"tntInstId": TENANT},
+    table_columns=(
+        "id",
+        "creditLineType",
+        "currency",
+        "amount",
+        "usedAmount",
+        "availableAmount",
+        "shareTag",
+    ),
+    projection="credit_usage",
+    schema_version="credit-usage-v1",
+    notes=(
+        "Inquiry-only native GET contract verified 2026-10-05; fixed tenant and"
+        " page width 100, no unverified filters or detail calls.",
+        "One source line per record, with bankAccountCreditLineList members"
+        " identified by (line.id, member.id). creditLineId echoes the parent.",
+        "Projected business values are preserved, not parsed, normalized"
+        " or checked against business rules. No sums, exchange rates, assigned"
+        " caps or used/available inequalities are computed.",
+        "Parent currency is Credit CCY; member creditCurrency is CreditLine CCY"
+        " and currency is the account currency. Both native amount families stay"
+        " separate; blank currencies and shared account limits are not inferred.",
+        "shareTag and member mergeFlag/isMasterAccount are source flags."
+        " mergeFlag is UI grouping, not a new identity or tree level; members"
+        " are never collapsed or summed.",
+        "Usage observation time is unknown. fetched_at is capture time;"
+        " gmtModified and validity dates are not usage observation times."
+        " Unknown business fields do not imply incomplete collection.",
     ),
 )
 
@@ -364,12 +452,14 @@ ACCEPTED_LIST_SPECS = (
     CASH_GROUPS,
     CASH_GROUP_BALANCES,
     CASH_POOLS,
+    CASH_POOL_BALANCES,
     CASH_CREDIT_LINES,
+    CASH_CREDIT_USAGE,
     CASH_STATEMENTS_EOD,
     FORECAST_RESULTS,
 )
 ACCEPTED_DETAIL_SPECS = (CASH_POOLS_GET,)
-# Seven contracts passed complete-scope CLI live/refresh/disconnected UAT.
+# Complete-scope contracts use the existing per-leaf UAT release gate.
 # The user separately accepts forecast's existing cash-accounts compatibility:
 # incomplete data remains nonzero/unpublished, and changing totals fail closed.
 # Fresh 2026-10-02 native UAT proves 20135 arrivals / 20129 unique records,
@@ -381,8 +471,10 @@ UAT_COMPLETE_PASSED: frozenset[str] = frozenset(
         CASH_GROUPS.name,
         CASH_GROUP_BALANCES.name,
         CASH_POOLS.name,
+        CASH_POOL_BALANCES.name,
         CASH_POOLS_GET.name,
         CASH_CREDIT_LINES.name,
+        CASH_CREDIT_USAGE.name,
         CASH_STATEMENTS_EOD.name,
     }
 )

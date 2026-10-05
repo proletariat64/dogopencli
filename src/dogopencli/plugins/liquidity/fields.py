@@ -15,6 +15,8 @@ from .investment_batch import (
     BENCHMARK_FIELDS,
     BENCHMARK_VALUES,
     FUND_RESULTS,
+    QUOTE_FIELDS,
+    QUOTES,
     STRATEGY_FIELDS,
 )
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
@@ -29,6 +31,72 @@ from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
 from .transfer_list import TRANSFER_ORDERS
 
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
+    "liquidity.cash.credit-usage.list": {
+        "id": "str",
+        "creditLineType": "str",
+        "currency": "str",
+        "amount": "str",
+        "usedAmount": "str",
+        "availableAmount": "str",
+        "bankId": "str",
+        "masterBankId": "str",
+        "instId": "str",
+        "shareTag": "str",
+        "status": "str",
+        "manageStatus": "str",
+        "tntInstId": "str",
+        "bankAccountCreditLineList": "list",
+        "bankAccountCreditLineList[].id": "str",
+        "bankAccountCreditLineList[].creditLineId": "str",
+        "bankAccountCreditLineList[].accountNo": "str",
+        "bankAccountCreditLineList[].aliasName": "str",
+        "bankAccountCreditLineList[].bankId": "str",
+        "bankAccountCreditLineList[].instId": "str",
+        "bankAccountCreditLineList[].creditAmount": "str",
+        "bankAccountCreditLineList[].usedCreditAmount": "str",
+        "bankAccountCreditLineList[].availableCreditAmount": "str",
+        "bankAccountCreditLineList[].creditCurrency": "str",
+        "bankAccountCreditLineList[].currency": "str",
+        "bankAccountCreditLineList[].equvAmount": "str",
+        "bankAccountCreditLineList[].usedAmount": "str",
+        "bankAccountCreditLineList[].availableAmount": "str",
+        "bankAccountCreditLineList[].isMasterAccount": "str",
+        "bankAccountCreditLineList[].mergeFlag": "str",
+        "bankAccountCreditLineList[].status": "str",
+    },
+    "liquidity.cash.pool-balances.list": {
+        "cashPoolType": "str",
+        "id": "str",
+        "cashPoolName": "str",
+        "cashPoolCategory": "str",
+        "mainCurrency": "str",
+        "valueDate": "str",
+        "tntInstId": "str",
+        "currentBalance": "str",
+        "currentAviBalance": "str",
+        "closeBalance": "str",
+        "closeAviBalance": "str",
+        "cashPoolMemberVOS": "list",
+        "cashPoolMemberVOS[].id": "str",
+        "cashPoolMemberVOS[].cashPoolId": "str",
+        "cashPoolMemberVOS[].aliasName": "str",
+        "cashPoolMemberVOS[].entity": "str",
+        "cashPoolMemberVOS[].bankId": "str",
+        "cashPoolMemberVOS[].currency": "str",
+        "cashPoolMemberVOS[].bankCurrency": "str",
+        "cashPoolMemberVOS[].masterAccount": "str",
+        "cashPoolMemberVOS[].isShare": "str",
+        "cashPoolMemberVOS[].timeZone": "str",
+        "cashPoolMemberVOS[].tntInstId": "str",
+        "cashPoolMemberVOS[].currentBalance": "str",
+        "cashPoolMemberVOS[].currentAviBalance": "str",
+        "cashPoolMemberVOS[].closeBalance": "str",
+        "cashPoolMemberVOS[].closeAviBalance": "str",
+        "cashPoolMemberVOS[].equvCurrentBalance": "str",
+        "cashPoolMemberVOS[].equvCurrentAviBalance": "str",
+        "cashPoolMemberVOS[].equvCloseBalance": "str",
+        "cashPoolMemberVOS[].equvCloseAviBalance": "str",
+    },
     "liquidity.cash.accounts.list": {
         "accHolder": "str",
         "accPurpose": "str",
@@ -3346,6 +3414,10 @@ CANDIDATE_SAMPLED_FIELDS[FUND_RESULTS.name] = {
         else "str"
     )
     for field in STRATEGY_FIELDS
+}
+CANDIDATE_SAMPLED_FIELDS[QUOTES.name] = {
+    field: "bool" if field in {"maxQuote", "maxCurMaxLimitAvailable"} else "str"
+    for field in QUOTE_FIELDS
 }
 SAMPLED_FIELDS.update(
     {

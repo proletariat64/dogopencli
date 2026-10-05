@@ -1,5 +1,11 @@
 # 文档索引
 
+- [现金池余额契约](design/liquidity-pool-balances-v0.1.0.md)：#98 BANK 原生余额快照，池/成员与账面/可用口径，独立缓存及 unknown 边界。[10 月 5 日生产 UAT](research/general/2026-10-05-cash-pool-balances-uat.md)：8/8 CLI 步骤通过，43 池、358 成员。
+
+- [授信使用读取契约](design/liquidity-credit-usage-v0.1.0.md)：#98 原生授信/成员树、原值读取与独立缓存，不执行业务数据校验。[10 月 5 日生产 UAT](research/general/2026-10-05-credit-usage-uat.md)：8 个步骤最终通过，84 条授信、667 个成员；首次 live 的 83/84 缺数被严格拒绝，一次同范围复查完整。#98 池余额、授信使用及报价已通过生产 UAT，产品基线按用户确认退役。
+
+- [投资报价读取契约](design/liquidity-quotes-v0.1.0.md)：#98 QUOTED 单响应、必填日期范围、无总数契约及原值投影；WIN 不启用。[10 月 5 日生产 UAT](research/general/2026-10-05-quotes-uat.md)：9/9 CLI 步骤通过，338 个唯一报价、24 个字段与同次原生响应一致，空范围与已有范围缓存隔离。
+
 ## 产品规格
 
 - [资金需求与执行查询规格 v0.1.0（GitHub Issue #82）](design/liquidity-funding-execution-v0.1.0.md)：四个列表目标；swap 已启用双端交易日期的有界查询，无日期范围拒绝执行。[10 月 4 日验收](research/general/2026-10-04-funding-execution-batch-acceptance.md)：认证恢复，正式注册生产 CLI UAT 21/21，本地 Kimi 基线通过；追加 release-delta Kimi 权限待确认。当前 1/4 启用，其他三个叶子因非空契约证据不足继续 unsupported。
@@ -31,6 +37,7 @@
 
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
+| General | [Issue #98 列表能力核验](research/general/2026-10-04-liquidity-issue98-gates.md) | 10 月 4 日历史快照：4/4 已评估、0/4 启用；10 月 5 日池余额、授信使用及[报价](research/general/2026-10-05-quotes-uat.md)已通过生产 UAT，产品基线按用户确认退役，原四项目标为 3 项验收、1 项退役 |
 | General | [Liquidity Batch C 投资查询与剩余门槛](research/general/2026-10-04-liquidity-batch-c-gates.md) | #89：基准值与策略结果已启用，交付 2/4；计价估值与账单保持 unsupported，规格继续开放 |
 | General | [Liquidity #97 详情与费用订单验收](research/general/2026-10-04-liquidity-issue97-gates.md) | 三个真实详情与独立费用订单，被接受候选 4/4，CLI UAT 24/24；国家／地区基础数据已按用户决定从需求和目录撤除 |
 | General | [Issue #82 资金需求与执行查询最新验收](research/general/2026-10-04-funding-execution-batch-acceptance.md) | 10 月 4 日 Liquidity 认证恢复，有界 swap 正式注册生产 CLI UAT 21/21、Kimi 基线通过；当前 1/4 启用，追加 Kimi 权限待确认，其他三个列表保持 unsupported |

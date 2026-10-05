@@ -1,4 +1,4 @@
-"""Issue #89 investment inquiry contracts verified in the native UI."""
+"""Investment inquiry contracts verified for issues #89 and #98."""
 
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -8,6 +8,7 @@ from urllib.parse import quote
 from ...errors import EXIT_USAGE, INVALID_ARGUMENT, INVALID_RESPONSE, CliError
 from .spec import (
     ENV_SUCCESS,
+    PAGE_SINGLE,
     PROFILE_DATED,
     PROFILE_HISTORY,
     RUNTIMES,
@@ -184,10 +185,102 @@ PRODUCT_RESULTS = replace(
         *FUND_RESULTS.scope_options[1:],
     ),
 )
-CANDIDATES = (BENCHMARK_VALUES, FUND_RESULTS, PRODUCT_RESULTS)
-# Both variants passed nonempty native collection and CLI UAT on CDP 9223.
+QUOTE_FIELDS = (
+    "accountType",
+    "bankId",
+    "curMaxLimitAvailable",
+    "currency",
+    "department",
+    "expectMaturityDate",
+    "inquiryId",
+    "inquiryTime",
+    "inquiryType",
+    "maxCurMaxLimitAvailable",
+    "maxQuote",
+    "negotiationStatus",
+    "otherRemark",
+    "productType",
+    "quotationGroupName",
+    "quotationOrderId",
+    "quotationTime",
+    "quote",
+    "quoteEffectiveEndDate",
+    "redemptionFeature",
+    "tenor",
+    "ticketSize",
+    "valueDate",
+    "winAmount",
+)
+QUOTES = ListSpec(
+    path=("investment", "quotes"),
+    kind=RUNTIMES,
+    title="bounded QUOTED investment quotes",
+    endpoint="/quotationAnalysis.json",
+    method="POST",
+    envelope=ENV_SUCCESS,
+    container=("data",),
+    total=None,
+    pagination=PAGE_SINGLE,
+    identity=("quotationOrderId",),
+    profile=PROFILE_HISTORY,
+    page_size=5000,
+    template={"dataType": "QUOTED", "timeZone": None},
+    scope_options=(
+        ScopeOption(
+            "from_date",
+            "startValueDate",
+            "Inclusive value-date start (YYYY-MM-DD); both bounds are required.",
+            required=True,
+        ),
+        ScopeOption(
+            "to_date",
+            "endValueDate",
+            "Inclusive value-date end (YYYY-MM-DD); both bounds are required.",
+            required=True,
+        ),
+    ),
+    table_columns=(
+        "quotationOrderId",
+        "bankId",
+        "currency",
+        "tenor",
+        "quote",
+        "ticketSize",
+        "valueDate",
+    ),
+    projection="quotes",
+    schema_version="quotes-v1",
+    notes=(
+        "Operator-confirmed 2026-10-05 contract: QUOTED only; WIN is not"
+        " implemented upstream and is not a supported variant.",
+        "One JSON POST with rowStart=0/pageSize=5000 returns the bounded response."
+        " The source omits totalCount by design; reported_total stays null."
+        " No repeated offset requests or invented totals. This does not promise"
+        " absence of a server capacity limit for arbitrary larger datasets.",
+        "Both public YYYY-MM-DD value-date bounds map to native YYYYMMDD."
+        " Exact requested-range history captures are independent; no merging"
+        " across ranges or local source-date filtering establishes coverage.",
+        "Native request timeZone remains null. The operator confirms UTC+08:00"
+        " for interpreting source times; source strings are never converted."
+        " Capture time and query bounds are not source observation timestamps.",
+        "quotationOrderId is the native string identity; inquiryId has different"
+        " granularity. No business revision or frontend quoteNum is invented.",
+        "quote is a percent value; O/N means Overnight; ticketSize is the"
+        " minimum deposit amount. curMaxLimitAvailable remains a source field"
+        " without a confirmed business definition.",
+        "Native amount, rate, currency, date, status and flag values remain raw,"
+        " including blank/null/unknown values. No financial or tenor/date"
+        " arithmetic validation, scaling or calculation is performed.",
+    ),
+)
+
+CANDIDATES = (BENCHMARK_VALUES, FUND_RESULTS, PRODUCT_RESULTS, QUOTES)
+# Strategy variants passed nonempty native collection and CLI UAT on CDP 9223.
+# QUOTED passed independent production CLI UAT on 2026-10-05 (9/9 steps).
 # Final local checks, review and registered CLI UAT gate each release commit.
-RELEASED: frozenset[str] = frozenset({BENCHMARK_VALUES.name, FUND_RESULTS.name})
+RELEASED: frozenset[str] = frozenset(
+    {BENCHMARK_VALUES.name, FUND_RESULTS.name, QUOTES.name}
+)
 
 
 def benchmark_primary_id(record: dict[str, Any]) -> str:
@@ -247,3 +340,33 @@ def validate_strategy_rows_scope(
             raise CliError(
                 INVALID_RESPONSE, "decision triggerDate is outside requested scope"
             )
+
+
+def validate_quote_query(values: dict[str, Any]) -> None:
+    """Check explicit request bounds; native business fields remain untouched."""
+    for field in ("startValueDate", "endValueDate"):
+        value = values.get(field)
+        try:
+            if not isinstance(value, str) or not value.isascii():
+                raise ValueError
+            parsed = datetime.strptime(value, "%Y-%m-%d")
+            if parsed.date().isoformat() != value:
+                raise ValueError
+        except ValueError as error:
+            raise CliError(
+                INVALID_ARGUMENT,
+                f"{field} requires YYYY-MM-DD",
+                exit_code=EXIT_USAGE,
+            ) from error
+    if values["startValueDate"] > values["endValueDate"]:
+        raise CliError(
+            INVALID_ARGUMENT,
+            "quote value-date start is after its end",
+            exit_code=EXIT_USAGE,
+        )
+
+
+def quote_wire_dates(body: dict[str, Any]) -> None:
+    """Map already validated public request dates to the verified native form."""
+    for field in ("startValueDate", "endValueDate"):
+        body[field] = body[field].replace("-", "")

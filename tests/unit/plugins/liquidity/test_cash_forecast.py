@@ -99,12 +99,18 @@ def test_release_distinguishes_complete_and_backend_compatible_uat():
         UAT_COMPLETE_PASSED,
     )
 
-    assert len(UAT_COMPLETE_PASSED) == 7
+    assert len(UAT_COMPLETE_PASSED) == 9
     assert FORECAST_RESULTS.name not in UAT_COMPLETE_PASSED
     assert UAT_COMPATIBILITY_PASSED == {FORECAST_RESULTS.name}
     assert RELEASED == UAT_PASSED == UAT_COMPLETE_PASSED | UAT_COMPATIBILITY_PASSED
     for list_spec in ACCEPTED_LIST_SPECS:
-        assert list_spec.schema_version == VERSION
+        assert list_spec.schema_version == (
+            "pool-balances-v1"
+            if list_spec.path == ("cash", "pool-balances")
+            else "credit-usage-v1"
+            if list_spec.path == ("cash", "credit-usage")
+            else VERSION
+        )
         assert list_spec.path in LIST_LEAVES
         assert (*list_spec.path, "list") not in DEFERRED_BY_PATH
     for detail_spec in ACCEPTED_DETAIL_SPECS:
@@ -737,7 +743,15 @@ def test_released_public_help_and_describe_do_not_contact_browser(path, monkeypa
             assert code == 0
             if command == "describe":
                 assert document["data_schema"]["properties"]
-                assert document["read_guide"]["live_verified"] == "2026-10-02"
+                assert document["read_guide"]["live_verified"] == (
+                    "2026-10-05"
+                    if path
+                    in {
+                        ("cash", "pool-balances", "list"),
+                        ("cash", "credit-usage", "list"),
+                    }
+                    else "2026-10-02"
+                )
                 if path == (*FORECAST_RESULTS.path, "list"):
                     assert any(
                         "Compatibility is not backend repair" in note

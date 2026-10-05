@@ -51,7 +51,7 @@ from .decision_list import RELEASED as DECISIONS_RELEASED
 from .fee_orders import FEE_ORDERS, validate_fee_query
 from .investment_batch import CANDIDATES as INVESTMENT_CANDIDATES
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
-from .investment_batch import validate_strategy_query
+from .investment_batch import validate_quote_query, validate_strategy_query
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
@@ -1930,13 +1930,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Cash pool detail: {_PROJECTION}.",
     ),
     DeferredLeaf(
-        ("cash", "pool-balances", "list"),
-        RUNTIMES,
-        "semantics-pending",
-        "Pool balances: native observation time and equivalent-currency/aggregate"
-        " semantics are unverified; gmtModified/billingTime are not balance times.",
-    ),
-    DeferredLeaf(
         ("cash", "credit-lines", "list"),
         SETTINGS,
         "failed",
@@ -1947,13 +1940,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         SETTINGS,
         "unverified",
         f"Credit-line detail: {_UNVERIFIED}.",
-    ),
-    DeferredLeaf(
-        ("cash", "credit-usage", "list"),
-        RUNTIMES,
-        "semantics-pending",
-        "Credit usage: shared/merged credit currency aggregation and usage"
-        " observation times are unverified; validity dates are not usage times.",
     ),
     DeferredLeaf(
         ("forecast", "results", "get"),
@@ -2058,9 +2044,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         RUNTIMES,
         "identity-unavailable",
         f"RFQ detail: {_IDENTITY}.",
-    ),
-    DeferredLeaf(
-        ("investment", "quotes", "list"), RUNTIMES, "empty-scope", f"Quotes: {_EMPTY}."
     ),
     DeferredLeaf(
         ("investment", "quotes", "get"),
@@ -2228,18 +2211,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         SETTINGS,
         "observed-overlap",
         "Realtime network detail: its parent list cannot prove complete coverage.",
-    ),
-    DeferredLeaf(
-        ("network", "product-baselines", "list"),
-        SETTINGS,
-        "empty-scope",
-        f"Product baselines: {_EMPTY}.",
-    ),
-    DeferredLeaf(
-        ("network", "product-baselines", "get"),
-        SETTINGS,
-        "unverified",
-        f"Product baseline detail: {_UNVERIFIED}.",
     ),
     DeferredLeaf(
         ("ledger", "accounts", "get"),
@@ -2579,6 +2550,8 @@ class ListLeaf:
             validate_fee_query(request_values)
         if variant.projection == "strategy_results":
             validate_strategy_query(request_values)
+        if variant.projection == "quotes":
+            validate_quote_query(request_values)
         window_fields = {
             option.field for option in variant.scope_options if option.window
         }

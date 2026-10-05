@@ -147,10 +147,11 @@ SLA 是配置目标，不是观测到账耗时。
 [#87](https://github.com/proletariat64/dogopencli/issues/87) 和
 [#88](https://github.com/proletariat64/dogopencli/issues/88) 和
 [#89](https://github.com/proletariat64/dogopencli/issues/89) 和
-[#97](https://github.com/proletariat64/dogopencli/issues/97) 已实现 79 个查询叶子：
-32 settings、40 runtimes、7 reference；另有 55 个延期叶子可通过帮助发现，
+[#97](https://github.com/proletariat64/dogopencli/issues/97) 和
+[#98](https://github.com/proletariat64/dogopencli/issues/98) 已实现 82 个查询叶子：
+32 settings、43 runtimes、7 reference；共 131 个查询叶子，另有 49 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
-已发布 v0.2.6 包不包含 #97 的新增能力，本分支未升级版本。
+已发布 v0.2.6 包不包含 #97/#98 的新增能力，本分支未升级版本。
 已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
 
@@ -207,6 +208,8 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `cash balances` | `list` |
 | `cash groups` | `list` |
 | `cash group-balances` | `list` |
+| `cash pool-balances` | `list` |
+| `cash credit-usage` | `list` |
 | `cash pools` | `list`, `get` |
 | `cash credit-lines` | `list` |
 | `cash statements intraday` | `list` |
@@ -217,6 +220,7 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `forecast results` | `list` |
 | `investment benchmarks` | `list` |
 | `investment benchmark-values` | `list`（必填生效日期范围） |
+| `investment quotes` | `list`（仅 QUOTED，必填起息日期范围） |
 | `investment strategy-results` | `list` |
 | `investment compound-ledger` | `list`, `get` |
 | `investment holdings` | `list`, `get` |
@@ -283,9 +287,43 @@ dogopencli describe liquidity operations swaps list
 默认 incomplete refresh 原子替换旧缓存并告警；严格刷新保留旧缓存。
 固定-total 合同内的后端 total 变化仍返回 `INVALID_RESPONSE`。
 `ledger balances list` 已有查询实现，但后端业务错误 999 仍阻塞完整采集。
-没有已验证查询合同的叶子继续延期，如 wallets、pool-balances、credit-usage、
+`cash pool-balances list` 提供固定 BANK 范围的现金池余额快照；
+`refresh liquidity cash pool-balances` 显式采集，默认 list 离线读取，`--live` 不写缓存。
+账面余额 `currentBalance` 与可支付余额 `currentAviBalance` 分开保留。
+成员原币余额对应 `currency`，`equv` 折算余额对应 `bankCurrency`；
+池汇总遵循原生 UI 的 USD 显示口径，不能用配置 `mainCurrency` 替换。
+池余额/valueDate 独立于成员金额和成员时间，不强制与成员求和相等；
+成员观察时间及空币种保持 unknown，不把采集时间当余额时间。
+保留负数、空字符串和 null；不提供业务日期查询、历史命令或资金归集操作。
+详见 [现金池余额契约](docs/design/liquidity-pool-balances-v0.1.0.md)。
+
+`cash credit-usage list` 原样读取授信及其 `bankAccountCreditLineList` 成员树；
+`refresh liquidity cash credit-usage` 显式采集到独立 runtimes 缓存，默认离线，
+`--live` 不写缓存。保留共享/非共享标志、两套原生金额、币种及 `mergeFlag`，
+不合并成员、不计算总额或汇率，也不以额度大小、求和或已用/可用关系拒绝数据。
+带逗号的金额字符串、空值、负数及未知业务值原样保留；使用观察时间明确 unknown，
+不从有效期、配置修改时间或采集时间推算。已有 `credit-lines` settings 缓存不变。
+详见 [授信使用读取契约](docs/design/liquidity-credit-usage-v0.1.0.md)。
+
+用户确认 `network product-baselines` 已停用，其 `list`/`get` 已从目录移除；
+银行基线和付款 SLA 基线不受影响。#98 原始四项中，池余额、授信使用和报价三项已实现，
+产品基线一项退役；各项生产验收状态单独记录。
+
+`investment quotes list --from-date YYYY-MM-DD --to-date YYYY-MM-DD` 仅查询 QUOTED。
+起息日起止边界必填，原生 `rowStart=0/pageSize=5000` 单次响应无总数字段；
+`refresh liquidity investment quotes --from-date ... --to-date ...` 发布独立缓存，
+默认离线，`--live` 不写缓存。缓存按完整请求日期范围隔离，不跨范围拼接或推定完整性。
+`quote` 为原生百分比，`ticketSize` 为起存金额，O/N 为隔夜；时间按用户确认的
+UTC+08:00 解释，仍保留原生字符串，请求 `timeZone=null` 不变。
+金额、利率、期限、日期和值均不做业务运算或改写；`curMaxLimitAvailable` 含义仍未确认。
+WIN 后台未实现，首版不提供；quotes get 仍延期。详见
+[报价读取契约](docs/design/liquidity-quotes-v0.1.0.md)。
+
+没有已验证查询合同的叶子继续延期，如 wallets、
 forecast accuracy、risk sla list、transfer rules list、quote-groups；
 独立验证过的详情不受此影响。
+[#98 本轮核验](docs/research/general/2026-10-04-liquidity-issue98-gates.md)记录池余额、
+授信使用、产品基线和报价的逐项门槛；调查记录不等于新增能力或生产 CLI UAT。
 [证据与未验证事项](docs/research/general/2026-10-01-liquidity-live-probes.md)，
 [缓存决策](docs/adr/0016-liquidity-independent-list-and-detail-caches.md)。
 
@@ -373,10 +411,10 @@ GMT+08 查询设置。费用使用 `pricingCurrency`，交易金额使用 `curre
 
 本批被接受的四个候选已实现 **4/4**：解除三个旧 unsupported，新增一个费用订单叶子。
 原第五项国家／地区基础数据已按用户决定从需求和目录撤除，不导入，也不保留
-unsupported 入口；撤除不计为实现。独立 #97 分支目录共 133 项
-（79 supported / 54 unsupported），未计入尚未合并的 #98。四个详情变体和费用订单注册 CLI 生产 UAT
+unsupported 入口；撤除不计为实现。整合 #97/#98 后目录共 131 项
+（82 supported / 49 unsupported）。四个详情变体和费用订单注册 CLI 生产 UAT
 共 **24/24** 通过，详见[本次证据与验证](docs/research/general/2026-10-04-liquidity-issue97-gates.md)。
-#97 保持开放，随 PR #99 合并关闭；尚未合并或发布。
+#97 已随 PR #99 合并关闭；#98 等待 PR #100 合并，尚未发布新版本。
 
 ## 缓存、实时查询与刷新
 

@@ -55,6 +55,144 @@ def _source_guide(
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.projection == "quotes":
+        schema["additionalProperties"] = False
+        schema["x-source-timezone"] = "UTC+08:00"
+        schema["x-coverage"] = (
+            "single response for the exact requested value-date scope"
+        )
+        schema["x-business-validation"] = "none; source values preserved"
+        properties = schema["properties"]
+        meanings = {
+            "quotationOrderId": "Native quotation identity; no inferred revision.",
+            "inquiryId": "Inquiry reference; not the identity of a quote.",
+            "quote": "Native percent value, preserved without scaling or calculation.",
+            "tenor": (
+                "Native tenor; O/N means Overnight. No date arithmetic is checked."
+            ),
+            "ticketSize": "Minimum deposit amount in the source currency.",
+            "curMaxLimitAvailable": (
+                "Native source field; business definition remains unconfirmed."
+            ),
+            "valueDate": (
+                "Native value date, distinct from capture time and request bounds."
+            ),
+        }
+        for field, meaning in meanings.items():
+            properties[field]["description"] = meaning
+        for field in ("quote", "tenor", "ticketSize"):
+            properties[field]["x-evidence"]["meaning"] = "operator confirmed 2026-10-05"
+        properties["quote"]["x-unit"] = "percent"
+        properties["quote"]["x-evidence"]["unit"] = "operator confirmed 2026-10-05"
+        properties["ticketSize"]["x-currency"] = "currency"
+        for field in ("quotationTime", "inquiryTime"):
+            properties[field]["x-timezone"] = "UTC+08:00"
+            properties[field]["description"] = (
+                "Native time string, interpreted in operator-confirmed UTC+08:00;"
+                " not converted or replaced by capture time."
+            )
+        return schema
+    if item.projection == "credit_usage":
+        schema["additionalProperties"] = False
+        schema["x-member-identity"] = ["id", "bankAccountCreditLineList[].id"]
+        schema["x-usage-observation-time"] = "unknown"
+        schema["x-business-validation"] = "none; source values preserved"
+        meanings = {
+            "currency": "Native Credit CCY for the parent credit line.",
+            "amount": "Native parent Credit Amt; no allocation audit.",
+            "usedAmount": "Native parent Credit Used Amt.",
+            "availableAmount": "Native parent Credit Avl Amt.",
+            "shareTag": (
+                "Source sharing flag; shared lines need no assigned account cap."
+            ),
+            "bankAccountCreditLineList[].creditCurrency": (
+                "Native CreditLine CCY; blanks remain unknown."
+            ),
+            "bankAccountCreditLineList[].currency": (
+                "Native account currency; no guessed conversion."
+            ),
+            "bankAccountCreditLineList[].creditAmount": "Native member Credit Amt.",
+            "bankAccountCreditLineList[].usedCreditAmount": (
+                "Native member Credit Used Amt."
+            ),
+            "bankAccountCreditLineList[].availableCreditAmount": (
+                "Native member Credit Avl Amt."
+            ),
+            "bankAccountCreditLineList[].equvAmount": (
+                "Native member Equv Amt (Orig); not locally converted."
+            ),
+            "bankAccountCreditLineList[].usedAmount": (
+                "Native member Equv Used Amt (Orig)."
+            ),
+            "bankAccountCreditLineList[].availableAmount": (
+                "Native member Equv Avl Amt (Orig)."
+            ),
+            "bankAccountCreditLineList[].mergeFlag": (
+                "Native UI display grouping; every member remains separate."
+            ),
+            "bankAccountCreditLineList[].isMasterAccount": "Native main-account flag.",
+        }
+        for field, meaning in meanings.items():
+            schema["properties"][field]["description"] = meaning
+            schema["properties"][field]["x-evidence"]["meaning"] = (
+                "native UI and operator clarification 2026-10-05"
+            )
+        return schema
+    if item.projection == "pool_balances":
+        schema["additionalProperties"] = False
+        properties = schema["properties"]
+        meanings = {
+            "mainCurrency": (
+                "Native pool configuration currency; not the pool summary unit."
+            ),
+            "valueDate": (
+                "Pool balance date only; member observation times remain unknown."
+            ),
+            "cashPoolMemberVOS[].currency": (
+                "Account currency for original member balances; empty is unknown."
+            ),
+            "cashPoolMemberVOS[].bankCurrency": (
+                "Bank conversion currency for equv balances; empty is unknown."
+            ),
+            "cashPoolMemberVOS[].masterAccount": (
+                "Native main-account flag; no universal sweep schedule inferred."
+            ),
+            "cashPoolMemberVOS[].isShare": (
+                "Native member balance-sharing flag; N can still permit concentration."
+            ),
+        }
+        for prefix in ("", "cashPoolMemberVOS[]."):
+            for field, meaning in {
+                "currentBalance": "Current book balance",
+                "currentAviBalance": "Current available funds for payment",
+                "closeBalance": "Book closing balance on the previous statement day",
+                "closeAviBalance": (
+                    "Available closing balance on the previous statement day"
+                ),
+            }.items():
+                key = prefix + field
+                meanings[key] = meaning + "; independent native amount, not recomputed."
+                unit = "currency" if prefix else "USD (native UI pool summary display)"
+                properties[key]["x-currency"] = unit
+                properties[key]["x-evidence"]["unit"] = (
+                    "operator confirmed 2026-10-05"
+                    if prefix
+                    else "native UI USD summary label"
+                )
+                if prefix:
+                    equivalent = prefix + "equv" + field[0].upper() + field[1:]
+                    meanings[equivalent] = "Bank-converted " + meaning.lower() + "."
+                    properties[equivalent]["x-currency"] = "bankCurrency"
+                    properties[equivalent]["x-evidence"]["unit"] = (
+                        "operator confirmed 2026-10-05"
+                    )
+        for field, meaning in meanings.items():
+            properties[field]["description"] = meaning
+            properties[field]["x-evidence"]["meaning"] = "operator confirmed 2026-10-05"
+        properties["valueDate"]["x-format"] = "YYYY-MM-DD"
+        schema["x-member-identity"] = ["id", "cashPoolMemberVOS[].id"]
+        schema["x-member-observation-time"] = "unknown"
+        return schema
     if item.projection == "benchmark_values":
         properties = schema["properties"]
         properties["effectiveDate"]["x-format"] = "YYYYMMDD"
@@ -189,7 +327,9 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             **_source_guide(
                 capability,
                 contract,
-                DECISION_VERIFIED_DATE
+                "2026-10-05"
+                if variant.projection in {"pool_balances", "credit_usage", "quotes"}
+                else DECISION_VERIFIED_DATE
                 if variant.name == DECISIONS.name
                 else "2026-10-04"
                 if variant.projection

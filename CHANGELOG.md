@@ -2,17 +2,32 @@
 
 ## 未发布
 
+记录 #98 的有界原生核验及剩余业务契约门槛，更新延期原因。
+新增 `cash pool-balances list` 和显式 refresh：固定 BANK 范围、独立 runtimes
+capture；分别保留池/成员账面、可用、原币、银行折算余额，未知成员时间不猜补。
+池级金额不以成员求和替换，旧 pools settings/list/get 与缓存不变。
+新增 `cash credit-usage list` 和独立 refresh：保留授信/成员原生树与两套金额、
+币种、共享标志及显示分组；不执行业务金额、币种或时间校验，不改写来源值。
+使用观察时间 unknown，旧 credit-lines settings 字段及缓存不变。
+按用户确认移除已停用的 `network product-baselines list/get` 目录项。
+新增 `investment quotes list`：仅 QUOTED，`--from-date/--to-date` 必填，
+YYYY-MM-DD 映射原生日期；无总数的单响应契约采用 pageSize=5000，不循环分页。
+原生百分比、起存金额、期限/日期及未知字段值原样保留，UTC+08:00 仅作为时间解释；
+独立 quotes-v1 缓存按完整日期范围隔离。WIN 不启用，quotes get 仍延期。
+整合 #97 后目录为 82 supported、49 unsupported，共 131 个查询叶子；
+#98 原始四项为三项实现、一项退役；独立生产 CLI UAT 结果另行记录。
+生产 CLI UAT 结果在独立验收报告记录。
+
 #97 新增真实策略任务详情（fund/product 两类）和风险事件／告警详情，按原生身份与
 类型校验，独立刷新、离线读取，live 不写缓存。新增准确命名的 `pricing fee-orders list`，
 支持最多 31 日的有界 Service Date 范围；费用与交易币种分别保留，不作为 valuations 别名。
 
 本批被接受的候选实现 4/4：三个旧 unsupported 已解除，另新增一个费用订单叶子。
 国家／地区基础数据按用户决定从需求和目录撤除，不导入、不保留 unsupported 入口；
-撤除不计为实现。独立 #97 分支目录为 79 supported / 54 unsupported，共 133 项，
-未计入尚未合并的 #98；valuations 保持 unsupported。
+撤除不计为实现。上述目录已包含 #97 与 #98；valuations 保持 unsupported。
 注册公共 CLI 生产 UAT 24/24 通过；本地检查和审查见
 [验收报告](docs/research/general/2026-10-04-liquidity-issue97-gates.md)。
-未升级版本、发布包或关闭 #97。
+#97 已随 PR #99 合并关闭；本次未升级版本或发布包。
 
 ## v0.2.6（2026-10-04）
 

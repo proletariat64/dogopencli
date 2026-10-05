@@ -6,11 +6,15 @@ liquidity-v0.2.3.md): settings projections strip balance/used/available/
 capacity fields including nested members; runtime projections keep native
 amounts and native observation times without deriving, summing or scaling.
 
-Amount precision is preserved (no /100). Accepted amount values: null, empty
-string, decimal numeric string, int and finite Decimal; bool, float,
-containers and non-decimal garbage strings (including NaN/Infinity) raise
-INVALID_RESPONSE. Zero, empty string and null stay distinct — projections
-never replace one with another. Missing member lists stay absent and null
+Amount precision is preserved (no /100). Projections using amount validation
+accept null, empty string, decimal numeric string, int and finite Decimal;
+bool, float, containers and non-decimal strings (including NaN/Infinity)
+raise INVALID_RESPONSE. Credit usage and quotes deliberately skip business-value
+validation: their projected amounts, currencies and unknown values remain raw,
+with reading-protocol and identity checks, plus parent-link/tenant checks
+where applicable to the source contract.
+Zero, empty string and null stay distinct — projections never replace one
+with another. Missing member lists stay absent and null
 member lists stay null (never replaced by an empty list). Nested member and
 rule identities must be non-empty str/int, unique within their parent, and
 their parent echo (bankAccountGroupId/cashPoolId/creditLineId/
@@ -19,6 +23,7 @@ cashPoolMemberId), when present, must match the parent id.
 
 import re
 from collections.abc import Callable, Mapping
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -462,6 +467,99 @@ def _project_pools_settings(row: Any) -> dict[str, Any]:
     return projected
 
 
+# --- pool balance snapshots --------------------------------------------------
+
+_POOL_BALANCE_AMOUNTS = (
+    "currentBalance",
+    "currentAviBalance",
+    "closeBalance",
+    "closeAviBalance",
+)
+_POOL_MEMBER_BALANCE_AMOUNTS = _POOL_BALANCE_AMOUNTS + (
+    "equvCurrentBalance",
+    "equvCurrentAviBalance",
+    "equvCloseBalance",
+    "equvCloseAviBalance",
+)
+_POOL_BALANCE_FIELDS = (
+    "cashPoolType",
+    "id",
+    "cashPoolName",
+    "cashPoolCategory",
+    "mainCurrency",
+    "valueDate",
+    "tntInstId",
+) + _POOL_BALANCE_AMOUNTS
+_POOL_MEMBER_BALANCE_FIELDS = (
+    "id",
+    "cashPoolId",
+    "aliasName",
+    "entity",
+    "bankId",
+    "currency",
+    "bankCurrency",
+    "masterAccount",
+    "isShare",
+    "timeZone",
+    "tntInstId",
+) + _POOL_MEMBER_BALANCE_AMOUNTS
+
+
+def _validate_pool_balance_scope(record: Mapping[str, Any], context: str) -> None:
+    from .spec import TENANT
+
+    if "tntInstId" in record and record["tntInstId"] != TENANT:
+        raise _invalid(f"{context}: tenant is outside requested scope")
+    for field in ("mainCurrency", "currency", "bankCurrency"):
+        value = record.get(field)
+        if (
+            value is not None
+            and value != ""
+            and (not isinstance(value, str) or re.fullmatch(r"[A-Z]{3}", value) is None)
+        ):
+            raise _invalid(f"{context}.{field}: invalid currency")
+
+
+def _project_pool_balance_member(
+    record: dict[str, Any], context: str
+) -> dict[str, Any]:
+    _validate_pool_balance_scope(record, context)
+    return record
+
+
+def _project_pool_balances(row: Any) -> dict[str, Any]:
+    record = _require_row(row, "pool_balances")
+    _typed_id(record.get("id"), "pool_balances.id")
+    _validate_pool_balance_scope(record, "pool_balances")
+    if record.get("cashPoolCategory") != "BANK":
+        raise _invalid("pool_balances: category is outside requested BANK scope")
+    _validate_amounts(record, _POOL_BALANCE_AMOUNTS, "pool_balances")
+    value = record.get("valueDate")
+    if value is not None and value != "":
+        try:
+            if (
+                not isinstance(value, str)
+                or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None
+            ):
+                raise ValueError("not YYYY-MM-DD")
+            date.fromisoformat(value)
+        except ValueError as error:
+            raise _invalid("pool_balances.valueDate: invalid YYYY-MM-DD") from error
+    projected = _pick(record, _POOL_BALANCE_FIELDS)
+    members = _project_members(
+        record,
+        "cashPoolMemberVOS",
+        _POOL_MEMBER_BALANCE_FIELDS,
+        "pool_balances",
+        amount_fields=_POOL_MEMBER_BALANCE_AMOUNTS,
+        echo_field="cashPoolId",
+        nested=_project_pool_balance_member,
+    )
+    if members is not _ABSENT:
+        projected["cashPoolMemberVOS"] = members
+    return projected
+
+
 # --- credit lines settings ----------------------------------------------------
 
 _CREDIT_LINE_SETTINGS_FIELDS = (
@@ -515,6 +613,72 @@ def _project_credit_lines_settings(row: Any) -> dict[str, Any]:
         "credit_lines_settings",
         amount_fields=("creditAmount", "equvAmount"),
         echo_field="creditLineId",
+    )
+    if members is not _ABSENT:
+        projected["bankAccountCreditLineList"] = members
+    return projected
+
+
+# --- credit usage runtime ----------------------------------------------------
+
+_CREDIT_USAGE_FIELDS = (
+    "id",
+    "creditLineType",
+    "currency",
+    "amount",
+    "usedAmount",
+    "availableAmount",
+    "bankId",
+    "masterBankId",
+    "instId",
+    "shareTag",
+    "status",
+    "manageStatus",
+    "tntInstId",
+)
+_CREDIT_USAGE_MEMBER_FIELDS = (
+    "id",
+    "creditLineId",
+    "accountNo",
+    "aliasName",
+    "bankId",
+    "instId",
+    "creditAmount",
+    "usedCreditAmount",
+    "availableCreditAmount",
+    "creditCurrency",
+    "currency",
+    "equvAmount",
+    "usedAmount",
+    "availableAmount",
+    "isMasterAccount",
+    "mergeFlag",
+    "status",
+    "tntInstId",
+)
+
+
+def _credit_usage_tenant(record: dict[str, Any], context: str) -> dict[str, Any]:
+    from .spec import TENANT
+
+    if "tntInstId" in record and record["tntInstId"] != TENANT:
+        raise _invalid(f"{context}: tenant is outside requested scope")
+    return record
+
+
+def _project_credit_usage(row: Any) -> dict[str, Any]:
+    record = _require_row(row, "credit_usage")
+    _typed_id(record.get("id"), "credit_usage.id")
+    _credit_usage_tenant(record, "credit_usage")
+    projected = _pick(record, _CREDIT_USAGE_FIELDS)
+    # This reader deliberately does not parse or validate business field values.
+    members = _project_members(
+        record,
+        "bankAccountCreditLineList",
+        _CREDIT_USAGE_MEMBER_FIELDS,
+        "credit_usage",
+        echo_field="creditLineId",
+        nested=_credit_usage_tenant,
     )
     if members is not _ABSENT:
         projected["bankAccountCreditLineList"] = members
@@ -802,12 +966,24 @@ def _project_strategy_results(row: Any) -> dict[str, Any]:
     return _pick(record, STRATEGY_FIELDS)
 
 
+def _project_quotes(row: Any) -> dict[str, Any]:
+    from .investment_batch import QUOTE_FIELDS
+
+    record = _require_row(row, "quotes")
+    identity = record.get("quotationOrderId")
+    if not isinstance(identity, str) or not identity.strip():
+        raise _invalid("quotes.quotationOrderId: expected nonempty native string")
+    return _pick(record, QUOTE_FIELDS)
+
+
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "strategy_detail": project_strategy_detail,
     "groups_settings": _project_groups_settings,
     "group_balances": _project_group_balances,
     "pools_settings": _project_pools_settings,
+    "pool_balances": _project_pool_balances,
     "credit_lines_settings": _project_credit_lines_settings,
+    "credit_usage": _project_credit_usage,
     "balances": _project_balances,
     "eod": _project_eod,
     "forecast_results": _project_forecast_results,
@@ -820,6 +996,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "decision_reports": project_decision_record,
     "strategy_results": _project_strategy_results,
     "benchmark_values": _project_benchmark_values,
+    "quotes": _project_quotes,
     "fee_orders": project_fee_order,
 }
 
