@@ -248,7 +248,7 @@ def metric_body(row: dict[str, Any], account: str) -> dict[str, Any]:
         if isinstance(balance, str) and balance in ("0.0", "0.00")
         else balance,
     )
-    return {"tntInstId": TENANT, "bankAccountDetailCashFlowQueryVO": json.dumps(vo)}
+    return {"tntInstId": TENANT, "bankAccountDetailCashFlowQueryVO": canonical(vo)}
 
 
 def collect_accuracy(

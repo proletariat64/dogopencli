@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from decimal import Decimal
 
 import pytest
 
@@ -92,7 +93,7 @@ def handler(rows, *, total=None, metric=None):
             }
             return base_page(rows, total)
         assert set(body) == {"tntInstId", "bankAccountDetailCashFlowQueryVO"}
-        vo = json.loads(body["bankAccountDetailCashFlowQueryVO"])
+        vo = parse(body["bankAccountDetailCashFlowQueryVO"])
         row = by_id[vo["forecastRecordId"]]
         assert vo == {
             "valueDate": row["valueDate"],
@@ -194,6 +195,38 @@ def test_composition_request_projection_offline_live_snapshot(setup, run_cli):
     )
     assert code == 0, err
     assert parse(out)["tree"]["cache"]["status"] == "present"
+
+
+@pytest.mark.parametrize(
+    "balance",
+    [
+        Decimal("12345678901234567890.12345678901234567890"),
+        Decimal("-1.00000000000000000001"),
+        Decimal("1E-40"),
+        Decimal("0.00"),
+    ],
+)
+def test_numeric_forecast_balance_precision_in_metric_request_and_cache(
+    setup, run_cli, balance
+):
+    setup.state.business_handler = handler([dict(ROW, forecastBalance=balance)])
+    code, out, err = run_cli(args("--require-complete", refresh=True))
+    assert code == 0, err
+    assert parse(out)["meta"]["complete"] is True
+    metric_request = setup.state.business_requests[1]
+    vo = parse(metric_request["bankAccountDetailCashFlowQueryVO"])
+    sent_balance = vo["forecastBalance"]
+    assert isinstance(sent_balance, Decimal)
+    assert sent_balance.as_tuple() == balance.as_tuple()
+    before = digest(setup)
+    code, out, err = run_cli(args("--live", "--all", "--require-complete"))
+    assert code == 0, err
+    assert parse(out)["data"][0]["forecastBalance"].as_tuple() == balance.as_tuple()
+    assert digest(setup) == before
+    setup.state.reachable = False
+    code, out, err = run_cli(args("--all", "--require-complete"))
+    assert code == 0, err
+    assert parse(out)["data"][0]["forecastBalance"].as_tuple() == balance.as_tuple()
 
 
 @pytest.mark.parametrize(
