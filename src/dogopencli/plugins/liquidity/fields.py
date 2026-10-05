@@ -3473,3 +3473,18 @@ SAMPLED_FIELDS[TRANSFER_RULES.name] = {
     field: "native value" for field in TRANSFER_RULE_FIELDS
 }
 SAMPLED_FIELDS[TRANSFER_RULES.name]["ruleId"] = "str"
+
+# Issue #109 list summary schema; populated native list evidence, 2026-10-05.
+SAMPLED_FIELDS["liquidity.risk.sla.list"] = {
+    field: "str"
+    for field in (
+        "slaConfigId",
+        "riskEventType",
+        "effectiveStatus",
+        "processStatus",
+        "version",
+        "tntInstId",
+        "gmtCreate",
+        "gmtModified",
+    )
+}

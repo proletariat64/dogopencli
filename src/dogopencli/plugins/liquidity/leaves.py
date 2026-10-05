@@ -58,6 +58,7 @@ from .realtime_network import REALTIME_NETWORK
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import RELEASED as RISK_RELEASED
 from .risk_detail import RISK_DETAIL_SPECS
+from .risk_sla import RISK_SLA
 from .spec import (
     ENC_FORM,
     ENV_BASE_RESULT,
@@ -1723,7 +1724,9 @@ DETAIL_SPECS: tuple[DetailSpec, ...] = (
             ),
         ),
         list_leaf=("risk", "sla"),
-        notes=("The SLA list stays deferred; acquire details by slaConfigId.",),
+        notes=(
+            "SLA summaries and these explicit rule details use independent caches.",
+        ),
     ),
     DetailSpec(
         path=("rules", "transfer"),
@@ -2418,7 +2421,10 @@ _AUDIT_DEFERRED = tuple(
     if item.path not in {(*spec.path, spec.action) for spec in RISK_DETAIL_SPECS}
 )
 
-LIST_SPECS += (FEE_ORDERS,)
+LIST_SPECS += (FEE_ORDERS, RISK_SLA)
+_TICKET_DEFERRED = tuple(
+    item for item in _TICKET_DEFERRED if item.path != (*RISK_SLA.path, "list")
+)
 
 # Spec #88 releases only the independently verified bounded risk list scopes.
 LIST_SPECS += tuple(item for item in RISK_LIST_SPECS if item.name in RISK_RELEASED)

@@ -34,6 +34,7 @@ from .operations_batch import validate_swap_business_date
 from .realtime_network import project_network
 from .risk_batch import project_risk_record
 from .risk_detail import project_risk_detail
+from .risk_sla import project_risk_sla
 from .strategy_detail import project_strategy_detail
 from .transfer_list import project_transfer_order
 from .transfer_rules import project_transfer_rule
@@ -1011,6 +1012,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "factor_definitions": _project_factor_definitions,
     "fee_orders": project_fee_order,
     "realtime_network": project_network,
+    "risk_sla": project_risk_sla,
 }
 
 
