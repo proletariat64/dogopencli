@@ -33,7 +33,7 @@
 
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
-| General | [Issue #98 列表能力核验](research/general/2026-10-04-liquidity-issue98-gates.md) | 4/4 已评估，0/4 启用；池余额、授信使用、产品基线和报价仍有契约门槛，#98 保持开放 |
+| General | [Issue #98 列表能力核验](research/general/2026-10-04-liquidity-issue98-gates.md) | 10 月 4 日当时 4/4 已评估、0/4 启用；10 月 5 日池余额已实现并通过生产 UAT，其余三项仍有契约门槛，#98 保持开放 |
 | General | [Liquidity Batch C 投资查询与剩余门槛](research/general/2026-10-04-liquidity-batch-c-gates.md) | #89：基准值与策略结果已启用，交付 2/4；计价估值与账单保持 unsupported，规格继续开放 |
 | General | [Issue #82 资金需求与执行查询最新验收](research/general/2026-10-04-funding-execution-batch-acceptance.md) | 10 月 4 日 Liquidity 认证恢复，有界 swap 正式注册生产 CLI UAT 21/21、Kimi 基线通过；当前 1/4 启用，追加 Kimi 权限待确认，其他三个列表保持 unsupported |
 | General | [Issue #82 10 月 3 日验收历史快照](research/general/2026-10-03-funding-execution-batch-acceptance.md) | 当时 0/4 放行、UAT 认证阻塞、Kimi 未执行；保留原生采集、本地验证及当时门槛，不作为最新授权状态 |

@@ -411,7 +411,7 @@ ACCEPTED_LIST_SPECS = (
     FORECAST_RESULTS,
 )
 ACCEPTED_DETAIL_SPECS = (CASH_POOLS_GET,)
-# Seven contracts passed complete-scope CLI live/refresh/disconnected UAT.
+# Eight contracts passed complete-scope CLI live/refresh/disconnected UAT.
 # The user separately accepts forecast's existing cash-accounts compatibility:
 # incomplete data remains nonzero/unpublished, and changing totals fail closed.
 # Fresh 2026-10-02 native UAT proves 20135 arrivals / 20129 unique records,
