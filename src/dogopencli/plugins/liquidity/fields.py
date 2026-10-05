@@ -29,6 +29,8 @@ from .strategy_detail import STRATEGY_DETAIL, STRATEGY_DETAIL_FIELDS
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
 from .transfer_list import TRANSFER_ORDERS
+from .transfer_rules import FIELDS as TRANSFER_RULE_FIELDS
+from .transfer_rules import TRANSFER_RULES
 
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
     "liquidity.cash.credit-usage.list": {
@@ -3454,3 +3456,9 @@ SAMPLED_FIELDS[STRATEGY_DETAIL.name] = STRATEGY_DETAIL_FIELDS
 # Observed source fields; optional status is not claimed as sampled.
 
 SAMPLED_FIELDS[FEE_ORDERS.name] = {field: "str" for field in FEE_ORDER_FIELDS}
+
+# Transfer-rule list summary is independent from the genuine detail schema.
+SAMPLED_FIELDS[TRANSFER_RULES.name] = {
+    field: "native value" for field in TRANSFER_RULE_FIELDS
+}
+SAMPLED_FIELDS[TRANSFER_RULES.name]["ruleId"] = "str"

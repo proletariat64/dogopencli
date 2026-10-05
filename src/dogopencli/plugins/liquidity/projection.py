@@ -35,6 +35,7 @@ from .risk_batch import project_risk_record
 from .risk_detail import project_risk_detail
 from .strategy_detail import project_strategy_detail
 from .transfer_list import project_transfer_order
+from .transfer_rules import project_transfer_rule
 
 # The verified group-balances request scope fixes the equivalent currency
 # (spec #76: only the USD scope carries business evidence); it is declared
@@ -993,6 +994,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "risk_events": lambda row: project_risk_record(row, "RISK_EVENT"),
     "risk_anomalies": lambda row: project_risk_record(row, "RISK_ALERT"),
     "transfer_orders": project_transfer_order,
+    "transfer_rules": project_transfer_rule,
     "decision_reports": project_decision_record,
     "strategy_results": _project_strategy_results,
     "benchmark_values": _project_benchmark_values,
