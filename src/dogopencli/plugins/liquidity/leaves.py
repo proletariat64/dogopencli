@@ -2227,15 +2227,23 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("network", "routes", "list"),
         SETTINGS,
         "unverified",
-        "Network routes: route semantics unverified; the verified native"
-        " inquiries are network realtime list/get, which must not masquerade"
-        " as generic routes.",
+        "Network routes: no native global routes-list caller exists (#119);"
+        " RealTimeNetwork is a network configuration object with its own"
+        " native network id and its routeId values are references, not"
+        " routes; the discovered queryWhaleRouteDetail caller is a"
+        " network-scoped per-route quota detail"
+        " (dynamicQuotas/staticQuotas), not a global routes list with"
+        " pagination, so the verified realtime network records must not"
+        " masquerade as routes acceptance.",
     ),
     DeferredLeaf(
         ("network", "routes", "get"),
         SETTINGS,
         "unverified",
-        "Network route detail: route semantics unverified.",
+        "Network route detail: the discovered queryWhaleRouteDetail caller"
+        " (routeId/aliasName/tntInstId; dynamicQuotas/staticQuotas quota"
+        " detail) was never executed and no get is in scope this batch"
+        " (#119).",
     ),
     DeferredLeaf(
         ("network", "realtime", "get"),
