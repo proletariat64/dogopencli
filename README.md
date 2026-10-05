@@ -146,8 +146,9 @@ SLA 是配置目标，不是观测到账耗时。
 [PR #83](https://github.com/proletariat64/dogopencli/pull/83) 和
 [#87](https://github.com/proletariat64/dogopencli/issues/87) 和
 [#88](https://github.com/proletariat64/dogopencli/issues/88) 和
-[#89](https://github.com/proletariat64/dogopencli/issues/89) 已实现 77 个查询叶子：
-32 settings、38 runtimes、7 reference；共 131 个查询叶子，另有 54 个延期叶子可通过帮助发现，
+[#89](https://github.com/proletariat64/dogopencli/issues/89) 和
+[#98](https://github.com/proletariat64/dogopencli/issues/98) 已实现 78 个查询叶子：
+32 settings、39 runtimes、7 reference；共 131 个查询叶子，另有 53 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.4 wheel 不包含新增的 swaps 列表。已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
@@ -217,6 +218,7 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `forecast results` | `list` |
 | `investment benchmarks` | `list` |
 | `investment benchmark-values` | `list`（必填生效日期范围） |
+| `investment quotes` | `list`（仅 QUOTED，必填起息日期范围） |
 | `investment strategy-results` | `list` |
 | `investment compound-ledger` | `list`, `get` |
 | `investment holdings` | `list`, `get` |
@@ -302,8 +304,18 @@ dogopencli describe liquidity operations swaps list
 详见 [授信使用读取契约](docs/design/liquidity-credit-usage-v0.1.0.md)。
 
 用户确认 `network product-baselines` 已停用，其 `list`/`get` 已从目录移除；
-银行基线和付款 SLA 基线不受影响。#98 原始四项中，两项已交付、一项退役，
-仅 `investment quotes list` 继续延期。
+银行基线和付款 SLA 基线不受影响。#98 原始四项中，池余额、授信使用和报价三项已实现，
+产品基线一项退役；各项生产验收状态单独记录。
+
+`investment quotes list --from-date YYYY-MM-DD --to-date YYYY-MM-DD` 仅查询 QUOTED。
+起息日起止边界必填，原生 `rowStart=0/pageSize=5000` 单次响应无总数字段；
+`refresh liquidity investment quotes --from-date ... --to-date ...` 发布独立缓存，
+默认离线，`--live` 不写缓存。缓存按完整请求日期范围隔离，不跨范围拼接或推定完整性。
+`quote` 为原生百分比，`ticketSize` 为起存金额，O/N 为隔夜；时间按用户确认的
+UTC+08:00 解释，仍保留原生字符串，请求 `timeZone=null` 不变。
+金额、利率、期限、日期和值均不做业务运算或改写；`curMaxLimitAvailable` 含义仍未确认。
+WIN 后台未实现，首版不提供；quotes get 仍延期。详见
+[报价读取契约](docs/design/liquidity-quotes-v0.1.0.md)。
 
 没有已验证查询合同的叶子继续延期，如 wallets、
 forecast accuracy、risk sla list、transfer rules list、quote-groups；

@@ -13,6 +13,8 @@ from .investment_batch import (
     BENCHMARK_FIELDS,
     BENCHMARK_VALUES,
     FUND_RESULTS,
+    QUOTE_FIELDS,
+    QUOTES,
     STRATEGY_FIELDS,
 )
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
@@ -3408,6 +3410,10 @@ CANDIDATE_SAMPLED_FIELDS[FUND_RESULTS.name] = {
         else "str"
     )
     for field in STRATEGY_FIELDS
+}
+CANDIDATE_SAMPLED_FIELDS[QUOTES.name] = {
+    field: "bool" if field in {"maxQuote", "maxCurMaxLimitAvailable"} else "str"
+    for field in QUOTE_FIELDS
 }
 SAMPLED_FIELDS.update(
     {
