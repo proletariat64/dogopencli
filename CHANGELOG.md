@@ -1,6 +1,8 @@
 # 变更记录
 
-## 未发布
+## v0.2.7（2026-10-05）
+
+合并 PR #99、#100、#102，发布以下 Liquidity 查询能力；移除 Kimi GitHub review workflow。
 
 记录 #98 的有界原生核验及剩余业务契约门槛，更新延期原因。
 新增 `cash pool-balances list` 和显式 refresh：固定 BANK 范围、独立 runtimes
@@ -27,7 +29,7 @@ YYYY-MM-DD 映射原生日期；无总数的单响应契约采用 pageSize=5000�
 撤除不计为实现。上述目录已包含 #97 与 #98；valuations 保持 unsupported。
 注册公共 CLI 生产 UAT 24/24 通过；本地检查和审查见
 [验收报告](docs/research/general/2026-10-04-liquidity-issue97-gates.md)。
-#97 已随 PR #99 合并关闭；本次未升级版本或发布包。
+#97 已随 PR #99 合并关闭。本版本提供 wheel、源码包及 SHA256SUMS；历史生产 UAT 与本次发布检查分别记录。
 
 ## v0.2.6（2026-10-04）
 

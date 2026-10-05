@@ -141,7 +141,7 @@ SLA 是配置目标，不是观测到账耗时。
 
 ## 流动性查询（当前源码分支）
 
-当前源码版本为 **v0.2.6**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)、
+当前源码版本为 **v0.2.7**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)、
 [#76](https://github.com/proletariat64/dogopencli/issues/76) 和
 [PR #83](https://github.com/proletariat64/dogopencli/pull/83) 和
 [#87](https://github.com/proletariat64/dogopencli/issues/87) 和
@@ -151,7 +151,7 @@ SLA 是配置目标，不是观测到账耗时。
 [#98](https://github.com/proletariat64/dogopencli/issues/98) 已实现 82 个查询叶子：
 32 settings、43 runtimes、7 reference；共 131 个查询叶子，另有 49 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
-已发布 v0.2.6 包不包含 #97/#98 的新增能力，本分支未升级版本。
+v0.2.7 包含 #97/#98 的新增能力；具体支持范围与生产验收结果见下文。
 已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
 
