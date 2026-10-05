@@ -11,6 +11,8 @@ from .decision_list import RELEASED as DECISIONS_RELEASED
 from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
 from .fee_orders import FEE_ORDERS
 from .fee_orders import FIELDS as FEE_ORDER_FIELDS
+from .forecast_accuracy import BASE_FIELDS as ACCURACY_BASE_FIELDS
+from .forecast_accuracy import FORECAST_ACCURACY
 from .investment_batch import (
     BENCHMARK_FIELDS,
     BENCHMARK_VALUES,
@@ -3488,3 +3490,7 @@ SAMPLED_FIELDS["liquidity.risk.sla.list"] = {
         "gmtModified",
     )
 }
+
+SAMPLED_FIELDS[FORECAST_ACCURACY.name] = {
+    field: "native value" for field in ACCURACY_BASE_FIELDS
+} | {"id": "str", "accuracy": "dict"}
