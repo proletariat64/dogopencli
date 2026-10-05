@@ -360,13 +360,13 @@ def test_products_single_response_route(setup, run_cli):
 
 
 def test_deferred_leaf_is_discoverable_and_fails_truthfully(setup, run_cli):
-    code, out, _ = run_cli(["liquidity", "forecast", "accuracy", "list"])
+    code, out, _ = run_cli(["liquidity", "rules", "monitoring", "list"])
     assert code == 1
     error = parse(out)["error"]
     assert error["code"] == "UNSUPPORTED_CAPABILITY"
-    assert "duplicate" in error["message"]
+    assert "monitoring" in error["message"].lower()
     help_code, help_out, _ = run_cli(
-        ["help", "liquidity", "forecast", "accuracy", "list"]
+        ["help", "liquidity", "rules", "monitoring", "list"]
     )
     assert help_code == 0
     assert "Unsupported" in help_out
