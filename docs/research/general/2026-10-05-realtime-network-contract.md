@@ -6,8 +6,8 @@ Status: snapshot
 
 The authorized Liquidity PortfolioMgmt application's native default network
 configuration range is implemented for this list only. Independent production
-public CLI UAT passed; local Kimi review remains blocked by automatic approval review of external
-source/spec transfer. No Kimi confidence is claimed.
+public CLI UAT passed; the authorized local Kimi static review also passed
+with confidence 4/5. Review scope and source commit are recorded below.
 
 ## Native contract and evidence boundary
 
@@ -100,7 +100,7 @@ The private summary is `/tmp/dogopencli-uat-104-summary.json`; only aggregate
 counts and verdicts are recorded here. This result establishes this list's
 current native scope, not future pagination beyond the fixed response capacity,
 detail inquiry support, execution guarantees or dynamic status observation time.
-Local Kimi review remains blocked as described above; remote checks remain
+Local Kimi static review passed as recorded below; remote checks remain
 separate acceptance gates.
 
 ## Review fix and repeated production UAT
@@ -119,4 +119,7 @@ fetched at 2026-10-05T10:41:47.647552+00:00; live SQLite byte hashes stayed unch
 Focused CLI/capability tests passed 50 cases; the evidence-date assertion passed
 separately. Ruff, formatting, doc guard and whitespace checks passed. Independent
 Standards/Spec re-review closed the request-boundary and navigation findings.
-Kimi remains blocked by automatic approval review of external source/spec transfer.
+User authorization for local Kimi/API source-spec transfer was granted on 2026-10-05. The actual static Standards/Spec review of [source commit `9488a7f`](https://github.com/proletariat64/dogopencli/commit/9488a7f55f604559285572940a36afe2a46e093c) completed successfully with no confirmed correctness/spec defects; confidence: 4/5. Tests, lint, graph analysis and production UAT were run independently by the root coordinator, not by Kimi. This subsequent documentation-only commit is not claimed to have been re-reviewed by Kimi.
+
+The earlier automatic approval rejection is historical: the user subsequently
+authorized the source/spec transfer, enabling this completed review. The #104 review finished in its initial run with exit code 0.
