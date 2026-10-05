@@ -55,6 +55,38 @@ def _source_guide(
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.projection == "risk_sla":
+        schema["additionalProperties"] = False
+        schema["x-business-validation"] = "none; source values preserved"
+        schema["x-source-timezone"] = "unknown"
+        schema["x-coverage"] = (
+            "one fixed response; arrivals = unique slaConfigId = totalCount"
+        )
+        meanings = {
+            "slaConfigId": (
+                "Native configuration identity within the application tenant "
+                "and source scope."
+            ),
+            "version": (
+                "Native string configuration version; distinct from identity "
+                "and cache schema."
+            ),
+            "riskEventType": "Raw native risk event type; no inferred rule.",
+            "effectiveStatus": (
+                "Raw configuration status; alert effectiveness is not inferred."
+            ),
+            "processStatus": "Raw workflow state; no inferred processing outcome.",
+            "gmtCreate": (
+                "Configuration creation time; timezone unknown; not capture time."
+            ),
+            "gmtModified": (
+                "Configuration modification time; timezone unknown; "
+                "not runtime observation."
+            ),
+        }
+        for field, meaning in meanings.items():
+            schema["properties"][field]["description"] = meaning
+        return schema
     if item.projection == "transfer_rules":
         schema["additionalProperties"] = False
         schema["x-business-validation"] = "none; source values preserved"
@@ -371,6 +403,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     "quotes",
                     "realtime_network",
                     "transfer_rules",
+                    "risk_sla",
                     "factor_definitions",
                 }
                 else DECISION_VERIFIED_DATE
