@@ -6,6 +6,8 @@ Samples are not
 complete schemas, validation assertions, or nullability guarantees.
 """
 
+from .account_capacity import ACCOUNT_CAPACITY
+from .account_capacity import SAMPLED_FIELDS as CAPACITY_FIELDS
 from .decision_list import DECISIONS
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
@@ -3494,3 +3496,4 @@ SAMPLED_FIELDS["liquidity.risk.sla.list"] = {
 SAMPLED_FIELDS[FORECAST_ACCURACY.name] = {
     field: "native value" for field in ACCURACY_BASE_FIELDS
 } | {"id": "str", "accuracy": "dict"}
+SAMPLED_FIELDS[ACCOUNT_CAPACITY.name] = CAPACITY_FIELDS

@@ -933,6 +933,10 @@ def query_evidence(
         total_semantics=evidence.total_semantics if evidence else "unknown",
         reasons=tuple(dict.fromkeys(reasons)),
         attempts=evidence.attempts if evidence else (),
+        requested_count=evidence.requested_count if evidence and exact_window else None,
+        resolved_count=collected_total
+        if evidence and exact_window and evidence.resolved_count is not None
+        else None,
     )
 
 

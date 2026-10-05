@@ -31,6 +31,7 @@ from ...helpspec import (
     OptionSpec,
     opt,
 )
+from .account_capacity import ACCOUNT_CAPACITY, validate_capacity_query
 from .capability import (
     LiquidityDetailCapability,
     LiquidityListCapability,
@@ -1442,6 +1443,7 @@ LIST_SPECS: tuple[ListSpec, ...] = (
     RULES_FORECAST,
     RULES_WATERLEVEL,
     REALTIME_NETWORK,
+    ACCOUNT_CAPACITY,
     NETWORK_BANK_BASELINES,
     NETWORK_ACCOUNT_CAPABILITIES,
     PRICING_CLIENT_PRICES,
@@ -2167,12 +2169,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Risk anomaly detail: {_IDENTITY}.",
     ),
     DeferredLeaf(
-        ("risk", "account-capacity", "list"),
-        RUNTIMES,
-        "failed",
-        f"Per-account capacity: {_FAILED}.",
-    ),
-    DeferredLeaf(
         ("rules", "treasury-transfer", "list"),
         SETTINGS,
         "failed",
@@ -2596,6 +2592,8 @@ class ListLeaf:
             validate_strategy_query(request_values)
         if variant.projection == "quotes":
             validate_quote_query(request_values)
+        if variant.projection == "account_capacity":
+            validate_capacity_query(request_values)
         window_fields = {
             option.field for option in variant.scope_options if option.window
         }

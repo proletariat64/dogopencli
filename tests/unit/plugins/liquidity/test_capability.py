@@ -261,3 +261,16 @@ def test_every_shipped_leaf_builds_a_valid_contract():
                 assert variant.total is not None
             if variant.profile == spec.PROFILE_DATED:
                 assert variant.series_field
+
+
+@pytest.mark.parametrize(
+    "scope", ['a="SYN";', 'a="SYN";a="OTHER"', 'a="SYN"unexpected', "=null"]
+)
+def test_malformed_scope_boundaries_are_rejected(scope):
+    with pytest.raises(CliError):
+        decode_scope(scope)
+
+
+def test_scope_roundtrip_preserves_delimiters_inside_native_strings():
+    values = {"aliasName": ["SYN;a=b", 'SYN-quote"'], "native": {"text": "a;b"}}
+    assert decode_scope(encode_scope(values)) == values

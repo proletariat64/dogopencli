@@ -23,6 +23,8 @@ class AcquisitionEvidence:
     total_semantics: str = "unknown"
     reasons: tuple[str, ...] = ()
     attempts: tuple[dict[str, Any], ...] = ()
+    requested_count: int | None = None
+    resolved_count: int | None = None
 
     @classmethod
     def for_collection(
@@ -79,7 +81,7 @@ class AcquisitionEvidence:
         )
 
     def record(self) -> dict[str, Any]:
-        return {
+        record = {
             "scope_complete": self.scope_complete,
             "dataset_complete": self.dataset_complete,
             "reported_total": self.reported_total,
@@ -91,6 +93,10 @@ class AcquisitionEvidence:
             "reasons": list(self.reasons),
             "attempts": list(self.attempts),
         }
+        if self.requested_count is not None:
+            record["requested_count"] = self.requested_count
+            record["resolved_count"] = self.resolved_count
+        return record
 
     @classmethod
     def from_record(cls, record: Any) -> "AcquisitionEvidence":
@@ -105,6 +111,8 @@ class AcquisitionEvidence:
             "arrivals",
             "unique_count",
             "duplicate_count",
+            "requested_count",
+            "resolved_count",
         ):
             value = record.get(key)
             if value is None and key != "collected_total":
@@ -134,7 +142,22 @@ class AcquisitionEvidence:
             total_semantics=record.get("total_semantics", "unknown"),
             reasons=tuple(reasons),
             attempts=tuple(attempts),
+            requested_count=record.get("requested_count"),
+            resolved_count=record.get("resolved_count"),
         )
+        if (evidence.requested_count is None) != (evidence.resolved_count is None) or (
+            evidence.requested_count is not None
+            and evidence.resolved_count is not None
+            and (
+                evidence.resolved_count > evidence.requested_count
+                or evidence.resolved_count != evidence.collected_total
+                or (
+                    evidence.scope_complete
+                    and evidence.resolved_count != evidence.requested_count
+                )
+            )
+        ):
+            raise CliError(INVALID_RESPONSE, "cached requested scope counts conflict")
         if (
             (
                 evidence.unique_count is not None
@@ -183,7 +206,7 @@ class AcquisitionEvidence:
             if comparable and self.reported_total
             else None
         )
-        return {
+        result = {
             "complete": self.scope_complete,
             "dataset_complete": self.dataset_complete,
             "reported_total": self.reported_total,
@@ -192,6 +215,10 @@ class AcquisitionEvidence:
             "coverage_ratio": ratio,
             "acquisition": self.record(),
         }
+        if self.requested_count is not None:
+            result["requested_count"] = self.requested_count
+            result["resolved_count"] = self.resolved_count
+        return result
 
 
 def evidence_for(result: Any) -> AcquisitionEvidence:
