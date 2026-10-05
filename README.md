@@ -718,4 +718,4 @@ rtk proxy make doc-guard test-doc-guard
 
 Batch A ([#87](https://github.com/proletariat64/dogopencli/issues/87)) 两个必需列表的注册生产 CLI UAT 已通过 **2/2**，报价组调查 **1/1**，可选列表放行 **0/1**。当前源码支持数为 **71/133**；报价组继续 unsupported。决策与转账完整刷新分别为 264 与 4,954 条，本地 Kimi 两轴复审均通过。见[本批验收证据](docs/research/general/2026-10-04-liquidity-batch-a-acceptance.md)。
 
-转账规则配置列表（[#103](https://github.com/proletariat64/dogopencli/issues/103)）使用固定租户及默认 entity 范围的一次 GET 大页（5000）。原生 ruleCount、到达数和唯一 ruleId 数一致才 complete；没有自动分页或详情爬取。`refresh liquidity rules transfer` 显式发布 settings capture，普通 `liquidity rules transfer list` 离线读取，`--live` 不写缓存。配置摘要排除动作载荷、人员及运行调度信息；已有 `get --rule-id` 保持独立。生产 CLI UAT 待验收。
+转账规则配置列表（[#103](https://github.com/proletariat64/dogopencli/issues/103)）使用固定租户及默认 entity 范围的一次 GET 大页（5000）。原生 ruleCount、到达数和唯一 ruleId 数一致才 complete；没有自动分页或详情爬取。`refresh liquidity rules transfer` 显式发布 settings capture，普通 `liquidity rules transfer list` 离线读取，`--live` 不写缓存。配置摘要排除动作载荷、人员及运行调度信息；已有 `get --rule-id` 保持独立。生产 CLI UAT 已通过，见[独立验收报告](docs/research/general/2026-10-05-liquidity-transfer-rules-uat.md)；本地 Kimi 外部源码/规格传输被自动审批拒绝，等待明确授权后审查。
