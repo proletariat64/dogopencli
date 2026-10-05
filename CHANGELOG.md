@@ -14,9 +14,20 @@ capture；分别保留池/成员账面、可用、原币、银行折算余额，
 YYYY-MM-DD 映射原生日期；无总数的单响应契约采用 pageSize=5000，不循环分页。
 原生百分比、起存金额、期限/日期及未知字段值原样保留，UTC+08:00 仅作为时间解释；
 独立 quotes-v1 缓存按完整日期范围隔离。WIN 不启用，quotes get 仍延期。
-当前分支目录为 78 supported、53 unsupported，共 131 个查询叶子；
+整合 #97 后目录为 82 supported、49 unsupported，共 131 个查询叶子；
 #98 原始四项为三项实现、一项退役；独立生产 CLI UAT 结果另行记录。
 生产 CLI UAT 结果在独立验收报告记录。
+
+#97 新增真实策略任务详情（fund/product 两类）和风险事件／告警详情，按原生身份与
+类型校验，独立刷新、离线读取，live 不写缓存。新增准确命名的 `pricing fee-orders list`，
+支持最多 31 日的有界 Service Date 范围；费用与交易币种分别保留，不作为 valuations 别名。
+
+本批被接受的候选实现 4/4：三个旧 unsupported 已解除，另新增一个费用订单叶子。
+国家／地区基础数据按用户决定从需求和目录撤除，不导入、不保留 unsupported 入口；
+撤除不计为实现。上述目录已包含 #97 与 #98；valuations 保持 unsupported。
+注册公共 CLI 生产 UAT 24/24 通过；本地检查和审查见
+[验收报告](docs/research/general/2026-10-04-liquidity-issue97-gates.md)。
+#97 已随 PR #99 合并关闭；本次未升级版本或发布包。
 
 ## v0.2.6（2026-10-04）
 

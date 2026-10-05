@@ -4,7 +4,7 @@ Observed: 2026-10-05
 Scope: general
 Status: snapshot
 
-Specification: [#98](https://github.com/proletariat64/dogopencli/issues/98), operator-confirmed QUOTED-only single-response contract. Implementation tested at `684348e`; this report separates native CLI UAT, local tests, static review and publication. The independent PR branch contains 78 supported/53 unsupported leaves, 131 total, excluding the separate #97 branch. Product-baselines was withdrawn by the operator; quote get remains unsupported. WIN is explicitly excluded because its backend is unimplemented.
+Specification: [#98](https://github.com/proletariat64/dogopencli/issues/98), operator-confirmed QUOTED-only single-response contract. Implementation tested at `684348e`; this report separates native CLI UAT, local tests, static review and publication. At that tested commit, the independent PR branch contained 78 supported/53 unsupported leaves, 131 total, excluding the separate #97 branch. Product-baselines was withdrawn by the operator; quote get remains unsupported. WIN is explicitly excluded because its backend is unimplemented.
 
 ## Verified request and source fidelity
 
@@ -41,3 +41,19 @@ Independent Standards and Spec reviews found no confirmed actionable findings. T
 Original #98 accounting is three accepted implemented candidates (pool balances, credit usage and QUOTED quotes) and one operator-withdrawn candidate (product baselines). Their production UAT remains separately documented; this quote report does not re-run the earlier two slices. No claim is made that arbitrary larger server datasets have no capacity limit. The accepted finite-range single-response contract and explicit date inputs are the supported behavior.
 
 Raw responses, actual source rates/amounts, bank/account identifiers and credentials remain private and are excluded from Git and external review. Final PR status, remote checks, merge and release are separate steps; this report does not claim a default-branch merge or version release.
+
+## Integration after PR #99 merge (2026-10-05)
+
+Master at `a1c432d` includes the accepted #97 details/fee orders and the geographic
+data withdrawal. Six conflicts were resolved while preserving both feature sets.
+The integrated catalog is 82 supported / 49 unsupported / 131 total: 57 lists,
+25 detail/history; 32 settings, 43 runtimes and 7 reference.
+
+Independent static integration review found no material regression. A broader
+regression run was interrupted at the operator's request; it is not reported as
+a full pass. Six stale assertions still expected #97's now-supported risk detail
+commands to be unsupported. They were updated to retain required-identity refusal,
+while monitoring get remains deferred and history stays unavailable. All 21 targeted
+merge checks passed, covering the 18 refusal variants, full capability registration,
+snapshot catalog and product-baseline retirement. No new production query or UAT
+was performed during integration. Earlier UAT evidence above remains separate.

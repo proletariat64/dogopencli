@@ -116,16 +116,19 @@ def test_batch_b_queries_refuse_without_browser_or_cache_access(
 
 @pytest.mark.parametrize("path,kind,scope_evidence", TARGETS)
 @pytest.mark.parametrize("action", ["get", "history"])
-def test_batch_b_lists_cannot_release_detail_or_history(
+def test_unavailable_history_and_identity_free_details_refuse(
     disconnected, run_cli, path, kind, scope_evidence, action
 ):
     cache, before = disconnected
     code, out, _ = run_cli(["liquidity", *path, action])
     envelope = parse(out)
-    assert code == (1 if action == "get" else 2)
+    # Issue #97 released risk details with a required native identity. Monitoring
+    # get remains deferred; history and identity-free risk get remain invalid.
+    deferred_get = action == "get" and path == ("rules", "monitoring")
+    assert code == (1 if deferred_get else 2)
     assert envelope["data"] is None
     assert envelope["error"]["code"] == (
-        "UNSUPPORTED_CAPABILITY" if action == "get" else "INVALID_ARGUMENT"
+        "UNSUPPORTED_CAPABILITY" if deferred_get else "INVALID_ARGUMENT"
     )
     assert (cache.read_bytes() if cache.exists() else None) == before
 

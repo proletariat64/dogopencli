@@ -147,10 +147,12 @@ SLA 是配置目标，不是观测到账耗时。
 [#87](https://github.com/proletariat64/dogopencli/issues/87) 和
 [#88](https://github.com/proletariat64/dogopencli/issues/88) 和
 [#89](https://github.com/proletariat64/dogopencli/issues/89) 和
-[#98](https://github.com/proletariat64/dogopencli/issues/98) 已实现 78 个查询叶子：
-32 settings、39 runtimes、7 reference；共 131 个查询叶子，另有 53 个延期叶子可通过帮助发现，
+[#97](https://github.com/proletariat64/dogopencli/issues/97) 和
+[#98](https://github.com/proletariat64/dogopencli/issues/98) 已实现 82 个查询叶子：
+32 settings、43 runtimes、7 reference；共 131 个查询叶子，另有 49 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
-v0.2.4 wheel 不包含新增的 swaps 列表。已实现命令的完整性、告警和后端阻塞须分别判断，
+已发布 v0.2.6 包不包含 #97/#98 的新增能力，本分支未升级版本。
+已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
 
 [#88](https://github.com/proletariat64/dogopencli/issues/88) batch B 的三个列表
@@ -378,10 +380,41 @@ CDP 9223 正式注册 CLI 生产只读 UAT：基准值 **165/165、17 页**，
 `investmentAmount` 来源标签为等值 USD，不做本地换算；`triggerDate` / `resultTime`
 为 epoch 毫秒，业务日期与 `fetched_at` 分开。用户与自由文本字段不进入输出及缓存。
 
-其余两叶子继续 unsupported：`valuations` 非空对象实际为 fee-order，
-需单独命名／兼容决策；DEPOSIT / LOAN
-账单查询仍为空，不能据此放行。没有新增 get/history；#89 保持开放。
+Batch C 的其余两叶子继续 unsupported：`valuations` 非空来源实际为 fee-order，
+由下述 #97 新命令独立表达；DEPOSIT / LOAN 账单查询仍为空，不能据此放行。
+Batch C 本身没有新增 get/history；其余目标由 #72 继续追踪。
 见[逐叶证据与继续条件](docs/research/general/2026-10-04-liquidity-batch-c-gates.md)。
+
+### #97：真实详情与费用订单
+
+新增 `investment strategy-results get`、`risk events get`、`risk anomalies get`
+三个真实详情，以及独立命名的 `pricing fee-orders list`。策略详情必填任务 ID 与
+`--task-type`，资金/产品两类分别验证；风险详情按命令验证 `RISK_EVENT` / `RISK_ALERT`。
+详情独立 refresh，离线缺失提示刷新；列表刷新不会爬取详情，live 不写缓存。
+风险子事件分页和被排除的处理历史不在单对象详情的完整性声明中。
+
+```bash
+dogopencli refresh liquidity investment strategy-results detail get --task-id TASK_ID --task-type FUND_DECISION_TASK
+dogopencli liquidity investment strategy-results get --task-id TASK_ID --task-type FUND_DECISION_TASK
+dogopencli refresh liquidity risk events detail get --risk-event-id EVENT_ID
+dogopencli liquidity risk events get --risk-event-id EVENT_ID
+dogopencli refresh liquidity risk anomalies detail get --risk-event-id ALERT_ID
+dogopencli liquidity risk anomalies get --risk-event-id ALERT_ID
+dogopencli refresh liquidity pricing fee-orders --from-date 20260801 --to-date 20260831 --require-complete
+dogopencli liquidity pricing fee-orders list --from-date 20260801 --to-date 20260831 --all
+```
+
+费用订单按包含两端的 Service Date 查询，每次最多 31 个日历日，固定发送原生
+GMT+08 查询设置。费用使用 `pricingCurrency`，交易金额使用 `currency`；金额原样保留，
+不计算投资估值。源端无时区的时间字符串不推断 UTC 偏移；旧 valuations 命令和缓存
+保持独立，不提供别名或迁移。
+
+本批被接受的四个候选已实现 **4/4**：解除三个旧 unsupported，新增一个费用订单叶子。
+原第五项国家／地区基础数据已按用户决定从需求和目录撤除，不导入，也不保留
+unsupported 入口；撤除不计为实现。整合 #97/#98 后目录共 131 项
+（82 supported / 49 unsupported）。四个详情变体和费用订单注册 CLI 生产 UAT
+共 **24/24** 通过，详见[本次证据与验证](docs/research/general/2026-10-04-liquidity-issue97-gates.md)。
+#97 已随 PR #99 合并关闭；#98 等待 PR #100 合并，尚未发布新版本。
 
 ## 缓存、实时查询与刷新
 

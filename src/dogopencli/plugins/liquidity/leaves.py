@@ -48,6 +48,7 @@ from .cash_forecast import (
 )
 from .decision_list import DECISIONS, validate_decision_query
 from .decision_list import RELEASED as DECISIONS_RELEASED
+from .fee_orders import FEE_ORDERS, validate_fee_query
 from .investment_batch import CANDIDATES as INVESTMENT_CANDIDATES
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .investment_batch import validate_quote_query, validate_strategy_query
@@ -55,6 +56,7 @@ from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import RELEASED as RISK_RELEASED
+from .risk_detail import RISK_DETAIL_SPECS
 from .spec import (
     ENC_FORM,
     ENV_BASE_RESULT,
@@ -75,6 +77,7 @@ from .spec import (
     ListSpec,
     ScopeOption,
 )
+from .strategy_detail import STRATEGY_DETAIL
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import TRANSFER_ORDERS, map_transfer_query
 
@@ -2285,13 +2288,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Bank detail: {_UNVERIFIED}.",
     ),
     DeferredLeaf(
-        ("reference", "areas", "list"),
-        REFERENCE,
-        "partial-permission",
-        "Areas: cities and countries queried; province is denied"
-        " (ILIQUIDITY_PARA_PROVINCE_QUERY).",
-    ),
-    DeferredLeaf(
         ("reference", "calendars", "get"),
         REFERENCE,
         "unverified",
@@ -2391,6 +2387,16 @@ if SWAP_ORDERS.name not in OPERATIONS_RELEASED:
         ),
     )
 
+# Issue #97 independently verified event and alert native details.
+DETAIL_SPECS += RISK_DETAIL_SPECS
+_AUDIT_DEFERRED = tuple(
+    item
+    for item in _AUDIT_DEFERRED
+    if item.path not in {(*spec.path, spec.action) for spec in RISK_DETAIL_SPECS}
+)
+
+LIST_SPECS += (FEE_ORDERS,)
+
 # Spec #88 releases only the independently verified bounded risk list scopes.
 LIST_SPECS += tuple(item for item in RISK_LIST_SPECS if item.name in RISK_RELEASED)
 # Spec #89 registers only the independently accepted investment list variants.
@@ -2409,6 +2415,13 @@ _AUDIT_DEFERRED = tuple(
         for candidate in INVESTMENT_CANDIDATES
         if candidate.name in INVESTMENT_RELEASED
     }
+)
+
+DETAIL_SPECS += (STRATEGY_DETAIL,)
+_AUDIT_DEFERRED = tuple(
+    item
+    for item in _AUDIT_DEFERRED
+    if item.path != (*STRATEGY_DETAIL.path, STRATEGY_DETAIL.action)
 )
 
 # Spec #76 replaces old cash/forecast deferrals, not other domains' contracts.
@@ -2533,6 +2546,8 @@ class ListLeaf:
             validate_risk_query(request_values)
         if variant.projection == "transfer_orders":
             map_transfer_query(request_values)
+        if variant.projection == "fee_orders":
+            validate_fee_query(request_values)
         if variant.projection == "strategy_results":
             validate_strategy_query(request_values)
         if variant.projection == "quotes":
@@ -2715,6 +2730,7 @@ def detail_query_node(leaf: DetailLeaf) -> BizNode:
                     option.summary,
                     "str",
                     required=True,
+                    choices=option.choices,
                 )
                 for option in detail.identity
             ),
@@ -2796,6 +2812,7 @@ def refresh_detail_node(leaf: DetailLeaf) -> BizNode:
                 option.summary,
                 "str",
                 required=True,
+                choices=option.choices,
             )
             for option in detail.identity
         ),
