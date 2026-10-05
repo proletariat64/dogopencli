@@ -15,7 +15,7 @@ recorded here. Counts describe this observation, not a frozen enumeration.
   scalar fields aligned between native data and the CLI projection.
 - Metadata reported `kind=reference`, `complete=true`, `reported_total=null`.
 - Explicit refresh followed by disconnected offline list reused the same capture
-  and fetched_at (`2026-10-05T10:31:01.866566+00:00`), with no browser access.
+  and fetched_at (`2026-10-05T10:33:20.309583+00:00`), with no browser access.
 - Live inquiry left the real SQLite database byte hashes unchanged.
 
 The first authentication readiness attempt timed out. After a fresh healthy
@@ -29,7 +29,12 @@ identical arrivals as incomplete, strict rollback, safe partial publication,
 complete empty replacement, legacy schema separation and independent factor-values
 captures. These negative/empty checks do not claim corresponding production scopes.
 
-Existing factor-values native production smoke is coordinated separately by the
-root agent. Rules monitoring remains HOLD; factors get and broader pricing
-calculations are outside this delivery. Review and release status remain separate
-from the passing new-list production UAT.
+Existing factor-values native production smoke also passed: the verified
+20261004 single-day scope was explicitly refreshed and read through its public CLI.
+A subsequent factor-definitions refresh preserved the same factor-values capture
+and its runtimes kind. This checks the existing value contract and cache isolation
+without claiming broader factor-values date coverage. Rules monitoring remains HOLD; factors get and broader pricing
+calculations are outside this delivery. Standards/Spec review and release status remain separate
+from the passing new-list production UAT. Local Kimi review remains blocked by
+automatic approval review of external source/spec transfer; no Kimi confidence
+is claimed.

@@ -210,6 +210,7 @@ def test_discovery_kind_factor_values_and_get_boundaries(setup, run_cli):
     assert PRICING_FACTOR_VALUES.endpoint == "/costFactorList.json"
     code, out, err = run_cli(["describe", *ROOT, "list"])
     assert code == 0, err
+    assert parse(out)["read_guide"]["live_verified"] == "2026-10-05"
     assert "factor-definitions-v1" in out and "reference" in out
     assert "description" in out and "englishName" in out
     code, out, _ = run_cli([*ROOT, "get"])
