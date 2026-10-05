@@ -32,6 +32,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 target-version = "py310"
+extend-exclude = [".qoder"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

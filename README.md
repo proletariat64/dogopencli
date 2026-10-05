@@ -697,13 +697,18 @@ path = "/absolute/path/to/channel-dataset"
 
 ## 开发与文档
 
-在仓库根目录安装开发依赖并运行检查。仓库开发命令统一使用 `rtk`：
+每个新工作树先在其根目录执行 `make bootstrap`。需要已安装的 Python
+（3.10 或以上）和 uv；bootstrap 不下载 Python。依赖版本由 `uv.lock` 固定，
+使用 uv 共享缓存和硬链接。首次创建环境时，也复用主工作树 `.venv` 中
+Python 版本一致且符合锁文件的依赖，避免重复下载已有包。各工作树拥有
+独立 `.venv` 和源码绑定，并在结束时验证导入路径。重复运行可补齐依赖。
+缓存与工作树须在同一文件系统；可用 `UV_CACHE_DIR` 指定共享缓存目录。
+已有环境中的额外包保留。仓库开发命令统一使用 `rtk`：
 
 ```bash
-rtk proxy python -m pip install -e '.[dev]'
-rtk pytest -q
-rtk proxy ruff check .
-rtk proxy ruff format --check .
+rtk proxy make bootstrap
+rtk proxy make test
+rtk proxy make lint
 rtk proxy make doc-guard test-doc-guard
 ```
 
