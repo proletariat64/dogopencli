@@ -23,6 +23,8 @@ from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .realtime_network import REALTIME_NETWORK
 from .realtime_network import SAMPLED_FIELDS as NETWORK_FIELDS
+from .rfqs import RFQS
+from .rfqs import SAMPLED_FIELDS as RFQ_FIELDS
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import FIELDS as RISK_FIELDS
 from .risk_batch import RELEASED as RISK_RELEASED
@@ -3473,3 +3475,6 @@ SAMPLED_FIELDS[TRANSFER_RULES.name] = {
     field: "native value" for field in TRANSFER_RULE_FIELDS
 }
 SAMPLED_FIELDS[TRANSFER_RULES.name]["ruleId"] = "str"
+
+# Native TARGET_RFQ subtask evidence observed 2026-10-05.
+SAMPLED_FIELDS[RFQS.name] = RFQ_FIELDS

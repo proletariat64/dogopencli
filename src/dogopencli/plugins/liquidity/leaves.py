@@ -55,6 +55,7 @@ from .investment_batch import validate_quote_query, validate_strategy_query
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .realtime_network import REALTIME_NETWORK
+from .rfqs import RFQS, validate_rfq_query
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import RELEASED as RISK_RELEASED
 from .risk_detail import RISK_DETAIL_SPECS
@@ -2503,6 +2504,9 @@ DEFERRED = tuple(
 )
 
 
+LIST_SPECS += (RFQS,)
+DEFERRED = tuple(item for item in DEFERRED if item.path != (*RFQS.path, "list"))
+
 # --- leaf registry -----------------------------------------------------------
 
 
@@ -2581,6 +2585,8 @@ class ListLeaf:
             validate_strategy_query(request_values)
         if variant.projection == "quotes":
             validate_quote_query(request_values)
+        if variant.projection == "rfq_subtasks":
+            validate_rfq_query(request_values)
         window_fields = {
             option.field for option in variant.scope_options if option.window
         }
