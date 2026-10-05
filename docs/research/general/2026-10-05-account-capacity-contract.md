@@ -77,8 +77,9 @@ slicing, help/describe/snapshot, source-time interpretation and special query
 characters. All fixtures and identifiers are invented.
 
 Focused pytest, lint, format, document guard, independent review, production UAT
-and remote CI are distinct gates. Independent production public CLI UAT must
-verify at least three explicit native aliases, all ten projected fields and
-echo, strict complete refresh, disconnected reads of that same capture, and live
-SQLite byte hash isolation before this ticket is closed. No production records,
+and remote CI are distinct gates. Independent production public CLI UAT passed
+for three explicit native aliases, all ten projected fields and echo, strict
+complete refresh, disconnected reads of that same capture, and live SQLite/WAL
+byte hash isolation. See the [integrated acceptance record](2026-10-05-liquidity-batch-f-acceptance.md).
+No production records,
 account identifiers, tokens or browser profiles are stored in this report.

@@ -6,7 +6,11 @@ Status: snapshot
 
 Native inquiry evidence is described in issue #112. This document covers
 Liquidity `investment rfqs list`, fixed TARGET_RFQ and explicit dates.
-Implementation has fake CDP acceptance; independent production CLI UAT is pending.
+Implementation has fake CDP acceptance and independent production CLI UAT:
+one complete TARGET_RFQ subtask in the 2026-01-01 through 2026-10-05 scope,
+all 17 fields checked against the same native response, disconnected
+same-capture reads and live cache hashes unchanged. See the
+[integrated acceptance record](2026-10-05-liquidity-batch-f-acceptance.md).
 
 The inquiry sends a JSON POST to the allowlisted Liquidity origin at
 `/rfq/subInquiryTask/querySubInquiryTask.json`. `rowStart=0`, `pageSize=5000`
