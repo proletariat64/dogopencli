@@ -283,10 +283,12 @@ class LiquidityListCapability:
         seen_raw: dict[tuple[str, ...], str] = {}
         for row in rows:
             identity = self.identity_key(row)
-            if self._spec.projection == "transfer_rules":
+            if self._spec.projection in {"transfer_rules", "factor_definitions"}:
                 content = canonical(row)
                 if identity in seen_raw and seen_raw[identity] != content:
-                    raise _invalid("conflicting content for transfer rule identity")
+                    if self._spec.projection == "transfer_rules":
+                        raise _invalid("conflicting content for transfer rule identity")
+                    raise _invalid("conflicting native factor definition content")
                 seen_raw[identity] = content
         if self._spec.projection:
             rows = [project_record(self._spec.projection, row) for row in rows]
