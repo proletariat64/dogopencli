@@ -323,13 +323,42 @@ UTC+08:00 解释，仍保留原生字符串，请求 `timeZone=null` 不变。
 WIN 后台未实现，首版不提供；quotes get 仍延期。详见
 [报价读取契约](docs/design/liquidity-quotes-v0.1.0.md)。
 
-没有已验证查询合同的叶子继续延期，如 wallets、
-forecast accuracy、risk sla list、quote-groups；
+没有已验证查询合同的叶子继续延期，如 wallets、quote-groups；
 独立验证过的详情不受此影响。
 [#98 本轮核验](docs/research/general/2026-10-04-liquidity-issue98-gates.md)记录池余额、
 授信使用、产品基线和报价的逐项门槛；调查记录不等于新增能力或生产 CLI UAT。
 [证据与未验证事项](docs/research/general/2026-10-01-liquidity-live-probes.md)，
 [缓存决策](docs/adr/0016-liquidity-independent-list-and-detail-caches.md)。
+
+### 四项有界列表（Batch F，#109–#112）
+
+`risk sla list` 读取风险 SLA 配置摘要，固定一次 5000 大页，按原生总数和
+`slaConfigId` 核对覆盖。列表不包含尚未证明 populated 的规则数组，也不爬取详情。
+`forecast accuracy list` 必填单个 `--account` 和 `--record-date YYYY-MM-DD`，
+一次最多 100 条基础记录，每条关联原生准确率指标；创建查询日与 `valueDate` 分开，
+不计算本地百分比。`risk account-capacity list` 必填 1–10 个不同 `--account`，
+只查询明确集合；没有原生全账户总数，也不自动发现账户。`availableResource`
+与 `outFlowCapacity` 分开保留。`investment rfqs list` 仅支持 TARGET_RFQ，
+必填 `--from-date/--to-date YYYY-MM-DD`；子任务 `inquirySubTaskId` 与父引用
+`inquiryTaskId` 分开，同父不同子任务均保留，FULL_RANGE_RFQ 不启用。
+
+```bash
+dogopencli refresh liquidity risk sla --require-complete
+dogopencli liquidity risk sla list --all
+dogopencli refresh liquidity forecast accuracy --account ACCOUNT_ALIAS --record-date 2026-10-05 --require-complete
+dogopencli liquidity forecast accuracy list --account ACCOUNT_ALIAS --record-date 2026-10-05 --all
+dogopencli refresh liquidity risk account-capacity --account ACCOUNT_ALIAS_A --account ACCOUNT_ALIAS_B --require-complete
+dogopencli liquidity risk account-capacity list --account ACCOUNT_ALIAS_B --account ACCOUNT_ALIAS_A --all
+dogopencli refresh liquidity investment rfqs --from-date 2026-01-01 --to-date 2026-10-05 --require-complete
+dogopencli liquidity investment rfqs list --from-date 2026-01-01 --to-date 2026-10-05 --all
+```
+
+默认离线、显式 refresh 原子发布，`--live` 不写库、不回退。SLA 使用 settings
+snapshot；其余三项使用按 capture 时间保留的 runtimes history，精确 scope 不混合。
+原生金额、计数、状态和时间保持原值，未证明的来源时区保持 unknown。
+rules monitoring 继续 HOLD。详见
+[四项读取契约](docs/design/liquidity-batch-f-v0.1.0.md)和
+[逐叶验收记录](docs/research/general/2026-10-05-liquidity-batch-f-acceptance.md)。
 
 决策列表的启动时间与创建时间分别使用原生 `YYYY-MM-DD HH:mm:ss` 闭区间；
 四个边界均必填。转账列表使用原生交易日期 `YYYYMMDD` 闭区间；

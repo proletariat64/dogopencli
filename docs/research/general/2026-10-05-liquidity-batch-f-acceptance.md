@@ -1,8 +1,11 @@
 # Liquidity Batch F: four bounded inquiry lists
 
 Observed: 2026-10-05
-Scope: issues #109–#112 on the shared Batch F implementation branch.
-Status: implementation and independent production CLI UAT pending.
+Scope: general
+Status: snapshot
+
+Implementation scope: issues #109–#112 on the shared Batch F branch.
+Implementation and independent production CLI UAT are pending.
 
 The authoritative specifications are [#109](https://github.com/proletariat64/dogopencli/issues/109),
 [#110](https://github.com/proletariat64/dogopencli/issues/110),
