@@ -148,10 +148,12 @@ SLA 是配置目标，不是观测到账耗时。
 [#88](https://github.com/proletariat64/dogopencli/issues/88) 和
 [#89](https://github.com/proletariat64/dogopencli/issues/89) 和
 [#97](https://github.com/proletariat64/dogopencli/issues/97) 和
-[#98](https://github.com/proletariat64/dogopencli/issues/98) 已实现 82 个查询叶子：
-32 settings、43 runtimes、7 reference；共 131 个查询叶子，另有 49 个延期叶子可通过帮助发现，
+[#98](https://github.com/proletariat64/dogopencli/issues/98) 和
+[#105](https://github.com/proletariat64/dogopencli/issues/105) 已实现 83 个查询叶子：
+32 settings、43 runtimes、8 reference；共 131 个查询叶子，另有 48 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.7 包含 #97/#98 的新增能力；具体支持范围与生产验收结果见下文。
+#105 因子类型定义目录属于 reference，CLI 生产 UAT 状态见[独立契约](docs/research/general/2026-10-05-factor-definitions-contract.md)。
 已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
 
@@ -717,3 +719,5 @@ rtk proxy make doc-guard test-doc-guard
 契约与 UAT 报告记录特定日期、账号权限下的验证结果；生产行为变化后需要重新验证。
 
 Batch A ([#87](https://github.com/proletariat64/dogopencli/issues/87)) 两个必需列表的注册生产 CLI UAT 已通过 **2/2**，报价组调查 **1/1**，可选列表放行 **0/1**。当前源码支持数为 **71/133**；报价组继续 unsupported。决策与转账完整刷新分别为 264 与 4,954 条，本地 Kimi 两轴复审均通过。见[本批验收证据](docs/research/general/2026-10-04-liquidity-batch-a-acceptance.md)。
+
+#105 因子类型定义的生产 UAT 与已授权 Kimi 静态审查已通过（confidence 4/5）；审查源码为 [fe33524](https://github.com/proletariat64/dogopencli/commit/fe335248961838db52a0a263f10eff61abe7de1c)，测试与生产 UAT 由 root 独立完成，见[验收报告](docs/research/general/2026-10-05-factor-definitions-uat.md)。后续纯文档提交未宣称经过 Kimi 复审。

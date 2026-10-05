@@ -976,6 +976,14 @@ def _project_quotes(row: Any) -> dict[str, Any]:
     return _pick(record, QUOTE_FIELDS)
 
 
+def _project_factor_definitions(row: Any) -> dict[str, Any]:
+    record = _require_row(row, "factor_definitions")
+    code = record.get("code")
+    if not isinstance(code, str) or not code.strip():
+        raise _invalid("factor_definitions.code: expected nonempty native string")
+    return _pick(record, ("code", "description", "englishName"))
+
+
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "strategy_detail": project_strategy_detail,
     "groups_settings": _project_groups_settings,
@@ -997,6 +1005,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "strategy_results": _project_strategy_results,
     "benchmark_values": _project_benchmark_values,
     "quotes": _project_quotes,
+    "factor_definitions": _project_factor_definitions,
     "fee_orders": project_fee_order,
 }
 

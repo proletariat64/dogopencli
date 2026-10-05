@@ -31,6 +31,12 @@ from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
 from .transfer_list import TRANSFER_ORDERS
 
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
+    # Observed 2026-10-05; sampled label types are not validation guarantees.
+    "liquidity.pricing.factors.list": {
+        "code": "str",
+        "description": "str",
+        "englishName": "str",
+    },
     "liquidity.cash.credit-usage.list": {
         "id": "str",
         "creditLineType": "str",

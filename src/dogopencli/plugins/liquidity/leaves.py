@@ -805,6 +805,34 @@ PRICING_FACTOR_VALUES = ListSpec(
     ),
 )
 
+PRICING_FACTORS = ListSpec(
+    path=("pricing", "factors"),
+    kind=REFERENCE,
+    title="pricing factor type definitions",
+    endpoint="/getPriceEnv.json",
+    method="GET",
+    envelope=ENV_RESULT_FLAG,
+    container=("result", "data", "factorTypes"),
+    identity=("code",),
+    pagination=PAGE_SINGLE,
+    paged_request=False,
+    profile=PROFILE_SNAPSHOT,
+    template={"tntInstId": TENANT},
+    table_columns=("code", "description", "englishName"),
+    projection="factor_definitions",
+    require_inner_success=True,
+    schema_version="factor-definitions-v1",
+    notes=(
+        "Native factor type definitions are reference dimensions, not maintained"
+        " pricing rules or observed factor values. Labels remain raw; missing,"
+        " null and empty labels stay distinct. Native code is the identity.",
+        "Observed 2026-10-05: single unpaginated factorTypes enumeration;"
+        " no native total or definition timestamp. New codes are accepted.",
+        "Only getPriceEnv factorTypes is read; queryCostParameters is not a"
+        " fallback. Factor-values keeps its independent runtime contract/cache.",
+    ),
+)
+
 # --- settings leaf specifications ----------------------------------------
 
 INVESTMENT_PRODUCTS = ListSpec(
@@ -1413,6 +1441,7 @@ LIST_SPECS: tuple[ListSpec, ...] = (
     PRICING_CLIENT_PRICES,
     PRICING_COST_PRICES,
     PRICING_FACTOR_VALUES,
+    PRICING_FACTORS,
     PRICING_STRATEGIES,
     LEDGER_CUSTOMERS,
     LEDGER_ACCOUNTS,
@@ -2225,12 +2254,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Client-price detail: {_UNVERIFIED}.",
     ),
     DeferredLeaf(
-        ("pricing", "factors", "list"),
-        SETTINGS,
-        "unverified",
-        f"Pricing factors: {_UNVERIFIED}.",
-    ),
-    DeferredLeaf(
         ("pricing", "factors", "get"),
         SETTINGS,
         "unverified",
@@ -2878,7 +2901,10 @@ _GROUP_TITLES: dict[tuple[str, ...], str] = {
     ("rules",): "Liquidity routing, risk and notification rules.",
     ("network",): "Account network baselines and capabilities.",
     ("ledger",): "Ledger customers, accounts and balances.",
-    ("pricing",): "Client/cost prices, factor values and pricing strategies.",
+    ("pricing",): (
+        "Client/cost prices, factor type definitions, factor values and"
+        " pricing strategies."
+    ),
     ("reference",): "Reference banks, business lines, calendars and entities.",
 }
 
