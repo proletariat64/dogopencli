@@ -6,11 +6,14 @@ liquidity-v0.2.3.md): settings projections strip balance/used/available/
 capacity fields including nested members; runtime projections keep native
 amounts and native observation times without deriving, summing or scaling.
 
-Amount precision is preserved (no /100). Accepted amount values: null, empty
-string, decimal numeric string, int and finite Decimal; bool, float,
-containers and non-decimal garbage strings (including NaN/Infinity) raise
-INVALID_RESPONSE. Zero, empty string and null stay distinct — projections
-never replace one with another. Missing member lists stay absent and null
+Amount precision is preserved (no /100). Projections using amount validation
+accept null, empty string, decimal numeric string, int and finite Decimal;
+bool, float, containers and non-decimal strings (including NaN/Infinity)
+raise INVALID_RESPONSE. Credit usage deliberately skips business-value
+validation: its projected amounts, currencies and unknown values remain raw,
+with only reading-protocol, identity, parent-link and tenant checks.
+Zero, empty string and null stay distinct — projections never replace one
+with another. Missing member lists stay absent and null
 member lists stay null (never replaced by an empty list). Nested member and
 rule identities must be non-empty str/int, unique within their parent, and
 their parent echo (bankAccountGroupId/cashPoolId/creditLineId/
