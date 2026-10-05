@@ -3,8 +3,10 @@
 Authoritative specification: [issue #98](https://github.com/proletariat64/dogopencli/issues/98),
 2026-10-05 credit-usage clarification. The [source and operator evidence](../research/general/2026-10-05-credit-usage-semantics.md)
 is separate from production CLI UAT. Only credit-usage is added in this slice;
-pool-balances was delivered earlier, while product baselines and quotes remain
-unsupported. #98 stays open. No version bump is included.
+pool-balances was delivered earlier. The operator retired unused product-baselines
+and its list/get catalog entries; quotes is the only remaining deferred candidate.
+The original four candidates are two delivered, one retired and one deferred.
+#98 stays open. No version bump is included.
 
 ## Inquiry and capture
 
