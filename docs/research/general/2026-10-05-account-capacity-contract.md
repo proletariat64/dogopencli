@@ -4,7 +4,7 @@ Observed: 2026-10-05
 Scope: general
 Status: snapshot
 
-Implementation contract; independent production public CLI UAT pending.
+Implementation contract; independent production public CLI UAT passed.
 
 [#111](https://github.com/proletariat64/dogopencli/issues/111) records successful
 native capacity objects for three explicitly selected aliases. The saved UI
