@@ -8,6 +8,17 @@ Specification: [#98](https://github.com/proletariat64/dogopencli/issues/98), par
 [#72](https://github.com/proletariat64/dogopencli/issues/72). Independent baseline:
 `c15e35f` / v0.2.6, 75 supported and 58 unsupported leaves (133 total).
 
+## Subsequent business clarification (2026-10-05)
+
+The pool-balance semantics assessment below records the evidence available on
+2026-10-04. The user subsequently clarified account currency versus bank-converted
+currency, prior-statement closing balances, shared liquidity and the independent
+pool-level value date. Pool/member sum equality and synchronized member dates
+must not be release prerequisites for an honest native snapshot. See
+[the clarification and bank/knowledge-base research](2026-10-05-cash-pool-semantics.md).
+This supersedes those broad semantic blockers for `cash pool-balances list`;
+it does not claim that the command has been implemented or passed production UAT.
+
 ## Delivery boundary
 
 This change records current native evidence and updates deferred reasons. No
