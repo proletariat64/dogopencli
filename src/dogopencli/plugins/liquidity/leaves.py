@@ -2034,7 +2034,12 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("operations", "rule-status", "list"),
         RUNTIMES,
         "unverified",
-        f"Rule status: {_UNVERIFIED}.",
+        "Rule status: 2026-10-06 native configuration and task pages plus"
+        " static call inspection establish no independent runtime-list"
+        " caller, payload or identity; configuration RUN/PAUSE is not one"
+        " execution or an actual transaction result, and existing rule"
+        " configuration and decision task lists are not renamed as rule"
+        " status.",
     ),
     DeferredLeaf(
         ("operations", "swaps", "list"),
