@@ -39,6 +39,8 @@
 
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
+| General | [明确账户容量列表契约](research/general/2026-10-05-account-capacity-contract.md) | #111：显式账户集合、原生容量字段、完整性与独立缓存边界；生产 CLI UAT 单独验收 |
+| General | [TARGET_RFQ 子任务列表契约](research/general/2026-10-05-target-rfq-subtask-contract.md) | #112：固定 TARGET_RFQ、双端日期、子任务身份、完整性与独立缓存边界；生产 CLI UAT 单独验收 |
 | General | [Issue #98 列表能力核验](research/general/2026-10-04-liquidity-issue98-gates.md) | 10 月 4 日历史快照：4/4 已评估、0/4 启用；10 月 5 日池余额、授信使用及[报价](research/general/2026-10-05-quotes-uat.md)已通过生产 UAT，产品基线按用户确认退役，原四项目标为 3 项验收、1 项退役 |
 | General | [Liquidity Batch C 投资查询与剩余门槛](research/general/2026-10-04-liquidity-batch-c-gates.md) | #89：基准值与策略结果已启用，交付 2/4；计价估值与账单保持 unsupported，规格继续开放 |
 | General | [Liquidity #97 详情与费用订单验收](research/general/2026-10-04-liquidity-issue97-gates.md) | 三个真实详情与独立费用订单，被接受候选 4/4，CLI UAT 24/24；国家／地区基础数据已按用户决定从需求和目录撤除 |
