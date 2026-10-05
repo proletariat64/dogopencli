@@ -4,7 +4,7 @@ Observed: 2026-10-05
 Scope: general
 Status: snapshot
 
-Evidence scope: Fixed Liquidity tenant and native default debit/credit entity scope. Implementation and synthetic CLI acceptance; independent production CLI UAT pending. Times are Asia/Shanghai.
+Evidence scope: Fixed Liquidity tenant and native default debit/credit entity scope. Implementation and synthetic CLI acceptance; independent production CLI UAT passed; see [the sanitized UAT report](2026-10-05-liquidity-transfer-rules-uat.md). Times are Asia/Shanghai.
 
 Authoritative specification: [issue #103](https://github.com/proletariat64/dogopencli/issues/103), under [#72](https://github.com/proletariat64/dogopencli/issues/72). The issue records the new native ruleCount evidence; historical small-page overlap remains a historical limitation.
 
@@ -19,3 +19,5 @@ Settings capture uses the versioned `transfer-rules-v1` namespace and existing r
 Synthetic tests exercise the public CLI through fake CDP with temporary real SQLite. They cover exact single GET/VO, projection, raw conflicts, identity/tenant/envelope/total failures, authentication and permission failures, complete empty success, safe partial and strict rejection, unchanged cache on hard failure/live, offline capture consistency and independent get. Examples use invented SYN identifiers only. Native production records, credentials and identifiers are excluded from Git and review materials.
 
 Production acceptance must separately compare full native identity/count/projection evidence with public CLI refresh, compare offline to that same capture, verify live database immutability and preserve a seeded genuine detail cache. A native probe or passing local test is not production CLI UAT.
+
+Local Kimi review is blocked by automatic approval review of external source/spec transfer. No Kimi confidence is claimed.
