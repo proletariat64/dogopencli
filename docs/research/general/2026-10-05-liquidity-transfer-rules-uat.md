@@ -22,7 +22,9 @@ cache separation. They do not establish future offset pagination, transfer
 execution, arbitrary filters or deferred rules. Synthetic malformed/empty/partial
 cases remain fake-CDP acceptance rather than invented production scopes.
 
-Standards/Spec review and remote CI are separate gates. Local Kimi review remains
-blocked by automatic approval review of external source/spec transfer; no Kimi
-confidence is claimed. This branch does not merge, publish or close #72; rules
+User authorization for local Kimi/API source-spec transfer was granted on 2026-10-05. The actual static Standards/Spec review of [source commit `b622caf`](https://github.com/proletariat64/dogopencli/commit/b622cafc8ffa06295e4dab8e37e9533963eac8c3) completed successfully with no confirmed correctness/spec defects; confidence: 4/5. Tests, lint, graph analysis and production UAT were run independently by the root coordinator, not by Kimi. This subsequent documentation-only commit is not claimed to have been re-reviewed by Kimi. Remote CI remains a separate gate. This branch does not merge, publish or close #72; rules
 monitoring remains HOLD.
+
+The earlier automatic approval rejection is historical: the user subsequently
+authorized the source/spec transfer, enabling this completed review. The initial ten-minute review attempt timed out; a five-minute continuation
+completed with exit code 0 and produced the final review.

@@ -20,4 +20,4 @@ Synthetic tests exercise the public CLI through fake CDP with temporary real SQL
 
 Production acceptance must separately compare full native identity/count/projection evidence with public CLI refresh, compare offline to that same capture, verify live database immutability and preserve a seeded genuine detail cache. A native probe or passing local test is not production CLI UAT.
 
-Local Kimi review is blocked by automatic approval review of external source/spec transfer. No Kimi confidence is claimed.
+User authorization for local Kimi/API source-spec transfer was granted on 2026-10-05. The actual static Standards/Spec review of [source commit `b622caf`](https://github.com/proletariat64/dogopencli/commit/b622cafc8ffa06295e4dab8e37e9533963eac8c3) completed successfully with no confirmed correctness/spec defects; confidence: 4/5. Tests, lint, graph analysis and production UAT were run independently by the root coordinator, not by Kimi. This subsequent documentation-only commit is not claimed to have been re-reviewed by Kimi.
