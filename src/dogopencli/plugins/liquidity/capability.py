@@ -232,6 +232,10 @@ class LiquidityListCapability:
             from .investment_batch import strategy_wire_dates
 
             strategy_wire_dates(body)
+        if self._spec.projection == "quotes":
+            from .investment_batch import quote_wire_dates
+
+            quote_wire_dates(body)
         return body
 
     def parse_rows(self, body: bytes) -> tuple[list[dict[str, Any]], int | None]:

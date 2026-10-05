@@ -55,6 +55,43 @@ def _source_guide(
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.projection == "quotes":
+        schema["additionalProperties"] = False
+        schema["x-source-timezone"] = "UTC+08:00"
+        schema["x-coverage"] = (
+            "single response for the exact requested value-date scope"
+        )
+        schema["x-business-validation"] = "none; source values preserved"
+        properties = schema["properties"]
+        meanings = {
+            "quotationOrderId": "Native quotation identity; no inferred revision.",
+            "inquiryId": "Inquiry reference; not the identity of a quote.",
+            "quote": "Native percent value, preserved without scaling or calculation.",
+            "tenor": (
+                "Native tenor; O/N means Overnight. No date arithmetic is checked."
+            ),
+            "ticketSize": "Minimum deposit amount in the source currency.",
+            "curMaxLimitAvailable": (
+                "Native source field; business definition remains unconfirmed."
+            ),
+            "valueDate": (
+                "Native value date, distinct from capture time and request bounds."
+            ),
+        }
+        for field, meaning in meanings.items():
+            properties[field]["description"] = meaning
+        for field in ("quote", "tenor", "ticketSize"):
+            properties[field]["x-evidence"]["meaning"] = "operator confirmed 2026-10-05"
+        properties["quote"]["x-unit"] = "percent"
+        properties["quote"]["x-evidence"]["unit"] = "operator confirmed 2026-10-05"
+        properties["ticketSize"]["x-currency"] = "currency"
+        for field in ("quotationTime", "inquiryTime"):
+            properties[field]["x-timezone"] = "UTC+08:00"
+            properties[field]["description"] = (
+                "Native time string, interpreted in operator-confirmed UTC+08:00;"
+                " not converted or replaced by capture time."
+            )
+        return schema
     if item.projection == "credit_usage":
         schema["additionalProperties"] = False
         schema["x-member-identity"] = ["id", "bankAccountCreditLineList[].id"]
@@ -271,7 +308,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                 capability,
                 contract,
                 "2026-10-05"
-                if variant.projection in {"pool_balances", "credit_usage"}
+                if variant.projection in {"pool_balances", "credit_usage", "quotes"}
                 else DECISION_VERIFIED_DATE
                 if variant.name == DECISIONS.name
                 else "2026-10-04"

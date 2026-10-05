@@ -9,9 +9,10 @@ amounts and native observation times without deriving, summing or scaling.
 Amount precision is preserved (no /100). Projections using amount validation
 accept null, empty string, decimal numeric string, int and finite Decimal;
 bool, float, containers and non-decimal strings (including NaN/Infinity)
-raise INVALID_RESPONSE. Credit usage deliberately skips business-value
-validation: its projected amounts, currencies and unknown values remain raw,
-with only reading-protocol, identity, parent-link and tenant checks.
+raise INVALID_RESPONSE. Credit usage and quotes deliberately skip business-value
+validation: their projected amounts, currencies and unknown values remain raw,
+with reading-protocol and identity checks, plus parent-link/tenant checks
+where applicable to the source contract.
 Zero, empty string and null stay distinct — projections never replace one
 with another. Missing member lists stay absent and null
 member lists stay null (never replaced by an empty list). Nested member and
@@ -962,6 +963,16 @@ def _project_strategy_results(row: Any) -> dict[str, Any]:
     return _pick(record, STRATEGY_FIELDS)
 
 
+def _project_quotes(row: Any) -> dict[str, Any]:
+    from .investment_batch import QUOTE_FIELDS
+
+    record = _require_row(row, "quotes")
+    identity = record.get("quotationOrderId")
+    if not isinstance(identity, str) or not identity.strip():
+        raise _invalid("quotes.quotationOrderId: expected nonempty native string")
+    return _pick(record, QUOTE_FIELDS)
+
+
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "groups_settings": _project_groups_settings,
     "group_balances": _project_group_balances,
@@ -979,6 +990,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "decision_reports": project_decision_record,
     "strategy_results": _project_strategy_results,
     "benchmark_values": _project_benchmark_values,
+    "quotes": _project_quotes,
 }
 
 

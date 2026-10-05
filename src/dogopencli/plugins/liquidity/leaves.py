@@ -50,7 +50,7 @@ from .decision_list import DECISIONS, validate_decision_query
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .investment_batch import CANDIDATES as INVESTMENT_CANDIDATES
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
-from .investment_batch import validate_strategy_query
+from .investment_batch import validate_quote_query, validate_strategy_query
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
@@ -2043,17 +2043,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"RFQ detail: {_IDENTITY}.",
     ),
     DeferredLeaf(
-        ("investment", "quotes", "list"),
-        RUNTIMES,
-        "contract-unverified",
-        "Quotes (#98, 2026-10-05): authorized 20260101-20261005 scope returned"
-        " 338 unique QUOTED identities and 0 WIN rows, without totalCount."
-        " Offset/page-size changes returned the same 338 rows; the 20260820"
-        " single-day scope returned its 270-row subset. A reliable bounded"
-        " full-response contract/server cap, supported variants and native"
-        " timestamp/zone metadata remain unverified (caller timeZone was null).",
-    ),
-    DeferredLeaf(
         ("investment", "quotes", "get"),
         RUNTIMES,
         "unverified",
@@ -2546,6 +2535,8 @@ class ListLeaf:
             map_transfer_query(request_values)
         if variant.projection == "strategy_results":
             validate_strategy_query(request_values)
+        if variant.projection == "quotes":
+            validate_quote_query(request_values)
         window_fields = {
             option.field for option in variant.scope_options if option.window
         }

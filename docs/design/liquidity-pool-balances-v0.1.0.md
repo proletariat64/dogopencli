@@ -54,7 +54,8 @@ capture; production has no verified BANK empty-scope filter, so this protocol is
 covered with fake CDP without inventing a production scope.
 
 Pool-balances and credit-usage are enabled from #98. The operator retired unused
-product-baselines, including both list/get catalog entries; quotes is the only
-remaining deferred candidate. The original four candidates are two delivered,
-one retired and one deferred; #98 stays open. No version bump or release is part
-of this change.
+product-baselines, including both list/get catalog entries; the QUOTED list is
+implemented separately under its own
+[quote contract](liquidity-quotes-v0.1.0.md), with production UAT tracked separately.
+The original four candidates are three implemented and one retired. No version
+bump or release is part of this change.

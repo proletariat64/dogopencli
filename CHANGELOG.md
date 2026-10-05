@@ -10,8 +10,12 @@ capture；分别保留池/成员账面、可用、原币、银行折算余额，
 币种、共享标志及显示分组；不执行业务金额、币种或时间校验，不改写来源值。
 使用观察时间 unknown，旧 credit-lines settings 字段及缓存不变。
 按用户确认移除已停用的 `network product-baselines list/get` 目录项。
-当前分支目录为 77 supported、54 unsupported，共 131 个查询叶子；
-#98 原始四项为两项交付、一项退役、一项报价延期，#98 保持开放。
+新增 `investment quotes list`：仅 QUOTED，`--from-date/--to-date` 必填，
+YYYY-MM-DD 映射原生日期；无总数的单响应契约采用 pageSize=5000，不循环分页。
+原生百分比、起存金额、期限/日期及未知字段值原样保留，UTC+08:00 仅作为时间解释；
+独立 quotes-v1 缓存按完整日期范围隔离。WIN 不启用，quotes get 仍延期。
+当前分支目录为 78 supported、53 unsupported，共 131 个查询叶子；
+#98 原始四项为三项实现、一项退役；独立生产 CLI UAT 结果另行记录。
 生产 CLI UAT 结果在独立验收报告记录。
 
 ## v0.2.6（2026-10-04）
