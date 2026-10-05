@@ -55,6 +55,52 @@ def _source_guide(
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.projection == "credit_usage":
+        schema["additionalProperties"] = False
+        schema["x-member-identity"] = ["id", "bankAccountCreditLineList[].id"]
+        schema["x-usage-observation-time"] = "unknown"
+        schema["x-business-validation"] = "none; source values preserved"
+        meanings = {
+            "currency": "Native Credit CCY for the parent credit line.",
+            "amount": "Native parent Credit Amt; no allocation audit.",
+            "usedAmount": "Native parent Credit Used Amt.",
+            "availableAmount": "Native parent Credit Avl Amt.",
+            "shareTag": (
+                "Source sharing flag; shared lines need no assigned account cap."
+            ),
+            "bankAccountCreditLineList[].creditCurrency": (
+                "Native CreditLine CCY; blanks remain unknown."
+            ),
+            "bankAccountCreditLineList[].currency": (
+                "Native account currency; no guessed conversion."
+            ),
+            "bankAccountCreditLineList[].creditAmount": "Native member Credit Amt.",
+            "bankAccountCreditLineList[].usedCreditAmount": (
+                "Native member Credit Used Amt."
+            ),
+            "bankAccountCreditLineList[].availableCreditAmount": (
+                "Native member Credit Avl Amt."
+            ),
+            "bankAccountCreditLineList[].equvAmount": (
+                "Native member Equv Amt (Orig); not locally converted."
+            ),
+            "bankAccountCreditLineList[].usedAmount": (
+                "Native member Equv Used Amt (Orig)."
+            ),
+            "bankAccountCreditLineList[].availableAmount": (
+                "Native member Equv Avl Amt (Orig)."
+            ),
+            "bankAccountCreditLineList[].mergeFlag": (
+                "Native UI display grouping; every member remains separate."
+            ),
+            "bankAccountCreditLineList[].isMasterAccount": "Native main-account flag.",
+        }
+        for field, meaning in meanings.items():
+            schema["properties"][field]["description"] = meaning
+            schema["properties"][field]["x-evidence"]["meaning"] = (
+                "native UI and operator clarification 2026-10-05"
+            )
+        return schema
     if item.projection == "pool_balances":
         schema["additionalProperties"] = False
         properties = schema["properties"]
@@ -225,7 +271,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                 capability,
                 contract,
                 "2026-10-05"
-                if variant.projection == "pool_balances"
+                if variant.projection in {"pool_balances", "credit_usage"}
                 else DECISION_VERIFIED_DATE
                 if variant.name == DECISIONS.name
                 else "2026-10-04"
