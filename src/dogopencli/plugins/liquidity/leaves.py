@@ -2219,21 +2219,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         "Realtime network detail: its parent list cannot prove complete coverage.",
     ),
     DeferredLeaf(
-        ("network", "product-baselines", "list"),
-        SETTINGS,
-        "empty-scope",
-        "Product baselines (#98, 2026-10-04): native RUN, INIT and PAUSE"
-        " scopes each succeeded with 0/0 rows. Nonempty configuration schema,"
-        " typed identity/version and complete populated acquisition remain"
-        " unverified; configured baselines are not measured payment latency.",
-    ),
-    DeferredLeaf(
-        ("network", "product-baselines", "get"),
-        SETTINGS,
-        "unverified",
-        f"Product baseline detail: {_UNVERIFIED}.",
-    ),
-    DeferredLeaf(
         ("ledger", "accounts", "get"),
         REFERENCE,
         "unverified",

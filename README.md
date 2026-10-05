@@ -147,7 +147,7 @@ SLA 是配置目标，不是观测到账耗时。
 [#87](https://github.com/proletariat64/dogopencli/issues/87) 和
 [#88](https://github.com/proletariat64/dogopencli/issues/88) 和
 [#89](https://github.com/proletariat64/dogopencli/issues/89) 已实现 77 个查询叶子：
-32 settings、38 runtimes、7 reference；另有 56 个延期叶子可通过帮助发现，
+32 settings、38 runtimes、7 reference；共 131 个查询叶子，另有 54 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.4 wheel 不包含新增的 swaps 列表。已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
@@ -300,6 +300,10 @@ dogopencli describe liquidity operations swaps list
 带逗号的金额字符串、空值、负数及未知业务值原样保留；使用观察时间明确 unknown，
 不从有效期、配置修改时间或采集时间推算。已有 `credit-lines` settings 缓存不变。
 详见 [授信使用读取契约](docs/design/liquidity-credit-usage-v0.1.0.md)。
+
+用户确认 `network product-baselines` 已停用，其 `list`/`get` 已从目录移除；
+银行基线和付款 SLA 基线不受影响。#98 原始四项中，两项已交付、一项退役，
+仅 `investment quotes list` 继续延期。
 
 没有已验证查询合同的叶子继续延期，如 wallets、
 forecast accuracy、risk sla list、transfer rules list、quote-groups；

@@ -9,7 +9,9 @@ capture；分别保留池/成员账面、可用、原币、银行折算余额，
 新增 `cash credit-usage list` 和独立 refresh：保留授信/成员原生树与两套金额、
 币种、共享标志及显示分组；不执行业务金额、币种或时间校验，不改写来源值。
 使用观察时间 unknown，旧 credit-lines settings 字段及缓存不变。
-当前分支目录为 77 supported、56 unsupported；#98 已实现两项，产品基线和报价仍延期，#98 保持开放。
+按用户确认移除已停用的 `network product-baselines list/get` 目录项。
+当前分支目录为 77 supported、54 unsupported，共 131 个查询叶子；
+#98 原始四项为两项交付、一项退役、一项报价延期，#98 保持开放。
 生产 CLI UAT 结果在独立验收报告记录。
 
 ## v0.2.6（2026-10-04）

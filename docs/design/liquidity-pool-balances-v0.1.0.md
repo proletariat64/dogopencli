@@ -53,6 +53,8 @@ incompleteness. Explicit success with zero rows and total zero is a complete emp
 capture; production has no verified BANK empty-scope filter, so this protocol is
 covered with fake CDP without inventing a production scope.
 
-Pool-balances and credit-usage are enabled from #98 (2/4 candidates). Product
-baselines and quotes remain unsupported; #98 stays open. No version bump or
-release is part of this change.
+Pool-balances and credit-usage are enabled from #98. The operator retired unused
+product-baselines, including both list/get catalog entries; quotes is the only
+remaining deferred candidate. The original four candidates are two delivered,
+one retired and one deferred; #98 stays open. No version bump or release is part
+of this change.
