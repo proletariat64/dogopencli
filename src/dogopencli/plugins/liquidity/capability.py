@@ -194,6 +194,22 @@ class LiquidityListCapability:
                 if self._spec.schema_version
                 and isinstance(value, (str, int))
                 and not isinstance(value, bool)
+            )
+            + (
+                (
+                    (
+                        self._spec.vo_field,
+                        json.dumps(
+                            {
+                                **self._spec.template[self._spec.vo_field],
+                                "rowStart": 0,
+                                "pageSize": self._spec.page_size,
+                            }
+                        ),
+                    ),
+                )
+                if self._spec.projection == "transfer_rules" and self._spec.vo_field
+                else ()
             ),
             encoding=(
                 spec.ENC_FORM if self._spec.encoding == spec.ENC_FORM else spec.ENC_JSON
@@ -264,15 +280,16 @@ class LiquidityListCapability:
                 or other_total != total
             ):
                 raise _invalid("reported totals disagree")
-        raw_seen: dict[tuple[str, ...], str] = {}
+        seen_raw: dict[tuple[str, ...], str] = {}
         for row in rows:
             identity = self.identity_key(row)
-            if self._spec.projection == "factor_definitions":
+            if self._spec.projection in {"transfer_rules", "factor_definitions"}:
                 content = canonical(row)
-                previous = raw_seen.get(identity)
-                if previous is not None and previous != content:
+                if identity in seen_raw and seen_raw[identity] != content:
+                    if self._spec.projection == "transfer_rules":
+                        raise _invalid("conflicting content for transfer rule identity")
                     raise _invalid("conflicting native factor definition content")
-                raw_seen[identity] = content
+                seen_raw[identity] = content
         if self._spec.projection:
             rows = [project_record(self._spec.projection, row) for row in rows]
         return list(rows), total

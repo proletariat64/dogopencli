@@ -249,8 +249,8 @@ def test_parse_detail_list_payload_echoes_each_row():
 
 def test_every_shipped_leaf_builds_a_valid_contract():
     assert (
-        len(LIST_LEAVES) == 58
-    )  # includes fee orders, balances, credit usage, quotes and factor definitions
+        len(LIST_LEAVES) == 59
+    )  # includes transfer rules and factor definitions alongside the existing lists
     for leaf in LIST_LEAVES.values():
         for variant in leaf.variants:
             capability = leaf.capability(variant)

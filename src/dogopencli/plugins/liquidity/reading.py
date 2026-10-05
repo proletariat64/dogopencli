@@ -55,6 +55,42 @@ def _source_guide(
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.projection == "transfer_rules":
+        schema["additionalProperties"] = False
+        schema["x-business-validation"] = "none; source values preserved"
+        schema["x-source-timezone"] = "unknown unless provided by native timeZone"
+        schema["x-coverage"] = (
+            "one fixed response; arrivals = unique ruleId = ruleCount"
+        )
+        meanings = {
+            "ruleId": "Native identity in the fixed tenant and default entity scope.",
+            "ruleNo": "Native rule number; distinct from ruleId.",
+            "version": (
+                "Native configuration version; not a local cache schema version."
+            ),
+            "paymentAmount": (
+                "Raw configuration value; unit unknown; no arithmetic validation."
+            ),
+            "gmtModified": (
+                "Configuration modification time; not runtime "
+                "observation or capture time."
+            ),
+            "effectiveTime": (
+                "Raw configured effective time; no inferred "
+                "timezone or validity arithmetic."
+            ),
+            "expiryTime": (
+                "Raw configured expiry time; no inferred timezone "
+                "or validity arithmetic."
+            ),
+            "bizConditions": (
+                "Allowlisted nested configuration; personnel, "
+                "contacts, notification recipients and URLs excluded."
+            ),
+        }
+        for field, meaning in meanings.items():
+            schema["properties"][field]["description"] = meaning
+        return schema
     if item.projection == "quotes":
         schema["additionalProperties"] = False
         schema["x-source-timezone"] = "UTC+08:00"
@@ -329,7 +365,13 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                 contract,
                 "2026-10-05"
                 if variant.projection
-                in {"pool_balances", "credit_usage", "quotes", "factor_definitions"}
+                in {
+                    "pool_balances",
+                    "credit_usage",
+                    "quotes",
+                    "transfer_rules",
+                    "factor_definitions",
+                }
                 else DECISION_VERIFIED_DATE
                 if variant.name == DECISIONS.name
                 else "2026-10-04"

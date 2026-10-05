@@ -80,6 +80,7 @@ from .spec import (
 from .strategy_detail import STRATEGY_DETAIL
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import TRANSFER_ORDERS, map_transfer_query
+from .transfer_rules import TRANSFER_RULES
 
 VERIFIED_DATE = "2026-10-01"
 _PAGE_ECHO_NOTE = (
@@ -1735,7 +1736,10 @@ DETAIL_SPECS: tuple[DetailSpec, ...] = (
             IdentityOption("rule_id", "ruleId", "Transfer rule id.", "str", "ruleId"),
         ),
         list_leaf=("rules", "transfer"),
-        notes=("The transfer-rule list stays deferred; acquire details by ruleId.",),
+        notes=(
+            "List and genuine detail inquiries use independent caches; "
+            "acquire details by ruleId.",
+        ),
     ),
     DetailSpec(
         path=("rules", "operation"),
@@ -2494,6 +2498,12 @@ DEFERRED: tuple[DeferredLeaf, ...] = (
         for item in ACCEPTED_DETAIL_SPECS
         if item.name not in RELEASED
     )
+)
+
+
+LIST_SPECS += (TRANSFER_RULES,)
+DEFERRED = tuple(
+    item for item in DEFERRED if item.path != (*TRANSFER_RULES.path, "list")
 )
 
 
