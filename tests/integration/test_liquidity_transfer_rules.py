@@ -5,7 +5,9 @@ import json
 
 import pytest
 
+from dogopencli.errors import CliError
 from dogopencli.jsonutil import parse
+from dogopencli.plugins.liquidity.transfer_rules import project_transfer_rule
 
 pytest_plugins = ["test_liquidity_cli_sit"]
 QUERY = ["liquidity", "rules", "transfer", "list", "--all"]
@@ -304,3 +306,76 @@ def test_shared_transport_rejects_unverified_nested_requests(
     code, out, _ = run_cli(REFRESH)
     assert code == 1 and parse(out)["error"]["code"] == "REQUEST_NOT_ALLOWED"
     assert setup.state.business_requests == []
+
+
+@pytest.mark.parametrize("field", ["ruleName", "title"])
+@pytest.mark.parametrize(
+    "private", ["CONTACT@EXAMPLE.INVALID", "MAILTO:contact", "HTTPS://example.invalid"]
+)
+def test_top_level_private_strings_are_omitted(field, private):
+    source = rule()
+    source[field] = private
+    projected = project_transfer_rule(source)
+    assert field not in projected
+    assert projected["ruleId"] == source["ruleId"]
+    assert projected["paymentAmount"] == "1.234500"
+
+
+def test_top_level_safe_configuration_and_identity_are_preserved():
+    source = rule("native@identity.invalid")
+    source.update(
+        title="Safe configuration title",
+        ruleNo="native@number.invalid",
+        debitAliasName="https://native-alias.invalid",
+        debitEntity=["ENTITY-A", "ENTITY-B"],
+        creditEntity={"source": "ENTITY-C"},
+        paymentAmount=0,
+    )
+    projected = project_transfer_rule(source)
+    for field in (
+        "ruleId",
+        "ruleNo",
+        "debitAliasName",
+        "ruleName",
+        "title",
+        "debitEntity",
+        "creditEntity",
+        "paymentAmount",
+        "expiryTime",
+        "creditCurrency",
+    ):
+        assert projected[field] == source[field]
+
+
+@pytest.mark.parametrize("field", ["preCheckCondtions", "ruleCheckCondtions"])
+def test_check_conditions_use_allowlist_and_private_value_filter(field):
+    source = rule()
+    source[field] = [
+        {
+            "condition": "SYN-CONFIG",
+            "conditionLogical": 0,
+            "tntInstId": "GUAPW3SG",
+            "operator": "SYN-PRIVATE",
+            "gradeVOList": [
+                {"minValue": None, "maxValue": "", "gradeNo": 0, "memo": "SYN-PRIVATE"}
+            ],
+            "days": [
+                "MON",
+                "MAILTO:contact",
+                "HTTPS://example.invalid",
+                "CONTACT@EXAMPLE.INVALID",
+            ],
+        }
+    ]
+    assert project_transfer_rule(source)[field] == [
+        {
+            "condition": "SYN-CONFIG",
+            "conditionLogical": 0,
+            "tntInstId": "GUAPW3SG",
+            "gradeVOList": [{"minValue": None, "maxValue": "", "gradeNo": 0}],
+            "days": ["MON"],
+        }
+    ]
+    source[field][0]["tntInstId"] = "OTHER"
+    with pytest.raises(CliError, match="condition tenant is outside scope"):
+        project_transfer_rule(source)

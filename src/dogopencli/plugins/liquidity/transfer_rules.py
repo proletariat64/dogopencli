@@ -170,7 +170,15 @@ def project_transfer_rule(row: dict[str, Any]) -> dict[str, Any]:
     projected = {}
     for field in FIELDS:
         if field in row:
-            value = _conditions(row[field]) if field in NESTED_FIELDS else row[field]
+            value = row[field]
+            if field in NESTED_FIELDS:
+                value = _conditions(value)
+            elif (
+                field in {"ruleName", "title"}
+                and isinstance(value, str)
+                and _PRIVATE_VALUE.search(value)
+            ):
+                value = _OMIT
             if value is not _OMIT:
                 projected[field] = value
     return projected
