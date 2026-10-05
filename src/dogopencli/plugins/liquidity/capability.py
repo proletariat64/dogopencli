@@ -45,14 +45,23 @@ def decode_scope(scope: str) -> dict[str, Any]:
     values: dict[str, Any] = {}
     if not scope:
         return values
-    for part in scope.split(";"):
-        field, separator, raw = part.partition("=")
-        if not separator or not field:
+    decoder = json.JSONDecoder()
+    position = 0
+    while position < len(scope):
+        separator = scope.find("=", position)
+        field = scope[position:separator]
+        if separator < 0 or not field:
             raise _usage(f"malformed scope: {scope}")
         try:
-            values[field] = json.loads(raw)
+            value, end = decoder.raw_decode(scope, separator + 1)
         except ValueError as error:
             raise _usage(f"malformed scope: {scope}") from error
+        if field in values or (end < len(scope) and scope[end] != ";"):
+            raise _usage(f"malformed scope: {scope}")
+        values[field] = value
+        position = end + 1
+        if end < len(scope) and position == len(scope):
+            raise _usage(f"malformed scope: {scope}")
     return values
 
 
@@ -221,6 +230,14 @@ class LiquidityListCapability:
     ) -> dict[str, Any]:
         """One verified request body for the offset starting at row_start."""
         values = decode_scope(scope)
+        if self._spec.projection == "forecast_accuracy":
+            from .forecast_accuracy import base_body
+
+            if row_start != 0 or page_size not in (None, 5000):
+                raise CliError(
+                    REQUEST_NOT_ALLOWED, "accuracy has one fixed base request"
+                )
+            return base_body(values)
         if page_size is None:
             page_size = self._spec.page_size
         body = dict(self._spec.template)
@@ -252,6 +269,10 @@ class LiquidityListCapability:
             from .investment_batch import quote_wire_dates
 
             quote_wire_dates(body)
+        if self._spec.projection == "rfq_subtasks":
+            from .rfqs import rfq_wire_dates
+
+            rfq_wire_dates(body)
         return body
 
     def parse_rows(self, body: bytes) -> tuple[list[dict[str, Any]], int | None]:
@@ -262,6 +283,10 @@ class LiquidityListCapability:
             if not isinstance(inner_success, bool) or not inner_success:
                 raise _invalid("inner result success marker is not true")
         rows = dig(node, self._spec.container)
+        if self._spec.projection == "account_capacity":
+            if not isinstance(rows, dict) or not rows:
+                raise _invalid("capacity data is not a nonempty native object")
+            rows = [rows]
         if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
             raise _invalid("record container is not a list of objects")
         total: int | None = None
@@ -280,6 +305,8 @@ class LiquidityListCapability:
                 or other_total != total
             ):
                 raise _invalid("reported totals disagree")
+        if self._spec.projection == "rfq_subtasks" and not rows and total != 0:
+            raise _invalid("empty RFQ response does not cover its reported total")
         seen_raw: dict[tuple[str, ...], str] = {}
         for row in rows:
             identity = self.identity_key(row)

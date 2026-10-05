@@ -31,6 +31,7 @@ from ...helpspec import (
     OptionSpec,
     opt,
 )
+from .account_capacity import ACCOUNT_CAPACITY, validate_capacity_query
 from .capability import (
     LiquidityDetailCapability,
     LiquidityListCapability,
@@ -49,15 +50,19 @@ from .cash_forecast import (
 from .decision_list import DECISIONS, validate_decision_query
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .fee_orders import FEE_ORDERS, validate_fee_query
+from .forecast_accuracy import FORECAST_ACCURACY
+from .forecast_accuracy import validate_query as validate_accuracy_query
 from .investment_batch import CANDIDATES as INVESTMENT_CANDIDATES
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .investment_batch import validate_quote_query, validate_strategy_query
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .realtime_network import REALTIME_NETWORK
+from .rfqs import RFQS, validate_rfq_query
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import RELEASED as RISK_RELEASED
 from .risk_detail import RISK_DETAIL_SPECS
+from .risk_sla import RISK_SLA
 from .spec import (
     ENC_FORM,
     ENV_BASE_RESULT,
@@ -1439,6 +1444,7 @@ LIST_SPECS: tuple[ListSpec, ...] = (
     RULES_FORECAST,
     RULES_WATERLEVEL,
     REALTIME_NETWORK,
+    ACCOUNT_CAPACITY,
     NETWORK_BANK_BASELINES,
     NETWORK_ACCOUNT_CAPABILITIES,
     PRICING_CLIENT_PRICES,
@@ -1723,7 +1729,9 @@ DETAIL_SPECS: tuple[DetailSpec, ...] = (
             ),
         ),
         list_leaf=("risk", "sla"),
-        notes=("The SLA list stays deferred; acquire details by slaConfigId.",),
+        notes=(
+            "SLA summaries and these explicit rule details use independent caches.",
+        ),
     ),
     DetailSpec(
         path=("rules", "transfer"),
@@ -2162,12 +2170,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Risk anomaly detail: {_IDENTITY}.",
     ),
     DeferredLeaf(
-        ("risk", "account-capacity", "list"),
-        RUNTIMES,
-        "failed",
-        f"Per-account capacity: {_FAILED}.",
-    ),
-    DeferredLeaf(
         ("rules", "treasury-transfer", "list"),
         SETTINGS,
         "failed",
@@ -2418,7 +2420,10 @@ _AUDIT_DEFERRED = tuple(
     if item.path not in {(*spec.path, spec.action) for spec in RISK_DETAIL_SPECS}
 )
 
-LIST_SPECS += (FEE_ORDERS,)
+LIST_SPECS += (FEE_ORDERS, RISK_SLA)
+_TICKET_DEFERRED = tuple(
+    item for item in _TICKET_DEFERRED if item.path != (*RISK_SLA.path, "list")
+)
 
 # Spec #88 releases only the independently verified bounded risk list scopes.
 LIST_SPECS += tuple(item for item in RISK_LIST_SPECS if item.name in RISK_RELEASED)
@@ -2497,11 +2502,19 @@ DEFERRED: tuple[DeferredLeaf, ...] = (
 )
 
 
+LIST_SPECS += (FORECAST_ACCURACY,)
+DEFERRED = tuple(
+    item for item in DEFERRED if item.path != (*FORECAST_ACCURACY.path, "list")
+)
+
 LIST_SPECS += (TRANSFER_RULES,)
 DEFERRED = tuple(
     item for item in DEFERRED if item.path != (*TRANSFER_RULES.path, "list")
 )
 
+
+LIST_SPECS += (RFQS,)
+DEFERRED = tuple(item for item in DEFERRED if item.path != (*RFQS.path, "list"))
 
 # --- leaf registry -----------------------------------------------------------
 
@@ -2575,12 +2588,18 @@ class ListLeaf:
             validate_risk_query(request_values)
         if variant.projection == "transfer_orders":
             map_transfer_query(request_values)
+        if variant.projection == "forecast_accuracy":
+            validate_accuracy_query(request_values)
         if variant.projection == "fee_orders":
             validate_fee_query(request_values)
         if variant.projection == "strategy_results":
             validate_strategy_query(request_values)
         if variant.projection == "quotes":
             validate_quote_query(request_values)
+        if variant.projection == "account_capacity":
+            validate_capacity_query(request_values)
+        if variant.projection == "rfq_subtasks":
+            validate_rfq_query(request_values)
         window_fields = {
             option.field for option in variant.scope_options if option.window
         }

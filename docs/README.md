@@ -1,5 +1,7 @@
 # 文档索引
 
+- [Batch F 四项有界列表契约](design/liquidity-batch-f-v0.1.0.md)：#109 风险 SLA 配置、#110 单账户/创建日准确率、#111 明确账户容量、#112 TARGET_RFQ 子任务，统一 PR 实施。[验收记录](research/general/2026-10-05-liquidity-batch-f-acceptance.md)分别记录本地检查、审查与逐叶生产 CLI UAT。
+
 - [现金池余额契约](design/liquidity-pool-balances-v0.1.0.md)：#98 BANK 原生余额快照，池/成员与账面/可用口径，独立缓存及 unknown 边界。[10 月 5 日生产 UAT](research/general/2026-10-05-cash-pool-balances-uat.md)：8/8 CLI 步骤通过，43 池、358 成员。
 
 - [授信使用读取契约](design/liquidity-credit-usage-v0.1.0.md)：#98 原生授信/成员树、原值读取与独立缓存，不执行业务数据校验。[10 月 5 日生产 UAT](research/general/2026-10-05-credit-usage-uat.md)：8 个步骤最终通过，84 条授信、667 个成员；首次 live 的 83/84 缺数被严格拒绝，一次同范围复查完整。#98 池余额、授信使用及报价已通过生产 UAT，产品基线按用户确认退役。
@@ -37,6 +39,8 @@
 
 | 范围 | 报告 | 内容 |
 | --- | --- | --- |
+| General | [明确账户容量列表契约](research/general/2026-10-05-account-capacity-contract.md) | #111：显式账户集合、原生容量字段、完整性与独立缓存边界；生产 CLI UAT 单独验收 |
+| General | [TARGET_RFQ 子任务列表契约](research/general/2026-10-05-target-rfq-subtask-contract.md) | #112：固定 TARGET_RFQ、双端日期、子任务身份、完整性与独立缓存边界；生产 CLI UAT 单独验收 |
 | General | [Issue #98 列表能力核验](research/general/2026-10-04-liquidity-issue98-gates.md) | 10 月 4 日历史快照：4/4 已评估、0/4 启用；10 月 5 日池余额、授信使用及[报价](research/general/2026-10-05-quotes-uat.md)已通过生产 UAT，产品基线按用户确认退役，原四项目标为 3 项验收、1 项退役 |
 | General | [Liquidity Batch C 投资查询与剩余门槛](research/general/2026-10-04-liquidity-batch-c-gates.md) | #89：基准值与策略结果已启用，交付 2/4；计价估值与账单保持 unsupported，规格继续开放 |
 | General | [Liquidity #97 详情与费用订单验收](research/general/2026-10-04-liquidity-issue97-gates.md) | 三个真实详情与独立费用订单，被接受候选 4/4，CLI UAT 24/24；国家／地区基础数据已按用户决定从需求和目录撤除 |

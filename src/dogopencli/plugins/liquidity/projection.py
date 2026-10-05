@@ -28,12 +28,16 @@ from decimal import Decimal
 from typing import Any
 
 from ...errors import INVALID_ARGUMENT, INVALID_RESPONSE, CliError
+from .account_capacity import project_capacity
 from .decision_list import project_decision_record
 from .fee_orders import project_fee_order
+from .forecast_accuracy import project_accuracy
 from .operations_batch import validate_swap_business_date
 from .realtime_network import project_network
+from .rfqs import project_rfq_subtask
 from .risk_batch import project_risk_record
 from .risk_detail import project_risk_detail
+from .risk_sla import project_risk_sla
 from .strategy_detail import project_strategy_detail
 from .transfer_list import project_transfer_order
 from .transfer_rules import project_transfer_rule
@@ -987,6 +991,7 @@ def _project_factor_definitions(row: Any) -> dict[str, Any]:
 
 
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
+    "account_capacity": project_capacity,
     "strategy_detail": project_strategy_detail,
     "groups_settings": _project_groups_settings,
     "group_balances": _project_group_balances,
@@ -997,6 +1002,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "balances": _project_balances,
     "eod": _project_eod,
     "forecast_results": _project_forecast_results,
+    "forecast_accuracy": project_accuracy,
     "swap_orders": _project_swap_orders,
     "risk_events_detail": lambda row: project_risk_detail(row, "RISK_EVENT"),
     "risk_anomalies_detail": lambda row: project_risk_detail(row, "RISK_ALERT"),
@@ -1008,9 +1014,11 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "strategy_results": _project_strategy_results,
     "benchmark_values": _project_benchmark_values,
     "quotes": _project_quotes,
+    "rfq_subtasks": project_rfq_subtask,
     "factor_definitions": _project_factor_definitions,
     "fee_orders": project_fee_order,
     "realtime_network": project_network,
+    "risk_sla": project_risk_sla,
 }
 
 

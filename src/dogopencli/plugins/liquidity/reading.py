@@ -55,6 +55,87 @@ def _source_guide(
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.projection == "risk_sla":
+        schema["additionalProperties"] = False
+        schema["x-business-validation"] = "none; source values preserved"
+        schema["x-source-timezone"] = "unknown"
+        schema["x-coverage"] = (
+            "one fixed response; arrivals = unique slaConfigId = totalCount"
+        )
+        meanings = {
+            "slaConfigId": (
+                "Native configuration identity within the application tenant "
+                "and source scope."
+            ),
+            "version": (
+                "Native string configuration version; distinct from identity "
+                "and cache schema."
+            ),
+            "riskEventType": "Raw native risk event type; no inferred rule.",
+            "effectiveStatus": (
+                "Raw configuration status; alert effectiveness is not inferred."
+            ),
+            "processStatus": "Raw workflow state; no inferred processing outcome.",
+            "gmtCreate": (
+                "Configuration creation time; timezone unknown; not capture time."
+            ),
+            "gmtModified": (
+                "Configuration modification time; timezone unknown; "
+                "not runtime observation."
+            ),
+        }
+        for field, meaning in meanings.items():
+            schema["properties"][field]["description"] = meaning
+        return schema
+    if item.projection == "forecast_accuracy":
+        from .forecast_accuracy import METRIC_FIELDS
+
+        schema["additionalProperties"] = False
+        schema["x-source-timezone"] = (
+            "unknown; GMT Create Date/Time is the native label"
+        )
+        schema["x-business-validation"] = (
+            "none; raw native metrics without formula checks or scaling"
+        )
+        schema["x-metric-association"] = (
+            "native request binding; no required backend record echo"
+        )
+        schema["properties"]["accuracy"] = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                field: {"x-observed-type": "str", "x-unit": "unknown"}
+                for field in METRIC_FIELDS
+            },
+        }
+        return schema
+    if item.projection == "account_capacity":
+        schema["additionalProperties"] = False
+        schema["x-business-validation"] = "none; source values preserved"
+        schema["x-source-timezone"] = "unknown"
+        schema["x-coverage"] = "exact explicit requested alias set, never all accounts"
+        meanings = {
+            "aliasName": "Native identity within the authorized tenant and origin.",
+            "currency": "Separate native currency attribute; no currency audit.",
+            "accountAvailableBalance": "Native UI Avl Bal; raw value preserved.",
+            "availableIod": "Native UI Avl IOD; raw value preserved.",
+            "availableResource": "Native UI Outflow Capacity; raw value preserved.",
+            "outFlowCapacity": (
+                "Native field with unknown business definition; separate from "
+                "availableResource, without substitution or calculation."
+            ),
+            "cashPoolSupportAvailableResource": (
+                "Native field with unknown business definition; no inferred formula."
+            ),
+            "valueTime": (
+                "Original source-time string; unknown timezone, separate from "
+                "fetched_at capture time."
+            ),
+        }
+        for field, meaning in meanings.items():
+            schema["properties"][field]["description"] = meaning
+        schema["properties"]["valueTime"]["x-timezone"] = "unknown"
+        return schema
     if item.projection == "transfer_rules":
         schema["additionalProperties"] = False
         schema["x-business-validation"] = "none; source values preserved"
@@ -90,6 +171,28 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
         }
         for field, meaning in meanings.items():
             schema["properties"][field]["description"] = meaning
+        return schema
+    if item.projection == "rfq_subtasks":
+        schema["additionalProperties"] = False
+        schema["x-source-timezone"] = "unknown"
+        schema["x-boundary-semantics"] = "unknown"
+        schema["x-business-validation"] = "none; source values preserved"
+        schema["x-coverage"] = (
+            "one fixed response; arrivals = unique inquirySubTaskId = totalCount"
+        )
+        properties = schema["properties"]
+        properties["inquirySubTaskId"]["description"] = (
+            "Native subtask string identity in exact tenant, TARGET_RFQ and date scope."
+        )
+        properties["inquiryTaskId"]["description"] = (
+            "Parent task reference; never a subtask identity or inferred quote session."
+        )
+        properties["inquiryType"]["description"] = "Fixed TARGET_RFQ response echo."
+        for field in ("inquiryStartTime", "inquiryEndTime", "modifyTime"):
+            properties[field]["x-timezone"] = "unknown"
+            properties[field]["description"] = (
+                "Raw source time; distinct from fetched_at."
+            )
         return schema
     if item.projection == "quotes":
         schema["additionalProperties"] = False
@@ -369,9 +472,13 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     "pool_balances",
                     "credit_usage",
                     "quotes",
+                    "rfq_subtasks",
                     "realtime_network",
+                    "account_capacity",
                     "transfer_rules",
+                    "risk_sla",
                     "factor_definitions",
+                    "forecast_accuracy",
                 }
                 else DECISION_VERIFIED_DATE
                 if variant.name == DECISIONS.name

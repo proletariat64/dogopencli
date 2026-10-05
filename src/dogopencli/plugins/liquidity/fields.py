@@ -6,11 +6,15 @@ Samples are not
 complete schemas, validation assertions, or nullability guarantees.
 """
 
+from .account_capacity import ACCOUNT_CAPACITY
+from .account_capacity import SAMPLED_FIELDS as CAPACITY_FIELDS
 from .decision_list import DECISIONS
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
 from .fee_orders import FEE_ORDERS
 from .fee_orders import FIELDS as FEE_ORDER_FIELDS
+from .forecast_accuracy import BASE_FIELDS as ACCURACY_BASE_FIELDS
+from .forecast_accuracy import FORECAST_ACCURACY
 from .investment_batch import (
     BENCHMARK_FIELDS,
     BENCHMARK_VALUES,
@@ -23,6 +27,8 @@ from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .realtime_network import REALTIME_NETWORK
 from .realtime_network import SAMPLED_FIELDS as NETWORK_FIELDS
+from .rfqs import RFQS
+from .rfqs import SAMPLED_FIELDS as RFQ_FIELDS
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import FIELDS as RISK_FIELDS
 from .risk_batch import RELEASED as RISK_RELEASED
@@ -3473,3 +3479,25 @@ SAMPLED_FIELDS[TRANSFER_RULES.name] = {
     field: "native value" for field in TRANSFER_RULE_FIELDS
 }
 SAMPLED_FIELDS[TRANSFER_RULES.name]["ruleId"] = "str"
+
+# Issue #109 list summary schema; populated native list evidence, 2026-10-05.
+SAMPLED_FIELDS["liquidity.risk.sla.list"] = {
+    field: "str"
+    for field in (
+        "slaConfigId",
+        "riskEventType",
+        "effectiveStatus",
+        "processStatus",
+        "version",
+        "tntInstId",
+        "gmtCreate",
+        "gmtModified",
+    )
+}
+
+SAMPLED_FIELDS[FORECAST_ACCURACY.name] = {
+    field: "native value" for field in ACCURACY_BASE_FIELDS
+} | {"id": "str", "accuracy": "dict"}
+SAMPLED_FIELDS[ACCOUNT_CAPACITY.name] = CAPACITY_FIELDS
+# Native TARGET_RFQ subtask evidence observed 2026-10-05.
+SAMPLED_FIELDS[RFQS.name] = RFQ_FIELDS

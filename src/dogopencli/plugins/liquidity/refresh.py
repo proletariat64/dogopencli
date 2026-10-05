@@ -20,7 +20,7 @@ from ...inquiry import inquiry_session
 from ...result_policy import check_complete, evidence_for, prepare_result
 from . import details as detail_store
 from . import store as capture_store
-from .collect import collect_liquidity_scope
+from .collect import acquire_liquidity_list
 from .common import emit, identity_values, load_config, now, provided, scope_flags
 from .leaves import DetailLeaf, detail_leaf, list_leaf
 
@@ -36,9 +36,9 @@ def run_refresh_list(args: argparse.Namespace) -> int:
         with inquiry_session(
             config_file=config_mod.config_path(), startup_url=capability.page_url
         ) as session:
-            result = collect_liquidity_scope(
+            result = acquire_liquidity_list(
+                session,
                 capability,
-                session.transport(capability),
                 resolved.request_scope,
                 progress=lambda done, total: print(
                     f"refresh: collected page {done}/{total}", file=sys.stderr

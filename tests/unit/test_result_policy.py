@@ -65,3 +65,45 @@ def test_output_metadata_cannot_promote_validated_incomplete_evidence(flags):
     with pytest.raises(CliError) as caught:
         prepare_result(meta, require_complete=True)
     assert caught.value.code == "INVALID_RESPONSE"
+
+
+def test_explicit_scope_counters_roundtrip_without_inventing_server_total():
+    evidence = AcquisitionEvidence(
+        scope_complete=True,
+        dataset_complete=True,
+        collected_total=3,
+        requested_count=3,
+        resolved_count=3,
+        total_semantics="requested_accounts",
+    )
+    parsed = AcquisitionEvidence.from_record(evidence.record())
+    assert parsed.meta()["requested_count"] == parsed.meta()["resolved_count"] == 3
+    assert parsed.meta()["reported_total"] is None
+    assert (
+        "requested_count"
+        not in AcquisitionEvidence.for_collection(
+            complete=True, reported_total=1, collected_total=1
+        ).record()
+    )
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [
+        {"requested_count": 3},
+        {"resolved_count": 3},
+        {"requested_count": 2, "resolved_count": 3},
+        {"requested_count": 4, "resolved_count": 3},
+        {"requested_count": 3, "resolved_count": 2},
+        {"requested_count": True, "resolved_count": 3},
+        {"requested_count": 3, "resolved_count": -1},
+    ],
+)
+def test_inconsistent_explicit_scope_counters_are_invalid(counts):
+    record = AcquisitionEvidence.for_collection(
+        complete=True, reported_total=None, collected_total=3
+    ).record()
+    record.update(counts)
+    with pytest.raises(CliError) as error:
+        AcquisitionEvidence.from_record(record)
+    assert error.value.code == "INVALID_RESPONSE"
