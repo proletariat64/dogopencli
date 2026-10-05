@@ -3,7 +3,11 @@
 ## 未发布
 
 记录 #98 的有界原生核验及剩余业务契约门槛，更新延期原因。
-未新增或启用查询命令；本分支目录仍为 75 supported、58 unsupported，#98 保持开放。
+新增 `cash pool-balances list` 和显式 refresh：固定 BANK 范围、独立 runtimes
+capture；分别保留池/成员账面、可用、原币、银行折算余额，未知成员时间不猜补。
+池级金额不以成员求和替换，旧 pools settings/list/get 与缓存不变。
+当前分支目录为 76 supported、57 unsupported；其余三个 #98 候选仍延期，#98 保持开放。
+生产 CLI UAT 结果在独立验收报告记录。
 
 ## v0.2.6（2026-10-04）
 

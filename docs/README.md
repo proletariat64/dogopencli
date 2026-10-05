@@ -1,5 +1,7 @@
 # 文档索引
 
+- [现金池余额契约](design/liquidity-pool-balances.md)：#98 BANK 原生余额快照，池/成员与账面/可用口径，独立缓存及 unknown 边界。
+
 ## 产品规格
 
 - [资金需求与执行查询规格 v0.1.0（GitHub Issue #82）](design/liquidity-funding-execution-v0.1.0.md)：四个列表目标；swap 已启用双端交易日期的有界查询，无日期范围拒绝执行。[10 月 4 日验收](research/general/2026-10-04-funding-execution-batch-acceptance.md)：认证恢复，正式注册生产 CLI UAT 21/21，本地 Kimi 基线通过；追加 release-delta Kimi 权限待确认。当前 1/4 启用，其他三个叶子因非空契约证据不足继续 unsupported。

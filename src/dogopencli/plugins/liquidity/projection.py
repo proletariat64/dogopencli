@@ -19,6 +19,7 @@ cashPoolMemberId), when present, must match the parent id.
 
 import re
 from collections.abc import Callable, Mapping
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -459,6 +460,99 @@ def _project_pools_settings(row: Any) -> dict[str, Any]:
     return projected
 
 
+# --- pool balance snapshots --------------------------------------------------
+
+_POOL_BALANCE_AMOUNTS = (
+    "currentBalance",
+    "currentAviBalance",
+    "closeBalance",
+    "closeAviBalance",
+)
+_POOL_MEMBER_BALANCE_AMOUNTS = _POOL_BALANCE_AMOUNTS + (
+    "equvCurrentBalance",
+    "equvCurrentAviBalance",
+    "equvCloseBalance",
+    "equvCloseAviBalance",
+)
+_POOL_BALANCE_FIELDS = (
+    "cashPoolType",
+    "id",
+    "cashPoolName",
+    "cashPoolCategory",
+    "mainCurrency",
+    "valueDate",
+    "tntInstId",
+) + _POOL_BALANCE_AMOUNTS
+_POOL_MEMBER_BALANCE_FIELDS = (
+    "id",
+    "cashPoolId",
+    "aliasName",
+    "entity",
+    "bankId",
+    "currency",
+    "bankCurrency",
+    "masterAccount",
+    "isShare",
+    "timeZone",
+    "tntInstId",
+) + _POOL_MEMBER_BALANCE_AMOUNTS
+
+
+def _validate_pool_balance_scope(record: Mapping[str, Any], context: str) -> None:
+    from .spec import TENANT
+
+    if "tntInstId" in record and record["tntInstId"] != TENANT:
+        raise _invalid(f"{context}: tenant is outside requested scope")
+    for field in ("mainCurrency", "currency", "bankCurrency"):
+        value = record.get(field)
+        if (
+            value is not None
+            and value != ""
+            and (not isinstance(value, str) or re.fullmatch(r"[A-Z]{3}", value) is None)
+        ):
+            raise _invalid(f"{context}.{field}: invalid currency")
+
+
+def _project_pool_balance_member(
+    record: dict[str, Any], context: str
+) -> dict[str, Any]:
+    _validate_pool_balance_scope(record, context)
+    return record
+
+
+def _project_pool_balances(row: Any) -> dict[str, Any]:
+    record = _require_row(row, "pool_balances")
+    _typed_id(record.get("id"), "pool_balances.id")
+    _validate_pool_balance_scope(record, "pool_balances")
+    if record.get("cashPoolCategory") != "BANK":
+        raise _invalid("pool_balances: category is outside requested BANK scope")
+    _validate_amounts(record, _POOL_BALANCE_AMOUNTS, "pool_balances")
+    value = record.get("valueDate")
+    if value is not None and value != "":
+        try:
+            if (
+                not isinstance(value, str)
+                or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None
+            ):
+                raise ValueError("not YYYY-MM-DD")
+            date.fromisoformat(value)
+        except ValueError as error:
+            raise _invalid("pool_balances.valueDate: invalid YYYY-MM-DD") from error
+    projected = _pick(record, _POOL_BALANCE_FIELDS)
+    members = _project_members(
+        record,
+        "cashPoolMemberVOS",
+        _POOL_MEMBER_BALANCE_FIELDS,
+        "pool_balances",
+        amount_fields=_POOL_MEMBER_BALANCE_AMOUNTS,
+        echo_field="cashPoolId",
+        nested=_project_pool_balance_member,
+    )
+    if members is not _ABSENT:
+        projected["cashPoolMemberVOS"] = members
+    return projected
+
+
 # --- credit lines settings ----------------------------------------------------
 
 _CREDIT_LINE_SETTINGS_FIELDS = (
@@ -803,6 +897,7 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "groups_settings": _project_groups_settings,
     "group_balances": _project_group_balances,
     "pools_settings": _project_pools_settings,
+    "pool_balances": _project_pool_balances,
     "credit_lines_settings": _project_credit_lines_settings,
     "balances": _project_balances,
     "eod": _project_eod,

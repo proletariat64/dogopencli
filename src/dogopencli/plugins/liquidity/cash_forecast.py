@@ -185,6 +185,47 @@ CASH_POOLS = ListSpec(
     notes=(*NOTES, "Fixed BANK category; no per-row detail acquisition."),
 )
 
+CASH_POOL_BALANCES = ListSpec(
+    path=("cash", "pool-balances"),
+    kind=RUNTIMES,
+    title="BANK cash pool balance snapshots",
+    endpoint="/cashPoolList.json",
+    method="POST",
+    envelope=ENV_SUCCESS,
+    container=("data", "data"),
+    total=("data", "totalCount"),
+    identity=("id",),
+    page_size=100,
+    profile=PROFILE_HISTORY,
+    template={"tntInstId": TENANT, "cashPoolCategory": "BANK"},
+    table_columns=(
+        "id",
+        "cashPoolName",
+        "valueDate",
+        "currentBalance",
+        "currentAviBalance",
+    ),
+    projection="pool_balances",
+    schema_version="pool-balances-v1",
+    notes=(
+        *NOTES,
+        "One record per BANK pool; cashPoolMemberVOS contains members identified"
+        " by (pool.id, member.id). Pool totals are independent source values,"
+        " never recomputed from or added to members.",
+        "currentBalance is book balance; currentAviBalance is available for"
+        " payments. Neither equality nor ordering between them is required.",
+        "Native UI displays pool summary amounts in USD; mainCurrency remains"
+        " pool configuration and is not the summary amount currency.",
+        "Member original balances use currency; equv balances use bankCurrency."
+        " Empty/missing currencies remain unknown; no conversion is performed.",
+        "valueDate is the pool balance date only. Member observation times are"
+        " unknown. close balances refer to the previous statement day, not"
+        " necessarily yesterday. Capture time is not a balance observation time.",
+        "masterAccount and isShare remain member-level source flags."
+        " Unknown source fields do not imply incomplete collection.",
+    ),
+)
+
 CASH_POOLS_GET = DetailSpec(
     path=("cash", "pools"),
     action="get",
@@ -364,6 +405,7 @@ ACCEPTED_LIST_SPECS = (
     CASH_GROUPS,
     CASH_GROUP_BALANCES,
     CASH_POOLS,
+    CASH_POOL_BALANCES,
     CASH_CREDIT_LINES,
     CASH_STATEMENTS_EOD,
     FORECAST_RESULTS,
@@ -381,6 +423,7 @@ UAT_COMPLETE_PASSED: frozenset[str] = frozenset(
         CASH_GROUPS.name,
         CASH_GROUP_BALANCES.name,
         CASH_POOLS.name,
+        CASH_POOL_BALANCES.name,
         CASH_POOLS_GET.name,
         CASH_CREDIT_LINES.name,
         CASH_STATEMENTS_EOD.name,
