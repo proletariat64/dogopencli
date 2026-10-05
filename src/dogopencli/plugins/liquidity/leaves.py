@@ -2046,10 +2046,12 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("investment", "quotes", "list"),
         RUNTIMES,
         "contract-unverified",
-        "Quotes (#98, 2026-10-04): native QUOTED and WIN queries for"
-        " 20260927-20261004 succeeded with empty data but no totalCount."
-        " Complete-empty semantics, nonempty identity/version and native"
-        " date/timezone semantics remain unverified (caller timeZone was null).",
+        "Quotes (#98, 2026-10-05): authorized 20260101-20261005 scope returned"
+        " 338 unique QUOTED identities and 0 WIN rows, without totalCount."
+        " Offset/page-size changes returned the same 338 rows; the 20260820"
+        " single-day scope returned its 270-row subset. A reliable bounded"
+        " full-response contract/server cap, supported variants and native"
+        " timestamp/zone metadata remain unverified (caller timeZone was null).",
     ),
     DeferredLeaf(
         ("investment", "quotes", "get"),
