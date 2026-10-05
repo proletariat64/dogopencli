@@ -148,10 +148,12 @@ SLA 是配置目标，不是观测到账耗时。
 [#88](https://github.com/proletariat64/dogopencli/issues/88) 和
 [#89](https://github.com/proletariat64/dogopencli/issues/89) 和
 [#97](https://github.com/proletariat64/dogopencli/issues/97) 和
-[#98](https://github.com/proletariat64/dogopencli/issues/98) 已实现 82 个查询叶子：
-32 settings、43 runtimes、7 reference；共 131 个查询叶子，另有 49 个延期叶子可通过帮助发现，
+[#98](https://github.com/proletariat64/dogopencli/issues/98) 和
+[#105](https://github.com/proletariat64/dogopencli/issues/105) 已实现 83 个查询叶子：
+32 settings、43 runtimes、8 reference；共 131 个查询叶子，另有 48 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.7 包含 #97/#98 的新增能力；具体支持范围与生产验收结果见下文。
+#105 因子类型定义目录属于 reference，CLI 生产 UAT 状态见[独立契约](docs/research/general/2026-10-05-factor-definitions-contract.md)。
 已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
 

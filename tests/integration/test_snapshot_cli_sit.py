@@ -89,7 +89,7 @@ def test_full_tree_missing_cache_is_success_and_never_creates_files(
     assert "dogopencli payment channel list" in by_path
     assert "dogopencli liquidity cash balances list" in by_path
     unsupported = [leaf for leaf in items if leaf["availability"] == "unsupported"]
-    assert len(unsupported) == 49
+    assert len(unsupported) == 48
     quotes = by_path["dogopencli liquidity investment quotes list"]
     assert quotes["availability"] == "supported"
     assert quotes["cache"]["status"] == "missing"

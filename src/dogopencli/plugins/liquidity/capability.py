@@ -264,8 +264,15 @@ class LiquidityListCapability:
                 or other_total != total
             ):
                 raise _invalid("reported totals disagree")
+        raw_seen: dict[tuple[str, ...], str] = {}
         for row in rows:
-            self.identity_key(row)
+            identity = self.identity_key(row)
+            if self._spec.projection == "factor_definitions":
+                content = canonical(row)
+                previous = raw_seen.get(identity)
+                if previous is not None and previous != content:
+                    raise _invalid("conflicting native factor definition content")
+                raw_seen[identity] = content
         if self._spec.projection:
             rows = [project_record(self._spec.projection, row) for row in rows]
         return list(rows), total
