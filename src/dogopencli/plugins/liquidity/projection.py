@@ -24,8 +24,11 @@ from typing import Any
 
 from ...errors import INVALID_ARGUMENT, INVALID_RESPONSE, CliError
 from .decision_list import project_decision_record
+from .fee_orders import project_fee_order
 from .operations_batch import validate_swap_business_date
 from .risk_batch import project_risk_record
+from .risk_detail import project_risk_detail
+from .strategy_detail import project_strategy_detail
 from .transfer_list import project_transfer_order
 
 # The verified group-balances request scope fixes the equivalent currency
@@ -800,6 +803,7 @@ def _project_strategy_results(row: Any) -> dict[str, Any]:
 
 
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
+    "strategy_detail": project_strategy_detail,
     "groups_settings": _project_groups_settings,
     "group_balances": _project_group_balances,
     "pools_settings": _project_pools_settings,
@@ -808,12 +812,15 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "eod": _project_eod,
     "forecast_results": _project_forecast_results,
     "swap_orders": _project_swap_orders,
+    "risk_events_detail": lambda row: project_risk_detail(row, "RISK_EVENT"),
+    "risk_anomalies_detail": lambda row: project_risk_detail(row, "RISK_ALERT"),
     "risk_events": lambda row: project_risk_record(row, "RISK_EVENT"),
     "risk_anomalies": lambda row: project_risk_record(row, "RISK_ALERT"),
     "transfer_orders": project_transfer_order,
     "decision_reports": project_decision_record,
     "strategy_results": _project_strategy_results,
     "benchmark_values": _project_benchmark_values,
+    "fee_orders": project_fee_order,
 }
 
 

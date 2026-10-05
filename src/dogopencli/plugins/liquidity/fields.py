@@ -9,6 +9,8 @@ complete schemas, validation assertions, or nullability guarantees.
 from .decision_list import DECISIONS
 from .decision_list import RELEASED as DECISIONS_RELEASED
 from .decision_list import SAMPLED_FIELDS as DECISION_FIELDS
+from .fee_orders import FEE_ORDERS
+from .fee_orders import FIELDS as FEE_ORDER_FIELDS
 from .investment_batch import (
     BENCHMARK_FIELDS,
     BENCHMARK_VALUES,
@@ -20,6 +22,8 @@ from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import FIELDS as RISK_FIELDS
 from .risk_batch import RELEASED as RISK_RELEASED
+from .risk_detail import DETAIL_FIELDS, RISK_DETAIL_SPECS
+from .strategy_detail import STRATEGY_DETAIL, STRATEGY_DETAIL_FIELDS
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
 from .transfer_list import TRANSFER_ORDERS
@@ -3358,3 +3362,23 @@ SAMPLED_FIELDS.update(
 CANDIDATE_SAMPLED_FIELDS[DECISIONS.name] = DECISION_FIELDS
 if DECISIONS.name in DECISIONS_RELEASED:
     SAMPLED_FIELDS[DECISIONS.name] = DECISION_FIELDS
+
+# Native risk detail business projection; private text and owners are omitted.
+
+for _risk_detail_spec in RISK_DETAIL_SPECS:
+    SAMPLED_FIELDS[_risk_detail_spec.name] = {
+        field: "list[object]"
+        if field == "treatmentRiskSourceObject"
+        else "int"
+        if field in {"riskProcessingTime", "alertNum"}
+        else "str"
+        for field in DETAIL_FIELDS
+    }
+
+# Current genuine native task details (2026-10-04), both task variants.
+
+SAMPLED_FIELDS[STRATEGY_DETAIL.name] = STRATEGY_DETAIL_FIELDS
+
+# Observed source fields; optional status is not claimed as sampled.
+
+SAMPLED_FIELDS[FEE_ORDERS.name] = {field: "str" for field in FEE_ORDER_FIELDS}
