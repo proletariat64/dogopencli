@@ -146,8 +146,8 @@ SLA 是配置目标，不是观测到账耗时。
 [PR #83](https://github.com/proletariat64/dogopencli/pull/83) 和
 [#87](https://github.com/proletariat64/dogopencli/issues/87) 和
 [#88](https://github.com/proletariat64/dogopencli/issues/88) 和
-[#89](https://github.com/proletariat64/dogopencli/issues/89) 已实现 75 个查询叶子：
-32 settings、36 runtimes、7 reference；另有 58 个延期叶子可通过帮助发现，
+[#89](https://github.com/proletariat64/dogopencli/issues/89) 已实现 76 个查询叶子：
+32 settings、37 runtimes、7 reference；另有 57 个延期叶子可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.4 wheel 不包含新增的 swaps 列表。已实现命令的完整性、告警和后端阻塞须分别判断，
 验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
@@ -205,6 +205,7 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `cash balances` | `list` |
 | `cash groups` | `list` |
 | `cash group-balances` | `list` |
+| `cash pool-balances` | `list` |
 | `cash pools` | `list`, `get` |
 | `cash credit-lines` | `list` |
 | `cash statements intraday` | `list` |
@@ -281,7 +282,17 @@ dogopencli describe liquidity operations swaps list
 默认 incomplete refresh 原子替换旧缓存并告警；严格刷新保留旧缓存。
 固定-total 合同内的后端 total 变化仍返回 `INVALID_RESPONSE`。
 `ledger balances list` 已有查询实现，但后端业务错误 999 仍阻塞完整采集。
-没有已验证查询合同的叶子继续延期，如 wallets、pool-balances、credit-usage、
+`cash pool-balances list` 提供固定 BANK 范围的现金池余额快照；
+`refresh liquidity cash pool-balances` 显式采集，默认 list 离线读取，`--live` 不写缓存。
+账面余额 `currentBalance` 与可支付余额 `currentAviBalance` 分开保留。
+成员原币余额对应 `currency`，`equv` 折算余额对应 `bankCurrency`；
+池汇总遵循原生 UI 的 USD 显示口径，不能用配置 `mainCurrency` 替换。
+池余额/valueDate 独立于成员金额和成员时间，不强制与成员求和相等；
+成员观察时间及空币种保持 unknown，不把采集时间当余额时间。
+保留负数、空字符串和 null；不提供业务日期查询、历史命令或资金归集操作。
+详见 [现金池余额契约](docs/design/liquidity-pool-balances.md)。
+
+没有已验证查询合同的叶子继续延期，如 wallets、credit-usage、
 forecast accuracy、risk sla list、transfer rules list、quote-groups；
 独立验证过的详情不受此影响。
 [#98 本轮核验](docs/research/general/2026-10-04-liquidity-issue98-gates.md)记录池余额、

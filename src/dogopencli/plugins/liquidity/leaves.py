@@ -1927,15 +1927,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Cash pool detail: {_PROJECTION}.",
     ),
     DeferredLeaf(
-        ("cash", "pool-balances", "list"),
-        RUNTIMES,
-        "semantics-pending",
-        "Pool balances (#98, 2026-10-04): BANK inquiry returned 43 pools and"
-        " 358 members. Parent valueDate does not establish member balance dates;"
-        " original/equivalent currency and temporal alignment remain unverified."
-        " gmtModified and billingTime are not balance observation times.",
-    ),
-    DeferredLeaf(
         ("cash", "credit-lines", "list"),
         SETTINGS,
         "failed",
