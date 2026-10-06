@@ -16,7 +16,7 @@ from dogopencli.plugins.liquidity.operations_batch import SWAP_ORDERS
 
 pytest_plugins = ["test_liquidity_cli_sit"]
 
-OPERATIONS = ("demands", "executions")
+OPERATIONS = ("executions",)
 TRADE_SCOPE = ["--trade-from", "20260901", "--trade-to", "20261001"]
 
 

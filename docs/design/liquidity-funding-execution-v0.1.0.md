@@ -8,6 +8,13 @@
 
 本批目标是新增 **4 个可验证的列表查询**。历史空结果不是非空契约或生产 UAT 已通过的证据，公共不完整结果策略也不能替代未验证叶子的启用门槛。
 
+2026-10-06 后续实施：`operations demands list` 已取得 FUND_REQUIRE 非空样本，
+固定页宽 5000 的独立复核均为 79/79 唯一任务，公共 CLI 生产只读 UAT 10/10 通过。
+该叶子要求两端原生执行时间（`--execute-from/--execute-to`），精确范围独立缓存；
+小页跨页重叠和宽范围 099 不被解释为完整空结果。详情与 executions、investable-funds
+仍延期。前述四叶子同时 unsupported 是规格冻结时的历史状态；本次实际范围、
+查询质量和剩余阻塞见 [Batch G 报告](../research/general/2026-10-06-batch-g-current-probes.md)。
+
 ## Solution
 
 ### 已确认的范围调整（2026-10-03）
