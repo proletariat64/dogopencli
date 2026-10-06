@@ -227,3 +227,78 @@ def test_empty_scope_and_required_bounds_in_offline_help(run_cli, envelope, setu
         assert run_cli(path)[0] == 2
     for verb in ("get", "approve", "verify", "retry", "export"):
         assert run_cli(["payment", "ptr", "orders", verb])[0] == 2
+
+
+def test_equivalent_numeric_offsets_share_the_baseline_scope_and_cache(
+    run_cli, envelope, setup
+):
+    rows = [order("A", START_MS + 1)]
+    setup.state.business_script.extend([page(rows), page(rows)])
+    assert refresh(run_cli)[0] == 0
+    baseline_requests = list(setup.state.business_requests)
+    setup.state.running = False
+    # 2024-12-31T16:00:00+00:00 is the same instant as the +08:00 baseline.
+    equivalent = [
+        "--updated-from",
+        "2024-12-31T16:00:00+00:00",
+        "--updated-to",
+        "2025-01-01T16:00:00+00:00",
+    ]
+    code, out, _ = listing(run_cli, "--all", window=equivalent)
+    assert code == 0, out
+    assert envelope(out)["data"] == rows
+    # The equivalent refresh emits byte-identical padded native requests.
+    setup.state.running = True
+    setup.state.business_script.extend([page(rows), page(rows)])
+    assert refresh(run_cli, equivalent)[0] == 0
+    assert setup.state.business_requests[-2:] == baseline_requests
+
+
+def test_equivalent_offset_refresh_hint_uses_the_normalized_window(
+    run_cli, envelope, setup
+):
+    equivalent = [
+        "--updated-from",
+        "2024-12-31T16:00:00+00:00",
+        "--updated-to",
+        "2025-01-01T16:00:00+00:00",
+    ]
+    missing = envelope(listing(run_cli, window=equivalent)[1])["error"]
+    assert missing["code"] == "CACHE_MISS"
+    assert f"--updated-from {START}" in missing["message"]
+    assert f"--updated-to {END}" in missing["message"]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "2025-01-01T00:00:00-00:00",  # unknown-offset form
+        "2025-01-01T00:00:00",  # missing offset
+        "2025-01-01T00:00:00+0800",  # compact offset
+    ],
+)
+def test_offset_form_rejections_precede_browser_and_source(
+    run_cli, envelope, setup, bad
+):
+    window = ["--updated-from", bad, "--updated-to", END]
+    for result in (refresh(run_cli, window), listing(run_cli, "--live", window=window)):
+        assert result[0] == 2
+        assert envelope(result[1])["error"]["code"] == "INVALID_ARGUMENT"
+    assert setup.state.business_requests == []
+
+
+def test_help_declares_offset_normalization(run_cli, envelope, setup):
+    import json
+
+    for path in (
+        ["payment", "ptr", "orders", "list"],
+        ["refresh", "payment", "ptr", "orders"],
+    ):
+        code, out, _ = run_cli(["help", *path])
+        assert code == 0
+        help_doc = json.loads(out)
+        options = {o["name"]: o for o in help_doc["options"]}
+        for name in ("updated_from", "updated_to"):
+            assert "+08:00" in options[name]["summary"]
+        constraints = " ".join(help_doc.get("constraints", []))
+        assert "equivalent" in constraints and "+08:00" in constraints
