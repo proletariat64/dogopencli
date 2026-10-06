@@ -35,7 +35,11 @@ from ...helpspec import (
     QUERY_EFFECTS_VARIANTS,
     QUERY_OUTPUT,
     SEQID_UNSTABLE,
+    SINGLE,
     BizNode,
+    contract,
+    filter_opt,
+    identity_opt,
     opt,
 )
 from ...jsonutil import parse
@@ -253,16 +257,29 @@ SLA_LIST_NODE = BizNode(
     ("payment", "sla", "baselines", "list"),
     "List SLA baselines from the local cache (default) or the backend with --live.",
     options=(
-        opt("biz_category", "Filter by business category.", "append"),
-        opt("creditor_currency", "Filter by creditor currency.", "append"),
-        opt("region_code", "Filter by region code.", "append"),
-        opt("status", "Filter by baseline status.", "append"),
+        filter_opt("biz_category", "Filter by business category.", "append"),
+        filter_opt("creditor_currency", "Filter by creditor currency.", "append"),
+        filter_opt("region_code", "Filter by region code.", "append"),
+        filter_opt("status", "Filter by baseline status.", "append"),
         opt(
             "biz_legal_entity",
             "Live passthrough only: the list response does not return the"
             " business legal entity field, so no local filter exists; its"
             " independent filter effect is unverified.",
             "append",
+            argument_contract=contract(
+                "string",
+                modes={
+                    "cache": {"available": False},
+                    "live": {
+                        "available": True,
+                        "role": "native-request",
+                        "cardinality": SINGLE,
+                        "evidence": "unverified independent filter effect",
+                    },
+                    "refresh": {"available": False},
+                },
+            ),
         ),
         LIMIT,
         OFFSET,
@@ -314,10 +331,9 @@ SLA_GET_NODE = BizNode(
     "Show one SLA baseline detail from the local cache (default) or the"
     " backend with --live.",
     options=(
-        opt(
+        identity_opt(
             "id",
             "Baseline id from the list query.",
-            "str",
             required=True,
         ),
         LIVE,

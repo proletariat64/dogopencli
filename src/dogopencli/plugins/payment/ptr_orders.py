@@ -1,6 +1,7 @@
 """Existing outflow PTR orders within an explicit updated-time interval."""
 
 import re
+import shlex
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,7 @@ from ...errors import (
     REQUEST_NOT_ALLOWED,
     CliError,
 )
+from ...temporal import parse_numeric_offset_instant
 from .. import EndpointContract, ParsedPage
 from ..envelope import success_document
 from . import ptr
@@ -22,9 +24,10 @@ from .ptr_common import filter_exact, is_nullable_number, money_schema, project_
 if TYPE_CHECKING:
     from ...collect import CollectedScope
 
-WINDOW_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+# Verified source zone for the native updated-time interval.
+SHANGHAI = timezone(timedelta(hours=8))
 WINDOW_PATTERN = re.compile(
-    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+08:00"
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}"
 )
 
 
@@ -268,7 +271,8 @@ class OrdersCapability:
         self._require_window()
         return (
             "refresh payment ptr orders "
-            f"--updated-from {self.updated_from} --updated-to {self.updated_to}"
+            f"--updated-from {shlex.quote(self.updated_from or '')}"
+            f" --updated-to {shlex.quote(self.updated_to or '')}"
         )
 
     @property
@@ -317,14 +321,24 @@ class OrdersCapability:
 
 def bind_window(from_value: str, to_value: str) -> OrdersCapability:
     values = (from_value, to_value)
-    if any(not isinstance(v, str) or not WINDOW_PATTERN.fullmatch(v) for v in values):
+    if any(
+        not isinstance(v, str)
+        or not WINDOW_PATTERN.fullmatch(v)
+        or v.endswith("-00:00")
+        for v in values
+    ):
         raise CliError(
             INVALID_ARGUMENT,
-            "updated bounds require YYYY-MM-DDTHH:MM:SS+08:00",
+            "updated bounds require YYYY-MM-DDTHH:MM:SS with an explicit numeric"
+            " offset (preferred +08:00); -00:00 carries no instant",
             exit_code=EXIT_USAGE,
         )
     try:
-        start, end = (datetime.strptime(v, WINDOW_FORMAT) for v in values)
+        # Equivalent instants normalize to the +08 representation before
+        # scope binding, so scope keys equal the baseline spelling.
+        start, end = (
+            parse_numeric_offset_instant(v).astimezone(SHANGHAI) for v in values
+        )
         if not start < end or end - start > timedelta(days=31):
             raise ValueError("invalid span")
         if end > datetime.now(timezone.utc):
@@ -335,6 +349,9 @@ def bind_window(from_value: str, to_value: str) -> OrdersCapability:
         finish = (end + timedelta(seconds=1)).isoformat(sep=" ", timespec="seconds")[
             :-6
         ]
+        normalized = [
+            bound.isoformat(sep="T", timespec="seconds") for bound in (start, end)
+        ]
     except (ValueError, OverflowError) as error:
         raise CliError(
             INVALID_ARGUMENT,
@@ -342,8 +359,8 @@ def bind_window(from_value: str, to_value: str) -> OrdersCapability:
             exit_code=EXIT_USAGE,
         ) from error
     return OrdersCapability(
-        from_value,
-        to_value,
+        normalized[0],
+        normalized[1],
         int(start.timestamp()) * 1000,
         int(end.timestamp()) * 1000,
         begin,

@@ -17,7 +17,7 @@ from ...helpspec import (
     REFRESH_CDP_EFFECTS,
     REFRESH_OUTPUT,
     BizNode,
-    opt,
+    filter_opt,
 )
 from .ptr import CASES
 
@@ -50,7 +50,9 @@ LIST_NODE = BizNode(
     "List existing outflow PTR cases and last-verification summaries.",
     options=(
         *(
-            opt(flag.replace("-", "_"), f"Exact local match on {field}.", "append")
+            filter_opt(
+                flag.replace("-", "_"), f"Exact local match on {field}.", "append"
+            )
             for flag, field in CASES.filters
         ),
         LIMIT,

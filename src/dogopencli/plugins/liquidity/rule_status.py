@@ -1,10 +1,12 @@
 """Native transfer-rule run-overview records with an explicit trigger scope."""
 
 import calendar
-from datetime import datetime
+import sys
+from datetime import datetime, timezone
 from typing import Any
 
 from ...errors import EXIT_USAGE, INVALID_ARGUMENT, INVALID_RESPONSE, CliError
+from ...temporal import parse_iso_instant
 from .decision_list import TIMESTAMP_FORMAT, validate_timestamp
 from .spec import (
     ENV_RESULT_FLAG,
@@ -58,14 +60,20 @@ RULE_STATUS = ListSpec(
         ScopeOption(
             "trigger_from",
             "triggerStartTime",
-            "Inclusive UTC expected-trigger lower bound (YYYY-MM-DD HH:mm:ss).",
+            "Inclusive UTC expected-trigger lower bound YYYY-MM-DDTHH:mm:ssZ;"
+            " explicit numeric offsets normalize to UTC. Deprecated legacy"
+            " 'YYYY-MM-DD HH:mm:ss' is read as UTC.",
             required=True,
+            datetime_zone="utc",
         ),
         ScopeOption(
             "trigger_to",
             "triggerEndTime",
-            "Inclusive UTC expected-trigger upper bound (YYYY-MM-DD HH:mm:ss).",
+            "Inclusive UTC expected-trigger upper bound YYYY-MM-DDTHH:mm:ssZ;"
+            " explicit numeric offsets normalize to UTC. Deprecated legacy"
+            " 'YYYY-MM-DD HH:mm:ss' is read as UTC.",
             required=True,
+            datetime_zone="utc",
         ),
     ),
     projection="rule_status",
@@ -106,16 +114,47 @@ RULE_STATUS = ListSpec(
 )
 
 
+# Native trigger-time fields and their canonical public flags (Issue #127).
+TRIGGER_FLAGS = {
+    "triggerStartTime": "--trigger-from",
+    "triggerEndTime": "--trigger-to",
+}
+
+
+def normalize_trigger_time(value: Any) -> tuple[str, bool]:
+    """Known-UTC public datetime to the native UTC representation.
+
+    Returns ``(normalized, legacy)``: preferred ISO 8601 second precision
+    with ``Z`` or an explicit numeric offset normalizes to the existing
+    ``YYYY-MM-DD HH:mm:ss`` UTC string; the offset-free space-separated form
+    is retained as deprecated legacy-as-UTC. ``-00:00``, fractional seconds,
+    leap seconds and missing offsets are rejected.
+    """
+    if isinstance(value, str) and "T" in value:
+        instant = parse_iso_instant(value)
+        return instant.astimezone(timezone.utc).strftime(TIMESTAMP_FORMAT), False
+    validate_timestamp(value)
+    return value, True
+
+
 def validate_rule_status_query(values: dict[str, Any]) -> None:
     for field in ("triggerStartTime", "triggerEndTime"):
         try:
-            validate_timestamp(values.get(field))
+            normalized, legacy = normalize_trigger_time(values.get(field))
         except ValueError as error:
             raise CliError(
                 INVALID_ARGUMENT,
-                f"{field} requires YYYY-MM-DD HH:mm:ss",
+                f"{field} ({TRIGGER_FLAGS[field]}) requires YYYY-MM-DDTHH:mm:ssZ"
+                " or an explicit numeric offset (UTC)",
                 exit_code=EXIT_USAGE,
             ) from error
+        values[field] = normalized
+        if legacy:
+            print(
+                f"warning: {TRIGGER_FLAGS[field]} uses the deprecated"
+                " 'YYYY-MM-DD HH:mm:ss' UTC form; use YYYY-MM-DDTHH:mm:ssZ",
+                file=sys.stderr,
+            )
     if values["triggerStartTime"] > values["triggerEndTime"]:
         raise CliError(
             INVALID_ARGUMENT,

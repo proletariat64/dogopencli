@@ -17,7 +17,10 @@ from .helpspec import (
     REFRESH_CDP_ERRORS,
     REQUIRE_COMPLETE,
     BizNode,
+    contract,
+    display_modes,
     opt,
+    scope_opt,
 )
 from .helpspec import REFRESH_OUTPUT as _REFRESH_OUTPUT
 from .plugins import command_nodes, group_nodes, refresh_nodes
@@ -55,10 +58,11 @@ _REFRESH_CHANNEL_NODE = BizNode(
     ("refresh", "payment", "channel"),
     "Import the configured channel source into the local cache.",
     options=(
-        opt(
+        scope_opt(
             "payout_type",
             "Payout scope.",
             "str",
+            value_type="enum",
             default="EXTERNAL",
             choices=("EXTERNAL", "LIQUIDITY", "MANUAL", "SETTLEMENT"),
         ),
@@ -295,6 +299,7 @@ NODES = build_catalog(
                     "Report format.",
                     default="text",
                     choices=("json", "text", "table"),
+                    argument_contract=contract("enum", modes=display_modes()),
                 ),
             ),
             constraints=(

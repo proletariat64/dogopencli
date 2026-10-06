@@ -441,3 +441,71 @@ def test_decision_exact_native_scopes_retain_independent_captures(
         assert code == 0, err
         assert parse(out)["data"] == expected
         assert parse(out)["meta"]["complete"] is True
+
+
+T_START = START.replace(" ", "T")
+T_END = END.replace(" ", "T")
+T_SCOPE = [
+    "--start-from",
+    T_START,
+    "--start-to",
+    T_END,
+    "--created-from",
+    T_START,
+    "--created-to",
+    T_END,
+]
+
+
+def test_decision_canonical_t_form_shares_the_legacy_space_scope(
+    setup, run_cli, decision_candidate_catalog
+):
+    rows = [decision(index) for index in range(3)]
+    setup.state.business_handler = listing(rows)
+    code, _, err = run_cli([*REFRESH, *T_SCOPE])
+    assert code == 0, err
+    # The emitted native request keeps the space-separated representation.
+    for body in setup.state.business_requests:
+        assert body["startTime"] == body["createStartTime"] == START
+        assert body["endTime"] == body["createEndTime"] == END
+    canonical_meta = parse(run_cli([*QUERY, *T_SCOPE, "--all"])[1])["meta"]
+    # The legacy space form reads the identical cached scope offline.
+    setup.state.reachable = False
+    code, out, err = run_cli([*QUERY, *SCOPE, "--all"])
+    assert code == 0, err
+    legacy = parse(out)
+    assert legacy["data"] == published(rows)
+    assert legacy["meta"]["scope"] == canonical_meta["scope"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-09-30T00:00:00+08:00",  # offset-bearing: source zone unknown
+        "2026-09-30T00:00:00Z",
+        "2026-09-30T00:00:00-00:00",
+        "2026-09-30T00:00:00.5",  # fractional seconds
+        "2026-09-30T23:59:60",  # leap second
+    ],
+)
+def test_decision_offset_bearing_values_rejected_before_access(
+    setup, run_cli, decision_candidate_catalog, value
+):
+    scope = ["--start-from", value, *SCOPE[2:]]
+    for argv in ([*QUERY, *scope, "--live"], [*REFRESH, *scope]):
+        code, out, _ = run_cli(argv)
+        assert code == 2
+        assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert setup.state.business_requests == []
+    assert not setup.cache_path.exists()
+
+
+def test_decision_help_declares_unknown_timezone(
+    setup, run_cli, decision_candidate_catalog
+):
+    code, out, err = run_cli(["help", *QUERY])
+    assert code == 0, err
+    options = {option["name"]: option for option in parse(out)["options"]}
+    for name in ("start_from", "start_to", "created_from", "created_to"):
+        assert "YYYY-MM-DDTHH:mm:ss" in options[name]["summary"]
+        assert "timezone unknown" in options[name]["summary"]

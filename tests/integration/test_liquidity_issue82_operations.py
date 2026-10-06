@@ -17,7 +17,7 @@ from dogopencli.plugins.liquidity.operations_batch import SWAP_ORDERS
 pytest_plugins = ["test_liquidity_cli_sit"]
 
 OPERATIONS = ("executions",)
-TRADE_SCOPE = ["--trade-from", "20260901", "--trade-to", "20261001"]
+TRADE_SCOPE = ["--from-date", "20260901", "--to-date", "20261001"]
 
 
 @pytest.fixture
@@ -279,11 +279,11 @@ def test_scoped_swaps_complete_empty_capture_is_not_cache_miss(
     "options",
     [
         [],
-        ["--trade-from", "20260901"],
-        ["--trade-to", "20261001"],
-        ["--trade-from", "20260230", "--trade-to", "20261001"],
-        ["--trade-from", "2026-09-01", "--trade-to", "20261001"],
-        ["--trade-from", "20261002", "--trade-to", "20261001"],
+        ["--from-date", "20260901"],
+        ["--to-date", "20261001"],
+        ["--from-date", "20260230", "--to-date", "20261001"],
+        ["--from-date", "2026-02-30", "--to-date", "20261001"],
+        ["--from-date", "20261002", "--to-date", "20261001"],
     ],
 )
 def test_scoped_swaps_require_valid_paired_trade_scope_before_access(
@@ -456,7 +456,7 @@ def test_scoped_swaps_distinct_date_scopes_keep_independent_captures(
     setup.state.business_handler = listing
     code, _, err = run_cli(swap_refresh())
     assert code == 0, err
-    empty_scope = ["--trade-from", "20261003", "--trade-to", "20261003"]
+    empty_scope = ["--from-date", "20261003", "--to-date", "20261003"]
     code, out, err = run_cli(
         ["refresh", "liquidity", "operations", "swaps", *empty_scope]
     )

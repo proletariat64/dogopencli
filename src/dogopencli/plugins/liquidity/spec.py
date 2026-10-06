@@ -74,7 +74,39 @@ class ScopeOption:
     list_of_one: bool = False
     # Value this spec binds for a virtual option in a variant leaf.
     match: str = ""
-    time: bool = False  # verified HHmmss, without an inferred source timezone
+    # Verified compact HHmmss internally; the canonical public HH:mm:ss form
+    # normalizes to it, without an inferred source timezone.
+    time: bool = False
+    # Canonical public flag when an Issue #127 rename moved the preferred
+    # spelling away from the stable internal dest ``flag``; the dest-derived
+    # flag stays accepted as a deprecated legacy alias.
+    canonical_flag: str | None = None
+    # Datetime options keep the native local ``YYYY-MM-DD HH:mm:ss`` string
+    # internally; ``utc`` marks the verified-UTC rule-status semantics so
+    # refresh hints reconstruct the preferred public instant form (#127).
+    datetime_zone: str | None = None  # None | "utc" | "unknown"
+    # ISO-only calendar date accepted by a per-leaf validator without the
+    # shared date=True compact normalization (forecast accuracy record day).
+    iso_date: bool = False
+    # Machine-readable occurrence bounds for repeat options (#127 T09/T11);
+    # a wire list-of-one stays single-valued publicly.
+    min_values: int | None = None
+    max_values: int | None = None
+
+    @property
+    def public_flag(self) -> str:
+        """Preferred public spelling for help, errors, and refresh hints."""
+        if self.canonical_flag is not None:
+            return self.canonical_flag
+        return "--" + self.flag.replace("_", "-")
+
+    @property
+    def legacy_flags(self) -> tuple[str, ...]:
+        """Deprecated spellings the Issue #127 rename replaced."""
+        derived = "--" + self.flag.replace("_", "-")
+        if self.canonical_flag is not None and self.canonical_flag != derived:
+            return (derived,)
+        return ()
 
 
 @dataclass(frozen=True)
@@ -98,7 +130,9 @@ class ListSpec:
     template: dict[str, Any] = field(default_factory=dict)
     vo_field: str | None = None  # nested VO carried as one JSON string field
     scope_options: tuple[ScopeOption, ...] = ()
-    filters: tuple[tuple[str, str], ...] = ()  # (flag, row field) local match
+    # (flag, row field[, canonical flag]) local match; the optional third
+    # element is the Issue #127 canonical spelling of a renamed filter.
+    filters: tuple[tuple[str, ...], ...] = ()
     table_columns: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
     # False for verified requests without pagination fields (metrics,

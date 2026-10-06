@@ -30,7 +30,8 @@ from ...helpspec import (
     QUERY_OUTPUT,
     SEQID_UNSTABLE,
     BizNode,
-    opt,
+    filter_opt,
+    scope_opt,
 )
 from ...jsonutil import canonical, parse
 from .. import EndpointContract, ParsedPage
@@ -215,24 +216,31 @@ CHANNEL_LIST_NODE = BizNode(
     ("payment", "channel", "list"),
     "List payment channels from the local cache (default) or the backend with --live.",
     options=(
-        opt("payout_type", "Payout scope.", "str", default="EXTERNAL", choices=SCOPES),
-        opt(
+        scope_opt(
+            "payout_type",
+            "Payout scope.",
+            "str",
+            value_type="enum",
+            default="EXTERNAL",
+            choices=SCOPES,
+        ),
+        filter_opt(
             "financial_inst_id",
             "Filter by financial institution ID (the bank suggest value; records"
             " expose it as financialInstCode).",
             "append",
         ),
-        opt(
+        filter_opt(
             "debit_inst_country_code",
             "Filter by debit institution country code.",
             "append",
         ),
-        opt("status", "Filter by channel status.", "append", choices=STATUSES),
-        opt("debit_account_name", "Filter by debit account name.", "append"),
-        opt("debit_account_no", "Filter by debit account number.", "append"),
-        opt("clearing_system_name", "Filter by clearing system name.", "append"),
-        opt("debit_currency", "Filter by debit currency.", "append"),
-        opt("credit_currency", "Filter by credit currency.", "append"),
+        filter_opt("status", "Filter by channel status.", "append", choices=STATUSES),
+        filter_opt("debit_account_name", "Filter by debit account name.", "append"),
+        filter_opt("debit_account_no", "Filter by debit account number.", "append"),
+        filter_opt("clearing_system_name", "Filter by clearing system name.", "append"),
+        filter_opt("debit_currency", "Filter by debit currency.", "append"),
+        filter_opt("credit_currency", "Filter by credit currency.", "append"),
         LIMIT,
         OFFSET,
         ALL,

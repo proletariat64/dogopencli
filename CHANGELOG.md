@@ -2,6 +2,17 @@
 
 ## 未发布
 
+规范化全部受支持 list 命令的公共参数契约（规格 #127）：主日期区间统一为
+`--from-date`/`--to-date`（YYYY-MM-DD 首选，原 YYYYMMDD 继续接受），账户别名统一为
+`--account-alias`（原 `--account`/`--alias`/`--bank-account` 保留为弃用别名），
+规则状态时间戳首选 ISO `Z` 形式，决策/需求接受无时区 `T` 形式，PTR 单据接受任意有效数字时区偏移并归一为 +08:00，
+预测结果时钟接受 `HH:mm:ss` 首选形式。等价旧写法产生逐参数一次的 stderr 弃用提示；
+标量的新旧拼写混用一律 INVALID_ARGUMENT/退出码 2。原生请求、缓存键、作用域与结果策略保持不变；
+缓存缺失误提示中的 refresh 建议命令以首选拼写和公共格式重建（含 shell 引号），可直接执行。
+帮助 JSON 为每个选项新增版本化 `argument_contract`（值类型、首选/接受格式、弃用别名、
+cache/live/refresh 各模式可用性/角色/基数与约束），`help_version` 保持 1。
+兼容性至少保留一个完整发布周期；生产 UAT 另行验收。
+
 新增 `liquidity operations rule-status list` 与独立 refresh（Batch H，规格 #122）：
 必填 `--trigger-from`、`--trigger-to`（YYYY-MM-DD HH:mm:ss，UTC，包含两端，允许同点），
 单次页宽 5000 仅一个请求；总数超 5000、行数或唯一原生 ID 与 count 不符、重复 ID、

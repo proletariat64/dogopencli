@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from ...errors import EXIT_USAGE, INVALID_ARGUMENT, INVALID_RESPONSE, CliError
+from ...temporal import normalize_local_datetime
 from .spec import ENV_SUCCESS, PROFILE_HISTORY, RUNTIMES, TENANT, ListSpec, ScopeOption
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -63,7 +64,14 @@ DECISIONS = ListSpec(
     template={"tntInstId": TENANT},
     scope_options=tuple(
         ScopeOption(
-            flag, field, summary + " Format: YYYY-MM-DD HH:mm:ss.", required=True
+            flag,
+            field,
+            summary
+            + " Format: YYYY-MM-DDTHH:mm:ss; source timezone unknown and"
+            + " offset-bearing values are rejected. Legacy 'YYYY-MM-DD HH:mm:ss'"
+            + " accepted.",
+            required=True,
+            datetime_zone="unknown",
         )
         for flag, field, summary in (
             (
@@ -127,6 +135,25 @@ def validate_timestamp(value: Any) -> None:
         raise ValueError
 
 
+# Native timestamp fields and their canonical public flags (Issue #127).
+DATETIME_FLAGS = {
+    "startTime": "--start-from",
+    "endTime": "--start-to",
+    "createStartTime": "--created-from",
+    "createEndTime": "--created-to",
+}
+
+
+def normalize_public_timestamp(value: Any) -> str:
+    """Offset-free public datetime to the native space-separated form.
+
+    Accepts the canonical ``YYYY-MM-DDTHH:mm:ss`` syntax and the legacy
+    space-separated syntax; the source timezone stays unknown, so
+    offset-bearing values are rejected.
+    """
+    return normalize_local_datetime(value)
+
+
 def validate_decision_query(values: dict[str, Any]) -> None:
     for lower, upper in (
         ("startTime", "endTime"),
@@ -134,11 +161,12 @@ def validate_decision_query(values: dict[str, Any]) -> None:
     ):
         for field in (lower, upper):
             try:
-                validate_timestamp(values.get(field))
+                values[field] = normalize_public_timestamp(values.get(field))
             except ValueError as error:
                 raise CliError(
                     INVALID_ARGUMENT,
-                    f"{field} requires YYYY-MM-DD HH:mm:ss",
+                    f"{field} ({DATETIME_FLAGS[field]}) requires an offset-free"
+                    " YYYY-MM-DDTHH:mm:ss; source timezone unknown",
                     exit_code=EXIT_USAGE,
                 ) from error
         if values[lower] > values[upper]:

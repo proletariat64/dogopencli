@@ -18,7 +18,7 @@ from ...helpspec import (
     REFRESH_CDP_EFFECTS,
     REFRESH_OUTPUT,
     BizNode,
-    opt,
+    filter_opt,
 )
 from .rules import CAPABILITIES, RuleListCapability
 
@@ -137,7 +137,9 @@ def list_node(cap: RuleListCapability) -> BizNode:
         f"List payment {cap.slug} configurations from cache or explicitly live.",
         options=(
             *(
-                opt(flag.replace("-", "_"), f"Exact local match on {field}.", "append")
+                filter_opt(
+                    flag.replace("-", "_"), f"Exact local match on {field}.", "append"
+                )
                 for flag, field in cap.filters
             ),
             LIMIT,

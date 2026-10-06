@@ -16,6 +16,105 @@ from typing import Any, NoReturn
 HELP_VERSION = 1
 HELP_FORMATS = ("json", "text")
 
+# Version of the per-option argument_contract object (Issue #127); the
+# skeleton carries version plus declared fields and auto-derived aliases.
+ARGUMENT_CONTRACT_VERSION = 1
+
+# Role vocabulary for per-mode availability/role/cardinality entries.
+ROLE_SCOPE = "scope-selection"  # chooses the cached/acquired dataset scope
+ROLE_NATIVE_REQUEST = "native-request"  # sent to the backend as-is
+ROLE_ACQUISITION = "acquisition-scope"  # refresh acquisition scope
+ROLE_LOCAL_FILTER = "local-filter"  # post-acquisition result filter
+ROLE_DISPLAY = "display"  # presentation-only, never sent
+ROLE_MODE = "mode-selector"  # selects execution mode
+ROLE_CACHE_POLICY = "cache-policy"  # freshness/completeness gating
+
+
+def _mode(role: str, cardinality: dict[str, Any] | None = None) -> dict[str, Any]:
+    entry: dict[str, Any] = {"available": True, "role": role}
+    if cardinality is not None:
+        entry["cardinality"] = cardinality
+    return entry
+
+
+def _unavailable() -> dict[str, Any]:
+    return {"available": False}
+
+
+SINGLE = {"min": 0, "max": 1}
+MULTI = {"min": 0, "max": None}
+
+
+def scope_modes(cardinality: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Modes for acquisition/cache scope options shared by list+refresh."""
+    return {
+        "cache": _mode(ROLE_SCOPE, cardinality),
+        "live": _mode(ROLE_NATIVE_REQUEST, cardinality),
+        "refresh": _mode(ROLE_ACQUISITION, cardinality),
+    }
+
+
+def variant_modes(cardinality: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Modes for virtual contract-variant selectors: they choose the variant
+    and shape scope identity in every mode but are never sent to the backend."""
+    return {
+        "cache": _mode(ROLE_SCOPE, cardinality),
+        "live": _mode("variant-selector", cardinality),
+        "refresh": _mode(ROLE_ACQUISITION, cardinality),
+    }
+
+
+def filter_modes(repeatable: bool = True, live_native: bool = True) -> dict[str, Any]:
+    """Local exact-match filters.
+
+    ``live_native`` distinguishes payment's verified single-value native
+    pass-through from collection/liquidity filters, which stay local (and
+    multi-value) even in live mode because the backend request ignores them.
+    """
+    if live_native:
+        live = _mode(ROLE_NATIVE_REQUEST, SINGLE)
+    else:
+        live = _mode(ROLE_LOCAL_FILTER, MULTI if repeatable else SINGLE)
+    return {
+        "cache": _mode(ROLE_LOCAL_FILTER, MULTI if repeatable else SINGLE),
+        "live": live,
+        "refresh": _unavailable(),
+    }
+
+
+def display_modes() -> dict[str, Any]:
+    """Presentation-only options; never part of acquisition."""
+    return {
+        "cache": _mode(ROLE_DISPLAY, SINGLE),
+        "live": _mode(ROLE_DISPLAY, SINGLE),
+        "refresh": _unavailable(),
+    }
+
+
+def contract(
+    value_type: str,
+    *,
+    preferred_format: str | None = None,
+    accepted_formats: tuple[str, ...] = (),
+    modes: dict[str, Any] | None = None,
+    constraints: tuple[dict[str, Any], ...] = (),
+    timezone: str | None = None,
+) -> dict[str, Any]:
+    """Versioned machine-readable argument contract (Issue #127 decision 6)."""
+    result: dict[str, Any] = {"value_type": value_type}
+    if preferred_format is not None:
+        result["preferred_format"] = preferred_format
+    if accepted_formats:
+        result["accepted_formats"] = list(accepted_formats)
+    if timezone is not None:
+        result["timezone"] = timezone
+    if modes is not None:
+        result["modes"] = modes
+    if constraints:
+        result["constraints"] = [dict(item) for item in constraints]
+    return result
+
+
 BUSINESS_EXIT_CODES = {
     0: "success",
     1: "runtime failure",
@@ -66,6 +165,19 @@ class OptionSpec:
     # list window parses None but executes limit=100/offset=0).
     help_default: Any = _UNSET
     choices: tuple[str, ...] = ()
+    # Deprecated public spellings bound to the same dest; ``flag`` stays the
+    # preferred spelling and ``name`` the stable internal identity (Issue
+    # #127 decision 3).
+    legacy_flags: tuple[str, ...] = ()
+    # Optional versioned machine-readable contract (value_type,
+    # preferred_format, accepted_formats, modes, ...); emitted in help JSON
+    # as ``argument_contract`` (Issue #127 decision 6).
+    argument_contract: dict[str, Any] | None = None
+
+    @property
+    def flags(self) -> tuple[str, ...]:
+        """Every accepted spelling, preferred first, then legacy aliases."""
+        return (self.flag, *self.legacy_flags)
 
     @property
     def effective_default(self) -> Any:
@@ -86,6 +198,65 @@ def opt(
 ) -> OptionSpec:
     """OptionSpec with the flag derived from the dest name."""
     return OptionSpec(name, "--" + name.replace("_", "-"), summary, kind, **kwargs)
+
+
+def filter_opt(
+    name: str,
+    summary: str,
+    kind: str = "append",
+    *,
+    live_native: bool = True,
+    **kwargs: Any,
+) -> OptionSpec:
+    """A local exact-match filter option with its declared contract (#127)."""
+    kwargs.setdefault(
+        "argument_contract",
+        contract(
+            "string",
+            modes=filter_modes(repeatable=kind == "append", live_native=live_native),
+        ),
+    )
+    return opt(name, summary, kind, **kwargs)
+
+
+def identity_opt(name: str, summary: str, **kwargs: Any) -> OptionSpec:
+    """A required business-object identity selector with its contract (#127)."""
+    kwargs.setdefault(
+        "argument_contract",
+        contract(
+            "string",
+            preferred_format="nonempty native identifier",
+            modes=scope_modes(SINGLE),
+        ),
+    )
+    return opt(name, summary, "str", **kwargs)
+
+
+def scope_opt(
+    name: str,
+    summary: str,
+    kind: str = "str",
+    *,
+    value_type: str = "string",
+    preferred_format: str | None = None,
+    accepted_formats: tuple[str, ...] = (),
+    timezone: str | None = None,
+    constraints: tuple[dict[str, Any], ...] = (),
+    **kwargs: Any,
+) -> OptionSpec:
+    """An acquisition/cache scope option with its declared contract (#127)."""
+    kwargs.setdefault(
+        "argument_contract",
+        contract(
+            value_type,
+            preferred_format=preferred_format,
+            accepted_formats=accepted_formats,
+            modes=scope_modes(None),
+            constraints=constraints,
+            timezone=timezone,
+        ),
+    )
+    return opt(name, summary, kind, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -115,34 +286,100 @@ class BizNode:
 
 # Shared query options (declared once, reused by every query leaf).
 LIMIT = opt(
-    "limit", "Maximum rows to display; a positive integer.", "int", help_default=100
+    "limit",
+    "Maximum rows to display; a positive integer.",
+    "int",
+    help_default=100,
+    argument_contract=contract(
+        "integer",
+        preferred_format="positive integer",
+        modes=display_modes(),
+        constraints=({"kind": "conflicts", "arguments": ["all"]},),
+    ),
 )
-OFFSET = opt("offset", "Rows to skip before displaying.", "int", help_default=0)
+OFFSET = opt(
+    "offset",
+    "Rows to skip before displaying.",
+    "int",
+    help_default=0,
+    argument_contract=contract(
+        "integer",
+        preferred_format="nonnegative integer",
+        modes=display_modes(),
+        constraints=({"kind": "conflicts", "arguments": ["all"]},),
+    ),
+)
 ALL = opt(
     "all",
     "Display all matched rows; conflicts with explicit --limit/--offset.",
     "bool",
+    argument_contract=contract(
+        "boolean",
+        modes=display_modes(),
+        constraints=({"kind": "conflicts", "arguments": ["limit", "offset"]},),
+    ),
 )
-FIELDS = opt("fields", "Comma-separated record fields to keep; at least one.", "str")
+FIELDS = opt(
+    "fields",
+    "Comma-separated record fields to keep; at least one.",
+    "str",
+    argument_contract=contract(
+        "string",
+        preferred_format="comma-separated field names",
+        modes=display_modes(),
+    ),
+)
 LIVE = opt(
     "live",
     "Query the backend through the existing CDP session instead of the cache.",
     "bool",
+    argument_contract=contract(
+        "boolean",
+        modes={
+            "cache": _unavailable(),
+            "live": _mode(ROLE_MODE),
+            "refresh": _unavailable(),
+        },
+    ),
 )
 REQUIRE_FRESH = opt(
     "require_fresh",
     "Fail when the cached snapshot is older than the TTL (default 72 hours,"
     " configurable).",
     "bool",
+    argument_contract=contract(
+        "boolean",
+        modes={
+            "cache": _mode(ROLE_CACHE_POLICY),
+            "live": _unavailable(),
+            "refresh": _unavailable(),
+        },
+    ),
 )
 REQUIRE_COMPLETE = opt(
     "require_complete",
     "Require complete scope and required details; incomplete refresh is not"
     " published. Default usable partial results warn and exit 0.",
     "bool",
+    argument_contract=contract(
+        "boolean",
+        modes={
+            "cache": _mode(ROLE_CACHE_POLICY),
+            "live": _mode(ROLE_CACHE_POLICY),
+            "refresh": _mode(ROLE_CACHE_POLICY),
+        },
+    ),
 )
 FORMAT_TABLE = opt(
-    "format", "Result format.", "str", default="json", choices=("json", "table")
+    "format",
+    "Result format.",
+    "str",
+    default="json",
+    choices=("json", "table"),
+    argument_contract=contract(
+        "enum",
+        modes=display_modes(),
+    ),
 )
 
 CACHE_FLAGS = (REQUIRE_FRESH, REQUIRE_COMPLETE)
@@ -208,7 +445,7 @@ def add_options(
             kwargs["choices"] = option.choices
         if option.required:
             kwargs["required"] = True
-        parser.add_argument(option.flag, **kwargs)
+        parser.add_argument(*option.flags, **kwargs)
 
 
 class HelpParser(argparse.ArgumentParser):
@@ -241,9 +478,17 @@ def _describe(option: OptionSpec) -> dict[str, Any]:
         "required": option.required,
         "default": option.effective_default,
     }
-    value["flags"] = [option.flag]
+    value["flags"] = list(option.flags)
     if option.choices:
         value["choices"] = list(option.choices)
+    if option.argument_contract is not None:
+        contract: dict[str, Any] = {
+            "version": ARGUMENT_CONTRACT_VERSION,
+            **option.argument_contract,
+        }
+        if option.legacy_flags:
+            contract.setdefault("deprecated_flags", list(option.legacy_flags))
+        value["argument_contract"] = contract
     return value
 
 

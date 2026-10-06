@@ -285,3 +285,46 @@ def test_cache_refresh_hint_retains_exact_window():
         cap.refresh_command
         == f"refresh payment ptr orders --updated-from {START} --updated-to {END}"
     )
+
+
+def test_numeric_offsets_normalize_to_shanghai_before_scope_binding():
+    baseline = ptr_orders.bind_window(START, END)
+    for equivalent in (
+        ("2024-12-31T16:00:00+00:00", "2025-01-01T16:00:00+00:00"),
+        ("2024-12-31T11:00:00-05:00", "2025-01-01T11:00:00-05:00"),
+        ("2025-01-01T02:30:00+10:30", "2025-01-02T02:30:00+10:30"),
+    ):
+        cap = ptr_orders.bind_window(*equivalent)
+        # Scope identity, padding and instants equal the +08:00 baseline.
+        assert cap == baseline
+        assert cap.default_scope == baseline.default_scope
+
+
+def test_offset_normalization_rolls_across_the_shanghai_day_boundary():
+    cap = ptr_orders.bind_window(
+        "2025-01-01T00:00:00+08:00", "2025-01-02T00:00:00+08:00"
+    )
+    rolled = ptr_orders.bind_window(
+        "2024-12-31T16:00:00+00:00", "2025-01-01T16:00:00+00:00"
+    )
+    assert rolled.updated_from == "2025-01-01T00:00:00+08:00"
+    assert rolled.updated_to == "2025-01-02T00:00:00+08:00"
+    assert rolled.default_scope == cap.default_scope
+
+
+@pytest.mark.parametrize(
+    "start,end",
+    [
+        ("2025-01-01T00:00:00-00:00", END),  # unknown-offset form
+        ("2025-01-01T00:00:00", END),  # missing offset
+        ("2025-01-01T00:00:00+0800", END),  # compact offset
+        ("2025-01-01T00:00:00+08", END),  # short offset
+        ("2025-01-01T00:00:00+24:00", END),  # out-of-range offset
+        ("2025-01-01T23:59:60+08:00", END),  # leap second
+    ],
+)
+def test_invalid_offset_forms_rejected(start, end):
+    with pytest.raises(CliError) as error:
+        ptr_orders.bind_window(start, end)
+    assert error.value.code == "INVALID_ARGUMENT"
+    assert error.value.exit_code == 2

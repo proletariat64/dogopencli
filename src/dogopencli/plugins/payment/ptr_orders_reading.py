@@ -17,27 +17,52 @@ from ...helpspec import (
     REFRESH_CDP_EFFECTS,
     REFRESH_OUTPUT,
     BizNode,
-    opt,
+    filter_opt,
+    scope_opt,
 )
 from .ptr_orders import ORDERS
 
 WINDOW = (
-    "Required --updated-from and --updated-to use exactly "
-    "YYYY-MM-DDTHH:MM:SS+08:00 (UTC+08:00 Shanghai wall time). "
-    "No date-only values, fractional seconds or other offsets. "
+    "Required --updated-from and --updated-to use YYYY-MM-DDTHH:MM:SS with an "
+    "explicit numeric offset; +08:00 (UTC+08:00 Shanghai wall time) is "
+    "preferred and other valid numeric offsets are accepted as equivalent "
+    "instants, normalized to +08:00 before scope binding. "
+    "No date-only values, Z, -00:00, fractional seconds or missing offsets. "
     "Require from < to, a span of at most 31 days, and to <= current time. "
     "The public interval is half-open: from <= gmtModified < to. "
     "gmtModified is integer epoch milliseconds; no default dates or all-history scope."
 )
 WINDOW_OPTIONS = (
-    opt(
+    scope_opt(
         "updated_from",
-        "Inclusive modification-time start, YYYY-MM-DDTHH:MM:SS+08:00.",
+        "Inclusive modification-time start, YYYY-MM-DDTHH:MM:SS with an explicit"
+        " numeric offset (preferred +08:00).",
+        value_type="datetime",
+        preferred_format="YYYY-MM-DDTHH:mm:ss+08:00",
+        accepted_formats=("YYYY-MM-DDTHH:mm:ss±hh:mm",),
+        timezone="+08:00",
+        constraints=(
+            {"kind": "ordered-pair", "role": "lower"},
+            {"kind": "max-elapsed-days", "days": 31},
+            {"kind": "not-future"},
+            {"kind": "half-open", "role": "inclusive"},
+        ),
         required=True,
     ),
-    opt(
+    scope_opt(
         "updated_to",
-        "Exclusive modification-time end, YYYY-MM-DDTHH:MM:SS+08:00.",
+        "Exclusive modification-time end, YYYY-MM-DDTHH:MM:SS with an explicit"
+        " numeric offset (preferred +08:00).",
+        value_type="datetime",
+        preferred_format="YYYY-MM-DDTHH:mm:ss+08:00",
+        accepted_formats=("YYYY-MM-DDTHH:mm:ss±hh:mm",),
+        timezone="+08:00",
+        constraints=(
+            {"kind": "ordered-pair", "role": "upper"},
+            {"kind": "max-elapsed-days", "days": 31},
+            {"kind": "not-future"},
+            {"kind": "half-open", "role": "exclusive"},
+        ),
         required=True,
     ),
 )
@@ -102,7 +127,9 @@ LIST_NODE = BizNode(
     options=(
         *WINDOW_OPTIONS,
         *(
-            opt(flag.replace("-", "_"), f"Exact local match on {field}.", "append")
+            filter_opt(
+                flag.replace("-", "_"), f"Exact local match on {field}.", "append"
+            )
             for flag, field in ORDERS.filters
         ),
         LIMIT,
@@ -168,7 +195,8 @@ def description(node: BizNode) -> dict[str, Any]:
             "scope": WINDOW,
             "namespace": (
                 "payment.ptr.orders.list:updated:<from-ISO8601>:<to-ISO8601>:cdp. "
-                "Both exact bounds retain literal +08:00. Configure "
+                "Equivalent instants normalize so both exact bounds retain "
+                "literal +08:00. Configure "
                 "sources.payment_ptr_orders kind=cdp. Different intervals never "
                 "share a snapshot; --all expands only the requested interval."
             ),

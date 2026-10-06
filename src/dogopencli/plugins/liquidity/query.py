@@ -9,6 +9,8 @@ never a misleading empty result or NOT_FOUND.
 """
 
 import argparse
+import re
+import shlex
 import sys
 from collections import Counter
 from dataclasses import replace
@@ -129,12 +131,14 @@ def _local_filters(
     args: argparse.Namespace, variant: spec_mod.ListSpec
 ) -> dict[str, list[str]]:
     filters: dict[str, list[str]] = {}
-    for flag, field in variant.filters:
+    for entry in variant.filters:
+        flag, field = entry[0], entry[1]
+        public = entry[2] if len(entry) > 2 else "--" + flag.replace("_", "-")
         values = getattr(args, flag, [])
         if any(not value.strip() for value in values):
             raise CliError(
                 INVALID_ARGUMENT,
-                f"--{flag.replace('_', '-')} must be nonempty",
+                f"{public} must be nonempty",
                 exit_code=EXIT_USAGE,
             )
         if values:
@@ -352,15 +356,47 @@ def _capture_meta_view(entry: capture_store.CaptureEntry) -> Any:
     return SimpleNamespace(fetched_at=entry.fetched_at)
 
 
+def _public_hint_value(option: spec_mod.ScopeOption, value: Any) -> str:
+    """Inverse of public normalization: internal value to public form (#127).
+
+    Hints print canonical spellings: ISO calendar dates, colon clocks, and
+    T-form datetimes (Z for the verified-UTC rule-status interval), so a
+    parsed hint re-resolves to the identical scope.
+    """
+    text = str(value)
+    if option.date:
+        match = re.fullmatch(r"(\d{4})-?(\d{2})-?(\d{2})", text)
+        if match:
+            return "-".join(match.groups())
+        expanded = re.fullmatch(r"(\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2}", text)
+        if expanded:  # day-start/day-end expansion inverts to its day
+            return expanded.group(1)
+        return text
+    if option.time:
+        match = re.fullmatch(r"(\d{2})(\d{2})(\d{2})", text)
+        if match:
+            return ":".join(match.groups())
+        return text
+    if option.datetime_zone is not None:
+        naive = re.fullmatch(r"(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})", text)
+        if naive:
+            suffix = "Z" if option.datetime_zone == "utc" else ""
+            return f"{naive.group(1)}T{naive.group(2)}{suffix}"
+        return text
+    return text
+
+
 def _hint_options(leaf: ListLeaf, values: dict[str, Any]) -> str:
     parts = []
     for option in leaf.options:
         value = values.get(option.field)
         if value is None:
             continue
-        flag = "--" + option.flag.replace("_", "-")
+        flag = option.public_flag
         items = value if isinstance(value, list) else [value]
-        parts.extend(f"{flag} {item}" for item in items)
+        parts.extend(
+            f"{flag} {shlex.quote(_public_hint_value(option, item))}" for item in items
+        )
     return (" " + " ".join(parts)) if parts else ""
 
 
@@ -465,7 +501,7 @@ def run_detail(args: argparse.Namespace) -> int:
         f"run: dogopencli refresh liquidity {' '.join(detail.path)} detail"
         f" {detail.action} "
         + " ".join(
-            f"--{flag.replace('_', '-')} {value}"
+            f"--{flag.replace('_', '-')} {shlex.quote(str(value))}"
             for flag, value in sorted(values.items())
         )
     )

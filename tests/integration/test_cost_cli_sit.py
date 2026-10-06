@@ -367,17 +367,78 @@ def test_bank_account_matches_alias_not_account_number(
     run_cli, envelope, cost_setup, sample_cost_rows
 ):
     refreshed(run_cli, cost_setup, sample_cost_rows)
-    code, out, _ = listing(run_cli, "--bank-account", "ACCT-A")
+    code, out, _ = listing(run_cli, "--account-alias", "ACCT-A")
     assert code == 0
     result = envelope(out)
     assert result["meta"]["matched_total"] == 1
     assert result["data"][0]["bankAccountAliasName"] == "ACCT-A"
 
-    code, out, _ = listing(run_cli, "--bank-account", "9001-000-FULL-ACCOUNT")
+    code, out, _ = listing(run_cli, "--account-alias", "9001-000-FULL-ACCOUNT")
     assert code == 0
     result = envelope(out)
     assert result["data"] == []
     assert result["meta"]["matched_total"] == 0
+
+
+def test_bank_account_legacy_spelling_warns_and_matches_canonical(
+    run_cli, envelope, cost_setup, sample_cost_rows
+):
+    refreshed(run_cli, cost_setup, sample_cost_rows)
+    code, out, err = listing(run_cli, "--bank-account", "ACCT-A")
+    assert code == 0
+    assert err == "warning: --bank-account is deprecated; use --account-alias\n"
+    legacy = envelope(out)
+    assert legacy["meta"]["matched_total"] == 1
+    assert legacy["data"][0]["bankAccountAliasName"] == "ACCT-A"
+    code, out, err = listing(run_cli, "--account-alias=ACCT-A")
+    assert code == 0 and err == ""
+    assert envelope(out)["data"] == legacy["data"]
+
+
+def test_account_alias_live_requests_identical_across_spellings(
+    run_cli, cost_setup, sample_cost_rows
+):
+    script_full(cost_setup.state, sample_cost_rows[:1])
+    code, out, err = listing(run_cli, "--live", "--account-alias", "ACCT-101")
+    assert code == 0 and err == ""
+    script_full(cost_setup.state, sample_cost_rows[:1])
+    code, out, err = listing(run_cli, "--live", "--bank-account", "ACCT-101")
+    assert code == 0
+    assert "warning: --bank-account is deprecated" in err
+    canonical, legacy = cost_setup.state.business_requests
+    assert canonical == legacy
+    assert canonical["bankAccount"] == "ACCT-101"
+
+
+def test_live_rejects_multi_value_account_alias_across_spellings(
+    run_cli, envelope, cost_setup
+):
+    code, out, _ = listing(
+        run_cli,
+        "--live",
+        "--account-alias",
+        "ACCT-A",
+        "--bank-account",
+        "ACCT-B",
+    )
+    assert code == 2
+    assert envelope(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert cost_setup.state.business_requests == []
+
+
+def test_account_alias_stays_off_refresh(run_cli, envelope, cost_setup):
+    code, out, _ = refresh(run_cli, "--account-alias", "ACCT-A")
+    assert code == 2
+    assert envelope(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert cost_setup.state.business_requests == []
+    assert not cost_setup.cache_path.exists()
+
+
+def test_account_alias_help_lists_canonical_flag(run_cli):
+    code, out, err = run_cli(["help", "payment", "cost", "list"])
+    assert code == 0 and err == ""
+    options = {option["name"]: option for option in json.loads(out)["options"]}
+    assert options["bank_account"]["flags"] == ["--account-alias", "--bank-account"]
 
 
 def test_live_sends_scalar_filters_and_marks_source(
@@ -389,7 +450,7 @@ def test_live_sends_scalar_filters_and_marks_source(
         "--live",
         "--legal-entity-code",
         "ALIPAY SG",
-        "--bank-account",
+        "--account-alias",
         "ACCT-101",
         "--trans-currency-code",
         "USD",
