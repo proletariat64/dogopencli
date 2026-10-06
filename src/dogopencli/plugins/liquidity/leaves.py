@@ -2735,12 +2735,13 @@ def _option_spec(option: ScopeOption) -> OptionSpec:
     kind = "append" if option.repeat else "str"
     return OptionSpec(
         option.flag,
-        "--" + option.flag.replace("_", "-"),
+        "--" + option.cli_flag,
         summary,
         kind,
         required=option.required,
         default=None if option.repeat else option.default,
         choices=option.choices,
+        legacy_flags=tuple("--" + stem for stem in option.legacy_cli_flags),
     )
 
 

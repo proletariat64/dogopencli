@@ -29,23 +29,35 @@ NOTES = (
 )
 
 
+# Public calendar-date rule (Issue #127): preferred YYYY-MM-DD, previously
+# supported compact YYYYMMDD retained; both normalize to the internal
+# compact form before scope and request construction.
+_DATE_FMT = "YYYY-MM-DD preferred; compact YYYYMMDD accepted"
+
+
 def _window(start: str, end: str) -> tuple[ScopeOption, ...]:
+    # The retained coverage check bounds each row's valueDate by this
+    # window, so the value date is the verified queried date axis.
     return (
         ScopeOption(
             "from",
             start,
-            "Business window start (YYYYMMDD).",
+            f"Inclusive value date window start ({_DATE_FMT});"
+            " pair with --to-date.",
             required=True,
             date=True,
             window="from",
+            public_flag="from_date",
         ),
         ScopeOption(
             "to",
             end,
-            "Business window end (YYYYMMDD).",
+            f"Inclusive value date window end ({_DATE_FMT});"
+            " pair with --from-date.",
             required=True,
             date=True,
             window="to",
+            public_flag="to_date",
         ),
     )
 
