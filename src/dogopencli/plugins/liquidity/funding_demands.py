@@ -4,7 +4,10 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from ...errors import EXIT_USAGE, INVALID_ARGUMENT, INVALID_RESPONSE, CliError
-from .decision_list import validate_timestamp
+from .decision_list import (
+    normalize_public_timestamp,
+    validate_timestamp,
+)
 from .spec import (
     ENV_RESULT_FLAG,
     PAGE_SINGLE,
@@ -57,13 +60,17 @@ DEMANDS = ListSpec(
         ScopeOption(
             "execute_from",
             "startExecuteTime",
-            "Inclusive native execution time lower bound (YYYY-MM-DD HH:mm:ss).",
+            "Inclusive execution time lower bound YYYY-MM-DDTHH:mm:ss;"
+            " source timezone unknown; offset-bearing values are rejected."
+            " Legacy 'YYYY-MM-DD HH:mm:ss' accepted.",
             required=True,
         ),
         ScopeOption(
             "execute_to",
             "endExecuteTime",
-            "Inclusive native execution time upper bound (YYYY-MM-DD HH:mm:ss).",
+            "Inclusive execution time upper bound YYYY-MM-DDTHH:mm:ss;"
+            " source timezone unknown; offset-bearing values are rejected."
+            " Legacy 'YYYY-MM-DD HH:mm:ss' accepted.",
             required=True,
         ),
     ),
@@ -93,14 +100,22 @@ DEMANDS = ListSpec(
 )
 
 
+# Native execution-time fields and their canonical public flags (Issue #127).
+EXECUTE_FLAGS = {
+    "startExecuteTime": "--execute-from",
+    "endExecuteTime": "--execute-to",
+}
+
+
 def validate_demand_query(values: dict[str, Any]) -> None:
     for field in ("startExecuteTime", "endExecuteTime"):
         try:
-            validate_timestamp(values.get(field))
+            values[field] = normalize_public_timestamp(values.get(field))
         except ValueError as error:
             raise CliError(
                 INVALID_ARGUMENT,
-                f"{field} requires YYYY-MM-DD HH:mm:ss",
+                f"{field} ({EXECUTE_FLAGS[field]}) requires an offset-free"
+                " YYYY-MM-DDTHH:mm:ss; source timezone unknown",
                 exit_code=EXIT_USAGE,
             ) from error
     if values["startExecuteTime"] > values["endExecuteTime"]:

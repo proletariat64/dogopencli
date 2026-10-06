@@ -22,9 +22,11 @@ from ...helpspec import (
 from .ptr_orders import ORDERS
 
 WINDOW = (
-    "Required --updated-from and --updated-to use exactly "
-    "YYYY-MM-DDTHH:MM:SS+08:00 (UTC+08:00 Shanghai wall time). "
-    "No date-only values, fractional seconds or other offsets. "
+    "Required --updated-from and --updated-to use YYYY-MM-DDTHH:MM:SS with an "
+    "explicit numeric offset; +08:00 (UTC+08:00 Shanghai wall time) is "
+    "preferred and other valid numeric offsets are accepted as equivalent "
+    "instants, normalized to +08:00 before scope binding. "
+    "No date-only values, Z, -00:00, fractional seconds or missing offsets. "
     "Require from < to, a span of at most 31 days, and to <= current time. "
     "The public interval is half-open: from <= gmtModified < to. "
     "gmtModified is integer epoch milliseconds; no default dates or all-history scope."
@@ -32,12 +34,14 @@ WINDOW = (
 WINDOW_OPTIONS = (
     opt(
         "updated_from",
-        "Inclusive modification-time start, YYYY-MM-DDTHH:MM:SS+08:00.",
+        "Inclusive modification-time start, YYYY-MM-DDTHH:MM:SS with an explicit"
+        " numeric offset (preferred +08:00).",
         required=True,
     ),
     opt(
         "updated_to",
-        "Exclusive modification-time end, YYYY-MM-DDTHH:MM:SS+08:00.",
+        "Exclusive modification-time end, YYYY-MM-DDTHH:MM:SS with an explicit"
+        " numeric offset (preferred +08:00).",
         required=True,
     ),
 )
@@ -168,7 +172,8 @@ def description(node: BizNode) -> dict[str, Any]:
             "scope": WINDOW,
             "namespace": (
                 "payment.ptr.orders.list:updated:<from-ISO8601>:<to-ISO8601>:cdp. "
-                "Both exact bounds retain literal +08:00. Configure "
+                "Equivalent instants normalize so both exact bounds retain "
+                "literal +08:00. Configure "
                 "sources.payment_ptr_orders kind=cdp. Different intervals never "
                 "share a snapshot; --all expands only the requested interval."
             ),
