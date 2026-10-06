@@ -161,7 +161,7 @@ def eod_row(**overrides):
     }
 
 
-EOD_BASE = ["--entity", "E1", "--account", "A1", "--currency", "USD"]
+EOD_BASE = ["--entity", "E1", "--account-alias", "A1", "--currency", "USD"]
 EOD_CANONICAL = ["--from-date", "2026-09-30", "--to-date", "2026-09-30"]
 EOD_LEGACY = ["--from", "20260930", "--to", "20260930"]
 
