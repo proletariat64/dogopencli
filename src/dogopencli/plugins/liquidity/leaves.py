@@ -1945,8 +1945,8 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("cash", "wallets", "list"),
         REFERENCE,
         "filter-unverified",
-        "Wallets: the native wallet flag returned identical first-page account"
-        " data; wallet membership is not established.",
+        "Wallets: wallet=true/false returned identical ordered account rows at"
+        " pageSize 1000/5000; wallet membership is not established.",
     ),
     DeferredLeaf(
         ("cash", "wallets", "get"),
@@ -1958,7 +1958,8 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("cash", "wallet-balances", "list"),
         RUNTIMES,
         "unverified",
-        f"Wallet balances: {_UNVERIFIED}.",
+        "Wallet balances: no verified independent native wallet-balance caller"
+        " bound to wallet membership; normal-account balances are not renamed.",
     ),
     DeferredLeaf(
         ("cash", "pools", "list"),
@@ -2034,7 +2035,12 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("operations", "rule-status", "list"),
         RUNTIMES,
         "unverified",
-        f"Rule status: {_UNVERIFIED}.",
+        "Rule status: 2026-10-06 native configuration and task pages plus"
+        " static call inspection establish no independent runtime-list"
+        " caller, payload or identity; configuration RUN/PAUSE is not one"
+        " execution or an actual transaction result, and existing rule"
+        " configuration and decision task lists are not renamed as rule"
+        " status.",
     ),
     DeferredLeaf(
         ("operations", "swaps", "list"),
@@ -2059,19 +2065,27 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("investment", "offers", "list"),
         RUNTIMES,
         "unverified",
-        f"Offers: {_UNVERIFIED}.",
+        "Offers (#118): the current ProductPoolView, RFQMgmt and"
+        " QuotationGroupMgmt pages do not prove an independent native runtime"
+        " offers object; RFQ and quote-group lists must not be renamed as"
+        f" offers; {_UNVERIFIED}.",
     ),
     DeferredLeaf(
         ("investment", "investable-funds", "list"),
         RUNTIMES,
         "empty-scope",
-        "Spec #82 investable funds: the native JSON list inquiry"
-        " /queryInvestableFundList.json is known; five bounded report/range"
-        " probes returned zero rows. Successful empty scopes"
-        " do not establish a nonempty record schema, unique identity, amount"
-        " and currency semantics, report/forecast date meaning, or complete"
-        " pagination. Standalone production UAT has not passed; list, live"
-        " acquisition and refresh remain unavailable.",
+        "Investable funds (#82/#118): the native JSON list inquiry"
+        " /queryInvestableFundList.json contract is known (JSON POST; native"
+        " tenant, timeZone, reportDate, startForecastDate, endForecastDate,"
+        " rowStart, pageSize, optional native currency), but 28 bounded"
+        " probes across 7 report dates, 1000/5000 page widths and two"
+        " forecast ranges all returned zero rows (totalCount=0). Successful"
+        " empty scopes do not establish a nonempty record schema, unique"
+        " identity, amount and currency semantics, or report/forecast date"
+        " meaning. Enablement gates on a populated positive sample proving"
+        " nonempty rows, identity and amount/date semantics; standalone"
+        " production UAT has not passed; list, live acquisition and refresh"
+        " remain unavailable.",
     ),
     DeferredLeaf(
         ("investment", "interest-rates", "get"),
@@ -2104,7 +2118,9 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("investment", "quote-sessions", "list"),
         RUNTIMES,
         "unverified",
-        f"Quote sessions: {_UNVERIFIED}.",
+        "Quote sessions (#118): no independent session granularity or native"
+        " session identity is proven; RFQ and quote-group records are not"
+        f" sessions and must not be renamed; {_UNVERIFIED}.",
     ),
     DeferredLeaf(
         ("investment", "benchmarks", "get"),
@@ -2226,15 +2242,23 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         ("network", "routes", "list"),
         SETTINGS,
         "unverified",
-        "Network routes: route semantics unverified; the verified native"
-        " inquiries are network realtime list/get, which must not masquerade"
-        " as generic routes.",
+        "Network routes: no native global routes-list caller exists (#119);"
+        " RealTimeNetwork is a network configuration object with its own"
+        " native network id and its routeId values are references, not"
+        " routes; the discovered queryWhaleRouteDetail caller is a"
+        " network-scoped per-route quota detail"
+        " (dynamicQuotas/staticQuotas), not a global routes list with"
+        " pagination, so the verified realtime network records must not"
+        " masquerade as routes acceptance.",
     ),
     DeferredLeaf(
         ("network", "routes", "get"),
         SETTINGS,
         "unverified",
-        "Network route detail: route semantics unverified.",
+        "Network route detail: the discovered queryWhaleRouteDetail caller"
+        " (routeId/aliasName/tntInstId; dynamicQuotas/staticQuotas quota"
+        " detail) was never executed and no get is in scope this batch"
+        " (#119).",
     ),
     DeferredLeaf(
         ("network", "realtime", "get"),
