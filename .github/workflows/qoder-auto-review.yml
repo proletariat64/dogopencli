@@ -3,6 +3,8 @@ name: Qoder Auto Code Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths-ignore:
+      - 'docs/**'
 
 jobs:
   qoder-review:
@@ -21,8 +23,10 @@ jobs:
       - name: Run Qoder Code Review
         uses: QoderAI/qoder-action@v0
         with:
-          qoder_personal_access_token: ${{ secrets.QODER_PERSONAL_ACCESS_TOKEN }}
+          qoder_personal_access_token: >-
+            ${{ secrets.QODER_PERSONAL_ACCESS_TOKEN }}
           prompt: |
             /review-pr
-            REPO:${{ github.repository }} PR_NUMBER:${{ github.event.pull_request.number }}
+            REPO:${{ github.repository }}
+            PR_NUMBER:${{ github.event.pull_request.number }}
             OUTPUT_LANGUAGE:English

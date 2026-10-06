@@ -63,3 +63,17 @@ is not delivery; production UAT was not attempted.
 Prior evidence: the 2026-10-01 live-probe audit recorded this leaf as
 `runtimes/unverified` with no verified independent native contract; the Batch F
 investigation refines, not replaces, that blocker.
+
+## Continuation 2026-10-06 (batch H: deferral superseded)
+
+This deferral is superseded. Batch H (spec
+[#122](https://github.com/proletariat64/dogopencli/issues/122)) enabled
+`liquidity operations rule-status list` per ticket
+[#123](https://github.com/proletariat64/dogopencli/issues/123) as the bounded
+TransferRunOverview summary contract: one counted single response, hard gates,
+lossless native identity, and an exact trigger-scope cache. The verified
+contract and first-enable evidence are recorded in
+[Batch H rule-status contract](2026-10-06-batch-h-rule-status-contract.md).
+The deferral text above remains the evidence record of the Batch F F2 round.
+Production CLI UAT for the enabled leaf is still pending as a separate serial
+acceptance and is not claimed here.

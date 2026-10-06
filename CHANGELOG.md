@@ -2,14 +2,28 @@
 
 ## 未发布
 
+新增 `liquidity operations rule-status list` 与独立 refresh（Batch H，规格 #122）：
+必填 `--trigger-from`、`--trigger-to`（YYYY-MM-DD HH:mm:ss，UTC，包含两端，允许同点），
+单次页宽 5000 仅一个请求；总数超 5000、行数或唯一原生 ID 与 count 不符、重复 ID、
+错租户或越界触发时间均在输出与发布前严格拒绝并提示缩小范围。
+原生正整数 id 无损作为身份，保留 executeStatus/createdOrder/orderStatus 原生状态区分与
+null realTriggerTime，时间戳为 UTC epoch 毫秒；排除金额、账号别名与自由文本。
+按精确 profile/tenant/触发范围隔离缓存，失败保留已有缓存，空范围成功如实发布。
+getter 与 queryDetailed 展开记录继续不支持；生产 CLI UAT 仍待串行验收。
+
 新增 `liquidity operations demands list` 与独立 refresh：必填
 `--execute-from`、`--execute-to`（YYYY-MM-DD HH:mm:ss，包含两端），固定
 FUND_REQUIRE 来源及单次页宽 5000；原生总数超过 5000 时拒绝并提示缩小范围。
 保留原生任务身份、金额精度和未知状态，按精确
 时间范围隔离缓存。原生历史范围 79/79 完整，公共 CLI 生产只读验收 10/10 通过；
 宽范围的后端 `099` 失败保留已有缓存。详情与其余未验证列表继续延期。
-当前分支 unsupported 为 41 条，其中 list 为 13 条（含 monitoring HOLD）。
-证据见 [Batch G 报告](docs/research/general/2026-10-06-batch-g-current-probes.md)。
+当前分支 unsupported 为 40 条，其中 list 为 12 条（含 monitoring HOLD）。
+证据见 [Batch H 契约](docs/research/general/2026-10-06-batch-h-rule-status-contract.md)
+与 [Batch G 报告](docs/research/general/2026-10-06-batch-g-current-probes.md)。
+批次验收与后续候选研究见 [Batch H 验收记录](docs/research/general/2026-10-06-batch-h-acceptance.md)、
+[剩余清单 PRD 交叉核对](docs/research/general/2026-10-06-remaining-list-prd-crosscheck.md) 与
+[剩余清单当前探测](docs/research/general/2026-10-06-remaining-list-current-probes.md)；
+quote-groups 覆盖阻塞于 2026-10-06 续证维持不支持（#124）。
 
 ## v0.2.8（2026-10-05）
 

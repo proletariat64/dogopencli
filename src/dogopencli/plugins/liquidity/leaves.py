@@ -64,6 +64,7 @@ from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import RELEASED as RISK_RELEASED
 from .risk_detail import RISK_DETAIL_SPECS
 from .risk_sla import RISK_SLA
+from .rule_status import RULE_STATUS, validate_rule_status_query
 from .spec import (
     ENC_FORM,
     ENV_BASE_RESULT,
@@ -2033,17 +2034,6 @@ _AUDIT_DEFERRED: tuple[DeferredLeaf, ...] = (
         f"Execution detail: {_IDENTITY}.",
     ),
     DeferredLeaf(
-        ("operations", "rule-status", "list"),
-        RUNTIMES,
-        "unverified",
-        "Rule status: 2026-10-06 native configuration and task pages plus"
-        " static call inspection establish no independent runtime-list"
-        " caller, payload or identity; configuration RUN/PAUSE is not one"
-        " execution or an actual transaction result, and existing rule"
-        " configuration and decision task lists are not renamed as rule"
-        " status.",
-    ),
-    DeferredLeaf(
         ("operations", "swaps", "list"),
         RUNTIMES,
         "empty-scope",
@@ -2546,6 +2536,9 @@ DEFERRED = tuple(item for item in DEFERRED if item.path != (*RFQS.path, "list"))
 LIST_SPECS += (DEMANDS,)
 DEFERRED = tuple(item for item in DEFERRED if item.path != (*DEMANDS.path, "list"))
 
+LIST_SPECS += (RULE_STATUS,)
+DEFERRED = tuple(item for item in DEFERRED if item.path != (*RULE_STATUS.path, "list"))
+
 
 def _merged_options(variants: tuple[ListSpec, ...]) -> tuple[ScopeOption, ...]:
     merged: dict[str, ScopeOption] = {}
@@ -2608,6 +2601,8 @@ class ListLeaf:
         request_values, window = scope_values(variant.scope_options, provided)
         if variant.projection == "funding_demands":
             validate_demand_query(request_values)
+        if variant.projection == "rule_status":
+            validate_rule_status_query(request_values)
         if variant.projection == "decision_reports":
             validate_decision_query(request_values)
         if variant.projection == "swap_orders":

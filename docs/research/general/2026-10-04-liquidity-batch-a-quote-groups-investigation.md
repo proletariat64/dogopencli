@@ -104,3 +104,38 @@ these conditions is waived by a nonempty sample or by this report.
 
 No new quote-group list/get/history executor or cache is introduced by this
 investigation. Existing unsupported discovery remains the user-visible gate.
+
+## Continuation 2026-10-06 (batch H coverage proof attempt)
+
+Continuation ticket: [#124](https://github.com/proletariat64/dogopencli/issues/124)
+under specification [#122](https://github.com/proletariat64/dogopencli/issues/122)
+(Target 2). A bounded read-only proof attempt ran on 2026-10-06 against the
+dedicated authenticated session, mirroring the shared CDP transport mechanism
+from one own temporary target on the liquidity entry origin. Only aggregates
+were recorded; no raw production rows left the browser.
+
+Eight requests were issued, one at a time, using only fields with native caller
+evidence (the empty object, and `pageSize`/`rowStart` as used by the native
+list caller); no invented filters: `{}` twice (stability), `{pageSize:10,
+rowStart:0}`, `{pageSize:10, rowStart:10}`, `{pageSize:10, rowStart:50}`,
+`{pageSize:5, rowStart:0}`, `{pageSize:5, rowStart:5}`, `{pageSize:100,
+rowStart:0}`.
+
+Every request returned HTTP 200 with the same envelope keys (`data`,
+`detailMessage`, `errorCode`, `errorContext`, `errorMessage`, `success`), no
+`totalCount`, `total`, or terminal marker. Every response carried 54 records:
+54 unique native `id` values, 54 unique `(quotationGroupId, version)` pairs,
+48 distinct logical `quotationGroupId` values, four version values. The record
+identity set was identical across all eight responses (single shared id hash;
+54/54 pairwise overlap), including across every `pageSize`/`rowStart`
+combination. Paging fields do not advance, narrow, or terminate this endpoint;
+repeated identical pages demonstrate no progression.
+
+The blocker is reaffirmed unchanged: no server-authoritative total or
+completeness signal exists in the response envelope, and no genuinely
+progressing paging/ending protocol was observed. The 2026-10-06 identity
+structure (54 ids / 54 group+version pairs / 48 logical groups) matches the
+prior evidence and remains a sample description, not a coverage claim. The
+`investment quote-groups list` leaf stays unsupported with the existing
+`total-unverified` deferral reason, and the continuation conditions above still
+govern any future enablement.
