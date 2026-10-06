@@ -2,6 +2,8 @@
 
 ## 未发布
 
+当前源码版本为 **v0.2.9**（2026-10-07），包含已合并的 PR #135（规格 #127）。
+
 规范化全部受支持 list 命令的公共参数契约（规格 #127）：主日期区间统一为
 `--from-date`/`--to-date`（YYYY-MM-DD 首选，原 YYYYMMDD 继续接受），账户别名统一为
 `--account-alias`（原 `--account`/`--alias`/`--bank-account` 保留为弃用别名），
