@@ -25,7 +25,8 @@ from ...helpspec import (
     REFRESH_CDP_ERRORS,
     REFRESH_OUTPUT,
     BizNode,
-    opt,
+    filter_opt,
+    identity_opt,
 )
 from .. import EndpointContract, ParsedPage
 from ..envelope import success_document
@@ -219,7 +220,7 @@ COLLECTION_SLA_LIST_NODE = BizNode(
     "List collection SLA configurations from cache or explicitly with --live.",
     options=(
         *(
-            opt(
+            filter_opt(
                 flag.replace("-", "_"),
                 f"Nonempty exact local match on {field}.",
                 "append",
@@ -282,7 +283,7 @@ COLLECTION_SLA_GET_NODE = BizNode(
     ("collection", "sla", "configs", "get"),
     "Retrieve a true collection SLA configuration detail by slaConfigId.",
     options=(
-        opt("id", "Nonempty string slaConfigId from the list.", "str", required=True),
+        identity_opt("id", "Nonempty string slaConfigId from the list.", required=True),
         LIVE,
         *CACHE_FLAGS,
         FORMAT_TABLE,

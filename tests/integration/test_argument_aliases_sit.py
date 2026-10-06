@@ -229,7 +229,8 @@ RENAMED_OPTIONS_129 = {
 
 
 def test_baseline_declarations_keep_single_flag_and_no_contract():
-    """Beyond the #129/#130 renames, declarations keep single-flag help."""
+    """Beyond the #129/#130 renames, declarations keep single-flag help;
+    #133 adds the versioned argument contract to every declared option."""
     for node in NODES.values():
         entries = {entry["name"]: entry for entry in document(node)["options"]}
         for option in node.options:
@@ -245,6 +246,7 @@ def test_baseline_declarations_keep_single_flag_and_no_contract():
                 # Unrenamed options (get/detail commands, payment rules retry
                 # bank_account) keep their current spelling per spec scope.
                 assert option.legacy_flags == ()
-                assert option.argument_contract is None
                 assert entry["flags"] == [option.flag]
-                assert "argument_contract" not in entry
+            # #133: every declared option now carries the versioned contract.
+            assert option.argument_contract is not None
+            assert entry["argument_contract"]["version"] == 1

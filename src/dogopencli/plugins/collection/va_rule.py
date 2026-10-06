@@ -25,7 +25,7 @@ from ...helpspec import (
     REFRESH_CDP_ERRORS,
     REFRESH_OUTPUT,
     BizNode,
-    opt,
+    identity_opt,
 )
 from .. import EndpointContract, ParsedPage
 from ..envelope import success_document
@@ -276,7 +276,7 @@ COLLECTION_VA_RULE_GET_NODE = BizNode(
     ("collection", "va", "rules", "get"),
     "Retrieve a true collection VA rule detail by vaRuleId.",
     options=(
-        opt("id", "Nonempty string vaRuleId from the list.", "str", required=True),
+        identity_opt("id", "Nonempty string vaRuleId from the list.", required=True),
         LIVE,
         *CACHE_FLAGS,
         FORMAT_TABLE,
