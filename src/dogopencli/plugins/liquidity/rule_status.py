@@ -64,6 +64,7 @@ RULE_STATUS = ListSpec(
             " explicit numeric offsets normalize to UTC. Deprecated legacy"
             " 'YYYY-MM-DD HH:mm:ss' is read as UTC.",
             required=True,
+            datetime_zone="utc",
         ),
         ScopeOption(
             "trigger_to",
@@ -72,6 +73,7 @@ RULE_STATUS = ListSpec(
             " explicit numeric offsets normalize to UTC. Deprecated legacy"
             " 'YYYY-MM-DD HH:mm:ss' is read as UTC.",
             required=True,
+            datetime_zone="utc",
         ),
     ),
     projection="rule_status",
