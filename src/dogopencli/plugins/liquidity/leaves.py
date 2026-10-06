@@ -9,7 +9,7 @@ placeholder datasets. Evidence:
 docs/research/general/2026-10-01-liquidity-live-probes.md.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ...errors import INVALID_ARGUMENT, CliError
@@ -109,7 +109,13 @@ _NULL_NOTE = (
 
 def _account(summary: str, field: str = "aliasNameList", **kwargs: Any) -> ScopeOption:
     return ScopeOption(
-        "account", field, summary, required=True, list_of_one=True, **kwargs
+        "account",
+        field,
+        summary,
+        required=True,
+        list_of_one=True,
+        canonical_flag="--account-alias",
+        **kwargs,
     )
 
 
@@ -1264,7 +1270,7 @@ CASH_ACCOUNTS = ListSpec(
         ("bank", "bankId"),
         ("status", "status"),
         ("account_no", "accountNo"),
-        ("alias", "aliasName"),
+        ("alias", "aliasName", "--account-alias"),
     ),
     table_columns=(
         "id",
@@ -2735,17 +2741,22 @@ def _option_spec(option: ScopeOption) -> OptionSpec:
     kind = "append" if option.repeat else "str"
     return OptionSpec(
         option.flag,
-        "--" + option.flag.replace("_", "-"),
+        option.public_flag,
         summary,
         kind,
         required=option.required,
         default=None if option.repeat else option.default,
         choices=option.choices,
+        legacy_flags=option.legacy_flags,
     )
 
 
-def _filter_option(flag: str, field: str) -> OptionSpec:
-    return opt(flag, f"Exact local match on {field}.", "append")
+def _filter_option(entry: tuple[str, ...]) -> OptionSpec:
+    flag, field = entry[0], entry[1]
+    option = opt(flag, f"Exact local match on {field}.", "append")
+    if len(entry) > 2:
+        option = replace(option, flag=entry[2], legacy_flags=(option.flag,))
+    return option
 
 
 def list_query_node(leaf: ListLeaf) -> BizNode:
@@ -2757,7 +2768,7 @@ def list_query_node(leaf: ListLeaf) -> BizNode:
         f" with --live. Kind: {leaf.kind}.",
         options=(
             *(_option_spec(option) for option in leaf.options),
-            *(_filter_option(flag, field) for flag, field in variant.filters),
+            *(_filter_option(entry) for entry in variant.filters),
             LIMIT,
             OFFSET,
             ALL,

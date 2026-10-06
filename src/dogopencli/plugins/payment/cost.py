@@ -30,6 +30,7 @@ from ...helpspec import (
     QUERY_OUTPUT,
     SEQID_UNSTABLE,
     BizNode,
+    OptionSpec,
     opt,
 )
 from .. import EndpointContract, ParsedPage
@@ -128,7 +129,13 @@ COST_LIST_NODE = BizNode(
     options=(
         opt("legal_entity_code", "Filter by legal entity code.", "append"),
         opt("financial_inst_code", "Filter by financial institution code.", "append"),
-        opt("bank_account", "Filter by bank account.", "append"),
+        OptionSpec(
+            "bank_account",
+            "--account-alias",
+            "Filter by bank account.",
+            "append",
+            legacy_flags=("--bank-account",),
+        ),
         opt("trans_currency_code", "Filter by transaction currency.", "append"),
         opt("charge_bearer", "Filter by charge bearer.", "append"),
         opt("clearing_network_name", "Filter by clearing network name.", "append"),
