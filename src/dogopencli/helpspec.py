@@ -54,11 +54,30 @@ def scope_modes(cardinality: dict[str, Any] | None = None) -> dict[str, Any]:
     }
 
 
-def filter_modes(repeatable: bool = True) -> dict[str, Any]:
-    """Local exact-match filters: cache multi-value OR, live single value."""
+def variant_modes(cardinality: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Modes for virtual contract-variant selectors: they choose the variant
+    and shape scope identity in every mode but are never sent to the backend."""
+    return {
+        "cache": _mode(ROLE_SCOPE, cardinality),
+        "live": _mode("variant-selector", cardinality),
+        "refresh": _mode(ROLE_ACQUISITION, cardinality),
+    }
+
+
+def filter_modes(repeatable: bool = True, live_native: bool = True) -> dict[str, Any]:
+    """Local exact-match filters.
+
+    ``live_native`` distinguishes payment's verified single-value native
+    pass-through from collection/liquidity filters, which stay local (and
+    multi-value) even in live mode because the backend request ignores them.
+    """
+    if live_native:
+        live = _mode(ROLE_NATIVE_REQUEST, SINGLE)
+    else:
+        live = _mode(ROLE_LOCAL_FILTER, MULTI if repeatable else SINGLE)
     return {
         "cache": _mode(ROLE_LOCAL_FILTER, MULTI if repeatable else SINGLE),
-        "live": _mode(ROLE_NATIVE_REQUEST, SINGLE),
+        "live": live,
         "refresh": _unavailable(),
     }
 
@@ -185,12 +204,17 @@ def filter_opt(
     name: str,
     summary: str,
     kind: str = "append",
+    *,
+    live_native: bool = True,
     **kwargs: Any,
 ) -> OptionSpec:
     """A local exact-match filter option with its declared contract (#127)."""
     kwargs.setdefault(
         "argument_contract",
-        contract("string", modes=filter_modes(repeatable=kind == "append")),
+        contract(
+            "string",
+            modes=filter_modes(repeatable=kind == "append", live_native=live_native),
+        ),
     )
     return opt(name, summary, kind, **kwargs)
 

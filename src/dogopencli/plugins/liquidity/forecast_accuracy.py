@@ -107,6 +107,7 @@ FORECAST_ACCURACY = ListSpec(
             "timezone unknown.",
             required=True,
             virtual=True,
+            iso_date=True,
         ),
     ),
     table_columns=(
@@ -174,15 +175,20 @@ def validate_query(values: dict[str, Any]) -> None:
 def base_body(values: dict[str, Any]) -> dict[str, Any]:
     validate_query(values)
     day = values["recordDate"].replace("-", "")
+    vo_field = FORECAST_ACCURACY.vo_field
+    if vo_field is None:
+        raise CliError(
+            INVALID_RESPONSE, "forecast accuracy: missing vo_field declaration"
+        )
     vo = {
-        **FORECAST_ACCURACY.template[FORECAST_ACCURACY.vo_field],
+        **FORECAST_ACCURACY.template[vo_field],
         "rowStart": 0,
         "pageSize": 5000,
         "aliasName": values["aliasName"],
         "valueStartDay": day,
         "valueEndDay": day,
     }
-    return {"tntInstId": TENANT, FORECAST_ACCURACY.vo_field: json.dumps(vo)}
+    return {"tntInstId": TENANT, vo_field: json.dumps(vo)}
 
 
 def _invalid(message: str) -> CliError:
@@ -321,7 +327,8 @@ def collect_accuracy(
         finally:
             transport.close()
         document = envelope_document(response.body, ENV_RESULT_FLAG)
-        if dig(document, ("result", "success")) is not True:
+        inner_success = dig(document, ("result", "success"))
+        if not isinstance(inner_success, bool) or not inner_success:
             raise _invalid("metric inner success marker is not true")
         metrics = dig(document, ("result", "bankAccountDetailDayVO"))
         if not isinstance(metrics, dict):

@@ -33,6 +33,7 @@ from ...helpspec import (
     filter_modes,
     opt,
     scope_modes,
+    variant_modes,
 )
 from .account_capacity import ACCOUNT_CAPACITY, validate_capacity_query
 from .capability import (
@@ -2737,7 +2738,12 @@ _SCOPE_CONSTRAINTS = (
 
 def _scope_contract(option: ScopeOption) -> dict[str, Any]:
     """Machine-readable contract derived from the scope declaration (#127)."""
-    if option.date:
+    if option.iso_date:
+        value_type = "date"
+        preferred = "YYYY-MM-DD"
+        accepted = ["YYYY-MM-DD"]
+        timezone = None
+    elif option.date:
         value_type = "date"
         preferred = "YYYY-MM-DD"
         accepted = ["YYYY-MM-DD", "YYYYMMDD"]
@@ -2786,11 +2792,14 @@ def _scope_contract(option: ScopeOption) -> dict[str, Any]:
         constraints.append({"kind": "single-day"})
     if option.virtual:
         constraints.append({"kind": "contract-variant-selector"})
+    # Virtual options select a contract variant and shape the scope identity;
+    # they are never sent to the backend.
+    modes = variant_modes(cardinality) if option.virtual else scope_modes(cardinality)
     return contract(
         value_type,
         preferred_format=preferred,
         accepted_formats=tuple(accepted),
-        modes=scope_modes(cardinality),
+        modes=modes,
         constraints=tuple(constraints),
         timezone=timezone,
     )
@@ -2818,11 +2827,15 @@ def _option_spec(option: ScopeOption) -> OptionSpec:
 
 def _filter_option(entry: tuple[str, ...]) -> OptionSpec:
     flag, field = entry[0], entry[1]
+    # Liquidity filters are applied locally after acquisition in every mode;
+    # the native request never carries them (verified request shapes).
     option = opt(
         flag,
         f"Exact local match on {field}.",
         "append",
-        argument_contract=contract("string", modes=filter_modes(repeatable=True)),
+        argument_contract=contract(
+            "string", modes=filter_modes(repeatable=True, live_native=False)
+        ),
     )
     if len(entry) > 2:
         option = replace(option, flag=entry[2], legacy_flags=(option.flag,))

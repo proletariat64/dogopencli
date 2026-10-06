@@ -184,6 +184,7 @@ COLLECTION_VA_CAPACITY_LIST_NODE = BizNode(
                 flag.replace("-", "_"),
                 f"Nonempty exact local match on {field}.",
                 "append",
+                live_native=False,
             )
             for flag, field in FILTER_FIELDS.items()
         ),

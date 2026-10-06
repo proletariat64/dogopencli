@@ -95,6 +95,7 @@ LIST_NODE = BizNode(
                 flag.replace("-", "_"),
                 f"Exact whole-string match on {field}.",
                 "append",
+                live_native=False,
             )
             for flag, field in ACCOUNT_ISOLATION.filters
         ),
