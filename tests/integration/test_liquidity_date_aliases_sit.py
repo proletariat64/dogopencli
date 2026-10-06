@@ -54,9 +54,7 @@ def fee_listing(rows):
     ],
     ids=["compact", "iso", "equals-mixed"],
 )
-def test_fee_orders_iso_and_compact_windows_are_byte_identical(
-    setup, run_cli, window
-):
+def test_fee_orders_iso_and_compact_windows_are_byte_identical(setup, run_cli, window):
     """ISO and compact spellings select the same request, scope and cache."""
     setup.state.business_handler = fee_listing([FEE_ROW])
     code, out, err = run_cli(["refresh", "liquidity", "pricing", "fee-orders", *window])
@@ -110,12 +108,12 @@ def holdings_listing(rows):
 
 
 @pytest.mark.parametrize("day", ["20240229", "2024-02-29"], ids=["compact", "iso"])
-def test_holdings_snapshot_leap_day_normalizes_to_identical_scope(
-    setup, run_cli, day
-):
+def test_holdings_snapshot_leap_day_normalizes_to_identical_scope(setup, run_cli, day):
     row = {"investmentNo": "H0001", "valueDate": "20240229", "amount": "1.00"}
     setup.state.business_handler = holdings_listing([row])
-    code, out, err = run_cli(["refresh", "liquidity", "investment", "holdings", "--date", day])
+    code, out, err = run_cli(
+        ["refresh", "liquidity", "investment", "holdings", "--date", day]
+    )
     assert code == 0, err
     refreshed = parse(out)
     setup.state.reachable = False
@@ -211,7 +209,9 @@ def eod_refresh(*tail, window=EOD_CANONICAL):
     ]
 
 
-@pytest.mark.parametrize("window", [EOD_CANONICAL, EOD_LEGACY], ids=["canonical", "legacy"])
+@pytest.mark.parametrize(
+    "window", [EOD_CANONICAL, EOD_LEGACY], ids=["canonical", "legacy"]
+)
 def test_eod_canonical_and_legacy_windows_reach_identical_request_and_cache(
     setup, run_cli, window
 ):
@@ -254,7 +254,14 @@ def test_eod_mixed_canonical_and_legacy_scalar_is_rejected(setup, run_cli):
     """T10: one scalar bound through both spellings is INVALID_ARGUMENT."""
     for mixed, canonical in (
         (
-            ["--from-date", "2026-09-30", "--from", "20260930", "--to-date", "20260930"],
+            [
+                "--from-date",
+                "2026-09-30",
+                "--from",
+                "20260930",
+                "--to-date",
+                "20260930",
+            ],
             "--from-date",
         ),
         (
@@ -335,9 +342,7 @@ def test_forecast_results_canonical_legacy_and_defaults_are_identical(
 ):
     """Both spellings keep the existing compact window and clock defaults."""
     setup.state.business_handler = forecast_listing([forecast_row()])
-    code, out, err = run_cli(
-        ["refresh", "liquidity", "forecast", "results", *window]
-    )
+    code, out, err = run_cli(["refresh", "liquidity", "forecast", "results", *window])
     assert code == 0, err
     refreshed = parse(out)
     if window is FORECAST_LEGACY:
@@ -438,8 +443,16 @@ def test_transfers_window_spellings_expand_identically_and_share_cache(
         (["--from-date", "2026-09-01"], "--to-date", True),
         (["--to-date", "2026-10-01"], "--from-date", True),
         # Scope validation errors identify canonical flags only.
-        (["--from-date", "2026-10-02", "--to-date", "2026-10-01"], "--from-date", False),
-        (["--from-date", "2026-02-30", "--to-date", "2026-10-01"], "--from-date", False),
+        (
+            ["--from-date", "2026-10-02", "--to-date", "2026-10-01"],
+            "--from-date",
+            False,
+        ),
+        (
+            ["--from-date", "2026-02-30", "--to-date", "2026-10-01"],
+            "--from-date",
+            False,
+        ),
     ],
     ids=["one-sided-from", "one-sided-to", "reversed", "invalid-day"],
 )
@@ -521,9 +534,7 @@ def swap_listing(rows):
 @pytest.mark.parametrize(
     "window", [SWAP_CANONICAL, SWAP_LEGACY], ids=["canonical", "legacy"]
 )
-def test_swaps_window_spellings_keep_identical_scope_and_cache(
-    setup, run_cli, window
-):
+def test_swaps_window_spellings_keep_identical_scope_and_cache(setup, run_cli, window):
     setup.state.business_handler = swap_listing([swap_row()])
     code, out, err = run_cli(["refresh", "liquidity", "operations", "swaps", *window])
     assert code == 0, err
@@ -662,10 +673,25 @@ def test_strategy_results_variants_keep_gmt8_expansion_and_shared_cache(
 def test_strategy_results_reversed_pair_names_canonical_flags(setup, run_cli):
     window = ["--from-date", "2026-10-05", "--to-date", "2026-10-04"]
     for argv in (
-        ["liquidity", "investment", "strategy-results", "list",
-         "--task-type", "FUND_DECISION_TASK", *window, "--live"],
-        ["refresh", "liquidity", "investment", "strategy-results",
-         "--task-type", "FUND_DECISION_TASK", *window],
+        [
+            "liquidity",
+            "investment",
+            "strategy-results",
+            "list",
+            "--task-type",
+            "FUND_DECISION_TASK",
+            *window,
+            "--live",
+        ],
+        [
+            "refresh",
+            "liquidity",
+            "investment",
+            "strategy-results",
+            "--task-type",
+            "FUND_DECISION_TASK",
+            *window,
+        ],
     ):
         code, out, _ = run_cli(argv)
         assert code == 2
@@ -677,7 +703,9 @@ def test_strategy_results_reversed_pair_names_canonical_flags(setup, run_cli):
 
 
 def test_strategy_help_renamed_but_rule_status_keeps_trigger_prefix(setup, run_cli):
-    code, out, err = run_cli(["help", "liquidity", "investment", "strategy-results", "list"])
+    code, out, err = run_cli(
+        ["help", "liquidity", "investment", "strategy-results", "list"]
+    )
     assert code == 0, err
     options = {option["name"]: option for option in parse(out)["options"]}
     assert options["trigger_from"]["flags"] == ["--from-date", "--trigger-from"]

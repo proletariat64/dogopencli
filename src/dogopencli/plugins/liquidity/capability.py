@@ -137,8 +137,7 @@ def scope_values(
             invalid = [item for item in values if item not in option.choices]
             if invalid:
                 raise _usage(
-                    f"--{option.cli_flag} must be one of"
-                    f" {', '.join(option.choices)}",
+                    f"--{option.cli_flag} must be one of {', '.join(option.choices)}",
                 )
         if option.window in ("from", "both"):
             window_from = value if isinstance(value, str) else None

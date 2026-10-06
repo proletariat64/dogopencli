@@ -42,8 +42,7 @@ def _window(start: str, end: str) -> tuple[ScopeOption, ...]:
         ScopeOption(
             "from",
             start,
-            f"Inclusive value date window start ({_DATE_FMT});"
-            " pair with --to-date.",
+            f"Inclusive value date window start ({_DATE_FMT}); pair with --to-date.",
             required=True,
             date=True,
             window="from",
@@ -52,8 +51,7 @@ def _window(start: str, end: str) -> tuple[ScopeOption, ...]:
         ScopeOption(
             "to",
             end,
-            f"Inclusive value date window end ({_DATE_FMT});"
-            " pair with --from-date.",
+            f"Inclusive value date window end ({_DATE_FMT}); pair with --from-date.",
             required=True,
             date=True,
             window="to",

@@ -16,7 +16,7 @@ from dogopencli.plugins.liquidity.transfer_list import RELEASED, TRANSFER_ORDERS
 
 pytest_plugins = ["test_liquidity_cli_sit"]
 
-TRANSACTION_SCOPE = ["--transaction-from", "20260901", "--transaction-to", "20261001"]
+TRANSACTION_SCOPE = ["--from-date", "20260901", "--to-date", "20261001"]
 
 
 @pytest.fixture
@@ -224,11 +224,11 @@ def test_scoped_transfers_complete_empty_capture_is_not_cache_miss(
     "options",
     [
         [],
-        ["--transaction-from", "20260901"],
-        ["--transaction-to", "20261001"],
-        ["--transaction-from", "20260230", "--transaction-to", "20261001"],
-        ["--transaction-from", "2026-02-30", "--transaction-to", "20261001"],
-        ["--transaction-from", "20261002", "--transaction-to", "20261001"],
+        ["--from-date", "20260901"],
+        ["--to-date", "20261001"],
+        ["--from-date", "20260230", "--to-date", "20261001"],
+        ["--from-date", "2026-02-30", "--to-date", "20261001"],
+        ["--from-date", "20261002", "--to-date", "20261001"],
     ],
 )
 def test_scoped_transfers_require_valid_paired_trade_scope_before_access(
@@ -404,7 +404,7 @@ def test_scoped_transfers_distinct_date_scopes_keep_independent_captures(
     setup.state.business_handler = listing
     code, _, err = run_cli(transfer_refresh())
     assert code == 0, err
-    empty_scope = ["--transaction-from", "20261003", "--transaction-to", "20261003"]
+    empty_scope = ["--from-date", "20261003", "--to-date", "20261003"]
     code, out, err = run_cli(
         ["refresh", "liquidity", "operations", "transfers", *empty_scope]
     )

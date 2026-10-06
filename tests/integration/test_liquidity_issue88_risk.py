@@ -519,6 +519,32 @@ def test_date_scopes_and_native_modes_do_not_share_captures(setup, run_cli):
     assert parse(out)["error"]["code"] == "CACHE_MISS"
 
 
+@pytest.mark.parametrize("resource,mode", RESOURCES)
+def test_iso_dates_normalize_to_the_same_adjacent_scope_and_cache(
+    setup, run_cli, resource, mode
+):
+    """ISO public dates reach the identical wire body, scope and cache (#127)."""
+    rows = [risk(0, mode)]
+    setup.state.business_handler = listing(rows, mode)
+    iso = ["--from-date", "2026-09-25", "--to-date", "2026-09-26"]
+    code, out, err = run_cli(refresh(resource, "--require-complete", scope=SCOPE))
+    assert code == 0, err
+    captured = parse(out)
+    count = len(setup.state.business_requests)
+    code, out, err = run_cli(query(resource, "--live", "--all", scope=iso))
+    assert code == 0, err
+    live = parse(out)
+    assert live["meta"]["scope"] == captured["meta"]["scope"]
+    assert setup.state.business_requests[-1] == setup.state.business_requests[0]
+    setup.state.running = False
+    code, out, err = run_cli(query(resource, "--all", scope=iso))
+    assert code == 0, err
+    cached = parse(out)
+    assert cached["data"] == rows
+    assert cached["meta"]["scope"] == captured["meta"]["scope"]
+    assert len(setup.state.business_requests) == count + 1
+
+
 @pytest.mark.parametrize(
     "scope",
     [
@@ -526,6 +552,7 @@ def test_date_scopes_and_native_modes_do_not_share_captures(setup, run_cli):
         ["--from-date", "20260925"],
         ["--from-date", "20260230", "--to-date", "20260301"],
         ["--from-date", "2026-02-30", "--to-date", "20260301"],
+        ["--from-date", "2026-09-25", "--to-date", "2026-09-27"],
         ["--from-date", "20260926", "--to-date", "20260925"],
         ["--from-date", "20260925", "--to-date", "20260925"],
         ["--from-date", "20260925", "--to-date", "20260927"],
