@@ -567,3 +567,127 @@ def test_swaps_window_violations_rejected_before_access(
     assert setup.state.transports == []
     assert setup.state.business_requests == []
     assert not setup.cache_path.exists()
+
+
+# --- investment strategy-results date-window rename --------------------------
+
+STRATEGY_CANONICAL = ["--from-date", "2026-10-01", "--to-date", "2026-10-04"]
+STRATEGY_LEGACY = ["--trigger-from", "20261001", "--trigger-to", "20261004"]
+
+
+def strategy_row(task_type, **overrides):
+    return {
+        "id": "synthetic-task-0",
+        "taskType": task_type,
+        "triggerDate": 1790899200000,  # 2026-10-02 UTC, same GMT+08 business day
+        "resultTime": None,
+        "valueDate": "20261002",
+        "expectedInvestStartDate": "20261002",
+        "expectedInvestEndDate": "20261003",
+        "fundDecisionStrategyId": "synthetic-fund",
+        "investmentPortfolioStrategyId": "",
+        "mainStrategyId": "synthetic-main",
+        "investmentAmount": "10.0000",
+        "maximumExceptedIncome": "",
+        "maximumExpectedRateOfReturn": "0",
+        "taskStatus": "future-native-state",
+        "adoptionStatus": "future-native-adoption",
+        "triggerType": "source-type",
+        **overrides,
+    }
+
+
+def strategy_listing(rows, task_type):
+    def handle(body, index):
+        # Inclusive dates expand to native GMT+08 day bounds on the wire.
+        assert body["taskType"] == task_type
+        assert body["triggerStartDate"] == "2026-10-01 00:00:00"
+        assert body["triggerEndDate"] == "2026-10-04 23:59:59"
+        offset = body["rowStart"]
+        return {
+            "status": 200,
+            "body": {
+                "success": True,
+                "data": {
+                    "data": rows[offset : offset + 10],
+                    "totalCount": len(rows),
+                },
+            },
+        }
+
+    return handle
+
+
+@pytest.mark.parametrize("task_type", ["FUND_DECISION_TASK", "PRODUCT_DECISION_TASK"])
+@pytest.mark.parametrize(
+    "window", [STRATEGY_CANONICAL, STRATEGY_LEGACY], ids=["canonical", "legacy"]
+)
+def test_strategy_results_variants_keep_gmt8_expansion_and_shared_cache(
+    setup, run_cli, task_type, window
+):
+    """FUND/PRODUCT variants, inclusive dates and expansion are preserved."""
+    rows = [strategy_row(task_type)]
+    setup.state.business_handler = strategy_listing(rows, task_type)
+    scope = ["--task-type", task_type, *window]
+    code, out, err = run_cli(
+        ["refresh", "liquidity", "investment", "strategy-results", *scope]
+    )
+    assert code == 0, err
+    refreshed = parse(out)
+    if window is STRATEGY_LEGACY:
+        assert "--trigger-from is deprecated; use --from-date" in err
+        assert "--trigger-to is deprecated; use --to-date" in err
+    count = len(setup.state.business_requests)
+    setup.state.reachable = False
+    other = STRATEGY_LEGACY if window is STRATEGY_CANONICAL else STRATEGY_CANONICAL
+    code, out, err = run_cli(
+        [
+            "liquidity",
+            "investment",
+            "strategy-results",
+            "list",
+            "--task-type",
+            task_type,
+            *other,
+            "--all",
+        ]
+    )
+    assert code == 0, err
+    cached = parse(out)
+    assert cached["data"] == rows
+    assert cached["meta"]["scope"] == refreshed["meta"]["scope"]
+    assert len(setup.state.business_requests) == count
+
+
+def test_strategy_results_reversed_pair_names_canonical_flags(setup, run_cli):
+    window = ["--from-date", "2026-10-05", "--to-date", "2026-10-04"]
+    for argv in (
+        ["liquidity", "investment", "strategy-results", "list",
+         "--task-type", "FUND_DECISION_TASK", *window, "--live"],
+        ["refresh", "liquidity", "investment", "strategy-results",
+         "--task-type", "FUND_DECISION_TASK", *window],
+    ):
+        code, out, _ = run_cli(argv)
+        assert code == 2
+        envelope = parse(out)
+        assert envelope["error"]["code"] == "INVALID_ARGUMENT"
+        assert "--trigger-from" not in envelope["error"]["message"]
+    assert setup.state.business_requests == []
+    assert not setup.cache_path.exists()
+
+
+def test_strategy_help_renamed_but_rule_status_keeps_trigger_prefix(setup, run_cli):
+    code, out, err = run_cli(["help", "liquidity", "investment", "strategy-results", "list"])
+    assert code == 0, err
+    options = {option["name"]: option for option in parse(out)["options"]}
+    assert options["trigger_from"]["flags"] == ["--from-date", "--trigger-from"]
+    assert options["trigger_to"]["flags"] == ["--to-date", "--trigger-to"]
+    assert "trigger" in options["trigger_from"]["summary"]
+    code, out, err = run_cli(["help", "liquidity", "operations", "rule-status", "list"])
+    assert code == 0, err
+    options = {option["name"]: option for option in parse(out)["options"]}
+    # The rule-status expected-trigger interval is a full datetime pair and
+    # keeps its business prefix (Issue #127 rename table).
+    assert options["trigger_from"]["flags"] == ["--trigger-from"]
+    assert options["trigger_to"]["flags"] == ["--trigger-to"]
+    assert setup.state.business_requests == []
