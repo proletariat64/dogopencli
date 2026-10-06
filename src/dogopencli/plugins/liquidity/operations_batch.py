@@ -49,16 +49,20 @@ SWAP_ORDERS = ListSpec(
         ScopeOption(
             "trade_from",
             "tradeStartDate",
-            "Inclusive native trade date start (YYYYMMDD); pair with --trade-to.",
+            "Inclusive native trade date start (YYYY-MM-DD preferred; compact"
+            " YYYYMMDD accepted); pair with --to-date.",
             required=True,
             date=True,
+            public_flag="from_date",
         ),
         ScopeOption(
             "trade_to",
             "tradeEndDate",
-            "Inclusive native trade date end (YYYYMMDD); pair with --trade-from.",
+            "Inclusive native trade date end (YYYY-MM-DD preferred; compact"
+            " YYYYMMDD accepted); pair with --from-date.",
             required=True,
             date=True,
+            public_flag="to_date",
         ),
     ),
     table_columns=(
@@ -105,7 +109,7 @@ def validate_swap_query(values: dict[str, Any]) -> None:
     if start is None or end is None:
         raise CliError(
             INVALID_ARGUMENT,
-            "swap trade dates require both --trade-from and --trade-to",
+            "swap trade dates require both --from-date and --to-date",
             exit_code=EXIT_USAGE,
         )
     if start is not None and end is not None and start > end:

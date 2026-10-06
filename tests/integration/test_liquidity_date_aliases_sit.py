@@ -462,3 +462,108 @@ def test_transfers_window_violations_name_canonical_flags(
     assert setup.state.transports == []
     assert setup.state.business_requests == []
     assert not setup.cache_path.exists()
+
+
+# --- operations swaps date-window rename ------------------------------------
+
+SWAP_CANONICAL = ["--from-date", "2026-09-01", "--to-date", "2026-10-01"]
+SWAP_LEGACY = ["--trade-from", "20260901", "--trade-to", "20261001"]
+
+
+def swap_row(**overrides):
+    return {
+        "dealId": "synthetic-swap-001",
+        "tntInstId": "GUAPW3SG",
+        "tradeDate": "20260930",
+        "nearLegValueDate": "20261002",
+        "farLegValueDate": "20261102",
+        "nearLegDebitCcy": "USD",
+        "nearLegCreditCcy": "EUR",
+        "nearLegDebitAmount": "123.4500",
+        "nearLegCreditAmount": "111.0000",
+        "farLegDebitAmount": "111.0000",
+        "farLegCreditAmount": "123.4500",
+        "nearLegFxRate": "0.899149",
+        "farLegFxRate": "0.899149",
+        "status": "source-state",
+        "gmtCreate": 1759190400000,
+        "gmtModified": 1759190400000,
+        "gmtSend": None,
+        "gmtReturn": None,
+        "needReview": False,
+        "nodeNum": 0,
+        **overrides,
+    }
+
+
+def swap_listing(rows):
+    def handle(body, index):
+        vo = json.loads(body["swapOrderQueryVO"])
+        # The inclusive trade-date pair stays compact on the wire.
+        assert vo["tradeStartDate"] == "20260901"
+        assert vo["tradeEndDate"] == "20261001"
+        offset = vo["rowStart"]
+        return {
+            "status": 200,
+            "body": {
+                "resultFlag": True,
+                "result": {
+                    "success": True,
+                    "swapOrderVOList": rows[offset : offset + 10],
+                    "count": len(rows),
+                },
+            },
+        }
+
+    return handle
+
+
+@pytest.mark.parametrize(
+    "window", [SWAP_CANONICAL, SWAP_LEGACY], ids=["canonical", "legacy"]
+)
+def test_swaps_window_spellings_keep_identical_scope_and_cache(
+    setup, run_cli, window
+):
+    setup.state.business_handler = swap_listing([swap_row()])
+    code, out, err = run_cli(["refresh", "liquidity", "operations", "swaps", *window])
+    assert code == 0, err
+    refreshed = parse(out)
+    if window is SWAP_LEGACY:
+        assert "--trade-from is deprecated; use --from-date" in err
+        assert "--trade-to is deprecated; use --to-date" in err
+    count = len(setup.state.business_requests)
+    setup.state.reachable = False
+    other = SWAP_LEGACY if window is SWAP_CANONICAL else SWAP_CANONICAL
+    code, out, err = run_cli(
+        ["liquidity", "operations", "swaps", "list", *other, "--all"]
+    )
+    assert code == 0, err
+    cached = parse(out)
+    assert cached["data"] == [swap_row()]
+    assert cached["meta"]["scope"] == refreshed["meta"]["scope"]
+    assert len(setup.state.business_requests) == count
+
+
+@pytest.mark.parametrize(
+    "window,fragment",
+    [
+        (["--from-date", "2026-09-01"], "--to-date"),
+        (["--from-date", "2026-10-02", "--to-date", "2026-10-01"], "after its end"),
+    ],
+    ids=["one-sided", "reversed"],
+)
+def test_swaps_window_violations_rejected_before_access(
+    setup, run_cli, window, fragment
+):
+    for argv in (
+        ["liquidity", "operations", "swaps", "list", *window, "--live"],
+        ["refresh", "liquidity", "operations", "swaps", *window],
+    ):
+        code, out, _ = run_cli(argv)
+        assert code == 2
+        envelope = parse(out)
+        assert envelope["error"]["code"] == "INVALID_ARGUMENT"
+        assert fragment in envelope["error"]["message"]
+    assert setup.state.transports == []
+    assert setup.state.business_requests == []
+    assert not setup.cache_path.exists()
