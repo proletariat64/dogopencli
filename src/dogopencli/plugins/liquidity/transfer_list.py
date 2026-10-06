@@ -80,18 +80,20 @@ TRANSFER_ORDERS = ListSpec(
         ScopeOption(
             "transaction_from",
             "transactionStartDate",
-            "Native transaction query start day (YYYYMMDD); pair with "
-            "--transaction-to.",
+            "Native transaction query start day (YYYY-MM-DD preferred; compact"
+            " YYYYMMDD accepted); pair with --to-date.",
             required=True,
             date=True,
+            public_flag="from_date",
         ),
         ScopeOption(
             "transaction_to",
             "transactionEndDate",
-            "Native transaction query end day (YYYYMMDD); pair with "
-            "--transaction-from.",
+            "Native transaction query end day (YYYY-MM-DD preferred; compact"
+            " YYYYMMDD accepted); pair with --from-date.",
             required=True,
             date=True,
+            public_flag="to_date",
         ),
     ),
     table_columns=(
@@ -143,7 +145,7 @@ def map_transfer_query(values: dict[str, Any]) -> None:
         raise CliError(
             INVALID_ARGUMENT,
             "transfer transaction dates require an ordered "
-            "--transaction-from/--transaction-to pair",
+            "--from-date/--to-date pair",
             exit_code=EXIT_USAGE,
         )
     values["transactionStartDate"] = datetime.strptime(start, "%Y%m%d").strftime(

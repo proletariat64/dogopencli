@@ -353,3 +353,112 @@ def test_forecast_results_canonical_legacy_and_defaults_are_identical(
     assert cached["data"] == [forecast_row()]
     assert cached["meta"]["scope"] == refreshed["meta"]["scope"]
     assert len(setup.state.business_requests) == count
+
+
+# --- operations transfers date-window rename --------------------------------
+
+TRANSFER_CANONICAL = ["--from-date", "2026-09-01", "--to-date", "2026-10-01"]
+TRANSFER_LEGACY = ["--transaction-from", "20260901", "--transaction-to", "20261001"]
+
+
+def transfer_row(**overrides):
+    return {
+        "orderNo": "synthetic-transfer-001",
+        "tntInstId": "GUAPW3SG",
+        "gmtCreate": "2026-10-01 08:06:29（GMT+08）",
+        "debitValueDate": "20260930",
+        "creditValueDate": "20261001",
+        "debitCurrency": "USD",
+        "creditCurrency": "EUR",
+        "debitAmount": "123.4500",
+        "creditAmount": "111.0000",
+        "orderStatus": "unknown-instruction-state",
+        "receiptStatus": "unknown-bank-state",
+        "executeResult": "unknown-execution-state",
+        **overrides,
+    }
+
+
+def transfer_listing(rows):
+    def handle(body, index):
+        vo = json.loads(body["transferOrderQueryRequestVO"])
+        # Day-start/day-end expansion is preserved exactly.
+        assert vo["transactionStartDate"] == "2026-09-01 00:00:00"
+        assert vo["transactionEndDate"] == "2026-10-01 23:59:59"
+        offset = vo["rowStart"]
+        return {
+            "status": 200,
+            "body": {
+                "resultFlag": True,
+                "count": len(rows),
+                "result": {
+                    "success": True,
+                    "data": rows[offset : offset + 10],
+                    "count": len(rows),
+                },
+            },
+        }
+
+    return handle
+
+
+@pytest.mark.parametrize(
+    "window", [TRANSFER_CANONICAL, TRANSFER_LEGACY], ids=["canonical", "legacy"]
+)
+def test_transfers_window_spellings_expand_identically_and_share_cache(
+    setup, run_cli, window
+):
+    """T06/T07: exact history scope and day expansion survive the rename."""
+    setup.state.business_handler = transfer_listing([transfer_row()])
+    code, out, err = run_cli(
+        ["refresh", "liquidity", "operations", "transfers", *window]
+    )
+    assert code == 0, err
+    refreshed = parse(out)
+    if window is TRANSFER_LEGACY:
+        assert "--transaction-from is deprecated; use --from-date" in err
+        assert "--transaction-to is deprecated; use --to-date" in err
+    count = len(setup.state.business_requests)
+    setup.state.reachable = False
+    other = TRANSFER_LEGACY if window is TRANSFER_CANONICAL else TRANSFER_CANONICAL
+    code, out, err = run_cli(
+        ["liquidity", "operations", "transfers", "list", *other, "--all"]
+    )
+    assert code == 0, err
+    cached = parse(out)
+    assert cached["data"] == [transfer_row()]
+    assert cached["meta"]["scope"] == refreshed["meta"]["scope"]
+    assert len(setup.state.business_requests) == count
+
+
+@pytest.mark.parametrize(
+    "window,canonical,legacy_named",
+    [
+        # Argparse required-argument errors list every spelling, canonical first.
+        (["--from-date", "2026-09-01"], "--to-date", True),
+        (["--to-date", "2026-10-01"], "--from-date", True),
+        # Scope validation errors identify canonical flags only.
+        (["--from-date", "2026-10-02", "--to-date", "2026-10-01"], "--from-date", False),
+        (["--from-date", "2026-02-30", "--to-date", "2026-10-01"], "--from-date", False),
+    ],
+    ids=["one-sided-from", "one-sided-to", "reversed", "invalid-day"],
+)
+def test_transfers_window_violations_name_canonical_flags(
+    setup, run_cli, window, canonical, legacy_named
+):
+    for argv in (
+        ["liquidity", "operations", "transfers", "list", *window, "--live"],
+        ["refresh", "liquidity", "operations", "transfers", *window],
+    ):
+        code, out, _ = run_cli(argv)
+        assert code == 2
+        envelope = parse(out)
+        assert envelope["error"]["code"] == "INVALID_ARGUMENT"
+        message = envelope["error"]["message"]
+        assert canonical in message
+        if not legacy_named:
+            assert "--transaction-from" not in message
+            assert "--transaction-to" not in message
+    assert setup.state.transports == []
+    assert setup.state.business_requests == []
+    assert not setup.cache_path.exists()
