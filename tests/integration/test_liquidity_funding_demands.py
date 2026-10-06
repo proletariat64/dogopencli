@@ -214,3 +214,65 @@ def test_unverified_larger_scope_is_rejected_without_offset_followup(setup, run_
         == 0
     )
     assert setup.cache_path.read_bytes() == before
+
+
+T_SCOPE = [
+    "--execute-from",
+    "2026-04-01T00:00:00",
+    "--execute-to",
+    "2026-04-02T00:00:00",
+]
+
+
+def test_demand_canonical_t_form_shares_the_legacy_space_scope(setup, run_cli):
+    rows = [demand(0), demand(1)]
+    setup.state.business_handler = listing(rows)
+    code, _, err = run_cli([*REFRESH, *T_SCOPE])
+    assert code == 0, err
+    # The emitted native request keeps the space-separated representation.
+    for payload in setup.state.business_requests:
+        vo = json.loads(payload["riskActionTaskQueryVO"])
+        assert vo["startExecuteTime"] == SCOPE[1]
+        assert vo["endExecuteTime"] == SCOPE[3]
+    canonical_meta = parse(run_cli([*QUERY, *T_SCOPE])[1])["meta"]
+    # The legacy space form reads the identical cached scope offline.
+    setup.state.reachable = False
+    code, out, err = run_cli([*QUERY, *T_SCOPE])
+    assert code == 0, err
+    canonical = parse(out)
+    code, out, err = run_cli([*QUERY, *SCOPE])
+    assert code == 0, err
+    legacy = parse(out)
+    assert legacy["data"] == canonical["data"]
+    assert (
+        legacy["meta"]["scope"] == canonical_meta["scope"] == canonical["meta"]["scope"]
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-04-01T00:00:00+08:00",  # offset-bearing: source zone unknown
+        "2026-04-01T00:00:00Z",
+        "2026-04-01T00:00:00-00:00",
+        "2026-04-01T00:00:00.5",
+        "2026-04-01T23:59:60",
+    ],
+)
+def test_demand_offset_bearing_values_rejected_before_access(setup, run_cli, value):
+    scope = ["--execute-from", value, "--execute-to", "2026-04-02 00:00:00"]
+    for argv in ([*QUERY, *scope, "--live"], [*REFRESH, *scope]):
+        code, out, _ = run_cli(argv)
+        assert code == 2
+        assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert setup.state.business_requests == []
+    assert not setup.cache_path.exists()
+
+
+def test_demand_help_declares_unknown_timezone(setup, run_cli):
+    code, out, err = run_cli(["help", *QUERY])
+    assert code == 0, err
+    options = {option["name"]: option for option in parse(out)["options"]}
+    for name in ("execute_from", "execute_to"):
+        assert "YYYY-MM-DDTHH:mm:ss" in options[name]["summary"]
+        assert "timezone unknown" in options[name]["summary"]

@@ -212,7 +212,7 @@ def description(node: BizNode) -> dict[str, Any]:
         )
     elif domain == "cost":
         guide["filter_notes"] = (
-            "--bank-account means bankAccountAliasName (deposit alias), "
+            "--account-alias means bankAccountAliasName (deposit alias), "
             "never the full account number. legalEntityCode maps to "
             "legalEntity; financialInstCode maps to financialInst. "
             "transCurrencyCode is transaction currency, not cost "

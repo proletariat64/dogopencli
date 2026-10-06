@@ -96,6 +96,7 @@ FORECAST_ACCURACY = ListSpec(
             "One native account alias.",
             required=True,
             repeat=True,
+            canonical_flag="--account-alias",
         ),
         ScopeOption(
             "record_date",
@@ -163,7 +164,7 @@ def validate_query(values: dict[str, Any]) -> None:
     ):
         raise CliError(
             INVALID_ARGUMENT,
-            "--account requires one nonempty alias",
+            "--account-alias requires one nonempty alias",
             exit_code=EXIT_USAGE,
         )
 

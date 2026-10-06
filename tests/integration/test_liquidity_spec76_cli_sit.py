@@ -72,7 +72,7 @@ def response(item, rows, total=None):
 CASES = [
     (
         CASH_BALANCES,
-        ["--entity", "E1", "--account", "A1"],
+        ["--entity", "E1", "--account-alias", "A1"],
         {
             "entity": "E1",
             "aliasName": "A1",
@@ -140,7 +140,7 @@ CASES = [
         [
             "--entity",
             "E1",
-            "--account",
+            "--account-alias",
             "A1",
             "--currency",
             "USD",
@@ -161,7 +161,7 @@ CASES = [
     ),
     (
         FORECAST_RESULTS,
-        ["--from-date", "20261001", "--to-date", "20261001", "--account", "A1"],
+        ["--from-date", "20261001", "--to-date", "20261001", "--account-alias", "A1"],
         {
             "id": "F1",
             "bankAccountAliasName": "A1",
@@ -489,3 +489,115 @@ def test_forecast_changing_total_fails_closed_in_every_mode_and_keeps_cache(
     assert parse(out)["data"] == [seed]
     assert parse(out)["meta"]["complete"] is True
     assert len(setup.state.business_requests) == count
+
+
+def test_forecast_record_clocks_colon_compact_equivalence_and_defaults(setup, run_cli):
+    import json
+
+    window = ["--from", "20261001", "--to", "20261001"]
+    query = ["liquidity", "forecast", "results", "list", *window]
+    refresh = ["refresh", "liquidity", "forecast", "results", *window]
+    row = {"id": "F1", "valueDate": "20261001", "forecastBalance": "1.0000"}
+    setup.state.business_handler = lambda payload, index: response(
+        FORECAST_RESULTS, [row]
+    )
+    colon = ["--record-from-time", "09:15:00", "--record-to-time", "17:30:00"]
+    code, _, err = run_cli([*refresh, *colon])
+    assert code == 0, err
+    vo = json.loads(setup.state.business_requests[-1][FORECAST_RESULTS.vo_field])
+    assert vo["recordStartTime"] == "091500"
+    assert vo["recordEndTime"] == "173000"
+    # The compact legacy spelling reads the identical cached scope offline.
+    setup.state.reachable = False
+    compact = ["--record-from-time", "091500", "--record-to-time", "173000"]
+    code, out, err = run_cli([*query, *compact])
+    assert code == 0, err
+    assert parse(out)["data"] == [row]
+
+    # Omitted clocks keep the full-day defaults 00:00:00/23:59:59.
+    setup.state.reachable = True
+    code, _, err = run_cli(refresh)
+    assert code == 0, err
+    vo = json.loads(setup.state.business_requests[-1][FORECAST_RESULTS.vo_field])
+    assert vo["recordStartTime"] == "000000"
+    assert vo["recordEndTime"] == "235959"
+    setup.state.reachable = False
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    assert parse(out)["data"] == [row]
+
+    # Help declares the canonical defaults.
+    help_doc = parse(run_cli(["help", *query[:4]])[1])
+    defaults = {option["name"]: option.get("default") for option in help_doc["options"]}
+    assert defaults["record_from_time"] == "00:00:00"
+    assert defaults["record_to_time"] == "23:59:59"
+
+
+@pytest.mark.parametrize(
+    "clocks",
+    [
+        ["--record-from-time", "25:00:00"],
+        ["--record-from-time", "09:15:00.5"],
+        ["--record-from-time", "0915"],
+        ["--record-from-time", "17:30:00", "--record-to-time", "09:15:00"],
+        ["--record-from-time", "173000", "--record-to-time", "09:15:00"],
+    ],
+)
+def test_forecast_record_clock_rejections_precede_browser_and_cache(
+    setup, run_cli, clocks
+):
+    window = ["--from", "20261001", "--to", "20261001"]
+    for command in (
+        ["liquidity", "forecast", "results", "list", *window, *clocks, "--live"],
+        ["refresh", "liquidity", "forecast", "results", *window, *clocks],
+    ):
+        code, out, _ = run_cli(command)
+        assert code == 2
+        assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert not setup.state.transports
+    assert not setup.cache_path.exists()
+
+
+def test_forecast_record_clocks_stay_independent_from_the_date_window(setup, run_cli):
+    row = {"id": "F1", "valueDate": "20261001", "forecastBalance": "1.0000"}
+    setup.state.business_handler = lambda payload, index: response(
+        FORECAST_RESULTS, [row]
+    )
+    # A narrow clock span on a single-day window is valid.
+    code, _, err = run_cli(
+        [
+            "refresh",
+            "liquidity",
+            "forecast",
+            "results",
+            "--from",
+            "20261001",
+            "--to",
+            "20261001",
+            "--record-from-time",
+            "12:00:00",
+            "--record-to-time",
+            "13:00:00",
+        ]
+    )
+    assert code == 0, err
+    # A reversed date window stays invalid regardless of valid clocks.
+    code, out, _ = run_cli(
+        [
+            "liquidity",
+            "forecast",
+            "results",
+            "list",
+            "--from",
+            "20261002",
+            "--to",
+            "20261001",
+            "--record-from-time",
+            "12:00:00",
+            "--record-to-time",
+            "13:00:00",
+            "--live",
+        ]
+    )
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"

@@ -46,7 +46,7 @@ def _window(start: str, end: str) -> tuple[ScopeOption, ...]:
             required=True,
             date=True,
             window="from",
-            public_flag="from_date",
+            canonical_flag="--from-date",
         ),
         ScopeOption(
             "to",
@@ -55,7 +55,7 @@ def _window(start: str, end: str) -> tuple[ScopeOption, ...]:
             required=True,
             date=True,
             window="to",
-            public_flag="to_date",
+            canonical_flag="--to-date",
         ),
     )
 
@@ -93,7 +93,13 @@ CASH_BALANCES = ListSpec(
             default="Z21",
             verified="Z21",
         ),
-        ScopeOption("account", "aliasNames", "Optional account aliases.", repeat=True),
+        ScopeOption(
+            "account",
+            "aliasNames",
+            "Optional account aliases.",
+            repeat=True,
+            canonical_flag="--account-alias",
+        ),
         _timezone(),
     ),
     table_columns=(
@@ -359,6 +365,7 @@ CASH_STATEMENTS_EOD = ListSpec(
             "Account aliases; not numbers.",
             required=True,
             repeat=True,
+            canonical_flag="--account-alias",
         ),
         ScopeOption("currency", "currency", "Statement currency.", required=True),
         _timezone(),
@@ -416,19 +423,25 @@ FORECAST_RESULTS = ListSpec(
         ScopeOption(
             "record_from_time",
             "recordStartTime",
-            "Native creation time HHmmss; source timezone unknown.",
-            default="000000",
+            "Record creation time of day HH:mm:ss (legacy compact HHmmss accepted);"
+            " source timezone unknown.",
+            default="00:00:00",
             time=True,
         ),
         ScopeOption(
             "record_to_time",
             "recordEndTime",
-            "Native creation time HHmmss; source timezone unknown.",
-            default="235959",
+            "Record creation time of day HH:mm:ss (legacy compact HHmmss accepted);"
+            " source timezone unknown.",
+            default="23:59:59",
             time=True,
         ),
         ScopeOption(
-            "account", "aliasName", "Optional native account aliases.", repeat=True
+            "account",
+            "aliasName",
+            "Optional native account aliases.",
+            repeat=True,
+            canonical_flag="--account-alias",
         ),
     ),
     table_columns=(

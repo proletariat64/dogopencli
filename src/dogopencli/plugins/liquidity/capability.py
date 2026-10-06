@@ -22,6 +22,7 @@ from ...errors import (
     CliError,
 )
 from ...jsonutil import canonical
+from ...temporal import normalize_clock
 from .. import EndpointContract
 from . import spec
 from .envelope import dig, envelope_document
@@ -82,10 +83,11 @@ def scope_values(
     if unknown:
         raise _usage(f"unknown scope options: {unknown}")
     for option in options:
+        public = option.public_flag
         raw = provided.get(option.flag)
         if raw is None or raw == []:
             if option.required:
-                raise _usage(f"--{option.cli_flag} is required")
+                raise _usage(f"{public} is required")
             if option.default is not None:
                 raw = option.default
             else:
@@ -94,18 +96,18 @@ def scope_values(
             items = list(raw) if isinstance(raw, list) else [raw]
             if not items or any(not str(item).strip() for item in items):
                 raise _usage(
-                    f"--{option.cli_flag} must be nonempty",
+                    f"{public} must be nonempty",
                 )
             value: Any = [str(item) for item in items]
         else:
             if isinstance(raw, list):
                 raise _usage(
-                    f"--{option.cli_flag} accepts a single value",
+                    f"{public} accepts a single value",
                 )
             text = str(raw)
             if not text.strip():
                 raise _usage(
-                    f"--{option.cli_flag} must be nonempty",
+                    f"{public} must be nonempty",
                 )
             if option.date:
                 # Preferred YYYY-MM-DD and legacy compact YYYYMMDD normalize
@@ -119,17 +121,16 @@ def scope_values(
                     datetime.strptime(text, "%Y%m%d")
                 except ValueError as error:
                     raise _usage(
-                        f"--{option.cli_flag} must be a valid calendar date"
+                        f"{public} must be a valid calendar date"
                         " (YYYY-MM-DD preferred, YYYYMMDD accepted)",
                     ) from error
             if option.time:
                 try:
-                    if len(text) != 6 or not text.isascii() or not text.isdigit():
-                        raise ValueError
-                    datetime.strptime(text, "%H%M%S")
+                    text = normalize_clock(text)
                 except ValueError as error:
                     raise _usage(
-                        f"--{option.cli_flag} must be a valid HHmmss",
+                        f"{public} must be a valid HH:mm:ss"
+                        " (legacy compact HHmmss accepted)",
                     ) from error
             value = [text] if option.list_of_one else text
         if option.choices:
@@ -137,7 +138,7 @@ def scope_values(
             invalid = [item for item in values if item not in option.choices]
             if invalid:
                 raise _usage(
-                    f"--{option.cli_flag} must be one of {', '.join(option.choices)}",
+                    f"{public} must be one of {', '.join(option.choices)}",
                 )
         if option.window in ("from", "both"):
             window_from = value if isinstance(value, str) else None

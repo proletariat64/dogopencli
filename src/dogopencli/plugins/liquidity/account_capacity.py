@@ -58,6 +58,7 @@ ACCOUNT_CAPACITY = ListSpec(
             "Explicit native account alias; repeat for 1–10 distinct accounts.",
             required=True,
             repeat=True,
+            canonical_flag="--account-alias",
         ),
     ),
     table_columns=("aliasName", "currency", "availableResource", "valueTime"),
@@ -97,7 +98,7 @@ def validate_capacity_query(values: dict[str, Any]) -> None:
     ):
         raise CliError(
             INVALID_ARGUMENT,
-            "--account needs 1–10 distinct nonempty native aliases",
+            "--account-alias needs 1–10 distinct nonempty native aliases",
             exit_code=EXIT_USAGE,
         )
     values["aliasName"] = sorted(aliases)

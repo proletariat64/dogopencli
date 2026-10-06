@@ -527,13 +527,13 @@ def test_accounts_partial_refresh_replaces_cache_and_warns(setup, run_cli):
     [
         (
             ["cash", "waterlevels"],
-            ["--account", "A1"],
+            ["--account-alias", "A1"],
             {"success": True, "data": {"data": [], "totalCount": 0}},
         ),
         (
             ["cash", "statements", "intraday"],
             [
-                "--account",
+                "--account-alias",
                 "A1",
                 "--currency",
                 "USD",
@@ -547,7 +547,7 @@ def test_accounts_partial_refresh_replaces_cache_and_warns(setup, run_cli):
         (
             ["forecast", "cashflows"],
             [
-                "--account",
+                "--account-alias",
                 "A1",
                 "--currency",
                 "USD",
@@ -600,7 +600,7 @@ def test_invalid_cash_forecast_calendar_date_never_opens_browser(
     if prefix == ["liquidity"]:
         args.append("list")
     args += [
-        "--account",
+        "--account-alias",
         "A1",
         "--currency",
         "USD",
@@ -632,7 +632,7 @@ def test_cashflows_native_time_and_duplicate_occurrences_end_to_end(setup, run_c
         "body": {"resultFlag": True, "result": {"bankAccountCashFlowVOList": rows}},
     }
     scope = [
-        "--account",
+        "--account-alias",
         "A1",
         "--currency",
         "USD",

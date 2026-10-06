@@ -20,7 +20,7 @@ ACCOUNTS = ["SYN-C", "SYN-A", "SYN-B"]
 
 
 def scope(aliases=ACCOUNTS):
-    return [part for alias in aliases for part in ("--account", alias)]
+    return [part for alias in aliases for part in ("--account-alias", alias)]
 
 
 def query(*extra, aliases=ACCOUNTS):

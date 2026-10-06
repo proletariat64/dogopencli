@@ -53,7 +53,7 @@ SWAP_ORDERS = ListSpec(
             " YYYYMMDD accepted); pair with --to-date.",
             required=True,
             date=True,
-            public_flag="from_date",
+            canonical_flag="--from-date",
         ),
         ScopeOption(
             "trade_to",
@@ -62,7 +62,7 @@ SWAP_ORDERS = ListSpec(
             " YYYYMMDD accepted); pair with --from-date.",
             required=True,
             date=True,
-            public_flag="to_date",
+            canonical_flag="--to-date",
         ),
     ),
     table_columns=(

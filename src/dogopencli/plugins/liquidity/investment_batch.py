@@ -133,7 +133,7 @@ FUND_RESULTS = ListSpec(
             " YYYYMMDD accepted), native GMT+08; pair with --to-date.",
             required=True,
             date=True,
-            public_flag="from_date",
+            canonical_flag="--from-date",
         ),
         ScopeOption(
             "trigger_to",
@@ -142,7 +142,7 @@ FUND_RESULTS = ListSpec(
             " YYYYMMDD accepted), native GMT+08; pair with --from-date.",
             required=True,
             date=True,
-            public_flag="to_date",
+            canonical_flag="--to-date",
         ),
     ),
     table_columns=(

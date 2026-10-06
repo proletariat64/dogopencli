@@ -44,7 +44,7 @@ def args(*extra, refresh=False, account=ACCOUNT, day="2026-10-05"):
         if refresh
         else ["liquidity", "forecast", "accuracy", "list"]
     )
-    return command + ["--account", account, "--record-date", day, *extra]
+    return command + ["--account-alias", account, "--record-date", day, *extra]
 
 
 def base_page(rows, total=None):
@@ -233,12 +233,19 @@ def test_numeric_forecast_balance_precision_in_metric_request_and_cache(
     "options",
     [
         [],
-        ["--account", ACCOUNT],
+        ["--account-alias", ACCOUNT],
         ["--record-date", "2026-10-05"],
-        ["--account", "", "--record-date", "2026-10-05"],
-        ["--account", ACCOUNT, "--record-date", "2026-02-30"],
-        ["--account", ACCOUNT, "--record-date", "20261005"],
-        ["--account", ACCOUNT, "--account", "OTHER", "--record-date", "2026-10-05"],
+        ["--account-alias", "", "--record-date", "2026-10-05"],
+        ["--account-alias", ACCOUNT, "--record-date", "2026-02-30"],
+        ["--account-alias", ACCOUNT, "--record-date", "20261005"],
+        [
+            "--account-alias",
+            ACCOUNT,
+            "--account-alias",
+            "OTHER",
+            "--record-date",
+            "2026-10-05",
+        ],
     ],
 )
 def test_invalid_scope_before_business_request(setup, run_cli, options):
