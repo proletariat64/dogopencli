@@ -7,7 +7,6 @@ arguments and failed acquisition never overwrite a valid cache. All
 offline: public CLI + fake CDP transport + real temporary SQLite.
 """
 
-
 from test_liquidity_issue87_transfers import transfer, transfer_page
 from test_liquidity_spec76_cli_sit import response as spec76_response
 
