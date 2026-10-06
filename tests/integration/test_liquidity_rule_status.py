@@ -493,3 +493,113 @@ def test_getter_remains_refused_without_browser_work(setup, run_cli):
     assert "unknown command: get" in envelope["error"]["message"]
     assert not setup.state.transports
     assert not setup.cache_path.exists()
+
+
+Z_SCOPE = [
+    "--trigger-from",
+    "2026-01-01T00:00:00Z",
+    "--trigger-to",
+    "2026-01-31T23:59:59Z",
+]
+# Explicit numeric offsets spelling the same instants (UTC/+08 day rollover).
+OFFSET_SCOPE = [
+    "--trigger-from",
+    "2026-01-01T08:00:00+08:00",
+    "--trigger-to",
+    "2026-02-01T07:59:59+08:00",
+]
+
+
+def test_canonical_z_and_offset_forms_share_the_legacy_utc_scope(setup, run_cli):
+    rows = [record(0), record(1)]
+    setup.state.business_handler = listing(rows)
+    code, _, err = run_cli([*REFRESH, *Z_SCOPE])
+    assert code == 0, err
+    assert "deprecated" not in err
+    # The emitted native request keeps the UTC space-separated representation.
+    setup.state.business_handler = listing(rows)
+    setup.state.reachable = False
+    code, out, err = run_cli([*QUERY, *Z_SCOPE, "--all"])
+    assert code == 0, err
+    canonical = parse(out)
+    # Explicit numeric offsets of the same instants read the identical scope.
+    code, out, err = run_cli([*QUERY, *OFFSET_SCOPE, "--all"])
+    assert code == 0, err
+    offset = parse(out)
+    assert offset["data"] == canonical["data"]
+    assert offset["meta"]["scope"] == canonical["meta"]["scope"]
+    # The deprecated legacy space form reads the same scope with a diagnostic.
+    code, out, err = run_cli([*QUERY, *SCOPE, "--all"])
+    assert code == 0, err
+    legacy = parse(out)
+    assert legacy["data"] == canonical["data"]
+    assert legacy["meta"]["scope"] == canonical["meta"]["scope"]
+    assert "deprecated" in err
+    assert "--trigger-from" in err and "--trigger-to" in err
+    assert legacy["error"] is None  # stdout stays a parseable envelope
+
+
+def test_offset_input_normalizes_across_the_utc_day_boundary(setup, run_cli):
+    # 2026-01-01T00:00:00+08:00 is 2025-12-31 16:00:00 UTC.
+    scope = [
+        "--trigger-from",
+        "2026-01-01T00:00:00+08:00",
+        "--trigger-to",
+        "2026-01-02T00:00:00+08:00",
+    ]
+    setup.state.business_handler = listing(
+        [], "2025-12-31 16:00:00", "2026-01-01 16:00:00"
+    )
+    code, out, err = run_cli([*QUERY, *scope, "--live"])
+    assert code == 0, err
+    assert "deprecated" not in err
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-01-01T00:00:00-00:00",  # unknown-offset form
+        "2026-01-01T00:00:00",  # missing offset on the canonical form
+        "2026-01-01T00:00:00.5Z",  # fractional seconds
+        "2026-01-01T23:59:60Z",  # leap second
+        "2026-01-01t00:00:00Z",  # lowercase t
+        "2026-01-01T00:00:00z",  # lowercase z
+        "2026-01-01T00:00:00+0800",  # compact offset
+        "2026-01-01",  # date only
+    ],
+)
+def test_malformed_instants_rejected_before_browser_work(setup, run_cli, value):
+    scope = ["--trigger-from", value, "--trigger-to", SCOPE[3]]
+    for argv in ([*QUERY, *scope, "--live"], [*REFRESH, *scope]):
+        code, out, _ = run_cli(argv)
+        assert code == 2
+        assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert not setup.state.transports
+    assert not setup.cache_path.exists()
+
+
+def test_canonical_equal_bounds_keep_exact_second_meaning(setup, run_cli):
+    point = [
+        "--trigger-from",
+        "2026-01-15T12:00:00Z",
+        "--trigger-to",
+        "2026-01-15T12:00:00Z",
+    ]
+    setup.state.business_handler = listing(
+        [record(expectTriggerTime=TRIGGER_MS)],
+        "2026-01-15 12:00:00",
+        "2026-01-15 12:00:00",
+    )
+    code, out, err = run_cli([*QUERY, *point, "--live"])
+    assert code == 0, err
+    assert parse(out)["data"][0]["expectTriggerTime"] == TRIGGER_MS
+
+
+def test_help_declares_utc_instant_contract(setup, run_cli):
+    code, out, err = run_cli(["help", *QUERY])
+    assert code == 0, err
+    options = {option["name"]: option for option in parse(out)["options"]}
+    for name in ("trigger_from", "trigger_to"):
+        assert "YYYY-MM-DDTHH:mm:ssZ" in options[name]["summary"]
+        assert "UTC" in options[name]["summary"]
+        assert "deprecated" in options[name]["summary"].lower()
