@@ -20,6 +20,10 @@ FUND_REQUIRE 来源及单次页宽 5000；原生总数超过 5000 时拒绝并�
 当前分支 unsupported 为 40 条，其中 list 为 12 条（含 monitoring HOLD）。
 证据见 [Batch H 契约](docs/research/general/2026-10-06-batch-h-rule-status-contract.md)
 与 [Batch G 报告](docs/research/general/2026-10-06-batch-g-current-probes.md)。
+批次验收与后续候选研究见 [Batch H 验收记录](docs/research/general/2026-10-06-batch-h-acceptance.md)、
+[剩余清单 PRD 交叉核对](docs/research/general/2026-10-06-remaining-list-prd-crosscheck.md) 与
+[剩余清单当前探测](docs/research/general/2026-10-06-remaining-list-current-probes.md)；
+quote-groups 覆盖阻塞于 2026-10-06 续证维持不支持（#124）。
 
 ## v0.2.8（2026-10-05）
 
