@@ -227,7 +227,7 @@ def test_scoped_transfers_complete_empty_capture_is_not_cache_miss(
         ["--transaction-from", "20260901"],
         ["--transaction-to", "20261001"],
         ["--transaction-from", "20260230", "--transaction-to", "20261001"],
-        ["--transaction-from", "2026-09-01", "--transaction-to", "20261001"],
+        ["--transaction-from", "2026-02-30", "--transaction-to", "20261001"],
         ["--transaction-from", "20261002", "--transaction-to", "20261001"],
     ],
 )

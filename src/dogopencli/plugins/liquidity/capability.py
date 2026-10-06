@@ -85,7 +85,7 @@ def scope_values(
         raw = provided.get(option.flag)
         if raw is None or raw == []:
             if option.required:
-                raise _usage(f"--{option.flag.replace('_', '-')} is required")
+                raise _usage(f"--{option.cli_flag} is required")
             if option.default is not None:
                 raw = option.default
             else:
@@ -94,27 +94,33 @@ def scope_values(
             items = list(raw) if isinstance(raw, list) else [raw]
             if not items or any(not str(item).strip() for item in items):
                 raise _usage(
-                    f"--{option.flag.replace('_', '-')} must be nonempty",
+                    f"--{option.cli_flag} must be nonempty",
                 )
             value: Any = [str(item) for item in items]
         else:
             if isinstance(raw, list):
                 raise _usage(
-                    f"--{option.flag.replace('_', '-')} accepts a single value",
+                    f"--{option.cli_flag} accepts a single value",
                 )
             text = str(raw)
             if not text.strip():
                 raise _usage(
-                    f"--{option.flag.replace('_', '-')} must be nonempty",
+                    f"--{option.cli_flag} must be nonempty",
                 )
             if option.date:
+                # Preferred YYYY-MM-DD and legacy compact YYYYMMDD normalize
+                # to the existing internal compact form before scope and
+                # request construction (Issue #127 decisions 7 and 9).
+                if len(text) == 10 and text[4] == "-" and text[7] == "-":
+                    text = text[:4] + text[5:7] + text[8:]
                 try:
                     if len(text) != 8 or not text.isascii() or not text.isdigit():
                         raise ValueError
                     datetime.strptime(text, "%Y%m%d")
                 except ValueError as error:
                     raise _usage(
-                        f"--{option.flag.replace('_', '-')} must be a valid YYYYMMDD",
+                        f"--{option.cli_flag} must be a valid calendar date"
+                        " (YYYY-MM-DD preferred, YYYYMMDD accepted)",
                     ) from error
             if option.time:
                 try:
@@ -123,7 +129,7 @@ def scope_values(
                     datetime.strptime(text, "%H%M%S")
                 except ValueError as error:
                     raise _usage(
-                        f"--{option.flag.replace('_', '-')} must be a valid HHmmss",
+                        f"--{option.cli_flag} must be a valid HHmmss",
                     ) from error
             value = [text] if option.list_of_one else text
         if option.choices:
@@ -131,7 +137,7 @@ def scope_values(
             invalid = [item for item in values if item not in option.choices]
             if invalid:
                 raise _usage(
-                    f"--{option.flag.replace('_', '-')} must be one of"
+                    f"--{option.cli_flag} must be one of"
                     f" {', '.join(option.choices)}",
                 )
         if option.window in ("from", "both"):

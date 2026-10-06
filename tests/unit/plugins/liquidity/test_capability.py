@@ -59,6 +59,25 @@ def test_scope_values_required_choices_and_dates():
     )
     assert fields == {"bookType": "INNER", "d0": "20260901", "d1": "20260930"}
     assert window == ("20260901", "20260930")
+    # Preferred ISO dates normalize to the existing internal compact form
+    # before scope/request construction (Issue #127).
+    for from_value, to_value in (
+        ("2026-09-01", "2026-09-30"),
+        ("2026-09-01", "20260930"),
+        ("20260901", "2026-09-30"),
+    ):
+        iso_fields, iso_window = scope_values(
+            options,
+            {"book_type": "INNER", "from_date": from_value, "to_date": to_value},
+        )
+        assert iso_fields == fields
+        assert iso_window == window
+    # Leap days follow the real calendar in either spelling.
+    leap, _ = scope_values(
+        options,
+        {"book_type": "INNER", "from_date": "2024-02-29", "to_date": "20240229"},
+    )
+    assert leap["d0"] == leap["d1"] == "20240229"
     for provided, fragment in (
         ({}, "required"),
         (
@@ -66,19 +85,27 @@ def test_scope_values_required_choices_and_dates():
             "one of",
         ),
         (
-            {"book_type": "INNER", "from_date": "2026-09-01", "to_date": "20260930"},
-            "YYYYMMDD",
+            {"book_type": "INNER", "from_date": "2026-9-1", "to_date": "20260930"},
+            "valid calendar date",
         ),
         (
             {"book_type": "INNER", "from_date": "20260230", "to_date": "20260930"},
-            "valid YYYYMMDD",
+            "valid calendar date",
         ),
         (
-            {"book_type": "INNER", "from_date": "20260901", "to_date": "20261301"},
-            "valid YYYYMMDD",
+            {"book_type": "INNER", "from_date": "20260901", "to_date": "2026-13-01"},
+            "valid calendar date",
+        ),
+        (
+            {"book_type": "INNER", "from_date": "2025-02-29", "to_date": "20260930"},
+            "valid calendar date",
         ),
         (
             {"book_type": "INNER", "from_date": "20260930", "to_date": "20260901"},
+            "after its end",
+        ),
+        (
+            {"book_type": "INNER", "from_date": "2026-09-30", "to_date": "20260901"},
             "after its end",
         ),
     ):

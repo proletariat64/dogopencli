@@ -282,7 +282,7 @@ def test_scoped_swaps_complete_empty_capture_is_not_cache_miss(
         ["--trade-from", "20260901"],
         ["--trade-to", "20261001"],
         ["--trade-from", "20260230", "--trade-to", "20261001"],
-        ["--trade-from", "2026-09-01", "--trade-to", "20261001"],
+        ["--trade-from", "2026-02-30", "--trade-to", "20261001"],
         ["--trade-from", "20261002", "--trade-to", "20261001"],
     ],
 )

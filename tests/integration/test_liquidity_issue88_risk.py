@@ -525,7 +525,7 @@ def test_date_scopes_and_native_modes_do_not_share_captures(setup, run_cli):
         [],
         ["--from-date", "20260925"],
         ["--from-date", "20260230", "--to-date", "20260301"],
-        ["--from-date", "2026-09-25", "--to-date", "20260926"],
+        ["--from-date", "2026-02-30", "--to-date", "20260301"],
         ["--from-date", "20260926", "--to-date", "20260925"],
         ["--from-date", "20260925", "--to-date", "20260925"],
         ["--from-date", "20260925", "--to-date", "20260927"],

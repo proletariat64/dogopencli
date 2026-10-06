@@ -75,6 +75,22 @@ class ScopeOption:
     # Value this spec binds for a virtual option in a variant leaf.
     match: str = ""
     time: bool = False  # verified HHmmss, without an inferred source timezone
+    # Preferred public flag stem when it differs from ``flag`` (the stable
+    # internal dest, Issue #127 decision 3); the dest-derived spelling stays
+    # accepted as a deprecated alias (decision 12).
+    public_flag: str | None = None
+
+    @property
+    def cli_flag(self) -> str:
+        """Preferred public spelling without the leading dashes."""
+        return (self.public_flag or self.flag).replace("_", "-")
+
+    @property
+    def legacy_cli_flags(self) -> tuple[str, ...]:
+        """Deprecated public spellings still accepted, without leading dashes."""
+        if self.public_flag is None:
+            return ()
+        return (self.flag.replace("_", "-"),)
 
 
 @dataclass(frozen=True)
