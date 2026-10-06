@@ -17,7 +17,8 @@ from ...helpspec import (
     REFRESH_CDP_EFFECTS,
     REFRESH_OUTPUT,
     BizNode,
-    opt,
+    filter_opt,
+    scope_opt,
 )
 from .ptr_orders import ORDERS
 
@@ -32,16 +33,36 @@ WINDOW = (
     "gmtModified is integer epoch milliseconds; no default dates or all-history scope."
 )
 WINDOW_OPTIONS = (
-    opt(
+    scope_opt(
         "updated_from",
         "Inclusive modification-time start, YYYY-MM-DDTHH:MM:SS with an explicit"
         " numeric offset (preferred +08:00).",
+        value_type="datetime",
+        preferred_format="YYYY-MM-DDTHH:mm:ss+08:00",
+        accepted_formats=("YYYY-MM-DDTHH:mm:ss±hh:mm",),
+        timezone="+08:00",
+        constraints=(
+            {"kind": "ordered-pair", "role": "lower"},
+            {"kind": "max-elapsed-days", "days": 31},
+            {"kind": "not-future"},
+            {"kind": "half-open", "role": "inclusive"},
+        ),
         required=True,
     ),
-    opt(
+    scope_opt(
         "updated_to",
         "Exclusive modification-time end, YYYY-MM-DDTHH:MM:SS with an explicit"
         " numeric offset (preferred +08:00).",
+        value_type="datetime",
+        preferred_format="YYYY-MM-DDTHH:mm:ss+08:00",
+        accepted_formats=("YYYY-MM-DDTHH:mm:ss±hh:mm",),
+        timezone="+08:00",
+        constraints=(
+            {"kind": "ordered-pair", "role": "upper"},
+            {"kind": "max-elapsed-days", "days": 31},
+            {"kind": "not-future"},
+            {"kind": "half-open", "role": "exclusive"},
+        ),
         required=True,
     ),
 )
@@ -106,7 +127,9 @@ LIST_NODE = BizNode(
     options=(
         *WINDOW_OPTIONS,
         *(
-            opt(flag.replace("-", "_"), f"Exact local match on {field}.", "append")
+            filter_opt(
+                flag.replace("-", "_"), f"Exact local match on {field}.", "append"
+            )
             for flag, field in ORDERS.filters
         ),
         LIMIT,

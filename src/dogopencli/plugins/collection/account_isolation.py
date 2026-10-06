@@ -16,7 +16,7 @@ from ...helpspec import (
     REFRESH_CDP_EFFECTS,
     REFRESH_OUTPUT,
     BizNode,
-    opt,
+    filter_opt,
 )
 from .. import EndpointContract, ParsedPage
 from ..envelope import success_document
@@ -91,7 +91,7 @@ LIST_NODE = BizNode(
     "List account-isolation configurations from cache or explicitly with --live.",
     options=(
         *(
-            opt(
+            filter_opt(
                 flag.replace("-", "_"),
                 f"Exact whole-string match on {field}.",
                 "append",

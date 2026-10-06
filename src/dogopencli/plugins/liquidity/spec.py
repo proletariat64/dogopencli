@@ -85,6 +85,10 @@ class ScopeOption:
     # internally; ``utc`` marks the verified-UTC rule-status semantics so
     # refresh hints reconstruct the preferred public instant form (#127).
     datetime_zone: str | None = None  # None | "utc" | "unknown"
+    # Machine-readable occurrence bounds for repeat options (#127 T09/T11);
+    # a wire list-of-one stays single-valued publicly.
+    min_values: int | None = None
+    max_values: int | None = None
 
     @property
     def public_flag(self) -> str:

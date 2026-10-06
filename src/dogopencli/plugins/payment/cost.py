@@ -31,7 +31,9 @@ from ...helpspec import (
     SEQID_UNSTABLE,
     BizNode,
     OptionSpec,
-    opt,
+    contract,
+    filter_modes,
+    filter_opt,
 )
 from .. import EndpointContract, ParsedPage
 from ..cost import TABLE_COLUMNS, parse_cost_page, sort_cost_records
@@ -127,18 +129,23 @@ COST_LIST_NODE = BizNode(
     "List payment channel cost configurations from the local cache (default)"
     " or the backend with --live.",
     options=(
-        opt("legal_entity_code", "Filter by legal entity code.", "append"),
-        opt("financial_inst_code", "Filter by financial institution code.", "append"),
+        filter_opt("legal_entity_code", "Filter by legal entity code.", "append"),
+        filter_opt(
+            "financial_inst_code", "Filter by financial institution code.", "append"
+        ),
         OptionSpec(
             "bank_account",
             "--account-alias",
             "Filter by bank account.",
             "append",
             legacy_flags=("--bank-account",),
+            argument_contract=contract("string", modes=filter_modes(repeatable=True)),
         ),
-        opt("trans_currency_code", "Filter by transaction currency.", "append"),
-        opt("charge_bearer", "Filter by charge bearer.", "append"),
-        opt("clearing_network_name", "Filter by clearing network name.", "append"),
+        filter_opt("trans_currency_code", "Filter by transaction currency.", "append"),
+        filter_opt("charge_bearer", "Filter by charge bearer.", "append"),
+        filter_opt(
+            "clearing_network_name", "Filter by clearing network name.", "append"
+        ),
         LIMIT,
         OFFSET,
         ALL,

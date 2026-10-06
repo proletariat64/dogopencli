@@ -29,7 +29,10 @@ from ...helpspec import (
     REFRESH_OUTPUT,
     BizNode,
     OptionSpec,
+    contract,
+    filter_modes,
     opt,
+    scope_modes,
 )
 from .account_capacity import ACCOUNT_CAPACITY, validate_capacity_query
 from .capability import (
@@ -2732,6 +2735,67 @@ _SCOPE_CONSTRAINTS = (
 )
 
 
+def _scope_contract(option: ScopeOption) -> dict[str, Any]:
+    """Machine-readable contract derived from the scope declaration (#127)."""
+    if option.date:
+        value_type = "date"
+        preferred = "YYYY-MM-DD"
+        accepted = ["YYYY-MM-DD", "YYYYMMDD"]
+        timezone = None
+    elif option.time:
+        value_type = "time"
+        preferred = "HH:mm:ss"
+        accepted = ["HH:mm:ss", "HHmmss"]
+        timezone = None
+    elif option.datetime_zone == "utc":
+        value_type = "datetime"
+        preferred = "YYYY-MM-DDTHH:mm:ssZ"
+        accepted = [
+            "YYYY-MM-DDTHH:mm:ssZ",
+            "YYYY-MM-DDTHH:mm:ss±hh:mm",
+            "YYYY-MM-DD HH:mm:ss",
+        ]
+        timezone = "utc"
+    elif option.datetime_zone == "unknown":
+        value_type = "datetime"
+        preferred = "YYYY-MM-DDTHH:mm:ss"
+        accepted = ["YYYY-MM-DDTHH:mm:ss", "YYYY-MM-DD HH:mm:ss"]
+        timezone = "unknown"
+    elif option.choices:
+        value_type = "enum"
+        preferred = None
+        accepted = []
+        timezone = None
+    else:
+        value_type = "string"
+        preferred = None
+        accepted = []
+        timezone = None
+    cardinality: dict[str, Any] | None = None
+    if option.repeat:
+        cardinality = {
+            "min": option.min_values if option.min_values is not None else 0,
+            "max": option.max_values,
+        }
+    constraints: list[dict[str, Any]] = []
+    if option.window == "from":
+        constraints.append({"kind": "ordered-pair", "role": "lower"})
+    elif option.window == "to":
+        constraints.append({"kind": "ordered-pair", "role": "upper"})
+    elif option.window == "both":
+        constraints.append({"kind": "single-day"})
+    if option.virtual:
+        constraints.append({"kind": "contract-variant-selector"})
+    return contract(
+        value_type,
+        preferred_format=preferred,
+        accepted_formats=tuple(accepted),
+        modes=scope_modes(cardinality),
+        constraints=tuple(constraints),
+        timezone=timezone,
+    )
+
+
 def _option_spec(option: ScopeOption) -> OptionSpec:
     summary = option.summary
     if option.verified:
@@ -2748,12 +2812,18 @@ def _option_spec(option: ScopeOption) -> OptionSpec:
         default=None if option.repeat else option.default,
         choices=option.choices,
         legacy_flags=option.legacy_flags,
+        argument_contract=_scope_contract(option),
     )
 
 
 def _filter_option(entry: tuple[str, ...]) -> OptionSpec:
     flag, field = entry[0], entry[1]
-    option = opt(flag, f"Exact local match on {field}.", "append")
+    option = opt(
+        flag,
+        f"Exact local match on {field}.",
+        "append",
+        argument_contract=contract("string", modes=filter_modes(repeatable=True)),
+    )
     if len(entry) > 2:
         option = replace(option, flag=entry[2], legacy_flags=(option.flag,))
     return option
@@ -2815,6 +2885,11 @@ def detail_query_node(leaf: DetailLeaf) -> BizNode:
                     "str",
                     required=True,
                     choices=option.choices,
+                    argument_contract=contract(
+                        "string",
+                        preferred_format="nonempty native identifier",
+                        modes=scope_modes(None),
+                    ),
                 )
                 for option in detail.identity
             ),
@@ -2897,6 +2972,11 @@ def refresh_detail_node(leaf: DetailLeaf) -> BizNode:
                 "str",
                 required=True,
                 choices=option.choices,
+                argument_contract=contract(
+                    "string",
+                    preferred_format="nonempty native identifier",
+                    modes=scope_modes(None),
+                ),
             )
             for option in detail.identity
         ),

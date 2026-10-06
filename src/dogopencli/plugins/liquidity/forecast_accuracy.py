@@ -97,6 +97,8 @@ FORECAST_ACCURACY = ListSpec(
             required=True,
             repeat=True,
             canonical_flag="--account-alias",
+            min_values=1,
+            max_values=1,
         ),
         ScopeOption(
             "record_date",

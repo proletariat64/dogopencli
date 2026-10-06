@@ -6,7 +6,15 @@ from dataclasses import replace
 from typing import Any
 
 from .annotations import guide_annotations
-from .helpspec import BUSINESS_EXIT_CODES, REFRESH_OUTPUT, BizNode, document, opt
+from .helpspec import (
+    BUSINESS_EXIT_CODES,
+    REFRESH_OUTPUT,
+    BizNode,
+    contract,
+    display_modes,
+    document,
+    opt,
+)
 from .plugins import get_description
 
 
@@ -31,6 +39,7 @@ def description_nodes(queries: Iterable[BizNode]) -> Iterable[BizNode]:
                     "Description format.",
                     default="json",
                     choices=("json", "text"),
+                    argument_contract=contract("enum", modes=display_modes()),
                 ),
             ),
             constraints=(

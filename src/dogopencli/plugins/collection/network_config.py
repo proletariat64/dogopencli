@@ -18,7 +18,7 @@ from ...helpspec import (
     REFRESH_CDP_EFFECTS,
     REFRESH_OUTPUT,
     BizNode,
-    opt,
+    filter_opt,
 )
 from .. import EndpointContract, ParsedPage
 from ..envelope import success_document
@@ -128,7 +128,9 @@ def list_node(cap: NetworkConfigCapability) -> BizNode:
         f"List {cap.title} from cache or explicitly with --live.",
         options=(
             *(
-                opt(flag.replace("-", "_"), f"Exact local match on {field}.", "append")
+                filter_opt(
+                    flag.replace("-", "_"), f"Exact local match on {field}.", "append"
+                )
                 for flag, field in cap.filters
             ),
             LIMIT,

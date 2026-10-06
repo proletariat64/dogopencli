@@ -59,6 +59,8 @@ ACCOUNT_CAPACITY = ListSpec(
             required=True,
             repeat=True,
             canonical_flag="--account-alias",
+            min_values=1,
+            max_values=10,
         ),
     ),
     table_columns=("aliasName", "currency", "availableResource", "valueTime"),
