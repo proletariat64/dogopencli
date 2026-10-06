@@ -337,9 +337,9 @@ WIN 后台未实现，首版不提供；quotes get 仍延期。详见
 
 `risk sla list` 读取风险 SLA 配置摘要，固定一次 5000 大页，按原生总数和
 `slaConfigId` 核对覆盖。列表不包含尚未证明 populated 的规则数组，也不爬取详情。
-`forecast accuracy list` 必填单个 `--account` 和 `--record-date YYYY-MM-DD`，
+`forecast accuracy list` 必填单个 `--account-alias` 和 `--record-date YYYY-MM-DD`，
 一次最多 100 条基础记录，每条关联原生准确率指标；创建查询日与 `valueDate` 分开，
-不计算本地百分比。`risk account-capacity list` 必填 1–10 个不同 `--account`，
+不计算本地百分比。`risk account-capacity list` 必填 1–10 个不同 `--account-alias`，
 只查询明确集合；没有原生全账户总数，也不自动发现账户。`availableResource`
 与 `outFlowCapacity` 分开保留。`investment rfqs list` 仅支持 TARGET_RFQ，
 必填 `--from-date/--to-date YYYY-MM-DD`；子任务 `inquirySubTaskId` 与父引用
@@ -348,10 +348,10 @@ WIN 后台未实现，首版不提供；quotes get 仍延期。详见
 ```bash
 dogopencli refresh liquidity risk sla --require-complete
 dogopencli liquidity risk sla list --all
-dogopencli refresh liquidity forecast accuracy --account ACCOUNT_ALIAS --record-date 2026-10-05 --require-complete
-dogopencli liquidity forecast accuracy list --account ACCOUNT_ALIAS --record-date 2026-10-05 --all
-dogopencli refresh liquidity risk account-capacity --account ACCOUNT_ALIAS_A --account ACCOUNT_ALIAS_B --require-complete
-dogopencli liquidity risk account-capacity list --account ACCOUNT_ALIAS_B --account ACCOUNT_ALIAS_A --all
+dogopencli refresh liquidity forecast accuracy --account-alias ACCOUNT_ALIAS --record-date 2026-10-05 --require-complete
+dogopencli liquidity forecast accuracy list --account-alias ACCOUNT_ALIAS --record-date 2026-10-05 --all
+dogopencli refresh liquidity risk account-capacity --account-alias ACCOUNT_ALIAS_A --account-alias ACCOUNT_ALIAS_B --require-complete
+dogopencli liquidity risk account-capacity list --account-alias ACCOUNT_ALIAS_B --account-alias ACCOUNT_ALIAS_A --all
 dogopencli refresh liquidity investment rfqs --from-date 2026-01-01 --to-date 2026-10-05 --require-complete
 dogopencli liquidity investment rfqs list --from-date 2026-01-01 --to-date 2026-10-05 --all
 ```

@@ -82,10 +82,11 @@ def scope_values(
     if unknown:
         raise _usage(f"unknown scope options: {unknown}")
     for option in options:
+        public = option.public_flag
         raw = provided.get(option.flag)
         if raw is None or raw == []:
             if option.required:
-                raise _usage(f"--{option.flag.replace('_', '-')} is required")
+                raise _usage(f"{public} is required")
             if option.default is not None:
                 raw = option.default
             else:
@@ -94,18 +95,18 @@ def scope_values(
             items = list(raw) if isinstance(raw, list) else [raw]
             if not items or any(not str(item).strip() for item in items):
                 raise _usage(
-                    f"--{option.flag.replace('_', '-')} must be nonempty",
+                    f"{public} must be nonempty",
                 )
             value: Any = [str(item) for item in items]
         else:
             if isinstance(raw, list):
                 raise _usage(
-                    f"--{option.flag.replace('_', '-')} accepts a single value",
+                    f"{public} accepts a single value",
                 )
             text = str(raw)
             if not text.strip():
                 raise _usage(
-                    f"--{option.flag.replace('_', '-')} must be nonempty",
+                    f"{public} must be nonempty",
                 )
             if option.date:
                 try:
@@ -114,7 +115,7 @@ def scope_values(
                     datetime.strptime(text, "%Y%m%d")
                 except ValueError as error:
                     raise _usage(
-                        f"--{option.flag.replace('_', '-')} must be a valid YYYYMMDD",
+                        f"{public} must be a valid YYYYMMDD",
                     ) from error
             if option.time:
                 try:
@@ -123,7 +124,7 @@ def scope_values(
                     datetime.strptime(text, "%H%M%S")
                 except ValueError as error:
                     raise _usage(
-                        f"--{option.flag.replace('_', '-')} must be a valid HHmmss",
+                        f"{public} must be a valid HHmmss",
                     ) from error
             value = [text] if option.list_of_one else text
         if option.choices:
@@ -131,8 +132,7 @@ def scope_values(
             invalid = [item for item in values if item not in option.choices]
             if invalid:
                 raise _usage(
-                    f"--{option.flag.replace('_', '-')} must be one of"
-                    f" {', '.join(option.choices)}",
+                    f"{public} must be one of {', '.join(option.choices)}",
                 )
         if option.window in ("from", "both"):
             window_from = value if isinstance(value, str) else None

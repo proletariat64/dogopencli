@@ -129,12 +129,14 @@ def _local_filters(
     args: argparse.Namespace, variant: spec_mod.ListSpec
 ) -> dict[str, list[str]]:
     filters: dict[str, list[str]] = {}
-    for flag, field in variant.filters:
+    for entry in variant.filters:
+        flag, field = entry[0], entry[1]
+        public = entry[2] if len(entry) > 2 else "--" + flag.replace("_", "-")
         values = getattr(args, flag, [])
         if any(not value.strip() for value in values):
             raise CliError(
                 INVALID_ARGUMENT,
-                f"--{flag.replace('_', '-')} must be nonempty",
+                f"{public} must be nonempty",
                 exit_code=EXIT_USAGE,
             )
         if values:
@@ -358,7 +360,7 @@ def _hint_options(leaf: ListLeaf, values: dict[str, Any]) -> str:
         value = values.get(option.field)
         if value is None:
             continue
-        flag = "--" + option.flag.replace("_", "-")
+        flag = option.public_flag
         items = value if isinstance(value, list) else [value]
         parts.extend(f"{flag} {item}" for item in items)
     return (" " + " ".join(parts)) if parts else ""

@@ -72,7 +72,7 @@ def response(item, rows, total=None):
 CASES = [
     (
         CASH_BALANCES,
-        ["--entity", "E1", "--account", "A1"],
+        ["--entity", "E1", "--account-alias", "A1"],
         {
             "entity": "E1",
             "aliasName": "A1",
@@ -140,7 +140,7 @@ CASES = [
         [
             "--entity",
             "E1",
-            "--account",
+            "--account-alias",
             "A1",
             "--currency",
             "USD",
@@ -161,7 +161,7 @@ CASES = [
     ),
     (
         FORECAST_RESULTS,
-        ["--from", "20261001", "--to", "20261001", "--account", "A1"],
+        ["--from", "20261001", "--to", "20261001", "--account-alias", "A1"],
         {
             "id": "F1",
             "bankAccountAliasName": "A1",

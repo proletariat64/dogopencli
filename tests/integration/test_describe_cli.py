@@ -171,7 +171,7 @@ def test_guide_examples_resolve_and_annotations_are_defined(run_cli, path):
     }
     filters = {entry["flag"]: entry for entry in guide["filters"]}
     if path[1] == "cost":
-        assert filters["--bank-account"]["record_field"] == "bankAccountAliasName"
+        assert filters["--account-alias"]["record_field"] == "bankAccountAliasName"
     elif path[1] == "channel":
         assert filters["--financial-inst-id"]["record_field"] == "financialInstCode"
         assert filters["--debit-account-no"]["request_field"] == "debitAccountNoList"

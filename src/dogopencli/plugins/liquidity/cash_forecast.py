@@ -83,7 +83,13 @@ CASH_BALANCES = ListSpec(
             default="Z21",
             verified="Z21",
         ),
-        ScopeOption("account", "aliasNames", "Optional account aliases.", repeat=True),
+        ScopeOption(
+            "account",
+            "aliasNames",
+            "Optional account aliases.",
+            repeat=True,
+            canonical_flag="--account-alias",
+        ),
         _timezone(),
     ),
     table_columns=(
@@ -349,6 +355,7 @@ CASH_STATEMENTS_EOD = ListSpec(
             "Account aliases; not numbers.",
             required=True,
             repeat=True,
+            canonical_flag="--account-alias",
         ),
         ScopeOption("currency", "currency", "Statement currency.", required=True),
         _timezone(),
@@ -418,7 +425,11 @@ FORECAST_RESULTS = ListSpec(
             time=True,
         ),
         ScopeOption(
-            "account", "aliasName", "Optional native account aliases.", repeat=True
+            "account",
+            "aliasName",
+            "Optional native account aliases.",
+            repeat=True,
+            canonical_flag="--account-alias",
         ),
     ),
     table_columns=(
