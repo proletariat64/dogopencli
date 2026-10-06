@@ -491,9 +491,7 @@ def test_forecast_changing_total_fails_closed_in_every_mode_and_keeps_cache(
     assert len(setup.state.business_requests) == count
 
 
-def test_forecast_record_clocks_colon_compact_equivalence_and_defaults(
-    setup, run_cli
-):
+def test_forecast_record_clocks_colon_compact_equivalence_and_defaults(setup, run_cli):
     import json
 
     window = ["--from", "20261001", "--to", "20261001"]
@@ -506,9 +504,7 @@ def test_forecast_record_clocks_colon_compact_equivalence_and_defaults(
     colon = ["--record-from-time", "09:15:00", "--record-to-time", "17:30:00"]
     code, _, err = run_cli([*refresh, *colon])
     assert code == 0, err
-    vo = json.loads(
-        setup.state.business_requests[-1][FORECAST_RESULTS.vo_field]
-    )
+    vo = json.loads(setup.state.business_requests[-1][FORECAST_RESULTS.vo_field])
     assert vo["recordStartTime"] == "091500"
     assert vo["recordEndTime"] == "173000"
     # The compact legacy spelling reads the identical cached scope offline.
@@ -532,9 +528,7 @@ def test_forecast_record_clocks_colon_compact_equivalence_and_defaults(
 
     # Help declares the canonical defaults.
     help_doc = parse(run_cli(["help", *query[:4]])[1])
-    defaults = {
-        option["name"]: option.get("default") for option in help_doc["options"]
-    }
+    defaults = {option["name"]: option.get("default") for option in help_doc["options"]}
     assert defaults["record_from_time"] == "00:00:00"
     assert defaults["record_to_time"] == "23:59:59"
 
@@ -564,9 +558,7 @@ def test_forecast_record_clock_rejections_precede_browser_and_cache(
     assert not setup.cache_path.exists()
 
 
-def test_forecast_record_clocks_stay_independent_from_the_date_window(
-    setup, run_cli
-):
+def test_forecast_record_clocks_stay_independent_from_the_date_window(setup, run_cli):
     row = {"id": "F1", "valueDate": "20261001", "forecastBalance": "1.0000"}
     setup.state.business_handler = lambda payload, index: response(
         FORECAST_RESULTS, [row]
