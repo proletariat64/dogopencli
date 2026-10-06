@@ -35,6 +35,8 @@ from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import FIELDS as RISK_FIELDS
 from .risk_batch import RELEASED as RISK_RELEASED
 from .risk_detail import DETAIL_FIELDS, RISK_DETAIL_SPECS
+from .rule_status import FIELDS as RULE_STATUS_FIELDS
+from .rule_status import RULE_STATUS
 from .strategy_detail import STRATEGY_DETAIL, STRATEGY_DETAIL_FIELDS
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
@@ -44,6 +46,7 @@ from .transfer_rules import TRANSFER_RULES
 
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
     DEMANDS.name: DEMAND_FIELDS,
+    RULE_STATUS.name: RULE_STATUS_FIELDS,
     # Observed 2026-10-05; sampled label types are not validation guarantees.
     "liquidity.pricing.factors.list": {
         "code": "str",
