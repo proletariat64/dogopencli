@@ -74,7 +74,9 @@ class ScopeOption:
     list_of_one: bool = False
     # Value this spec binds for a virtual option in a variant leaf.
     match: str = ""
-    time: bool = False  # verified HHmmss, without an inferred source timezone
+    # Verified compact HHmmss internally; the canonical public HH:mm:ss form
+    # normalizes to it, without an inferred source timezone.
+    time: bool = False
     # Canonical public flag when an Issue #127 rename moved the preferred
     # spelling away from the stable internal dest ``flag``; the dest-derived
     # flag stays accepted as a deprecated legacy alias.

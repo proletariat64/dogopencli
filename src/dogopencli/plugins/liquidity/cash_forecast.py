@@ -413,15 +413,17 @@ FORECAST_RESULTS = ListSpec(
         ScopeOption(
             "record_from_time",
             "recordStartTime",
-            "Native creation time HHmmss; source timezone unknown.",
-            default="000000",
+            "Record creation time of day HH:mm:ss (legacy compact HHmmss accepted);"
+            " source timezone unknown.",
+            default="00:00:00",
             time=True,
         ),
         ScopeOption(
             "record_to_time",
             "recordEndTime",
-            "Native creation time HHmmss; source timezone unknown.",
-            default="235959",
+            "Record creation time of day HH:mm:ss (legacy compact HHmmss accepted);"
+            " source timezone unknown.",
+            default="23:59:59",
             time=True,
         ),
         ScopeOption(
