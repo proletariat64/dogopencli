@@ -22,6 +22,7 @@ from ...errors import (
     CliError,
 )
 from ...jsonutil import canonical
+from ...temporal import normalize_clock
 from .. import EndpointContract
 from . import spec
 from .envelope import dig, envelope_document
@@ -118,12 +119,11 @@ def scope_values(
                     ) from error
             if option.time:
                 try:
-                    if len(text) != 6 or not text.isascii() or not text.isdigit():
-                        raise ValueError
-                    datetime.strptime(text, "%H%M%S")
+                    text = normalize_clock(text)
                 except ValueError as error:
                     raise _usage(
-                        f"--{option.flag.replace('_', '-')} must be a valid HHmmss",
+                        f"--{option.flag.replace('_', '-')} must be a valid HH:mm:ss"
+                        " (legacy compact HHmmss accepted)",
                     ) from error
             value = [text] if option.list_of_one else text
         if option.choices:

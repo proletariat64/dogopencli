@@ -332,13 +332,19 @@ def test_forecast_record_creation_times_are_hhmmss_and_ordered():
     )
     assert fields["recordStartTime"] == "091500"
     assert fields["recordEndTime"] == "173000"
-    for bad_time in ("240000", "1261", "09:15:00", "091560"):
-        with pytest.raises(CliError, match="HHmmss"):
+    # Canonical colon form normalizes to the compact native representation.
+    colon, _ = scope_values(
+        options,
+        {**window, "record_from_time": "09:15:00", "record_to_time": "17:30:00"},
+    )
+    assert colon == fields
+    for bad_time in ("240000", "24:00:00", "1261", "091560", "09:15", "09:15:00.5"):
+        with pytest.raises(CliError, match="HH:mm:ss"):
             scope_values(options, {**window, "record_from_time": bad_time})
     with pytest.raises(CliError, match="record creation time start is after its end"):
         scope_values(
             options,
-            {**window, "record_from_time": "235959", "record_to_time": "000000"},
+            {**window, "record_from_time": "23:59:59", "record_to_time": "000000"},
         )
     with pytest.raises(CliError, match="required"):
         scope_values(options, {"to": "20261007"})
