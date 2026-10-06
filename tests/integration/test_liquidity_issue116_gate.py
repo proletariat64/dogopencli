@@ -132,22 +132,32 @@ def test_batch_f1_wallet_live_strict_and_refresh_cannot_execute(
     assert (cache.read_bytes() if cache.exists() else None) == before
 
 
-def test_batch_f1_wallet_get_refuses_without_touching_cache(disconnected, run_cli):
+@pytest.mark.parametrize(
+    "extra,exit_code,error_code",
+    [
+        ([], 1, "UNSUPPORTED_CAPABILITY"),
+        (["--live"], 2, "INVALID_ARGUMENT"),
+    ],
+)
+def test_batch_f1_wallet_get_refuses_without_touching_cache(
+    disconnected, run_cli, extra, exit_code, error_code
+):
     cache, before = disconnected
-    code, out, _ = run_cli(["liquidity", "cash", "wallets", "get"])
+    code, out, _ = run_cli(["liquidity", "cash", "wallets", "get", *extra])
     envelope = parse(out)
-    assert code == 1
+    assert code == exit_code
     assert envelope["data"] is None
-    assert envelope["error"]["code"] == "UNSUPPORTED_CAPABILITY"
-    assert envelope["error"]["message"] == (
-        f"liquidity cash wallets get is deferred: {WALLET_GET_REASON}"
-    )
+    assert envelope["error"]["code"] == error_code
+    if error_code == "UNSUPPORTED_CAPABILITY":
+        assert envelope["error"]["message"] == (
+            f"liquidity cash wallets get is deferred: {WALLET_GET_REASON}"
+        )
     assert envelope["error"]["retryable"] is False
     assert (cache.read_bytes() if cache.exists() else None) == before
 
 
-@pytest.mark.parametrize("disconnected", ["missing"], indirect=True)
-def test_batch_f1_wallet_snapshot_marks_both_lists_unsupported(disconnected, run_cli):
+@pytest.mark.parametrize("disconnected", ["sqlite", "missing"], indirect=True)
+def test_batch_f1_wallet_snapshot_marks_all_leaves_unsupported(disconnected, run_cli):
     cache, before = disconnected
     code, out, err = run_cli(["snapshot", "liquidity", "--format", "json"])
     assert code == 0, err
