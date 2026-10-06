@@ -35,7 +35,7 @@ from .errors import (
     TIMEOUT,
     CliError,
 )
-from .helpspec import BizNode, add_options
+from .helpspec import BizNode, OptionSpec, add_options
 from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
 from .jsonutil import canonical
@@ -1628,6 +1628,55 @@ class _BusinessParser(argparse.ArgumentParser):
         raise _argument_error(message)
 
 
+def _used_spellings(option: OptionSpec, tokens: list[str]) -> list[str]:
+    """Accepted spellings of one option present in argv, in first-use order."""
+    used: list[str] = []
+    for token in tokens:
+        if token == "--":
+            break
+        flag = token.partition("=")[0]
+        if flag in option.flags and flag not in used:
+            used.append(flag)
+    return used
+
+
+def _check_alias_spellings(
+    node: BizNode, tokens: list[str]
+) -> list[tuple[OptionSpec, list[str]]] | CliError:
+    """Detect legacy alias usage and canonical+legacy scalar conflicts.
+
+    Returns the (option, legacy spellings used) pairs to deprecate after a
+    successful parse, or the conflict error. A scalar supplied through both
+    canonical and legacy spellings is INVALID_ARGUMENT even when the values
+    are equal; repeatable options may mix spellings (Issue #127 decision 11).
+    """
+    deprecations: list[tuple[OptionSpec, list[str]]] = []
+    for option in node.options:
+        if not option.legacy_flags:
+            continue
+        used = _used_spellings(option, tokens)
+        legacy_used = [flag for flag in used if flag != option.flag]
+        if not legacy_used:
+            continue
+        if option.kind != "append" and option.flag in used:
+            return _argument_error(
+                f"{', '.join(legacy_used)} and {option.flag} name the same"
+                f" argument; use {option.flag}"
+            )
+        deprecations.append((option, legacy_used))
+    return deprecations
+
+
+def _emit_deprecations(deprecations: list[tuple[OptionSpec, list[str]]]) -> None:
+    """One concise stderr diagnostic per affected logical argument."""
+    for option, legacy_used in deprecations:
+        verb = "are" if len(legacy_used) > 1 else "is"
+        print(
+            f"warning: {', '.join(legacy_used)} {verb} deprecated; use {option.flag}",
+            file=sys.stderr,
+        )
+
+
 def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
     """Parse the resolved leaf's remaining argv and run its handler."""
     if node.path == ("snapshot",):
@@ -1648,13 +1697,19 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
         allow_abbrev=False,
     )
     add_options(parser, node.options)
+    remaining = [
+        token for index, token in enumerate(values) if index not in word_indices
+    ]
+    alias_check = _check_alias_spellings(node, remaining)
+    if isinstance(alias_check, CliError):
+        # No successfully parsed output format exists yet; use the JSON default.
+        return _emit_error(alias_check)
     try:
-        args = parser.parse_args(
-            [token for index, token in enumerate(values) if index not in word_indices]
-        )
+        args = parser.parse_args(remaining)
     except CliError as error:
         # No successfully parsed output format exists yet; use the JSON default.
         return _emit_error(error)
+    _emit_deprecations(alias_check)
     if node.path[0] == "describe":
         args.describe_path = node.path[1:]
     # Generic plugin handlers resolve their leaf from the command path.
