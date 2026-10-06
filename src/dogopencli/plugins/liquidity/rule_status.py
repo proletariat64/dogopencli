@@ -179,7 +179,7 @@ def validate_rule_status_rows_scope(
     rows: list[dict[str, Any]], values: dict[str, Any]
 ) -> None:
     start = _epoch_ms(values["triggerStartTime"])
-    end = _epoch_ms(values["triggerEndTime"])
+    end = _epoch_ms(values["triggerEndTime"]) + 999
     for row in rows:
         if not start <= row["expectTriggerTime"] <= end:
             raise CliError(

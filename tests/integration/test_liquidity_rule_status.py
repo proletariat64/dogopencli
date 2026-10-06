@@ -97,17 +97,21 @@ SCOPE_START_MS = 1767225600000  # 2026-01-01 00:00:00 UTC
 SCOPE_END_MS = 1769903999000  # 2026-01-31 23:59:59 UTC
 
 
-def test_equal_endpoints_are_allowed_and_inclusive(setup, run_cli):
+@pytest.mark.parametrize("offset_ms", [0, 500, 999])
+def test_equal_endpoints_are_allowed_and_inclusive(setup, run_cli, offset_ms):
     point = [
         "--trigger-from",
         "2026-01-15 12:00:00",
         "--trigger-to",
         "2026-01-15 12:00:00",
     ]
-    setup.state.business_handler = listing([record()], point[1], point[3])
+    timestamp = TRIGGER_MS + offset_ms
+    setup.state.business_handler = listing(
+        [record(expectTriggerTime=timestamp)], point[1], point[3]
+    )
     code, out, err = run_cli([*QUERY, *point, "--live"])
     assert code == 0, err
-    assert parse(out)["data"][0]["expectTriggerTime"] == TRIGGER_MS
+    assert parse(out)["data"][0]["expectTriggerTime"] == timestamp
 
 
 def test_refresh_offline_live_precision_omissions_and_exact_scope(setup, run_cli):
@@ -174,6 +178,7 @@ def test_refresh_offline_live_precision_omissions_and_exact_scope(setup, run_cli
         {"orderStatus": None},
         {"expectTriggerTime": str(TRIGGER_MS)},
         {"expectTriggerTime": True},
+        {"expectTriggerTime": SCOPE_START_MS - 1},
         {"expectTriggerTime": SCOPE_START_MS - 1000},
         {"expectTriggerTime": SCOPE_END_MS + 1000},
         {"realTriggerTime": str(TRIGGER_MS)},
@@ -412,7 +417,10 @@ def test_nullable_trigger_and_empty_payment_refs_stay_raw(setup, run_cli):
     assert data[1]["orderStatus"] == "PAYMENT_FAILURE"
 
 
-@pytest.mark.parametrize("timestamp", [SCOPE_START_MS, SCOPE_END_MS])
+@pytest.mark.parametrize(
+    "timestamp",
+    [SCOPE_START_MS, SCOPE_END_MS, SCOPE_END_MS + 500, SCOPE_END_MS + 999],
+)
 def test_native_trigger_time_boundaries_are_inclusive(setup, run_cli, timestamp):
     setup.state.business_handler = listing(
         [record(expectTriggerTime=timestamp, realTriggerTime=timestamp)]
