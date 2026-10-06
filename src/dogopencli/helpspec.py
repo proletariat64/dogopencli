@@ -16,6 +16,10 @@ from typing import Any, NoReturn
 HELP_VERSION = 1
 HELP_FORMATS = ("json", "text")
 
+# Version of the per-option argument_contract object (Issue #127); the
+# skeleton carries version plus declared fields and auto-derived aliases.
+ARGUMENT_CONTRACT_VERSION = 1
+
 BUSINESS_EXIT_CODES = {
     0: "success",
     1: "runtime failure",
@@ -66,6 +70,19 @@ class OptionSpec:
     # list window parses None but executes limit=100/offset=0).
     help_default: Any = _UNSET
     choices: tuple[str, ...] = ()
+    # Deprecated public spellings bound to the same dest; ``flag`` stays the
+    # preferred spelling and ``name`` the stable internal identity (Issue
+    # #127 decision 3).
+    legacy_flags: tuple[str, ...] = ()
+    # Optional versioned machine-readable contract (value_type,
+    # preferred_format, accepted_formats, modes, ...); emitted in help JSON
+    # as ``argument_contract`` (Issue #127 decision 6).
+    argument_contract: dict[str, Any] | None = None
+
+    @property
+    def flags(self) -> tuple[str, ...]:
+        """Every accepted spelling, preferred first, then legacy aliases."""
+        return (self.flag, *self.legacy_flags)
 
     @property
     def effective_default(self) -> Any:
@@ -208,7 +225,7 @@ def add_options(
             kwargs["choices"] = option.choices
         if option.required:
             kwargs["required"] = True
-        parser.add_argument(option.flag, **kwargs)
+        parser.add_argument(*option.flags, **kwargs)
 
 
 class HelpParser(argparse.ArgumentParser):
@@ -241,9 +258,17 @@ def _describe(option: OptionSpec) -> dict[str, Any]:
         "required": option.required,
         "default": option.effective_default,
     }
-    value["flags"] = [option.flag]
+    value["flags"] = list(option.flags)
     if option.choices:
         value["choices"] = list(option.choices)
+    if option.argument_contract is not None:
+        contract: dict[str, Any] = {
+            "version": ARGUMENT_CONTRACT_VERSION,
+            **option.argument_contract,
+        }
+        if option.legacy_flags:
+            contract.setdefault("deprecated_flags", list(option.legacy_flags))
+        value["argument_contract"] = contract
     return value
 
 

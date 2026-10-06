@@ -153,7 +153,7 @@ def _scan(tokens: list[str], *, explicit_help: bool) -> _Route:
             takes_value = flag == "--format"
             if not explicit_help and node is not None:
                 takes_value |= any(
-                    option.flag == flag and option.kind != "bool"
+                    flag in option.flags and option.kind != "bool"
                     for option in node.options
                 )
             route.options.append(token)
