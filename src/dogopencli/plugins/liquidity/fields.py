@@ -15,6 +15,8 @@ from .fee_orders import FEE_ORDERS
 from .fee_orders import FIELDS as FEE_ORDER_FIELDS
 from .forecast_accuracy import BASE_FIELDS as ACCURACY_BASE_FIELDS
 from .forecast_accuracy import FORECAST_ACCURACY
+from .funding_demands import DEMANDS
+from .funding_demands import FIELDS as DEMAND_FIELDS
 from .investment_batch import (
     BENCHMARK_FIELDS,
     BENCHMARK_VALUES,
@@ -41,6 +43,7 @@ from .transfer_rules import FIELDS as TRANSFER_RULE_FIELDS
 from .transfer_rules import TRANSFER_RULES
 
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
+    DEMANDS.name: DEMAND_FIELDS,
     # Observed 2026-10-05; sampled label types are not validation guarantees.
     "liquidity.pricing.factors.list": {
         "code": "str",

@@ -52,6 +52,7 @@ from .decision_list import RELEASED as DECISIONS_RELEASED
 from .fee_orders import FEE_ORDERS, validate_fee_query
 from .forecast_accuracy import FORECAST_ACCURACY
 from .forecast_accuracy import validate_query as validate_accuracy_query
+from .funding_demands import DEMANDS, validate_demand_query
 from .investment_batch import CANDIDATES as INVESTMENT_CANDIDATES
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .investment_batch import validate_quote_query, validate_strategy_query
@@ -2542,6 +2543,9 @@ DEFERRED = tuple(item for item in DEFERRED if item.path != (*RFQS.path, "list"))
 
 # --- leaf registry -----------------------------------------------------------
 
+LIST_SPECS += (DEMANDS,)
+DEFERRED = tuple(item for item in DEFERRED if item.path != (*DEMANDS.path, "list"))
+
 
 def _merged_options(variants: tuple[ListSpec, ...]) -> tuple[ScopeOption, ...]:
     merged: dict[str, ScopeOption] = {}
@@ -2602,6 +2606,8 @@ class ListLeaf:
             )
         variant = candidates[0]
         request_values, window = scope_values(variant.scope_options, provided)
+        if variant.projection == "funding_demands":
+            validate_demand_query(request_values)
         if variant.projection == "decision_reports":
             validate_decision_query(request_values)
         if variant.projection == "swap_orders":

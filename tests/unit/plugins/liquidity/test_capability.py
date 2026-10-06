@@ -248,7 +248,7 @@ def test_parse_detail_list_payload_echoes_each_row():
 
 
 def test_every_shipped_leaf_builds_a_valid_contract():
-    assert len(LIST_LEAVES) == 64  # includes all four bounded Batch F lists
+    assert len(LIST_LEAVES) == 65  # includes the scoped funding-demand list
     for leaf in LIST_LEAVES.values():
         for variant in leaf.variants:
             capability = leaf.capability(variant)

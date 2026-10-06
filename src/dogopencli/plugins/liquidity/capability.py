@@ -230,6 +230,12 @@ class LiquidityListCapability:
     ) -> dict[str, Any]:
         """One verified request body for the offset starting at row_start."""
         values = decode_scope(scope)
+        if self._spec.projection == "funding_demands" and (
+            row_start != 0 or page_size not in (None, self._spec.page_size)
+        ):
+            raise CliError(
+                REQUEST_NOT_ALLOWED, "funding demands have one fixed base request"
+            )
         if self._spec.projection == "forecast_accuracy":
             from .forecast_accuracy import base_body
 
@@ -305,6 +311,15 @@ class LiquidityListCapability:
                 or other_total != total
             ):
                 raise _invalid("reported totals disagree")
+        if self._spec.projection == "funding_demands" and (
+            total is None
+            or total > self._spec.page_size
+            or len(rows) > self._spec.page_size
+        ):
+            raise _invalid(
+                "funding demand scope exceeds the verified single-response limit"
+                " of 5000; narrow the execution-time range"
+            )
         if self._spec.projection == "rfq_subtasks" and not rows and total != 0:
             raise _invalid("empty RFQ response does not cover its reported total")
         seen_raw: dict[tuple[str, ...], str] = {}
@@ -327,6 +342,10 @@ class LiquidityListCapability:
 
     def validate_rows_scope(self, rows: list[dict[str, Any]], scope: str) -> None:
         """Reject unverified dates before live output or complete publication."""
+        if self._spec.projection == "funding_demands":
+            from .funding_demands import validate_demand_rows_scope
+
+            validate_demand_rows_scope(rows, decode_scope(scope))
         if self._spec.projection == "decision_reports":
             from .decision_list import validate_decision_rows_scope
 
