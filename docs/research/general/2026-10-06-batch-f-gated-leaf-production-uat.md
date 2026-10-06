@@ -2,7 +2,7 @@
 
 Observed: 2026-10-06
 Scope: general
-Status: passed — production gate UAT for nine deferred leaves, no enablement
+Status: snapshot
 
 ## Protocol
 
