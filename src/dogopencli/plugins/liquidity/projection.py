@@ -39,6 +39,7 @@ from .rfqs import project_rfq_subtask
 from .risk_batch import project_risk_record
 from .risk_detail import project_risk_detail
 from .risk_sla import project_risk_sla
+from .rule_status import project_rule_status
 from .strategy_detail import project_strategy_detail
 from .transfer_list import project_transfer_order
 from .transfer_rules import project_transfer_rule
@@ -993,6 +994,7 @@ def _project_factor_definitions(row: Any) -> dict[str, Any]:
 
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "funding_demands": project_demand,
+    "rule_status": project_rule_status,
     "account_capacity": project_capacity,
     "strategy_detail": project_strategy_detail,
     "groups_settings": _project_groups_settings,

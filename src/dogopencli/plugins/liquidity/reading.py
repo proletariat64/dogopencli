@@ -383,6 +383,29 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
         properties["feeAmount"]["description"] = "Fee(Pricing CCY)"
         properties["transAmount"]["description"] = "Transaction Amount"
         return schema
+    if item.projection == "rule_status":
+        properties = schema["properties"]
+        for field in (
+            "expectTriggerTime",
+            "realTriggerTime",
+            "gmtCreate",
+            "gmtModified",
+        ):
+            properties[field]["x-unit"] = "epoch milliseconds"
+        properties["expectTriggerTime"]["x-evidence"]["unit"] = (
+            "native momentFormatTimeUtc renderer"
+        )
+        properties["expectTriggerTime"]["description"] = (
+            "Expected trigger time; the native renderer is explicitly UTC;"
+            " scope dimension of the required trigger bounds"
+        )
+        properties["realTriggerTime"]["description"] = (
+            "Nullable actual trigger time; null stays null and never"
+            " substitutes the expected time or the capture time"
+        )
+        properties["gmtCreate"]["description"] = "Record creation timestamp"
+        properties["gmtModified"]["description"] = "Record modification timestamp"
+        return schema
     if item.projection != "strategy_results":
         return schema
     properties = schema["properties"]
@@ -466,7 +489,9 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             **_source_guide(
                 capability,
                 contract,
-                "2026-10-05"
+                "2026-10-06"
+                if variant.projection == "rule_status"
+                else "2026-10-05"
                 if variant.projection
                 in {
                     "pool_balances",

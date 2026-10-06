@@ -236,6 +236,12 @@ class LiquidityListCapability:
             raise CliError(
                 REQUEST_NOT_ALLOWED, "funding demands have one fixed base request"
             )
+        if self._spec.projection == "rule_status" and (
+            row_start != 0 or page_size not in (None, self._spec.page_size)
+        ):
+            raise CliError(
+                REQUEST_NOT_ALLOWED, "rule status has one fixed base request"
+            )
         if self._spec.projection == "forecast_accuracy":
             from .forecast_accuracy import base_body
 
@@ -320,6 +326,24 @@ class LiquidityListCapability:
                 "funding demand scope exceeds the verified single-response limit"
                 " of 5000; narrow the execution-time range"
             )
+        if self._spec.projection == "rule_status":
+            if (
+                total is None
+                or total > self._spec.page_size
+                or len(rows) > self._spec.page_size
+            ):
+                raise _invalid(
+                    "rule status scope exceeds the verified single-response"
+                    " limit of 5000; narrow the trigger range"
+                )
+            if len(rows) != total:
+                raise _invalid("rule status rows do not equal the reported total")
+            seen_identities: set[tuple[str, ...]] = set()
+            for row in rows:
+                key = self.identity_key(row)
+                if key in seen_identities:
+                    raise _invalid("duplicate rule status native record identity")
+                seen_identities.add(key)
         if self._spec.projection == "rfq_subtasks" and not rows and total != 0:
             raise _invalid("empty RFQ response does not cover its reported total")
         seen_raw: dict[tuple[str, ...], str] = {}
@@ -346,6 +370,10 @@ class LiquidityListCapability:
             from .funding_demands import validate_demand_rows_scope
 
             validate_demand_rows_scope(rows, decode_scope(scope))
+        if self._spec.projection == "rule_status":
+            from .rule_status import validate_rule_status_rows_scope
+
+            validate_rule_status_rows_scope(rows, decode_scope(scope))
         if self._spec.projection == "decision_reports":
             from .decision_list import validate_decision_rows_scope
 
