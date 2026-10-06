@@ -71,6 +71,7 @@ DECISIONS = ListSpec(
             + " offset-bearing values are rejected. Legacy 'YYYY-MM-DD HH:mm:ss'"
             + " accepted.",
             required=True,
+            datetime_zone="unknown",
         )
         for flag, field, summary in (
             (

@@ -81,6 +81,10 @@ class ScopeOption:
     # spelling away from the stable internal dest ``flag``; the dest-derived
     # flag stays accepted as a deprecated legacy alias.
     canonical_flag: str | None = None
+    # Datetime options keep the native local ``YYYY-MM-DD HH:mm:ss`` string
+    # internally; ``utc`` marks the verified-UTC rule-status semantics so
+    # refresh hints reconstruct the preferred public instant form (#127).
+    datetime_zone: str | None = None  # None | "utc" | "unknown"
 
     @property
     def public_flag(self) -> str:

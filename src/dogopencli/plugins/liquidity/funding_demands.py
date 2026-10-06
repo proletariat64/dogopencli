@@ -64,6 +64,7 @@ DEMANDS = ListSpec(
             " source timezone unknown; offset-bearing values are rejected."
             " Legacy 'YYYY-MM-DD HH:mm:ss' accepted.",
             required=True,
+            datetime_zone="unknown",
         ),
         ScopeOption(
             "execute_to",
@@ -72,6 +73,7 @@ DEMANDS = ListSpec(
             " source timezone unknown; offset-bearing values are rejected."
             " Legacy 'YYYY-MM-DD HH:mm:ss' accepted.",
             required=True,
+            datetime_zone="unknown",
         ),
     ),
     projection="funding_demands",

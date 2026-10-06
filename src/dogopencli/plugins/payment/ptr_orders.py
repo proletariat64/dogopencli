@@ -1,6 +1,7 @@
 """Existing outflow PTR orders within an explicit updated-time interval."""
 
 import re
+import shlex
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -270,7 +271,8 @@ class OrdersCapability:
         self._require_window()
         return (
             "refresh payment ptr orders "
-            f"--updated-from {self.updated_from} --updated-to {self.updated_to}"
+            f"--updated-from {shlex.quote(self.updated_from or '')}"
+            f" --updated-to {shlex.quote(self.updated_to or '')}"
         )
 
     @property
