@@ -47,9 +47,9 @@ SCOPES = [
             [
                 "--task-type",
                 task,
-                "--trigger-from",
+                "--from-date",
                 "20261001",
-                "--trigger-to",
+                "--to-date",
                 "20261004",
             ],
             lambda index, task=task, **overrides: strategy(index, task, **overrides),
@@ -86,9 +86,9 @@ def test_strategy_variant_wire_scope_projection_and_offline_isolation(
     options = [
         "--task-type",
         task,
-        "--trigger-from",
+        "--from-date",
         "20261001",
-        "--trigger-to",
+        "--to-date",
         "20261004",
     ]
     rows = [strategy(index, task) for index in range(12)]
@@ -215,9 +215,9 @@ def test_offline_describe_declares_both_variants_and_source_units(setup, run_cli
             [
                 "--task-type",
                 "UNKNOWN",
-                "--trigger-from",
+                "--from-date",
                 "20261001",
-                "--trigger-to",
+                "--to-date",
                 "20261004",
             ],
         ),
@@ -226,9 +226,9 @@ def test_offline_describe_declares_both_variants_and_source_units(setup, run_cli
             [
                 "--task-type",
                 "FUND_DECISION_TASK",
-                "--trigger-from",
+                "--from-date",
                 "20261005",
-                "--trigger-to",
+                "--to-date",
                 "20261004",
             ],
         ),
@@ -237,9 +237,9 @@ def test_offline_describe_declares_both_variants_and_source_units(setup, run_cli
             [
                 "--task-type",
                 "FUND_DECISION_TASK",
-                "--trigger-from",
+                "--from-date",
                 "20260230",
-                "--trigger-to",
+                "--to-date",
                 "20261004",
             ],
         ),

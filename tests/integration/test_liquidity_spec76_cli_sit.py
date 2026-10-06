@@ -144,9 +144,9 @@ CASES = [
             "A1",
             "--currency",
             "USD",
-            "--from",
+            "--from-date",
             "20260930",
-            "--to",
+            "--to-date",
             "20260930",
         ],
         {
@@ -161,7 +161,7 @@ CASES = [
     ),
     (
         FORECAST_RESULTS,
-        ["--from", "20261001", "--to", "20261001", "--account-alias", "A1"],
+        ["--from-date", "20261001", "--to-date", "20261001", "--account-alias", "A1"],
         {
             "id": "F1",
             "bankAccountAliasName": "A1",
@@ -339,7 +339,7 @@ def test_forecast_7504_7502_uses_accounts_partial_contract_and_preserves_cache(
 ):
     import json
 
-    options = ["--from", "20261001", "--to", "20261001"]
+    options = ["--from-date", "20261001", "--to-date", "20261001"]
     query = ["liquidity", "forecast", "results", "list", *options, "--all"]
     refresh = ["refresh", "liquidity", "forecast", "results", *options]
     seed = {
@@ -451,7 +451,7 @@ def test_forecast_changing_total_fails_closed_in_every_mode_and_keeps_cache(
 ):
     import json
 
-    options = ["--from", "20261001", "--to", "20261001"]
+    options = ["--from-date", "20261001", "--to-date", "20261001"]
     query = ["liquidity", "forecast", "results", "list", *options, "--all"]
     refresh = ["refresh", "liquidity", "forecast", "results", *options]
     seed = {"id": "retained", "valueDate": "20261001", "forecastBalance": "0"}

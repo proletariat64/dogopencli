@@ -110,13 +110,19 @@ def scope_values(
                     f"{public} must be nonempty",
                 )
             if option.date:
+                # Preferred YYYY-MM-DD and legacy compact YYYYMMDD normalize
+                # to the existing internal compact form before scope and
+                # request construction (Issue #127 decisions 7 and 9).
+                if len(text) == 10 and text[4] == "-" and text[7] == "-":
+                    text = text[:4] + text[5:7] + text[8:]
                 try:
                     if len(text) != 8 or not text.isascii() or not text.isdigit():
                         raise ValueError
                     datetime.strptime(text, "%Y%m%d")
                 except ValueError as error:
                     raise _usage(
-                        f"{public} must be a valid YYYYMMDD",
+                        f"{public} must be a valid calendar date"
+                        " (YYYY-MM-DD preferred, YYYYMMDD accepted)",
                     ) from error
             if option.time:
                 try:

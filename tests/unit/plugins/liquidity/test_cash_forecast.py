@@ -256,7 +256,7 @@ def test_eod_post_body_with_window_and_lists():
     assert set(body) <= contract.allowed_body_keys
 
 
-def test_eod_scope_requires_lists_and_valid_yyyymmdd_window():
+def test_eod_scope_requires_lists_and_valid_calendar_date_window():
     options = CASH_STATEMENTS_EOD.scope_options
     valid = {
         "entity": "I1",
@@ -269,8 +269,12 @@ def test_eod_scope_requires_lists_and_valid_yyyymmdd_window():
         provided = {key: value for key, value in valid.items() if key != missing}
         with pytest.raises(CliError, match="required"):
             scope_values(options, provided)
-    for bad_date in ("2026-10-01", "2026101", "20260230"):
-        with pytest.raises(CliError, match="YYYYMMDD"):
+    # Preferred ISO dates normalize to the internal compact form (Issue #127).
+    fields, window = scope_values(options, {**valid, "from": "2026-10-01"})
+    assert fields["queryDateBegin"] == "20261001"
+    assert window == ("20261001", "20261031")
+    for bad_date in ("2026-10-1", "2026101", "20260230", "2026-02-29"):
+        with pytest.raises(CliError, match="valid calendar date"):
             scope_values(options, {**valid, "from": bad_date})
     with pytest.raises(CliError, match="after its end"):
         scope_values(options, {**valid, "from": "20261031", "to": "20261001"})

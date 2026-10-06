@@ -205,6 +205,21 @@ def test_abbreviations_of_aliased_flags_remain_rejected(run_cli, alias_leaf):
     assert alias_leaf == []
 
 
+# Options legitimately renamed by tickets #129 and #130 (dest -> (preferred,
+# legacy)). rule-status trigger_from/trigger_to keep their own flags (full
+# datetimes), so the preferred-flag match below disambiguates them from
+# strategy-results.
+RENAMED_OPTIONS_130 = {
+    "from": ("--from-date", ("--from",)),
+    "to": ("--to-date", ("--to",)),
+    "transaction_from": ("--from-date", ("--transaction-from",)),
+    "transaction_to": ("--to-date", ("--transaction-to",)),
+    "trade_from": ("--from-date", ("--trade-from",)),
+    "trade_to": ("--to-date", ("--trade-to",)),
+    "trigger_from": ("--from-date", ("--trigger-from",)),
+    "trigger_to": ("--to-date", ("--trigger-to",)),
+}
+
 # Options legitimately renamed by ticket #129 (dest -> (preferred, legacy)).
 RENAMED_OPTIONS_129 = {
     "account": ("--account-alias", ("--account",)),
@@ -214,11 +229,13 @@ RENAMED_OPTIONS_129 = {
 
 
 def test_baseline_declarations_keep_single_flag_and_no_contract():
-    """Beyond the #129 renames, declarations keep single-flag/no-contract help."""
+    """Beyond the #129/#130 renames, declarations keep single-flag help."""
     for node in NODES.values():
         entries = {entry["name"]: entry for entry in document(node)["options"]}
         for option in node.options:
-            renamed = RENAMED_OPTIONS_129.get(option.name)
+            renamed = RENAMED_OPTIONS_129.get(option.name) or RENAMED_OPTIONS_130.get(
+                option.name
+            )
             entry = entries[option.name]
             if renamed is not None and option.flag == renamed[0]:
                 preferred, legacy = renamed

@@ -182,11 +182,21 @@ def test_missing_and_spanning_windows_are_explicit(setup, run_cli):
 
 
 def test_date_validation_rejects_malformed_scope(setup, run_cli):
+    # Issue #127/#130: ISO YYYY-MM-DD is the preferred canonical form and now
+    # passes validation (the cache-miss path returns a non-usage failure).
     code, out, _ = run_cli(
         ["liquidity", "investment", "holdings", "list", "--date", "2026-10-01"]
     )
-    assert code == 2
-    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert code != 2
+    assert parse(out)["error"]["code"] != "INVALID_ARGUMENT"
+
+    # Genuinely malformed dates are still rejected before any backend access.
+    for bad in ("2026-13-01", "2026-02-30", "2026101"):
+        code, out, _ = run_cli(
+            ["liquidity", "investment", "holdings", "list", "--date", bad]
+        )
+        assert code == 2
+        assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
 def test_detail_refresh_then_offline_get_and_missing_hint(setup, run_cli):

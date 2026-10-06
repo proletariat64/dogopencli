@@ -129,16 +129,20 @@ FUND_RESULTS = ListSpec(
         ScopeOption(
             "trigger_from",
             "triggerStartDate",
-            "Inclusive trigger day start (YYYYMMDD), native GMT+08.",
+            "Inclusive trigger day start (YYYY-MM-DD preferred; compact"
+            " YYYYMMDD accepted), native GMT+08; pair with --to-date.",
             required=True,
             date=True,
+            canonical_flag="--from-date",
         ),
         ScopeOption(
             "trigger_to",
             "triggerEndDate",
-            "Inclusive trigger day end (YYYYMMDD), native GMT+08.",
+            "Inclusive trigger day end (YYYY-MM-DD preferred; compact"
+            " YYYYMMDD accepted), native GMT+08; pair with --from-date.",
             required=True,
             date=True,
+            canonical_flag="--to-date",
         ),
     ),
     table_columns=(
