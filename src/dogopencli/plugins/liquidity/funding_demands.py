@@ -7,6 +7,7 @@ from ...errors import EXIT_USAGE, INVALID_ARGUMENT, INVALID_RESPONSE, CliError
 from .decision_list import validate_timestamp
 from .spec import (
     ENV_RESULT_FLAG,
+    PAGE_SINGLE,
     PROFILE_HISTORY,
     RUNTIMES,
     TENANT,
@@ -44,6 +45,7 @@ DEMANDS = ListSpec(
     container=("result", "dataValue"),
     total=("result", "count"),
     identity=("taskId",),
+    pagination=PAGE_SINGLE,
     profile=PROFILE_HISTORY,
     page_size=5000,
     template={
@@ -79,7 +81,9 @@ DEMANDS = ListSpec(
     notes=(
         "Inquiry-only FUND_REQUIRE source; both execution-time bounds are required.",
         "Native timestamps pass through without an inferred timezone.",
-        "Fixed width 5000; observed small-page overlaps are not used.",
+        "One fixed-width 5000 response; native totals above 5000 require a narrower"
+        " execution-time scope and are rejected before output or publication.",
+        "No offset loop; observed small-page overlaps are not used.",
         "taskId identifies tasks; sourceId identifies a separate associated source.",
         "Amounts preserve decimal strings; unknown statuses remain raw.",
         "Exact timestamp scopes retain separate history captures.",

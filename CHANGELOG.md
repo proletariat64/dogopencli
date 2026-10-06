@@ -4,7 +4,8 @@
 
 新增 `liquidity operations demands list` 与独立 refresh：必填
 `--execute-from`、`--execute-to`（YYYY-MM-DD HH:mm:ss，包含两端），固定
-FUND_REQUIRE 来源及页宽 5000。保留原生任务身份、金额精度和未知状态，按精确
+FUND_REQUIRE 来源及单次页宽 5000；原生总数超过 5000 时拒绝并提示缩小范围。
+保留原生任务身份、金额精度和未知状态，按精确
 时间范围隔离缓存。原生历史范围 79/79 完整，公共 CLI 生产只读验收 10/10 通过；
 宽范围的后端 `099` 失败保留已有缓存。详情与其余未验证列表继续延期。
 当前分支 unsupported 为 41 条，其中 list 为 13 条（含 monitoring HOLD）。

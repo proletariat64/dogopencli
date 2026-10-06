@@ -193,3 +193,24 @@ def test_native_execution_time_boundaries_are_inclusive(setup, run_cli, timestam
     code, out, err = run_cli([*QUERY, *SCOPE, "--live", "--require-complete"])
     assert code == 0, err
     assert parse(out)["data"][0]["executeTime"] == timestamp
+
+
+def test_unverified_larger_scope_is_rejected_without_offset_followup(setup, run_cli):
+    setup.state.business_handler = listing([demand()])
+    assert run_cli([*REFRESH, *SCOPE])[0] == 0
+    before = setup.cache_path.read_bytes()
+    request_count = len(setup.state.business_requests)
+    setup.state.business_handler = lambda payload, index: response([demand()], 5001)
+    code, out, _ = run_cli([*REFRESH, *SCOPE])
+    assert code == 1
+    result = parse(out)
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+    assert "narrow" in result["error"]["message"]
+    assert len(setup.state.business_requests) == request_count + 1
+    assert (
+        json.loads(setup.state.business_requests[-1]["riskActionTaskQueryVO"])[
+            "rowStart"
+        ]
+        == 0
+    )
+    assert setup.cache_path.read_bytes() == before

@@ -71,9 +71,16 @@ both exactly at that timestamp, proving inclusive boundaries for this caller.
 Width 1000 returned a business 099 failure in a follow-up. Width 30 returned
 30/30/19 arrivals but only 77 unique task IDs across those three pages. That
 small-page acquisition is incomplete and is not the implementation's request
-configuration. No duplicates are discarded to claim completeness. The shared
-collector still detects missing/conflicting identities and total changes at
-runtime, with existing partial/default and strict-result handling.
+configuration. No duplicates are discarded to claim completeness.
+
+The implemented contract is deliberately limited to one width-5000 response
+with an authoritative native count no greater than 5000, rather than an offset
+loop. Counts or arrivals above that bound fail before output/publication and
+instruct the caller to narrow the execution-time range. The successful 79/79
+unique response proves the complete sampled scope under this contract; it does
+not certify nonempty cross-page acquisition. Within accepted scopes the shared
+collector still detects missing/conflicting identities, with existing
+partial/default and strict-result handling.
 
 `liquidity operations demands list` and its root-level refresh require both
 `--execute-from` and `--execute-to` in YYYY-MM-DD HH:mm:ss. They query the fixed
