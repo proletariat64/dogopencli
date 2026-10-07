@@ -383,6 +383,29 @@ RFQ 使用列表的子任务 `inquirySubTaskId`，原生请求与详情回显虽
 硬失败保留已有 capture。资格化及独立验收见
 [本轮报告](docs/research/general/2026-10-07-liquidity-getter-qualification.md)。
 
+### 资产交易根与报价组版本详情（#141）
+
+```bash
+dogopencli refresh liquidity operations asset-trades detail get --order-no <ORDER_NO>
+dogopencli liquidity operations asset-trades get --order-no <ORDER_NO>
+dogopencli refresh liquidity investment quote-groups detail get --quotation-group-row-id <PHYSICAL_ROW_ID>
+dogopencli liquidity investment quote-groups get --quotation-group-row-id <PHYSICAL_ROW_ID> --live
+```
+
+资产交易按根 `orderNo` 读取独立原生交易和产品字段；不包含归属尚未证明的日志。
+产品保留原生 `assertProductCategory` 等拼写，金额、日期和未知状态保持来源值。
+认证租户另列 metadata，不制造缺失的原生租户回显。
+
+报价组使用原生 UI/历史链接选中的物理版本行 `id`，不是业务 `quotationGroupId`。
+wire 字段虽然名为 `quotationGroupId`，仍传入物理行 ID；不接受隐式最新版本解析或额外版本参数。
+所选根版本不会被历史中的较新版本替换，不同物理行保持独立缓存。
+联系人和版本历史保持原生对象数组；附件下载和审批动作排除。
+`quote-groups list` 继续 unsupported，不因详情成功启用全列表。
+
+两者默认离线，显式 detail refresh 只发布验证通过的对象，live 不写缓存或回退；
+硬失败保留已有 capture。详见 [#141 规格](https://github.com/proletariat64/dogopencli/issues/141)
+及[独立验收记录](docs/research/general/2026-10-07-liquidity-asset-quote-group-getters.md)。
+
 ### 四项有界列表（Batch F，#109–#112）
 
 `risk sla list` 读取风险 SLA 配置摘要，固定一次 5000 大页，按原生总数和
