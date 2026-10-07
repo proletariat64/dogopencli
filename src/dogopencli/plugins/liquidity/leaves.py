@@ -95,6 +95,7 @@ from .strategy_detail import STRATEGY_DETAIL
 from .transfer_list import RELEASED as TRANSFERS_RELEASED
 from .transfer_list import TRANSFER_ORDERS, map_transfer_query
 from .transfer_rules import TRANSFER_RULES
+from .versioned_getters import VERSIONED_GETTERS
 
 VERIFIED_DATE = "2026-10-01"
 _PAGE_ECHO_NOTE = (
@@ -2690,6 +2691,12 @@ def _build_registry() -> tuple[
     return lists, details
 
 
+DETAIL_SPECS += VERSIONED_GETTERS
+DEFERRED = tuple(
+    item
+    for item in DEFERRED
+    if item.path not in {(*detail.path, detail.action) for detail in VERSIONED_GETTERS}
+)
 DETAIL_SPECS += QUALIFIED_GETTERS
 DEFERRED = tuple(
     item

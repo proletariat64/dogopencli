@@ -45,6 +45,7 @@ from .rule_status import project_rule_status
 from .strategy_detail import project_strategy_detail
 from .transfer_list import project_transfer_order
 from .transfer_rules import project_transfer_rule
+from .versioned_getters import project_asset_detail, project_group_detail
 
 # The verified group-balances request scope fixes the equivalent currency
 # (spec #76: only the USD scope carries business evidence); it is declared
@@ -999,6 +1000,8 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "funding_demand_detail": project_demand_detail,
     "quotation_detail": project_quotation_detail,
     "rfq_child_detail": project_rfq_detail,
+    "asset_trade_detail": project_asset_detail,
+    "quotation_group_detail": project_group_detail,
     "route_quota_detail": project_quota_detail,
     "rule_status": project_rule_status,
     "account_capacity": project_capacity,
