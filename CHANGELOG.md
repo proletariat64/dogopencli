@@ -18,6 +18,13 @@ RFQ 按原生页面将子任务 ID 传入 wire inquiryTaskId，并核对 TARGET_
 请求范围与原生缺失回显分开，count 不作数组总数。均复用独立详情缓存、显式 refresh、
 live 隔离和失败保留契约。routes get 及其余十二项 getter 继续延期；未发布新版本。
 
+新增资产交易 `operations asset-trades get --order-no` 和报价组
+`investment quote-groups get --quotation-group-row-id`（规格 #141）。
+两者使用单字段原生 form POST，独立详情缓存、显式 refresh 和非发布 live。
+资产只提供已绑定交易根与产品字段，排除未证明归属的日志；报价组按物理版本行身份查询，
+保留所选版本及联系人/版本历史组成，不隐式解析最新版本，排除附件和审批动作。
+报价组列表与其他二十二项 get 继续延期；失败保留旧 capture，不发布新版本。
+
 规范化全部受支持 list 命令的公共参数契约（规格 #127）：主日期区间统一为
 `--from-date`/`--to-date`（YYYY-MM-DD 首选，原 YYYYMMDD 继续接受），账户别名统一为
 `--account-alias`（原 `--account`/`--alias`/`--bank-account` 保留为弃用别名），
