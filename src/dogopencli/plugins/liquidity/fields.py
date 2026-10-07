@@ -26,6 +26,16 @@ from .investment_batch import (
     STRATEGY_FIELDS,
 )
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
+from .native_getters import (
+    DEMAND_DETAIL,
+    NETWORK_DETAIL,
+    PRODUCT_FIELDS,
+    QUOTATION_FIELDS,
+    QUOTE_DETAIL,
+)
+from .native_getters import (
+    DEMAND_FIELDS as DEMAND_DETAIL_FIELDS,
+)
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .realtime_network import REALTIME_NETWORK
 from .realtime_network import SAMPLED_FIELDS as NETWORK_FIELDS
@@ -3507,3 +3517,18 @@ SAMPLED_FIELDS[FORECAST_ACCURACY.name] = {
 SAMPLED_FIELDS[ACCOUNT_CAPACITY.name] = CAPACITY_FIELDS
 # Native TARGET_RFQ subtask evidence observed 2026-10-05.
 SAMPLED_FIELDS[RFQS.name] = RFQ_FIELDS
+
+
+# Issue #136 native detail projections, qualified 2026-10-07. Only native
+# identity types are mandatory; optional value types remain unasserted.
+
+SAMPLED_FIELDS[DEMAND_DETAIL.name] = dict.fromkeys(DEMAND_DETAIL_FIELDS, "unknown")
+SAMPLED_FIELDS[DEMAND_DETAIL.name]["taskId"] = "str"
+SAMPLED_FIELDS[NETWORK_DETAIL.name] = dict(NETWORK_FIELDS)
+SAMPLED_FIELDS[QUOTE_DETAIL.name] = {
+    "quotationDetail": "dict",
+    "productDetail": "dict|NoneType",
+}
+QUOTATION_DETAIL_FIELDS = dict.fromkeys(QUOTATION_FIELDS, "unknown")
+QUOTATION_DETAIL_FIELDS["quotationId"] = "str"
+QUOTATION_PRODUCT_FIELDS = dict.fromkeys(PRODUCT_FIELDS, "unknown")

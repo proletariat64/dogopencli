@@ -578,3 +578,34 @@ def test_schema_change_requires_explicit_detail_refresh_without_cache_fallback(
     assert (
         parse(out)["meta"]["detail_fetched_at"] == original["meta"]["detail_fetched_at"]
     )
+
+
+@pytest.mark.parametrize("leaf", LEAVES)
+def test_native_getter_description_exposes_only_projected_schema(setup, run_cli, leaf):
+    path, _, _, _ = leaf
+    code, out, err = run_cli(["describe", "liquidity", *path, "get"])
+    assert code == 0, (out, err)
+    schema = parse(out)["data_schema"]
+    properties = schema["properties"]
+    assert schema["additionalProperties"] is False
+    if path[0] == "operations":
+        assert len(properties) == 15
+        assert properties["taskId"]["x-observed-type"] == "str"
+        assert "accountNo" not in properties
+        assert properties["createTime"]["x-timezone"] == "unknown"
+    elif path[0] == "network":
+        assert len(properties) == 26
+        assert properties["id"]["x-observed-type"] == "str"
+        assert properties["version"]["x-observed-type"] == "unknown"
+        assert "successRate" not in properties
+    else:
+        assert set(properties) == {"quotationDetail", "productDetail"}
+        quotation_schema = properties["quotationDetail"]
+        product_schema = properties["productDetail"]
+        assert len(quotation_schema["properties"]) == 9
+        assert len(product_schema["properties"]) == 8
+        assert quotation_schema["properties"]["quotationId"]["x-observed-type"] == "str"
+        assert quotation_schema["properties"]["quote"]["x-unit"] == "percent"
+        assert product_schema["type"] == ["object", "null"]
+        assert "quotationOrderId" not in properties
+    assert setup.state.transports == []
