@@ -1,5 +1,7 @@
 # 文档索引
 
+- [三项原生 getter 实施与验收](research/general/2026-10-07-liquidity-getters-acceptance.md)：#136 demands、realtime、quotes 的独立原生详情与缓存；本地验证与逐叶生产 UAT 分开记录。
+
 - [Batch F 四项有界列表契约](design/liquidity-batch-f-v0.1.0.md)：#109 风险 SLA 配置、#110 单账户/创建日准确率、#111 明确账户容量、#112 TARGET_RFQ 子任务，统一 PR 实施。[验收记录](research/general/2026-10-05-liquidity-batch-f-acceptance.md)分别记录本地检查、审查与逐叶生产 CLI UAT。
 
 - [现金池余额契约](design/liquidity-pool-balances-v0.1.0.md)：#98 BANK 原生余额快照，池/成员与账面/可用口径，独立缓存及 unknown 边界。[10 月 5 日生产 UAT](research/general/2026-10-05-cash-pool-balances-uat.md)：8/8 CLI 步骤通过，43 池、358 成员。
