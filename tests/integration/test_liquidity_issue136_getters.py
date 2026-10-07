@@ -452,3 +452,129 @@ def test_getter_help_describe_and_policy_display_options(setup, run_cli, leaf):
     code, out, err = run_cli([*invocation(leaf), "--fields", field])
     assert code == 0, (out, err)
     assert list(parse(out)["data"]) == [field]
+
+
+@pytest.mark.parametrize("leaf", LEAVES)
+def test_populated_parent_list_never_substitutes_detail_and_refreshes_are_independent(
+    setup, run_cli, leaf
+):
+    path, _, identity, detail_factory = leaf
+    if path[0] == "operations":
+        from test_liquidity_funding_demands import SCOPE, listing
+        from test_liquidity_funding_demands import demand as list_row
+
+        options = SCOPE
+        first_row = list_row(taskId=identity)
+        second_row = list_row(taskId=identity, amount="777.000")
+
+        def handler(row):
+            return listing([row])
+    elif path[0] == "network":
+        from test_liquidity_realtime_network_cli_sit import network, response
+
+        options = []
+        first_row = network(identity)
+        second_row = {**first_row, "version": 999}
+
+        def handler(row):
+            return lambda payload, index: response([row])
+    else:
+        from test_liquidity_quotes_cli_sit import BOUNDS, quote, response
+
+        options = BOUNDS
+        first_row = quote(identity)
+        second_row = {**first_row, "quote": "777.000"}
+
+        def handler(row):
+            return lambda payload, index: response([row])
+
+    list_refresh = ["refresh", "liquidity", *path, *options]
+    list_query = ["liquidity", *path, "list", *options, "--all"]
+    setup.state.business_handler = handler(first_row)
+    assert run_cli(list_refresh)[0] == 0
+    code, out, err = run_cli(list_query)
+    assert code == 0, (out, err)
+    parent_before = parse(out)
+    assert len(parent_before["data"]) == 1
+    requests_before = len(setup.state.business_requests)
+    transports_before = len(setup.state.transports)
+    code, out, _ = run_cli(invocation(leaf))
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert "detail get" in out
+    assert len(setup.state.business_requests) == requests_before
+    assert len(setup.state.transports) == transports_before
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": detail_factory(identity),
+    }
+    assert run_cli(invocation(leaf, refresh=True))[0] == 0
+    code, out, err = run_cli(list_query)
+    assert code == 0, (out, err)
+    parent_after = parse(out)
+    assert parent_after["data"] == parent_before["data"]
+    assert parent_after["meta"]["snapshot_id"] == parent_before["meta"]["snapshot_id"]
+    code, out, err = run_cli(invocation(leaf))
+    assert code == 0, (out, err)
+    detail_before = parse(out)
+    setup.state.business_handler = handler(second_row)
+    assert run_cli(list_refresh)[0] == 0
+    setup.state.running = False
+    code, out, err = run_cli(list_query)
+    assert code == 0, (out, err)
+    assert parse(out)["data"] != parent_before["data"]
+    requests_before = len(setup.state.business_requests)
+    code, out, err = run_cli(invocation(leaf))
+    assert code == 0, (out, err)
+    detail_after = parse(out)
+    assert detail_after["data"] == detail_before["data"]
+    assert detail_after["meta"]["snapshot_id"] == detail_before["meta"]["snapshot_id"]
+    assert (
+        detail_after["meta"]["detail_fetched_at"]
+        == detail_before["meta"]["detail_fetched_at"]
+    )
+    assert len(setup.state.business_requests) == requests_before
+
+
+@pytest.mark.parametrize("leaf", LEAVES)
+def test_schema_change_requires_explicit_detail_refresh_without_cache_fallback(
+    setup, run_cli, leaf, monkeypatch
+):
+    from dataclasses import replace
+
+    from dogopencli.plugins.liquidity.leaves import DETAIL_LEAVES, DetailLeaf
+
+    path, _, identity, factory = leaf
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": factory(identity),
+    }
+    assert run_cli(invocation(leaf, refresh=True))[0] == 0
+    code, out, err = run_cli(invocation(leaf))
+    assert code == 0, (out, err)
+    original = parse(out)
+    registered = DETAIL_LEAVES[(*path, "get")]
+    changed = DetailLeaf(
+        replace(registered.spec, schema_version="synthetic-next-schema")
+    )
+    monkeypatch.setitem(DETAIL_LEAVES, (*path, "get"), changed)
+    requests_before = len(setup.state.business_requests)
+    transports_before = len(setup.state.transports)
+    prior_bytes = setup.cache_path.read_bytes()
+    code, out, _ = run_cli(invocation(leaf))
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert "detail get" in out
+    assert len(setup.state.business_requests) == requests_before
+    assert len(setup.state.transports) == transports_before
+    assert setup.cache_path.read_bytes() == prior_bytes
+    assert run_cli(invocation(leaf, refresh=True))[0] == 0
+    setup.state.running = False
+    assert run_cli(invocation(leaf))[0] == 0
+    monkeypatch.setitem(DETAIL_LEAVES, (*path, "get"), registered)
+    code, out, err = run_cli(invocation(leaf))
+    assert code == 0, (out, err)
+    assert parse(out)["data"] == original["data"]
+    assert (
+        parse(out)["meta"]["detail_fetched_at"] == original["meta"]["detail_fetched_at"]
+    )
