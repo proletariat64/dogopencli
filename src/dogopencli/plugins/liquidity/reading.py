@@ -547,6 +547,50 @@ def _list_description(node: BizNode) -> dict[str, Any]:
 
 def _detail_schema(detail: spec.DetailSpec) -> dict[str, Any]:
     schema = _field_schema(SAMPLED_FIELDS.get(detail.name, {}))
+    if detail.projection in {"asset_trade_detail", "quotation_group_detail"}:
+        from .versioned_getters import CONTACT_FIELDS, PRODUCT_FIELDS
+
+        schema["additionalProperties"] = False
+        if detail.projection == "asset_trade_detail":
+            schema["required"] = ["orderNo"]
+            product = _field_schema(dict.fromkeys(PRODUCT_FIELDS, "str"))
+            product["additionalProperties"] = False
+            product["type"] = ["object", "null"]
+            schema["properties"]["assetProductVo"] = product
+            schema["x-excluded"] = ["transFerOrderLogVoList"]
+        else:
+            schema["required"] = ["id", "quotationGroupId", "tntInstId", "version"]
+            schema["properties"]["id"]["description"] = (
+                "Physical version-row id, supplied as --quotation-group-row-id."
+            )
+            schema["properties"]["quotationGroupId"]["description"] = (
+                "Native business group identity; never request identity."
+            )
+            schema["properties"]["version"]["description"] = (
+                "Selected native integer version; not inferred latest version."
+            )
+            contacts = _field_schema(dict.fromkeys(CONTACT_FIELDS, "str"))
+            contacts["additionalProperties"] = True
+            schema["properties"]["contactInfoList"] = {
+                "type": ["array", "null"],
+                "items": contacts,
+            }
+            history = _field_schema(SAMPLED_FIELDS[detail.name])
+            history["additionalProperties"] = False
+            history["required"] = list(schema["required"])
+            history["properties"]["contactInfoList"] = schema["properties"][
+                "contactInfoList"
+            ]
+            history["properties"]["operationHistoryList"] = {
+                "type": ["array", "null"],
+                "maxItems": 0,
+            }
+            schema["properties"]["operationHistoryList"] = {
+                "type": ["array", "null"],
+                "items": history,
+            }
+        schema["x-source-timezone"] = "unknown; native times remain unchanged"
+        return schema
     if detail.projection == "rfq_child_detail":
         schema["additionalProperties"] = False
         schema["required"] = ["inquiryTaskId", "inquiryType", "inquiryOrderListVOList"]
@@ -685,6 +729,8 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
                     "quotation-detail-v1",
                     "rfq-child-detail-v1",
                     "route-quota-detail-v1",
+                    "asset-trade-detail-v1",
+                    "quotation-group-row-detail-v1",
                 }
                 else "2026-10-04"
                 if detail.projection == "strategy_detail"

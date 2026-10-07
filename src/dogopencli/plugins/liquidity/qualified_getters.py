@@ -174,6 +174,16 @@ def project_quota_detail(row: dict[str, Any]) -> dict[str, Any]:
 def detail_context_meta(
     detail: DetailSpec, values: dict[str, str], payload: Any
 ) -> dict[str, Any]:
+    if detail.projection in {"asset_trade_detail", "quotation_group_detail"}:
+        return {
+            "scope_tenant": TENANT,
+            "request_scope": {
+                option.field: values[option.flag] for option in detail.identity
+            },
+            "native_context_echo": {
+                "tntInstId": "present" if "tntInstId" in payload else "absent"
+            },
+        }
     if detail.projection == "route_quota_detail":
         return {
             "request_scope": {

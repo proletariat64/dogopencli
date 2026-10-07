@@ -62,6 +62,7 @@ from .transfer_list import SAMPLED_FIELDS as TRANSFER_FIELDS
 from .transfer_list import TRANSFER_ORDERS
 from .transfer_rules import FIELDS as TRANSFER_RULE_FIELDS
 from .transfer_rules import TRANSFER_RULES
+from .versioned_getters import ASSET_DETAIL, ASSET_FIELDS, GROUP_DETAIL, GROUP_FIELDS
 
 SAMPLED_FIELDS: dict[str, dict[str, str]] = {
     DEMANDS.name: DEMAND_FIELDS,
@@ -3556,3 +3557,14 @@ SAMPLED_FIELDS[QUOTA_DETAIL.name] = {
     "staticQuotas": "list",
     **dict.fromkeys(CONTEXT_FIELDS, "unknown"),
 }
+
+
+# Native root/product and physical configuration rows qualified 2026-10-07.
+SAMPLED_FIELDS[ASSET_DETAIL.name] = dict.fromkeys(ASSET_FIELDS, "str")
+SAMPLED_FIELDS[ASSET_DETAIL.name].update(
+    assetProductVo="dict", retryTimes="int", tntInstId="unknown"
+)
+SAMPLED_FIELDS[GROUP_DETAIL.name] = dict.fromkeys(GROUP_FIELDS, "str")
+SAMPLED_FIELDS[GROUP_DETAIL.name].update(
+    version="int", contactInfoList="list", operationHistoryList="list"
+)
