@@ -574,7 +574,7 @@ def _detail_schema(detail: spec.DetailSpec) -> dict[str, Any]:
             ("staticQuotas", STATIC_FIELDS),
         ):
             item = _field_schema(dict.fromkeys(fields, "unknown"))
-            item["additionalProperties"] = False
+            item["additionalProperties"] = True
             schema["properties"][component] = {"type": "array", "items": item}
         dynamic = schema["properties"]["dynamicQuotas"]["items"]["properties"]
         dynamic["dateRange"] = _field_schema({"begin": "int", "end": "int"})

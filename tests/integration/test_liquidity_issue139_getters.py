@@ -533,3 +533,38 @@ def test_browser_failure_never_falls_back_to_valid_capture(setup, run_cli, leaf)
     assert code == 1 and parse(out)["error"]["code"] == "BROWSER_UNAVAILABLE"
     assert parse(out)["data"] is None
     assert setup.cache_path.read_bytes() == prior
+
+
+def test_quota_future_native_member_fields_survive_live_refresh_and_offline(
+    setup, run_cli
+):
+    native = quotas()
+    data = native["result"]["data"]
+    data["dynamicQuotas"][0]["futureNativeScope"] = {
+        "value": "0.00000100",
+        "items": [None, 0, ""],
+    }
+    data["staticQuotas"][0]["futureNativeLimit"] = Decimal("0.123456789012345678901")
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": native,
+    }
+    code, out, err = run_cli([*quota_command(), "--live"])
+    assert code == 0, (out, err)
+    assert parse(out)["data"] == data
+    assert parse(out)["meta"]["native_context_echo"] == dict.fromkeys(
+        ("routeId", "aliasName", "tntInstId"), "absent"
+    )
+    assert run_cli(quota_command(True))[0] == 0
+    setup.state.running = False
+    code, out, err = run_cli(quota_command())
+    assert code == 0, (out, err)
+    assert parse(out)["data"] == data
+    assert "routeId" not in parse(out)["data"]
+    code, out, err = run_cli(
+        ["describe", "liquidity", "network", "route-quotas", "get"]
+    )
+    assert code == 0, (out, err)
+    properties = parse(out)["data_schema"]["properties"]
+    assert properties["dynamicQuotas"]["items"]["additionalProperties"] is True
+    assert properties["staticQuotas"]["items"]["additionalProperties"] is True

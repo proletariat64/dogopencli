@@ -158,10 +158,7 @@ def validate_quota_context(row: dict[str, Any], request: dict[str, Any]) -> None
 
 def project_quota_detail(row: dict[str, Any]) -> dict[str, Any]:
     result = {field: row[field] for field in CONTEXT_FIELDS if field in row}
-    for section, fields in (
-        ("dynamicQuotas", DYNAMIC_FIELDS),
-        ("staticQuotas", STATIC_FIELDS),
-    ):
+    for section in ("dynamicQuotas", "staticQuotas"):
         items = row.get(section)
         if not isinstance(items, list) or any(
             not isinstance(item, dict) for item in items
@@ -170,9 +167,7 @@ def project_quota_detail(row: dict[str, Any]) -> dict[str, Any]:
                 INVALID_RESPONSE,
                 "quota aggregate requires both native arrays of objects",
             )
-        result[section] = [
-            {field: item[field] for field in fields if field in item} for item in items
-        ]
+        result[section] = [dict(item) for item in items]
     return result
 
 
