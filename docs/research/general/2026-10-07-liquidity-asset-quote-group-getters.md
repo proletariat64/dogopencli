@@ -41,6 +41,32 @@ Graphify 先行的原始 PRD 核对见权威规格；本轮复用已有证明，
 
 ## 实施与验收状态
 
-实现、公共 CLI 测试、Standards/Spec 审查、远程 CI 和独立生产 UAT 待本轮完成后记录。
+实施提交 `16a9d59`，集成代码 `0e7442663f9f7a38aa3e30a3261a067f60281a74`，
+[PR #142](https://github.com/proletariat64/dogopencli/pull/142) 关闭规格 #141。
+本地针对性 279 tests 通过（其中新增公共 getter 用例 75 项）；
+Ruff check、format（358 文件）及 doc-guard（142 Markdown）通过。
+Standards 审查 0 文档标准违规、1 个可选注册重复判断；Spec 审查 0 确认的实质问题。
+完整本地测试 3014 tests 和 28 subtests 通过；最终远程 CI 以 PR 对应提交的结果为准，不以研究请求替代。
+
+独立公共 CLI 生产 UAT 在上述集成代码上通过 **2/2 叶子、3/3 原生对象**：
+一个资产交易，以及同一业务报价组的物理版本 3、1。
+使用现有专用 9222 浏览器、真实共享控制锁、临时 config 和 SQLite；public liquidity auth check 成功。
+三个对象各一次显式 detail refresh 和一次 live，共六次真实原生只读业务请求；
+每个请求精确核对 form POST、原生 host/path、单字段 body 与正确物理身份绑定。
+输出使用独立硬编码投影与该次真实 CDP 原始响应逐值比较，没有调用产品 projector 构造 expected。
+
+资产日志被排除，产品五个原生字段正确保留；报价组的联系人完整对象、历史次序和组成
+与原生响应一致。版本 3 和 1 的所选根保持自身版本，不被历史较新版本提升；
+刷新另一物理行后仍能离线读取原对象及原 capture 时间。
+请求租户、wire 请求范围、原生租户回显存在性和 source_version 分别核对，settings/runtimes 类型正确。
+
+断开 CDP 后普通 get 与该 capture 相等且不调用 CDP；live 不改变 SQLite 字节哈希；
+断开 live 不回退，失败 refresh 保留旧 capture ID、时间、数据和缓存字节。
+原有 browser target inventory 完全相同，生产缓存 SHA-256 未变。
+真实对象 ID、联系人、金额和原始响应只存私有 UAT 目录，不进入 Git 或本报告。
+
+当前唯一公共目录为 **98 supported / 34 unsupported / 132 total**，
+含 66 list、32 detail/history；其中仍有 22 unsupported get。
+报价组 list 继续不支持，monitoring HOLD 及其他门槛保持原状。
 用户明确跳过 Kimi CLI，并授权本批 PR 收尾时评论 @greptile 触发一次审查/CI。
 版本发布和合并仍由用户单独授权。
