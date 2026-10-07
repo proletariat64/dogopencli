@@ -37,7 +37,7 @@ URL 中另有父 `taskId`，该详情调用不使用它。
 `inquiryOrderListVOList` 包含四个原生成员。此前父 ID 查询的业务 999
 不能代表这个正确子任务调用失败。机构级 `inquiryOrderDetail` 是另一粒度，不替代子任务详情。
 
-拟实施 `liquidity investment rfqs get --inquiry-sub-task-id`：独立原生详情缓存，
+已实施 `liquidity investment rfqs get --inquiry-sub-task-id`：独立原生详情缓存，
 保留原生根对象及询价成员的允许字段、精度与日期，严格核对子任务身份和类型。
 普通 get 离线、显式 detail refresh 发布、live 不写缓存或回退；失败保留旧缓存。
 
@@ -50,7 +50,7 @@ URL 中另有父 `taskId`，该详情调用不使用它。
 查询额度：HTTP 200，resultFlag=true、result.success=true；dynamicQuotas 一项、staticQuotas 两项。
 两次请求均为只读，原有浏览器 target 集合保留。
 
-拟实施 `liquidity network route-quotas get --route-id --account-alias`，固定当前租户 GUAPW3SG。
+已实施 `liquidity network route-quotas get --route-id --account-alias`，固定当前租户 GUAPW3SG。
 一个返回对象表示请求上下文的完整原生额度聚合，不将数组成员当作可独立寻址的 quota 对象。
 请求上下文仅在 metadata 中记录；本次响应没有 route/alias/tenant 回显，不能声称原生身份已回显。
 如果后续响应出现相矛盾的回显则拒绝。
@@ -81,5 +81,27 @@ URL 中另有父 `taskId`，该详情调用不使用它。
 
 ## 实施验收
 
-资格化原生查询已通过；公共 CLI 生产 UAT、本地测试和最终审查将在实现后单独记录。
+实施代码为 `9b4657af14dc22bbc1adf2f8910a31cc94da5a7e`，PR 为
+[#140](https://github.com/proletariat64/dogopencli/pull/140)，关闭实施票 #139；
+#137 仍跟踪剩余资格化门槛，不随本 PR 关闭。
+
+本地完整检查（初始集成 b9f7dd9）：2938 tests 和 28 subtests 通过。
+Spec 审查发现额度成员投影会丢失额外原生字段，已在 9b4657a 修复：
+保留已验证 mapping 的全部成员字段，schema 允许额外成员字段，公共 CLI 回归覆盖
+live、refresh、离线透传。最终针对性 57 tests 通过；Ruff check/format（354 文件）
+及 doc-guard（140 Markdown）通过。Standards 0 硬性问题，1 个可选重复代码判断；
+Spec 修复后 0 剩余缺陷。最终远程 CI 与本地 Kimi 结果单独记录，尚不以初始测试替代。
+
+独立公共 CLI 生产 UAT 在最终代码 9b4657a 上通过 2/2。使用专用 9222 浏览器、
+临时 config/SQLite、现有 profile 的共享控制锁；public auth check liquidity 已认证。
+RFQ 和额度各显式 detail refresh 一次、live 一次，共四个真实原生只读请求。
+每次输出与该次真实 CDP 原始响应按独立声明投影逐值比对，未用产品 projector 构造 expected。
+RFQ 输出 15 个根字段、4 个询价成员；额度动态 1 项、静态 2 项。
+
+断开 CDP 后普通 get 与同一 capture 相等且没有 CDP 调用；live 的 SQLite 字节哈希不变；
+断开后的 live 不回退；失败 refresh 保留原 capture ID、时间、数据及缓存字节哈希。
+scope_tenant/request_scope/native_context_echo 如实区分环境租户、请求与缺失原生回显；
+help/describe 成功。原有浏览器 target inventory 完全相同，生产缓存 SHA-256 未变。
+真实响应仅存私有 UAT 目录，不进入 Git、测试 fixture 或本文。
+
 本轮不自动触发 Greptile，也不发布新版本或合并 PR。
