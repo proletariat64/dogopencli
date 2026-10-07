@@ -89,7 +89,7 @@ def test_full_tree_missing_cache_is_success_and_never_creates_files(
     assert "dogopencli payment channel list" in by_path
     assert "dogopencli liquidity cash balances list" in by_path
     unsupported = [leaf for leaf in items if leaf["availability"] == "unsupported"]
-    assert len(unsupported) == 40
+    assert len(unsupported) == 37
     demands = by_path["dogopencli liquidity operations demands list"]
     assert demands["availability"] == "supported"
     quotes = by_path["dogopencli liquidity investment quotes list"]
@@ -97,7 +97,7 @@ def test_full_tree_missing_cache_is_success_and_never_creates_files(
     assert quotes["cache"]["status"] == "missing"
     assert (
         by_path["dogopencli liquidity investment quotes get"]["availability"]
-        == "unsupported"
+        == "supported"
     )
     credit_usage = by_path["dogopencli liquidity cash credit-usage list"]
     assert credit_usage["availability"] == "supported"

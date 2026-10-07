@@ -33,6 +33,7 @@ from .decision_list import project_decision_record
 from .fee_orders import project_fee_order
 from .forecast_accuracy import project_accuracy
 from .funding_demands import project_demand
+from .native_getters import project_demand_detail, project_quotation_detail
 from .operations_batch import validate_swap_business_date
 from .realtime_network import project_network
 from .rfqs import project_rfq_subtask
@@ -994,6 +995,8 @@ def _project_factor_definitions(row: Any) -> dict[str, Any]:
 
 _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "funding_demands": project_demand,
+    "funding_demand_detail": project_demand_detail,
+    "quotation_detail": project_quotation_detail,
     "rule_status": project_rule_status,
     "account_capacity": project_capacity,
     "strategy_detail": project_strategy_detail,

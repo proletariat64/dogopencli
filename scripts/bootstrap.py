@@ -76,6 +76,19 @@ def main() -> None:
     env.pop("VIRTUAL_ENV", None)
     env.pop("UV_NO_CACHE", None)
     common = ["--no-python-downloads", "--cache-dir", str(cache)]
+    lock_check = subprocess.run(
+        [uv, "lock", "--check", *common],
+        cwd=root,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if lock_check.returncode != 0:
+        raise SystemExit(
+            "uv.lock is out of date with pyproject.toml; "
+            "run `uv lock` and commit uv.lock before bootstrapping"
+        )
     if not environment.exists():
         subprocess.run(
             [uv, "venv", str(environment), "--python", sys.executable, *common],

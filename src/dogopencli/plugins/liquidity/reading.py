@@ -14,7 +14,13 @@ from ...helpspec import BizNode
 from . import spec
 from .decision_list import DECISIONS
 from .decision_list import VERIFIED_DATE as DECISION_VERIFIED_DATE
-from .fields import CANDIDATE_SAMPLED_FIELDS, SAMPLED_FIELDS, VARIANT_SAMPLED_FIELDS
+from .fields import (
+    CANDIDATE_SAMPLED_FIELDS,
+    QUOTATION_DETAIL_FIELDS,
+    QUOTATION_PRODUCT_FIELDS,
+    SAMPLED_FIELDS,
+    VARIANT_SAMPLED_FIELDS,
+)
 from .investment_batch import VERSION as INVESTMENT_VERSION
 from .leaves import DEFERRED_BY_PATH, DETAIL_LEAVES
 from .operations_batch import SWAP_ORDERS
@@ -538,6 +544,47 @@ def _list_description(node: BizNode) -> dict[str, Any]:
     }
 
 
+def _detail_schema(detail: spec.DetailSpec) -> dict[str, Any]:
+    schema = _field_schema(SAMPLED_FIELDS.get(detail.name, {}))
+    if detail.schema_version not in {
+        "funding-demand-detail-v1",
+        "realtime-network-detail-v1",
+        "quotation-detail-v1",
+    }:
+        return schema
+    schema["additionalProperties"] = False
+    schema["x-business-validation"] = "native identity and scope; values preserved"
+    if detail.projection == "funding_demand_detail":
+        schema["required"] = ["taskId", "source"]
+        schema["properties"]["source"]["const"] = "FUND_REQUIRE"
+        for field in ("createTime", "updateTime"):
+            schema["properties"][field]["x-timezone"] = "unknown"
+    elif detail.projection == "realtime_network":
+        schema["required"] = ["id"]
+        schema["properties"]["version"]["description"] = (
+            "Native source configuration version; no version-pinned request."
+        )
+    elif detail.projection == "quotation_detail":
+        quotation = _field_schema(QUOTATION_DETAIL_FIELDS)
+        quotation["additionalProperties"] = False
+        quotation["required"] = ["quotationId"]
+        quotation["properties"]["quotationId"]["description"] = (
+            "Native identity echo of requested quotationOrderId."
+        )
+        quotation["properties"]["quotationTime"]["x-timezone"] = "UTC+08:00"
+        product = _field_schema(QUOTATION_PRODUCT_FIELDS)
+        product["type"] = ["object", "null"]
+        product["additionalProperties"] = False
+        for section in (quotation, product):
+            section["properties"]["quote"]["x-unit"] = "percent"
+        product["properties"]["tenor"]["description"] = (
+            "Native investment tenor, including O/N; no derived date equality."
+        )
+        schema["required"] = ["quotationDetail"]
+        schema["properties"] = {"quotationDetail": quotation, "productDetail": product}
+    return schema
+
+
 def _detail_description(node: BizNode) -> dict[str, Any]:
     from .leaves import detail_leaf
 
@@ -564,12 +611,19 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
     }
     return {
         "schema_version": 1,
-        "data_schema": _field_schema(SAMPLED_FIELDS.get(detail.name, {})),
+        "data_schema": _detail_schema(detail),
         "read_guide": {
             **_source_guide(
                 detail.name,
                 contract,
-                "2026-10-04"
+                "2026-10-07"
+                if detail.schema_version
+                in {
+                    "funding-demand-detail-v1",
+                    "realtime-network-detail-v1",
+                    "quotation-detail-v1",
+                }
+                else "2026-10-04"
                 if detail.projection == "strategy_detail"
                 or detail.schema_version == "risk-detail-v1"
                 else "2026-10-02"

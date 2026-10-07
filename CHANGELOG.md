@@ -4,6 +4,13 @@
 
 当前源码版本为 **v0.2.9**（2026-10-07），包含已合并的 PR #135（规格 #127）。
 
+新增三个独立 Liquidity 原生 getter（规格 #136）：`operations demands get --task-id`、
+`network realtime get --network-id`、`investment quotes get --quotation-order-id`，
+以及对应 `refresh liquidity <resource> detail get`。默认离线，live 不写缓存或回退，
+详情刷新独立于列表。需求核对 FUND_REQUIRE 及内外成功标志；网络保留原生版本；
+报价使用 form POST 并核对嵌套 quotationId。只公开各自允许字段，保留原生精度及空值，
+硬失败不覆盖旧详情。其余十四项 getter 保持资格化门槛，未变更版本或发布包。
+
 规范化全部受支持 list 命令的公共参数契约（规格 #127）：主日期区间统一为
 `--from-date`/`--to-date`（YYYY-MM-DD 首选，原 YYYYMMDD 继续接受），账户别名统一为
 `--account-alias`（原 `--account`/`--alias`/`--bank-account` 保留为弃用别名），
@@ -29,8 +36,8 @@ getter 与 queryDetailed 展开记录继续不支持；生产 CLI UAT 仍待串�
 FUND_REQUIRE 来源及单次页宽 5000；原生总数超过 5000 时拒绝并提示缩小范围。
 保留原生任务身份、金额精度和未知状态，按精确
 时间范围隔离缓存。原生历史范围 79/79 完整，公共 CLI 生产只读验收 10/10 通过；
-宽范围的后端 `099` 失败保留已有缓存。详情与其余未验证列表继续延期。
-当前分支 unsupported 为 40 条，其中 list 为 12 条（含 monitoring HOLD）。
+宽范围的后端 `099` 失败保留已有缓存。详情由后续 #136 独立实施；其余未验证列表继续延期。
+Batch H 完成时 unsupported 为 40 条，其中 list 为 12 条（含 monitoring HOLD）。
 证据见 [Batch H 契约](docs/research/general/2026-10-06-batch-h-rule-status-contract.md)
 与 [Batch G 报告](docs/research/general/2026-10-06-batch-g-current-probes.md)。
 批次验收与后续候选研究见 [Batch H 验收记录](docs/research/general/2026-10-06-batch-h-acceptance.md)、

@@ -493,6 +493,12 @@ def run_detail(args: argparse.Namespace) -> int:
             "returned_count": 1,
             "has_more": False,
         }
+        if detail.schema_version:
+            meta["request_scope"] = (
+                {"tntInstId": spec_mod.TENANT} if detail.sends_tenant else {}
+            )
+        if detail.schema_version and isinstance(payload, dict) and "version" in payload:
+            meta["source_version"] = payload["version"]
         return _emit_object(args, detail.table_columns, payload, meta, fields)
     store = Cache(config.cache_path)
     snapshot = detail_store.read_detail_snapshot(store, detail.name)
@@ -542,6 +548,16 @@ def run_detail(args: argparse.Namespace) -> int:
         "returned_count": 1,
         "has_more": False,
     }
+    if detail.schema_version:
+        meta["request_scope"] = (
+            {"tntInstId": spec_mod.TENANT} if detail.sends_tenant else {}
+        )
+    if (
+        detail.schema_version
+        and isinstance(stored.detail, dict)
+        and "version" in stored.detail
+    ):
+        meta["source_version"] = stored.detail["version"]
     return _emit_object(args, detail.table_columns, stored.detail, meta, fields)
 
 

@@ -19,6 +19,7 @@ from ...errors import EXIT_OK
 from ...inquiry import inquiry_session
 from ...result_policy import check_complete, evidence_for, prepare_result
 from . import details as detail_store
+from . import spec
 from . import store as capture_store
 from .collect import acquire_liquidity_list
 from .common import emit, identity_values, load_config, now, provided, scope_flags
@@ -133,6 +134,7 @@ def run_refresh_detail(args: argparse.Namespace) -> int:
     leaf: DetailLeaf = detail_leaf((*path[:-2], path[-1]))
     detail = leaf.spec
     values = identity_values(args, leaf)
+    leaf.capability.detail_body(values)
     config = load_config()
     store = Cache(config.cache_path)
     with store.refresh_lock():
@@ -173,6 +175,12 @@ def run_refresh_detail(args: argparse.Namespace) -> int:
         "returned_count": 1,
         "has_more": False,
     }
+    if detail.schema_version:
+        meta["request_scope"] = (
+            {"tntInstId": spec.TENANT} if detail.sends_tenant else {}
+        )
+        if isinstance(payload, dict) and "version" in payload:
+            meta["source_version"] = payload["version"]
     emit(
         {
             "namespace": snapshot.namespace,

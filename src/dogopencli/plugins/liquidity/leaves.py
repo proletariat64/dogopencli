@@ -60,6 +60,7 @@ from .funding_demands import DEMANDS, validate_demand_query
 from .investment_batch import CANDIDATES as INVESTMENT_CANDIDATES
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .investment_batch import validate_quote_query, validate_strategy_query
+from .native_getters import NATIVE_GETTERS
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .realtime_network import REALTIME_NETWORK
@@ -2687,6 +2688,13 @@ def _build_registry() -> tuple[
     }
     return lists, details
 
+
+DETAIL_SPECS += NATIVE_GETTERS
+DEFERRED = tuple(
+    item
+    for item in DEFERRED
+    if item.path not in {(*detail.path, detail.action) for detail in NATIVE_GETTERS}
+)
 
 LIST_LEAVES, DETAIL_LEAVES = _build_registry()
 DEFERRED_BY_PATH = {leaf.path: leaf for leaf in DEFERRED}

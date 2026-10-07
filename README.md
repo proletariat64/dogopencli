@@ -326,8 +326,34 @@ dogopencli describe liquidity operations swaps list
 `quote` 为原生百分比，`ticketSize` 为起存金额，O/N 为隔夜；时间按用户确认的
 UTC+08:00 解释，仍保留原生字符串，请求 `timeZone=null` 不变。
 金额、利率、期限、日期和值均不做业务运算或改写；`curMaxLimitAvailable` 含义仍未确认。
-WIN 后台未实现，首版不提供；quotes get 仍延期。详见
+WIN 后台未实现，首版不提供。报价列表契约详见
 [报价读取契约](docs/design/liquidity-quotes-v0.1.0.md)。
+
+### 三项原生详情（#136）
+
+以下 getter 默认读取独立详情缓存；先显式刷新一个对象，或使用 `--live`
+直接查询而不写缓存。列表刷新不采集详情，已有列表也不能替代缺失的详情缓存。
+
+```bash
+dogopencli refresh liquidity operations demands detail get --task-id <TASK_ID>
+dogopencli liquidity operations demands get --task-id <TASK_ID>
+dogopencli refresh liquidity network realtime detail get --network-id <NETWORK_ID>
+dogopencli liquidity network realtime get --network-id <NETWORK_ID>
+dogopencli refresh liquidity investment quotes detail get --quotation-order-id <QUOTATION_ORDER_ID>
+dogopencli liquidity investment quotes get --quotation-order-id <QUOTATION_ORDER_ID> --live
+```
+
+三种身份均为非空原生字符串，不接受通用 `--id` 或列表分页/日期参数。
+需求详情只公开 FUND_REQUIRE 核心字段，原生空租户回显保持空值；请求租户另列元数据。
+Realtime 详情公开网络配置及返回的版本，不提供指定版本查询，也不推断路由或执行结果。
+报价详情使用原生 form POST，并以 `quotationDetail.quotationId` 核对请求身份；
+保留 `quotationDetail`、`productDetail` 原生层次及金额/百分比精度。
+人员、附件、自由文本及无关业务动作不进入首版投影。
+身份冲突、认证或业务失败均保留旧详情缓存，`--live` 失败不回退。
+其余十四项 getter 的资格门槛见 [#137](https://github.com/proletariat64/dogopencli/issues/137)；
+本批权威规格为 [#136](https://github.com/proletariat64/dogopencli/issues/136)。
+实施后独立生产 UAT 已通过 3/3，详见
+[验收记录](docs/research/general/2026-10-07-liquidity-getters-acceptance.md)。
 
 没有已验证查询合同的叶子继续延期，如 wallets、quote-groups；
 独立验证过的详情不受此影响。
@@ -778,7 +804,8 @@ Batch A ([#87](https://github.com/proletariat64/dogopencli/issues/87)) 两个必
 `refresh liquidity network realtime`，默认离线读取；`--live` 不写缓存。只发一次
 `rowStart=0/pageSize=5000` 原生请求，缺覆盖持续报告 incomplete；`--require-complete`
 拒绝 partial。原生 id 与 routeId 分开，状态不代表实际执行成功。动态性能指标及
-私有字段不公开；get/routes/rules monitoring 不随本列表启用。当前分支目录
+私有字段不公开；routes/rules monitoring 不随本列表启用；独立 get 见上方 #136。
+v0.2.8 发布时目录为
 85 supported / 46 unsupported / 131 total；生产 CLI UAT 204/204 完整及全部 5,304 个投影值对照通过；已随 v0.2.8 发布。
 
 审查修复后独立生产 UAT 再次通过，见[契约与验收报告](docs/research/general/2026-10-05-realtime-network-contract.md)；用户已授权本地 Kimi/API 源码与规格审查；[9488a7f](https://github.com/proletariat64/dogopencli/commit/9488a7f55f604559285572940a36afe2a46e093c) 的静态审查通过，confidence 4/5，测试与生产 UAT 由 root 独立完成。后续纯文档提交未宣称经过 Kimi 复审。
