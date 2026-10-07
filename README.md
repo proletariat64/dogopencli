@@ -350,7 +350,7 @@ Realtime 详情公开网络配置及返回的版本，不提供指定版本查�
 保留 `quotationDetail`、`productDetail` 原生层次及金额/百分比精度。
 人员、附件、自由文本及无关业务动作不进入首版投影。
 身份冲突、认证或业务失败均保留旧详情缓存，`--live` 失败不回退。
-其余十四项 getter 的资格门槛见 [#137](https://github.com/proletariat64/dogopencli/issues/137)；
+剩余 getter 的资格门槛见 [#137](https://github.com/proletariat64/dogopencli/issues/137)；
 本批权威规格为 [#136](https://github.com/proletariat64/dogopencli/issues/136)。
 实施后独立生产 UAT 已通过 3/3，详见
 [验收记录](docs/research/general/2026-10-07-liquidity-getters-acceptance.md)。
@@ -361,6 +361,27 @@ Realtime 详情公开网络配置及返回的版本，不提供指定版本查�
 授信使用、产品基线和报价的逐项门槛；调查记录不等于新增能力或生产 CLI UAT。
 [证据与未验证事项](docs/research/general/2026-10-01-liquidity-live-probes.md)，
 [缓存决策](docs/adr/0016-liquidity-independent-list-and-detail-caches.md)。
+
+### RFQ 子任务详情与账户上下文路由额度（#139）
+
+```bash
+dogopencli refresh liquidity investment rfqs detail get --inquiry-sub-task-id <SUBTASK_ID>
+dogopencli liquidity investment rfqs get --inquiry-sub-task-id <SUBTASK_ID>
+dogopencli refresh liquidity network route-quotas detail get --route-id <ROUTE_ID> --alias-name <ACCOUNT_ALIAS>
+dogopencli liquidity network route-quotas get --route-id <ROUTE_ID> --alias-name <ACCOUNT_ALIAS> --live
+```
+
+RFQ 使用列表的子任务 `inquirySubTaskId`，原生请求与详情回显虽然名为
+`inquiryTaskId`，仍表示该子任务；父任务引用不能替代。只接受 TARGET_RFQ，
+保留原生询价成员、状态、日期与金额精度，排除自由文本及内部流程 ID。
+
+`route-quotas` 是指定 route/account alias/固定租户上下文的额度聚合，
+保留动态和静态额度数组的顺序、重复项及空 quotaId。
+请求范围另列 metadata；缺少原生身份回显时不会添加虚构身份。
+原生 count 不用作数组总数。`network routes get` 仍延期。
+两者默认读取独立详情缓存，refresh 发布一个对象，live 不写缓存或回退；
+硬失败保留已有 capture。资格化及独立验收见
+[本轮报告](docs/research/general/2026-10-07-liquidity-getter-qualification.md)。
 
 ### 四项有界列表（Batch F，#109–#112）
 
