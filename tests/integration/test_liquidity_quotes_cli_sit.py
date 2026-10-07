@@ -255,7 +255,7 @@ def test_identical_duplicates_keep_partial_strict_policy_without_offset_loop(
     assert run_cli(query("--require-complete"))[0] == 1
 
 
-def test_offline_description_states_units_timezone_scope_and_get_stays_deferred(
+def test_offline_description_states_units_timezone_scope_and_get_requires_identity(
     setup, run_cli
 ):
     code, out, err = run_cli(["describe", *ROOT, "list"])
@@ -277,5 +277,5 @@ def test_offline_description_states_units_timezone_scope_and_get_stays_deferred(
     code, _, err = run_cli(["help", *ROOT, "list"])
     assert code == 0, err
     code, out, _ = run_cli([*ROOT, "get"])
-    assert code == 1 and parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+    assert code == 2 and parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     assert setup.state.transports == []

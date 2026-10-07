@@ -162,7 +162,9 @@ class IdentityOption:
     field: str  # native request field
     summary: str
     kind: str = "str"  # str | int
-    echo: str | None = None  # response field that must repeat the value
+    echo: str | tuple[str, ...] | None = (
+        None  # response field that must repeat the value
+    )
     choices: tuple[str, ...] = ()
     virtual: bool = False  # cache/echo identity only; never sent to the backend
 
@@ -193,6 +195,7 @@ class DetailSpec:
     template: dict[str, Any] = field(default_factory=dict)
     projection: str = ""
     schema_version: str = ""
+    require_inner_success: bool = False
 
     @property
     def sends_tenant(self) -> bool:

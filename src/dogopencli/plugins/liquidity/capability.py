@@ -530,6 +530,10 @@ class LiquidityDetailCapability:
         """Genuine native detail with typed identity echo validation."""
         request_identity = self.detail_body(values)
         node = envelope_document(body, self._spec.envelope)
+        if self._spec.require_inner_success:
+            result = node.get("result")
+            if not isinstance(result, dict) or result.get("success") is not True:
+                raise _invalid("detail result requires boolean success")
         detail = dig(node, self._spec.container)
         if self._spec.container_list:
             if not isinstance(detail, list) or not all(
@@ -557,7 +561,11 @@ class LiquidityDetailCapability:
                 if option.virtual
                 else request_identity[option.field]
             )
-            actual = detail.get(option.echo)
+            actual = (
+                dig(detail, option.echo)
+                if isinstance(option.echo, tuple)
+                else detail.get(option.echo)
+            )
             if actual is None or isinstance(actual, (dict, list, bool)):
                 raise _invalid("detail identity does not match the request")
             if self._spec.schema_version:
