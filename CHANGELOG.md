@@ -2,28 +2,44 @@
 
 ## 未发布
 
-当前源码版本为 **v0.2.9**（2026-10-07），包含已合并的 PR #135（规格 #127）。
+暂无未发布变更。
+
+## v0.3.0（2026-10-07）
+
+本次发布整合 v0.2.8 之后已合并的查询、开发环境、测试和登录改进，
+包括此前 v0.2.9 源码中的 list 参数统一（PR #135，规格 #127）。
+当前 Liquidity 目录为 **98 supported / 34 unsupported / 132 total**，
+延期范围为 12 list 和 22 get；monitoring HOLD 和各叶子的契约／验收门槛保留。
+发行附件提供 wheel、源码包及 SHA256SUMS；本次包验证不代替既有逐叶生产 UAT。
+
+修复公司 SSO 等待期间的浏览器闪屏和重复标签页（PR #143）：
+轮询复用现有页面的只读用户信息请求，最终仍要求应用返回及认证验证；
+切换模式时正常关闭受控 Chrome 以保存 cookies／会话历史，并只在新启动阶段清理重复启动页。
+人工输入期间和同模式复用不归一化标签页；无关 profile 不受影响。
+
+pytest 和 doc-guard 已接入独立 CI gate，假浏览器测试等待大幅缩短；
+新增 `make bootstrap` 初始化工作树开发环境，复用已有 uv 缓存。
 
 新增三个独立 Liquidity 原生 getter（规格 #136）：`operations demands get --task-id`、
 `network realtime get --network-id`、`investment quotes get --quotation-order-id`，
 以及对应 `refresh liquidity <resource> detail get`。默认离线，live 不写缓存或回退，
 详情刷新独立于列表。需求核对 FUND_REQUIRE 及内外成功标志；网络保留原生版本；
 报价使用 form POST 并核对嵌套 quotationId。只公开各自允许字段，保留原生精度及空值，
-硬失败不覆盖旧详情。后续资格化范围见 #137，未变更版本或发布包。
+硬失败不覆盖旧详情。后续资格化范围见 #137。
 
 新增 `investment rfqs get --inquiry-sub-task-id` 和独立
 `network route-quotas get --route-id --account-alias`（实施 #139，资格化 #137）。
 RFQ 按原生页面将子任务 ID 传入 wire inquiryTaskId，并核对 TARGET_RFQ 与原生成员身份。
 路由额度是精确租户/路由/账户别名上下文的单个聚合，保留动态/静态数组及重复空 quotaId；
 请求范围与原生缺失回显分开，count 不作数组总数。均复用独立详情缓存、显式 refresh、
-live 隔离和失败保留契约。routes get 及其余十二项 getter 继续延期；未发布新版本。
+live 隔离和失败保留契约。global routes get 继续延期，不能以 route-quotas 代替。
 
 新增资产交易 `operations asset-trades get --order-no` 和报价组
 `investment quote-groups get --quotation-group-row-id`（规格 #141）。
 两者使用单字段原生 form POST，独立详情缓存、显式 refresh 和非发布 live。
 资产只提供已绑定交易根与产品字段，排除未证明归属的日志；报价组按物理版本行身份查询，
 保留所选版本及联系人/版本历史组成，不隐式解析最新版本，排除附件和审批动作。
-报价组列表与其他二十二项 get 继续延期；失败保留旧 capture，不发布新版本。
+报价组列表与其他二十二项 get 继续延期；失败保留旧 capture。
 
 规范化全部受支持 list 命令的公共参数契约（规格 #127）：主日期区间统一为
 `--from-date`/`--to-date`（YYYY-MM-DD 首选，原 YYYYMMDD 继续接受），账户别名统一为
