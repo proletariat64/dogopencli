@@ -24,6 +24,7 @@ from . import store as capture_store
 from .collect import acquire_liquidity_list
 from .common import emit, identity_values, load_config, now, provided, scope_flags
 from .leaves import DetailLeaf, detail_leaf, list_leaf
+from .qualified_getters import detail_context_meta
 
 
 def run_refresh_list(args: argparse.Namespace) -> int:
@@ -181,6 +182,7 @@ def run_refresh_detail(args: argparse.Namespace) -> int:
         )
         if isinstance(payload, dict) and "version" in payload:
             meta["source_version"] = payload["version"]
+    meta.update(detail_context_meta(detail, values, payload))
     emit(
         {
             "namespace": snapshot.namespace,

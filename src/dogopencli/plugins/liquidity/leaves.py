@@ -63,6 +63,7 @@ from .investment_batch import validate_quote_query, validate_strategy_query
 from .native_getters import NATIVE_GETTERS
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
+from .qualified_getters import QUALIFIED_GETTERS
 from .realtime_network import REALTIME_NETWORK
 from .rfqs import RFQS, validate_rfq_query
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
@@ -2689,6 +2690,12 @@ def _build_registry() -> tuple[
     return lists, details
 
 
+DETAIL_SPECS += QUALIFIED_GETTERS
+DEFERRED = tuple(
+    item
+    for item in DEFERRED
+    if item.path not in {(*detail.path, detail.action) for detail in QUALIFIED_GETTERS}
+)
 DETAIL_SPECS += NATIVE_GETTERS
 DEFERRED = tuple(
     item

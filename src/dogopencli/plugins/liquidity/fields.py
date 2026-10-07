@@ -37,6 +37,15 @@ from .native_getters import (
     DEMAND_FIELDS as DEMAND_DETAIL_FIELDS,
 )
 from .operations_batch import RELEASED as OPERATIONS_RELEASED
+from .qualified_getters import (
+    CONTEXT_FIELDS,
+    QUOTA_DETAIL,
+    RFQ_DETAIL,
+    RFQ_ORDER_FIELDS,
+)
+from .qualified_getters import (
+    RFQ_FIELDS as RFQ_DETAIL_FIELDS,
+)
 from .realtime_network import REALTIME_NETWORK
 from .realtime_network import SAMPLED_FIELDS as NETWORK_FIELDS
 from .rfqs import RFQS
@@ -3532,3 +3541,18 @@ SAMPLED_FIELDS[QUOTE_DETAIL.name] = {
 QUOTATION_DETAIL_FIELDS = dict.fromkeys(QUOTATION_FIELDS, "unknown")
 QUOTATION_DETAIL_FIELDS["quotationId"] = "str"
 QUOTATION_PRODUCT_FIELDS = dict.fromkeys(PRODUCT_FIELDS, "unknown")
+
+
+# Qualified child detail and scoped quota aggregate, native proof 2026-10-07.
+SAMPLED_FIELDS[RFQ_DETAIL.name] = dict.fromkeys(RFQ_DETAIL_FIELDS, "str")
+SAMPLED_FIELDS[RFQ_DETAIL.name].update(
+    tenorDays="int",
+    ticketSize="int",
+    inquiryOrderListVOList="list",
+)
+RFQ_DETAIL_ORDER_FIELDS = dict.fromkeys(RFQ_ORDER_FIELDS, "str")
+SAMPLED_FIELDS[QUOTA_DETAIL.name] = {
+    "dynamicQuotas": "list",
+    "staticQuotas": "list",
+    **dict.fromkeys(CONTEXT_FIELDS, "unknown"),
+}

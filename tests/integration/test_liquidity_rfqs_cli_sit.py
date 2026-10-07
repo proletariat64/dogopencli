@@ -298,7 +298,7 @@ def test_partial_quality_and_strict_atomicity_without_offset_retries(
     assert run_cli(query("--require-complete"))[0] == 1
 
 
-def test_offline_description_help_snapshot_and_deferred_parent(setup, run_cli):
+def test_offline_description_help_snapshot_and_child_identity_required(setup, run_cli):
     code, out, err = run_cli(["describe", *ROOT, "list"])
     assert code == 0, err
     description = parse(out)
@@ -322,7 +322,7 @@ def test_offline_description_help_snapshot_and_deferred_parent(setup, run_cli):
     code, _, err = run_cli(["help", *ROOT, "list"])
     assert code == 0, err
     code, out, _ = run_cli([*ROOT, "get"])
-    assert code == 1 and parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+    assert code == 2 and parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     code, out, err = run_cli(["snapshot", *ROOT, "list", "--format", "json"])
     assert code == 0, err
     tree = parse(out)["tree"]
