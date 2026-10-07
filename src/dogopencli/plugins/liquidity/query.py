@@ -44,6 +44,7 @@ from . import store as capture_store
 from .collect import acquire_liquidity_list
 from .common import emit, identity_values, load_config, now, provided, scope_flags
 from .leaves import DEFERRED_BY_PATH, DetailLeaf, ListLeaf, detail_leaf, list_leaf
+from .qualified_getters import detail_context_meta
 
 
 def _display_options(args: argparse.Namespace) -> tuple[int, int, list[str] | None]:
@@ -499,6 +500,7 @@ def run_detail(args: argparse.Namespace) -> int:
             )
         if detail.schema_version and isinstance(payload, dict) and "version" in payload:
             meta["source_version"] = payload["version"]
+        meta.update(detail_context_meta(detail, values, payload))
         return _emit_object(args, detail.table_columns, payload, meta, fields)
     store = Cache(config.cache_path)
     snapshot = detail_store.read_detail_snapshot(store, detail.name)
@@ -558,6 +560,7 @@ def run_detail(args: argparse.Namespace) -> int:
         and "version" in stored.detail
     ):
         meta["source_version"] = stored.detail["version"]
+    meta.update(detail_context_meta(detail, values, stored.detail))
     return _emit_object(args, detail.table_columns, stored.detail, meta, fields)
 
 

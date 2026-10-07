@@ -35,6 +35,7 @@ from .forecast_accuracy import project_accuracy
 from .funding_demands import project_demand
 from .native_getters import project_demand_detail, project_quotation_detail
 from .operations_batch import validate_swap_business_date
+from .qualified_getters import project_quota_detail, project_rfq_detail
 from .realtime_network import project_network
 from .rfqs import project_rfq_subtask
 from .risk_batch import project_risk_record
@@ -997,6 +998,8 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "funding_demands": project_demand,
     "funding_demand_detail": project_demand_detail,
     "quotation_detail": project_quotation_detail,
+    "rfq_child_detail": project_rfq_detail,
+    "route_quota_detail": project_quota_detail,
     "rule_status": project_rule_status,
     "account_capacity": project_capacity,
     "strategy_detail": project_strategy_detail,

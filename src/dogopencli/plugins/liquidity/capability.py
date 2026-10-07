@@ -575,6 +575,10 @@ class LiquidityDetailCapability:
                     raise _invalid("detail identity does not match the request")
             elif str(actual) != str(expected):
                 raise _invalid("detail identity does not match the request")
+        if self._spec.projection == "route_quota_detail":
+            from .qualified_getters import validate_quota_context
+
+            validate_quota_context(detail, request_identity)
         if self._spec.projection:
             return project_record(self._spec.projection, detail)
         return detail

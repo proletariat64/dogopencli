@@ -18,6 +18,7 @@ from .fields import (
     CANDIDATE_SAMPLED_FIELDS,
     QUOTATION_DETAIL_FIELDS,
     QUOTATION_PRODUCT_FIELDS,
+    RFQ_DETAIL_ORDER_FIELDS,
     SAMPLED_FIELDS,
     VARIANT_SAMPLED_FIELDS,
 )
@@ -546,6 +547,66 @@ def _list_description(node: BizNode) -> dict[str, Any]:
 
 def _detail_schema(detail: spec.DetailSpec) -> dict[str, Any]:
     schema = _field_schema(SAMPLED_FIELDS.get(detail.name, {}))
+    if detail.projection == "rfq_child_detail":
+        schema["additionalProperties"] = False
+        schema["required"] = ["inquiryTaskId", "inquiryType", "inquiryOrderListVOList"]
+        schema["properties"]["inquiryTaskId"]["description"] = (
+            "Native child inquirySubTaskId echoed under wire name "
+            "inquiryTaskId; not parent identity."
+        )
+        schema["properties"]["inquiryType"]["const"] = "TARGET_RFQ"
+        orders = _field_schema(RFQ_DETAIL_ORDER_FIELDS)
+        orders["additionalProperties"] = False
+        orders["required"] = ["inquiryId"]
+        schema["properties"]["inquiryOrderListVOList"] = {
+            "type": "array",
+            "items": orders,
+        }
+        schema["x-source-timezone"] = "unknown"
+        return schema
+    if detail.projection == "route_quota_detail":
+        from .qualified_getters import DYNAMIC_FIELDS, STATIC_FIELDS
+
+        schema["additionalProperties"] = False
+        schema["required"] = ["dynamicQuotas", "staticQuotas"]
+        for component, fields in (
+            ("dynamicQuotas", DYNAMIC_FIELDS),
+            ("staticQuotas", STATIC_FIELDS),
+        ):
+            item = _field_schema(dict.fromkeys(fields, "unknown"))
+            item["additionalProperties"] = True
+            schema["properties"][component] = {"type": "array", "items": item}
+        dynamic = schema["properties"]["dynamicQuotas"]["items"]["properties"]
+        dynamic["dateRange"] = _field_schema({"begin": "int", "end": "int"})
+        for field in ("individualLimit", "remainLimit", "totalLimit"):
+            dynamic[field] = _field_schema(
+                {"currency": "str", "hasLimit": "bool", "limit": "int"}
+            )
+        time_slice = _field_schema(
+            {
+                "beginFromPreviousDay": "bool",
+                "beginTime": "str",
+                "endTime": "str",
+                "holidayTypeCode": "str",
+                "timeSliceId": "str",
+                "timeUnit": "str",
+                "timeValue": "list",
+                "timeZone": "str",
+            }
+        )
+        static = schema["properties"]["staticQuotas"]["items"]["properties"]
+        static["updateTimeSliceConfig"] = {"type": "array", "items": time_slice}
+        group = _field_schema({"timeSliceGroupId": "str", "timeSliceInfoList": "list"})
+        group["properties"]["timeSliceInfoList"] = {
+            "type": "array",
+            "items": time_slice,
+        }
+        static["serviceWindowIntersection"] = {"type": "array", "items": group}
+        schema["x-identity"] = (
+            "request-scoped aggregate; member IDs may be blank or duplicate"
+        )
+        schema["x-context-echo"] = "optional native fields; absence is not fabricated"
+        return schema
     if detail.schema_version not in {
         "funding-demand-detail-v1",
         "realtime-network-detail-v1",
@@ -622,6 +683,8 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
                     "funding-demand-detail-v1",
                     "realtime-network-detail-v1",
                     "quotation-detail-v1",
+                    "rfq-child-detail-v1",
+                    "route-quota-detail-v1",
                 }
                 else "2026-10-04"
                 if detail.projection == "strategy_detail"
@@ -632,6 +695,7 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
             ),
             "projection": detail.projection or None,
             "schema_version": detail.schema_version or None,
+            "identity": [option.field for option in detail.identity],
             "kind": detail.kind,
             "offline_profile": "per-object detail cache (ADR 0016)",
             "notes": list(detail.notes),
