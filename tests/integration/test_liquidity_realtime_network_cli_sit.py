@@ -266,8 +266,9 @@ def test_discovery_snapshot_and_unrelated_guards_stay_offline(setup, run_cli):
     assert guide["identity"] == ["id"]
     assert set(description["data_schema"]["properties"]) == set(FIELDS)
     assert run_cli(["help", *ROOT, "list"])[0] == 0
+    code, out, _ = run_cli([*ROOT, "get"])
+    assert code == 2 and parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     for path in (
-        [*ROOT, "get"],
         ["liquidity", "network", "routes", "list"],
         ["liquidity", "rules", "monitoring", "list"],
     ):
