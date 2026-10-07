@@ -4,6 +4,7 @@ import pytest
 
 from dogopencli.browser import cdp
 from dogopencli.browser.environment import BrowserEnvironment
+from dogopencli.browser.errors import AuthError
 from dogopencli.browser.probe import (
     SSO_LOGIN_ORIGIN,
     browser_mode,
@@ -55,7 +56,7 @@ class _Transport(cdp.CdpTransport):
         self.href_flip = href_flip
         self.evaluations = 0
 
-    def version(self):
+    def version(self, *, timeout=None):
         if not self.reachable:
             raise cdp.CdpError("connection refused")
         return {"Browser": "Chrome/128.0.0.0", "User-Agent": "HeadlessChrome/128"}
@@ -114,7 +115,7 @@ def test_authenticated(environment, install_transport):
 
 def test_sso_redirect_is_auth_required(environment, install_transport):
     install_transport(_Transport(href=SSO_LOGIN_ORIGIN + "/ssoLogin.htm?token=x"))
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(AuthError) as caught:
         check_authentication(environment)
     assert caught.value.code == "auth_required"
     assert caught.value.retryable is True
@@ -124,7 +125,7 @@ def test_ipaybuservice_login_htm_is_auth_required(environment, install_transport
     # UAT 2026-09-12: the unauthenticated entry lands on ipaybuservice
     # /login.htm (appName=ifundcontrolprodops / iglobalfundcontrol).
     install_transport(_Transport(href=IPAYBUSERVICE_LOGIN_URL))
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(AuthError) as caught:
         check_authentication(environment)
     assert caught.value.code == "auth_required"
     assert caught.value.details["final_origin"] == "https://ipaybuservice.alipay.com"
@@ -134,7 +135,7 @@ def test_ipaybuservice_other_path_is_service_failure(environment, install_transp
     # Only /login.htm has UAT evidence; other ipaybuservice paths stay
     # inconclusive.
     install_transport(_Transport(href="https://ipaybuservice.alipay.com/home.htm"))
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(AuthError) as caught:
         check_authentication(environment)
     assert caught.value.code == "service_failure"
 
@@ -146,7 +147,7 @@ def test_delayed_entry_redirect_is_auth_required(
     # JS-driven redirect fires inside the bounded stability window.
     monkeypatch.setattr(cdp, "ENTRY_STABILITY_SECONDS", 2.0)
     install_transport(_Transport(href_flip=(2, IPAYBUSERVICE_LOGIN_URL)))
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(AuthError) as caught:
         check_authentication(environment)
     assert caught.value.code == "auth_required"
     assert caught.value.details["final_origin"] == "https://ipaybuservice.alipay.com"
@@ -166,21 +167,21 @@ def test_steady_entry_survives_stability_window(
 
 def test_unexpected_origin_is_service_failure(environment, install_transport):
     install_transport(_Transport(href="https://elsewhere.example.com/"))
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(AuthError) as caught:
         check_authentication(environment)
     assert caught.value.code == "service_failure"
 
 
 def test_unreachable_is_browser_unavailable(environment, install_transport):
     install_transport(_Transport(reachable=False))
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(AuthError) as caught:
         check_authentication(environment)
     assert caught.value.code == "browser_unavailable"
 
 
 def test_never_ready_is_browser_unavailable(environment, install_transport):
     install_transport(_Transport(ready_state="loading"))
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(AuthError) as caught:
         check_authentication(environment, timeout=0.05)
     assert caught.value.code == "browser_unavailable"
     assert caught.value.details["ready_state"] == "loading"
@@ -188,7 +189,7 @@ def test_never_ready_is_browser_unavailable(environment, install_transport):
 
 def test_navigation_error_is_browser_unavailable(environment, install_transport):
     install_transport(_Transport(href="chrome-error://chromewebdata/"))
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(AuthError) as caught:
         check_authentication(environment)
     assert caught.value.code == "browser_unavailable"
     assert caught.value.details["reason"] == "navigation_error"
@@ -202,7 +203,7 @@ def test_probe_setup_navigation_and_settle_share_deadline(monkeypatch):
         cdp.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds)
     )
 
-    class Session:
+    class Session(cdp.CdpSession):
         def navigate(self, url, timeout):
             waits.append(timeout)
             clock[0] += 0.4
@@ -215,13 +216,16 @@ def test_probe_setup_navigation_and_settle_share_deadline(monkeypatch):
         def close(self):
             pass
 
-    class Transport:
-        def new_target(self, url, *, timeout):
+    class Transport(cdp.CdpTransport):
+        def version(self, *, timeout=None):
+            raise AssertionError("deadline primitive does not inspect browser version")
+
+        def new_target(self, url, *, timeout=None):
             waits.append(timeout)
             clock[0] += 0.4
             return {"id": "1", "webSocketDebuggerUrl": "ws://fake"}
 
-        def open_session(self, url, *, timeout):
+        def open_session(self, ws_url, *, timeout=None):
             waits.append(timeout)
             return Session()
 

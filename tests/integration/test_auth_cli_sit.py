@@ -145,6 +145,10 @@ def test_login_expired_session_enters_human_flow_and_succeeds(
     assert result["authenticated"] is True
     assert result["mode"] == "headless"
     assert "headed mode" in err  # progress goes to stderr
+    # Only initial expiry, headed verification, and headless verification
+    # create targets. Both human-wait polls attach to the existing form.
+    assert sum(len(t.created) for t in state.transports) == 3
+    assert sum(len(t.navigations) for t in state.transports) == 3
     assert locks_released(auth_setup.profile)
 
 
@@ -157,7 +161,17 @@ def test_login_default_timeout_is_600_seconds(run_cli, auth_setup):
     assert option["type"] == "positive"
 
 
-def test_login_timeout_preserves_headed_chrome(run_cli, auth_setup, fast_clock):
+def test_login_timeout_preserves_headed_chrome(
+    run_cli, auth_setup, fast_clock, monkeypatch
+):
+    from dogopencli.browser import probe as probe_mod
+
+    # Advance after one pending response, rather than racing a 50ms wall-clock
+    # deadline during another CDP probe on a loaded machine.
+    clock = [0.0]
+    monkeypatch.setattr(login_mod, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(probe_mod, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(login_mod, "sleep", lambda _: clock.__setitem__(0, 0.05))
     auth_setup.state.href = SSO_URL  # the human never completes SSO
     code, value, err = invoke(
         run_cli, [*auth_setup.argv, "login", "--timeout-seconds", "0.05"]

@@ -82,7 +82,7 @@ class FakeTransport(cdp.CdpTransport):
         self._href: str | None = None
         self._evaluations = 0
 
-    def version(self) -> dict:
+    def version(self, *, timeout: float | None = None) -> dict:
         if not self._state.running:
             raise cdp.CdpError("connection refused")
         return {
@@ -92,6 +92,17 @@ class FakeTransport(cdp.CdpTransport):
             ),
             "webSocketDebuggerUrl": "ws://cdp/devtools",
         }
+
+    def list_targets(self, *, timeout: float | None = None) -> list[dict]:
+        if not self._state.running:
+            raise cdp.CdpError("connection refused")
+        return [
+            {
+                "type": "page",
+                "url": IPAYBUSERVICE_LOGIN_URL,
+                "webSocketDebuggerUrl": "ws://cdp/human-tab",
+            }
+        ]
 
     def new_target(self, url: str, *, timeout: float | None = None) -> dict:
         if not self._state.running:
@@ -123,6 +134,11 @@ class FakeTransport(cdp.CdpTransport):
         if not self._state.running:
             raise cdp.CdpError("connection refused")
         self.expressions.append(expression)
+        if "getUserInfomation.json" in expression:
+            if self._state.probe_error:
+                raise cdp.CdpError("target crashed")
+            href = self._state.next_href()
+            return {"state": "complete" if href == PAYMENT_URL else "pending"}
         if "fetch(" in expression:
             return self._business_fetch(expression)
         if self._state.probe_error:
