@@ -352,7 +352,7 @@ Realtime 详情公开网络配置及返回的版本，不提供指定版本查�
 身份冲突、认证或业务失败均保留旧详情缓存，`--live` 失败不回退。
 其余十四项 getter 的资格门槛见 [#137](https://github.com/proletariat64/dogopencli/issues/137)；
 本批权威规格为 [#136](https://github.com/proletariat64/dogopencli/issues/136)。
-实施后生产 UAT 当前因登录过期阻塞（0/3），详见
+实施后独立生产 UAT 已通过 3/3，详见
 [验收记录](docs/research/general/2026-10-07-liquidity-getters-acceptance.md)。
 
 没有已验证查询合同的叶子继续延期，如 wallets、quote-groups；
