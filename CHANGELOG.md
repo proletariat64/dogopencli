@@ -12,7 +12,7 @@
 硬失败不覆盖旧详情。后续资格化范围见 #137，未变更版本或发布包。
 
 新增 `investment rfqs get --inquiry-sub-task-id` 和独立
-`network route-quotas get --route-id --alias-name`（实施 #139，资格化 #137）。
+`network route-quotas get --route-id --account-alias`（实施 #139，资格化 #137）。
 RFQ 按原生页面将子任务 ID 传入 wire inquiryTaskId，并核对 TARGET_RFQ 与原生成员身份。
 路由额度是精确租户/路由/账户别名上下文的单个聚合，保留动态/静态数组及重复空 quotaId；
 请求范围与原生缺失回显分开，count 不作数组总数。均复用独立详情缓存、显式 refresh、

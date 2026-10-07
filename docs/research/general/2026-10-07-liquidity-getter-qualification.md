@@ -50,7 +50,7 @@ URL 中另有父 `taskId`，该详情调用不使用它。
 查询额度：HTTP 200，resultFlag=true、result.success=true；dynamicQuotas 一项、staticQuotas 两项。
 两次请求均为只读，原有浏览器 target 集合保留。
 
-拟实施 `liquidity network route-quotas get --route-id --alias-name`，固定当前租户 GUAPW3SG。
+拟实施 `liquidity network route-quotas get --route-id --account-alias`，固定当前租户 GUAPW3SG。
 一个返回对象表示请求上下文的完整原生额度聚合，不将数组成员当作可独立寻址的 quota 对象。
 请求上下文仅在 metadata 中记录；本次响应没有 route/alias/tenant 回显，不能声称原生身份已回显。
 如果后续响应出现相矛盾的回显则拒绝。

@@ -367,8 +367,8 @@ Realtime 详情公开网络配置及返回的版本，不提供指定版本查�
 ```bash
 dogopencli refresh liquidity investment rfqs detail get --inquiry-sub-task-id <SUBTASK_ID>
 dogopencli liquidity investment rfqs get --inquiry-sub-task-id <SUBTASK_ID>
-dogopencli refresh liquidity network route-quotas detail get --route-id <ROUTE_ID> --alias-name <ACCOUNT_ALIAS>
-dogopencli liquidity network route-quotas get --route-id <ROUTE_ID> --alias-name <ACCOUNT_ALIAS> --live
+dogopencli refresh liquidity network route-quotas detail get --route-id <ROUTE_ID> --account-alias <ACCOUNT_ALIAS>
+dogopencli liquidity network route-quotas get --route-id <ROUTE_ID> --account-alias <ACCOUNT_ALIAS> --live
 ```
 
 RFQ 使用列表的子任务 `inquirySubTaskId`，原生请求与详情回显虽然名为
