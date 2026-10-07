@@ -195,3 +195,164 @@ def test_chrome_keeps_sandbox_and_origin_protection(tmp_path):
     args = launcher._chrome_args(_environment(tmp_path), "headless")
     assert "--no-sandbox" not in args
     assert not any(arg.startswith("--remote-allow-origins") for arg in args)
+
+
+@pytest.mark.parametrize("mode", ["headless", "headed"])
+def test_spawn_opens_one_entry_only_after_profile_verification(
+    tmp_path, monkeypatch, mode
+):
+    env = _environment(tmp_path)
+    env.profile.mkdir()
+    events = []
+    commands = []
+
+    class Process:
+        pid = 12345
+
+    class Session:
+        def navigate(self, url, timeout):
+            events.append("entry")
+            assert url == env.startup_url
+            assert 0 < timeout <= launcher.READY_WAIT_SECONDS
+
+        def close(self):
+            pass
+
+    class Transport:
+        def __init__(self, url, **kwargs):
+            assert url == env.cdp_url
+            self.targets = [
+                {"type": "page", "id": "entry", "webSocketDebuggerUrl": "ws://entry"},
+                {"type": "page", "id": "old-probe"},
+            ]
+
+        def list_targets(self, **kwargs):
+            return self.targets
+
+        def open_session(self, url, **kwargs):
+            assert url == "ws://entry"
+            return Session()
+
+        def close_target(self, target_id):
+            assert target_id == "old-probe"
+            events.append("closed-probe")
+            self.targets = self.targets[:1]
+
+    def popen(command, **kwargs):
+        commands.append(command)
+        return Process()
+
+    agent = "HeadlessChrome/128" if mode == "headless" else "Chrome/128"
+    monkeypatch.setattr(launcher.subprocess, "Popen", popen)
+    monkeypatch.setattr(launcher, "_proc_state_ticks", lambda pid: ("S", "1234"))
+    monkeypatch.setattr(
+        launcher,
+        "_cdp_metadata",
+        lambda url: (
+            '{"webSocketDebuggerUrl":"ws://local", "User-Agent":"' + agent + '"}'
+        ),
+    )
+    monkeypatch.setattr(
+        launcher, "require_profile", lambda e: events.append("verified")
+    )
+    monkeypatch.setattr(launcher, "HttpCdpTransport", Transport, raising=False)
+    owner = launcher._Owner(env.profile / launcher.OWNER_FILE_NAME)
+    launcher._spawn(env, mode, owner)
+    assert env.startup_url not in commands[0]
+    assert "--no-startup-window" not in commands[0]
+    assert events == ["verified", "entry", "closed-probe"]
+
+
+def test_spawn_entry_failure_is_not_reported_as_ready(tmp_path, monkeypatch):
+    from dogopencli.browser.cdp import CdpError
+
+    env = _environment(tmp_path)
+    env.profile.mkdir()
+    stopped = []
+
+    class Process:
+        pid = 12345
+
+    class Transport:
+        def __init__(self, url, **kwargs):
+            pass
+
+        def list_targets(self, **kwargs):
+            raise CdpError("entry discovery failed")
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda *a, **kw: Process())
+    monkeypatch.setattr(launcher, "_proc_state_ticks", lambda pid: ("S", "1234"))
+    monkeypatch.setattr(
+        launcher,
+        "_cdp_metadata",
+        lambda url: (
+            '{"webSocketDebuggerUrl":"ws://local", "User-Agent":"HeadlessChrome/128"}'
+        ),
+    )
+    monkeypatch.setattr(launcher, "require_profile", lambda e: None)
+    monkeypatch.setattr(launcher, "HttpCdpTransport", Transport, raising=False)
+    monkeypatch.setattr(
+        launcher, "_stop_owned_chrome", lambda owner, **kw: stopped.append(owner.pid)
+    )
+    owner = launcher._Owner(env.profile / launcher.OWNER_FILE_NAME)
+    with pytest.raises(launcher.LauncherError, match="entry"):
+        launcher._spawn(env, "headless", owner)
+    assert stopped == [12345]
+
+
+@pytest.mark.parametrize("disconnect", [False, True])
+def test_mode_stop_flushes_browser_without_sigterm(tmp_path, monkeypatch, disconnect):
+    from dogopencli.browser.cdp import CdpError
+
+    env = _environment(tmp_path)
+    owner = launcher._Owner(tmp_path / "owner")
+    owner.pid = 12345
+    events = []
+    monkeypatch.setattr(owner, "is_valid", lambda profile: profile == env.profile)
+    monkeypatch.setattr(
+        owner, "remove_if_matches", lambda pid: events.append("removed")
+    )
+    monkeypatch.setattr(
+        launcher, "require_profile", lambda e: events.append("verified")
+    )
+    monkeypatch.setattr(launcher, "_pid_is_live", lambda pid: False)
+
+    def forbidden_signal(*args):
+        pytest.fail("mode switch must not replace Browser.close with SIGTERM")
+
+    monkeypatch.setattr(launcher.os, "kill", forbidden_signal)
+
+    class Session:
+        def command(self, method, params, timeout):
+            assert (method, params) == ("Browser.close", {})
+            events.append("browser-close")
+            if disconnect:
+                raise CdpError("closed websocket")
+
+        def close(self):
+            events.append("session-close")
+
+    class Transport:
+        def __init__(self, url):
+            assert url == env.cdp_url
+
+        def version(self):
+            return {"webSocketDebuggerUrl": "ws://browser"}
+
+        def open_session(self, url):
+            assert url == "ws://browser"
+            return Session()
+
+    monkeypatch.setattr(launcher, "HttpCdpTransport", Transport)
+    launcher._stop_owned_chrome(owner, environment=env)
+    assert events == ["verified", "browser-close", "session-close", "removed"]
+
+
+def test_mode_stop_refuses_unverified_owner(tmp_path, monkeypatch):
+    owner = launcher._Owner(tmp_path / "owner")
+    monkeypatch.setattr(owner, "is_valid", lambda profile: False)
+    monkeypatch.setattr(
+        launcher, "HttpCdpTransport", lambda url: pytest.fail("foreign CDP")
+    )
+    with pytest.raises(launcher.LauncherError, match="cannot verify"):
+        launcher._stop_owned_chrome(owner, environment=_environment(tmp_path))

@@ -50,6 +50,14 @@ dogopencli collection account-isolation list --require-fresh --require-complete
 ```
 
 `login` 打开可见 Chrome，等待人工完成 SSO，随后切回无头模式并复验会话。
+每次新启动 Chrome 都复用并整理初始页面，只保留一个入口页，不再额外追加
+入口标签页；模式切换通过正常关闭 Chrome 持久化 cookie 和已关闭标签页记录。
+页面整理仅发生在新启动阶段，不在人工输入期间执行；同模式复用不会整理页面。
+人工等待期间仅在现有页面里 fetch 已核实的只读用户初始化接口，不新建/关闭
+标签页、不导航表单，也不跟随重定向创建新的 SSO 页面。HTTP 200 本身不代表
+成功：用户初始化响应仅作为完成信号，仍需原有域入口导航验证及无头复验；
+网络/CORS/响应解析失败会继续
+等待并在超时后报不确定状态，不退回会打扰输入的导航轮询。
 默认等待 600 秒，可用 `--timeout-seconds` 调整。`auth check` 只检查现有会话，
 不会启动或修复浏览器。
 
@@ -796,8 +804,9 @@ path = "/absolute/path/to/channel-dataset"
 
 ## 未完成的外部验收依赖
 
-- 付款 Channel 真实全量 UAT 仍待后端分页故障修复（[#10](https://github.com/proletariat64/dogopencli/issues/10)）；离线替代集不代表生产全量。
+- 付款 Channel 真实全量 UAT 仍待后端分页故障修复（[#1](https://github.com/proletariat64/dogopencli/issues/1)）；离线替代集不代表生产全量。
 - 认证 UAT 的 `logout` 范围仍需单独确认；当前规则查询验收复用已有会话，未执行登出。
+- 安静登录轮询已在独立 profile 验证未登录态及连续 fetch 不改变标签页/文档/测试输入，并完成真实人工 SSO、原有认证复验及 headed → headless 持久化闭环；用户确认闪屏消失。另一次全新 profile 验证只有一个可见入口页，登录后 payment/liquidity 认证检查及 payment cost、collection cost、liquidity cash balances 代表性只读查询成功。代表性查询不等于所有命令或全量 refresh 已验收。
 - launcher 安全参数变更后的完整生产连接复验仍待完成：用当前默认参数执行 `dogopencli login`，再执行 `dogopencli refresh payment cost`，验证应用会话和采集。此前独立空 profile 的真实 Chrome 检查只证明启用沙箱、未开放通配 Origin 时原生 CDP 可连接，且不可信 Origin 被拒绝；已有会话上的查询成功不能替代该流程。
 
 ## 开发与文档

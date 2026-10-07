@@ -17,8 +17,16 @@ entry redirects to (``appName=ifundcontrolprodops`` / ``iglobalfundcontrol``).
 Any other origin stays inconclusive, never a DI business error code. CDP
 metadata alone never counts as authenticated. The probe never launches
 Chrome, never switches modes, never initiates human authentication.
+
+The human-login wait uses a separate quiet completion signal below: fetch
+the verified BUC user-initialization GET in an existing page, without
+executing the frontend logout helper or following login redirects. It is
+not an authentication verdict; navigation and headless checks still decide.
 """
 
+import json
+import math
+from time import monotonic
 from typing import Any
 from urllib.parse import urlparse
 
@@ -30,7 +38,7 @@ from .cdp import (
     probe_final_url,
     url_origin,
 )
-from .environment import BrowserEnvironment
+from .environment import PAYMENT_STARTUP_URL, BrowserEnvironment
 from .errors import (
     AUTH_REQUIRED,
     BROWSER_UNAVAILABLE,
@@ -178,3 +186,147 @@ def check_authentication(
             "authenticated": True,
         },
     }
+
+
+# Verified read-only GET, documented in:
+# docs/research/general/2026-09-26-collection-menu-deep-survey.md.
+# Current frontend getUserInfo consumes data.outUserNo; isolated Chrome
+# returns success:false / USER_NOT_LOGIN anonymously. Identity never leaves JS.
+_USER_INFO_URL = f"https://{IPAYBUSERVICE_LOGIN_HOST}/pub/getUserInfomation.json"
+
+# Same-origin on the login page; the production frontend uses CORS from payment.
+_CARRIER_ORIGINS = (
+    url_origin(PAYMENT_STARTUP_URL),
+    f"https://{IPAYBUSERVICE_LOGIN_HOST}",
+)
+
+_FETCH_SIGNAL = r"""
+(async (probe) => {
+  if (!probe.origins.includes(location.origin)) return {state: "inconclusive"};
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), probe.timeoutMs);
+  try {
+    const response = await fetch(probe.url, {
+      method: "GET", credentials: "include", cache: "no-store",
+      redirect: "manual", signal: controller.signal
+    });
+    if (response.status !== 200 || response.url !== probe.url)
+      return {state: "inconclusive"};
+    const body = await response.json();
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      return {state: "inconclusive"};
+    if (body.success === false && body.buserviceErrorCode === "USER_NOT_LOGIN")
+      return {state: "pending"};
+    // Unknown service/permission/referer failures are not expired-auth proof.
+    if (body.success === false || body.stat === "fail")
+      return {state: "inconclusive"};
+    const user = body.data;
+    if (!user || typeof user !== "object" || Array.isArray(user))
+      return {state: "inconclusive"};
+    const id = user.outUserNo;
+    const complete = (typeof id === "string" && id.trim().length > 0) ||
+                     (typeof id === "number" && Number.isFinite(id) && id > 0);
+    // Global SSO user information alone must not interrupt a form still
+    // waiting for role/MFA input. Wait for the human tab's completed goto.
+    const returned = location.origin === probe.applicationOrigin &&
+                     ["interactive", "complete"].includes(document.readyState);
+    return {state: complete && returned ? "complete" : "inconclusive"};
+  } catch (_) {
+    // CORS/network/parse failures are inconclusive, not expired auth.
+    return {state: "inconclusive"};
+  } finally {
+    clearTimeout(timer);
+  }
+})(__PAYLOAD__)
+"""
+
+
+def probe_login_completion(
+    environment: BrowserEnvironment, *, timeout: float = 15.0
+) -> None:
+    """Return on a completion candidate; otherwise raise a wait classification.
+
+    Attach only to existing payment/login page targets. A transitioning or
+    closed target is retryable while Chrome remains reachable. Never fall
+    back to navigations during human input, even on CORS/network failure.
+    """
+    if environment.startup_url != PAYMENT_STARTUP_URL:
+        raise AuthError(
+            SERVICE_FAILURE, "quiet login probe has no verified entry contract"
+        )
+    deadline = monotonic() + timeout
+    transport = make_transport(environment.cdp_url)
+    try:
+        transport.version(timeout=max(0.001, deadline - monotonic()))
+    except CdpError as exc:
+        raise AuthError(
+            BROWSER_UNAVAILABLE, "the headed Chrome is unreachable"
+        ) from exc
+
+    session = None
+    try:
+        targets = transport.list_targets(timeout=max(0.001, deadline - monotonic()))
+        target = next(
+            (
+                t
+                for t in sorted(
+                    targets,
+                    key=lambda t: (
+                        url_origin(str(t.get("url", "")))
+                        != url_origin(environment.startup_url)
+                    ),
+                )
+                if t.get("type") == "page"
+                and isinstance(t.get("url"), str)
+                and url_origin(t["url"]) in _CARRIER_ORIGINS
+                and isinstance(t.get("webSocketDebuggerUrl"), str)
+            ),
+            None,
+        )
+        if target is None:
+            raise AuthError(
+                SERVICE_FAILURE, "waiting for an existing payment or login page"
+            )
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            raise CdpError("quiet login probe deadline exhausted")
+        session = transport.open_session(
+            target["webSocketDebuggerUrl"], timeout=remaining
+        )
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            raise CdpError("quiet login probe deadline exhausted")
+        payload = json.dumps(
+            {
+                "url": _USER_INFO_URL,
+                "origins": _CARRIER_ORIGINS,
+                "applicationOrigin": url_origin(environment.startup_url),
+                "timeoutMs": max(1, math.floor(remaining * 1000)),
+            }
+        )
+        result = session.evaluate(
+            _FETCH_SIGNAL.replace("__PAYLOAD__", payload), remaining
+        )
+    except CdpError as exc:
+        remaining = deadline - monotonic()
+        # A near-expired budget cannot establish browser loss: a healthy
+        # Chrome need not answer /json/version within a millisecond.
+        if remaining >= 1.0:
+            try:
+                transport.version(timeout=remaining)
+            except CdpError:
+                raise AuthError(
+                    BROWSER_UNAVAILABLE, "the headed Chrome became unreachable"
+                ) from exc
+        raise AuthError(
+            SERVICE_FAILURE, "quiet login probe is temporarily unavailable"
+        ) from exc
+    finally:
+        if session is not None:
+            session.close()
+
+    if isinstance(result, dict) and result.get("state") == "complete":
+        return
+    if isinstance(result, dict) and result.get("state") == "pending":
+        raise AuthError(AUTH_REQUIRED, "the user-initialization gate requires login")
+    raise AuthError(SERVICE_FAILURE, "quiet login probe is inconclusive")

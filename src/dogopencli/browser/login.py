@@ -34,7 +34,7 @@ from . import launcher
 from .coordination import acquire_browser_control, acquire_login_lock
 from .environment import BrowserEnvironment
 from .errors import AUTH_REQUIRED, BROWSER_UNAVAILABLE, SERVICE_FAILURE, AuthError
-from .probe import check_authentication
+from .probe import check_authentication, probe_login_completion
 
 #: The launcher waits at most ~10s for CDP readiness; spawn failures surface
 #: as LauncherError inside that bound.
@@ -141,10 +141,12 @@ def _human_login(
 
 
 def _wait_for_human_auth(environment: BrowserEnvironment, *, deadline: float) -> None:
-    """Poll the bounded probe until headed authentication is verified.
+    """Poll quietly for a completion signal, then let the caller verify auth.
 
-    ``auth_required`` (still on the SSO origin) and ``service_failure``
-    (an intermediate origin of the company flow) both keep waiting; a lost
+    The fetch attaches to an existing page, never opens/closes tabs, never
+    navigates the human form, and never follows a redirect into SSO.
+    ``auth_required`` (verified USER_NOT_LOGIN response) and ``service_failure``
+    (an inconclusive fetch or a transitioning target) both keep waiting; a lost
     headed Chrome aborts as ``browser_unavailable`` and never reports success.
     At the deadline the LAST observed classification decides the error:
     persistent ``service_failure`` is a service problem, never reported as
@@ -156,30 +158,31 @@ def _wait_for_human_auth(environment: BrowserEnvironment, *, deadline: float) ->
     )
     last_failure = AUTH_REQUIRED
     while True:
-        try:
-            check_authentication(environment)
-        except AuthError as exc:
-            if exc.code == BROWSER_UNAVAILABLE:
-                raise AuthError(
-                    BROWSER_UNAVAILABLE,
-                    "the headed Chrome became unreachable while waiting for human "
-                    f"authentication: {exc.message}; re-run dogopencli login to "
-                    "recover",
-                    details=exc.details,
-                ) from exc
-            if exc.code not in {AUTH_REQUIRED, SERVICE_FAILURE}:
-                raise
-            last_failure = exc.code
-        else:
-            return
+        remaining = deadline - monotonic()
+        if remaining > 0:
+            try:
+                probe_login_completion(environment, timeout=min(15.0, remaining))
+            except AuthError as exc:
+                if exc.code == BROWSER_UNAVAILABLE:
+                    raise AuthError(
+                        BROWSER_UNAVAILABLE,
+                        "the headed Chrome became unreachable while waiting for human "
+                        f"authentication: {exc.message}; re-run dogopencli login to "
+                        "recover",
+                        details=exc.details,
+                    ) from exc
+                if exc.code not in {AUTH_REQUIRED, SERVICE_FAILURE}:
+                    raise
+                last_failure = exc.code
+            else:
+                return
         if monotonic() >= deadline:
             if last_failure == SERVICE_FAILURE:
                 raise AuthError(
                     SERVICE_FAILURE,
-                    "the authentication probe stayed inconclusive until the login "
-                    "deadline; the payment platform service may be unhealthy — "
-                    "this is not an expired-authentication verdict: check the "
-                    "service state, then re-run dogopencli login",
+                    "the quiet authentication probe stayed inconclusive until the "
+                    "login deadline; check the service state, then re-run "
+                    "dogopencli login",
                     details={"profile": str(environment.profile)},
                 )
             raise AuthError(
@@ -189,7 +192,7 @@ def _wait_for_human_auth(environment: BrowserEnvironment, *, deadline: float) ->
                 "available: complete the login there, then re-run dogopencli login",
                 details={"profile": str(environment.profile)},
             )
-        sleep(POLL_INTERVAL_SECONDS)
+        sleep(min(POLL_INTERVAL_SECONDS, max(0.0, deadline - monotonic())))
 
 
 def _ensure_headless(environment: BrowserEnvironment) -> None:

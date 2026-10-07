@@ -20,6 +20,7 @@ import urllib.request
 from pathlib import Path
 
 from . import coordination
+from .cdp import CdpError, HttpCdpTransport
 from .environment import BrowserEnvironment, cdp_port
 
 OWNER_FILE_NAME = ".dogopencli-chrome-owner"
@@ -160,11 +161,32 @@ def _profile_lock_pid(profile: Path) -> int | None:
     return pid if _pid_is_live(pid) else None
 
 
-def _stop_owned_chrome(owner: _Owner) -> None:
-    try:
-        os.kill(owner.pid, signal.SIGTERM)
-    except OSError:
-        pass
+def _stop_owned_chrome(
+    owner: _Owner, *, environment: BrowserEnvironment | None = None
+) -> None:
+    if environment is not None:
+        if not owner.is_valid(environment.profile):
+            raise LauncherError("cannot verify owned Chrome before closing it")
+        require_profile(environment)
+        session = None
+        try:
+            transport = HttpCdpTransport(environment.cdp_url)
+            session = transport.open_session(
+                transport.version()["webSocketDebuggerUrl"]
+            )
+            # Flush cookies and closed-tab records before the mode switch.
+            session.command("Browser.close", {}, 2.0)
+        except (CdpError, KeyError):
+            pass  # Chrome can disconnect while completing Browser.close.
+        finally:
+            if session is not None:
+                session.close()
+    else:
+        # Recovery when CDP was unavailable; signal only the recorded child.
+        try:
+            os.kill(owner.pid, signal.SIGTERM)
+        except OSError:
+            pass
     deadline = time.monotonic() + READY_WAIT_SECONDS
     while time.monotonic() < deadline:
         if not _pid_is_live(owner.pid):
@@ -291,7 +313,7 @@ def launch(
                     f"with dedicated profile {profile}"
                 )
             control = _acquire_control(profile, control_held)
-            _stop_owned_chrome(owner)
+            _stop_owned_chrome(owner, environment=environment)
         if owner.is_valid(profile):
             if owner.mode == mode:
                 raise LauncherError(
@@ -329,7 +351,6 @@ def _spawn(environment: BrowserEnvironment, mode: str, owner: _Owner) -> str:
     command = [
         environment.chrome_bin,
         *_chrome_args(environment, mode),
-        environment.startup_url,
     ]
     with environment.log_path.open("wb") as log:
         process = subprocess.Popen(
@@ -351,6 +372,8 @@ def _spawn(environment: BrowserEnvironment, mode: str, owner: _Owner) -> str:
         f"start_ticks={state_ticks[1]}\n"
     )
     tmp.replace(owner._path)
+    # Startup-error cleanup must target this child, never an unloaded PID 0.
+    owner.pid = process.pid
     note = (
         f"Chrome mode {mode} | pid {process.pid} | CDP {environment.cdp_url} "
         f"| profile {profile}"
@@ -366,6 +389,20 @@ def _spawn(environment: BrowserEnvironment, mode: str, owner: _Owner) -> str:
                     f"CDP became ready in {ready_mode} mode, expected {mode}"
                 )
             require_profile(environment)
+            try:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise CdpError("startup deadline exhausted")
+                _open_single_entry(environment, deadline=deadline)
+            except CdpError as exc:
+                try:
+                    _stop_owned_chrome(owner, environment=environment)
+                except LauncherError:
+                    pass
+                raise LauncherError(
+                    f"Chrome could not open its entry page: {exc}; inspect "
+                    f"{environment.log_path}"
+                ) from exc
             return note
         if not _pid_is_live(process.pid):
             owner.remove_if_matches(process.pid)
@@ -387,3 +424,50 @@ def _spawn(environment: BrowserEnvironment, mode: str, owner: _Owner) -> str:
         f"CDP did not become ready at {environment.cdp_url} in requested "
         f"{mode} mode; inspect {environment.log_path}"
     )
+
+
+def _open_single_entry(environment: BrowserEnvironment, *, deadline: float) -> None:
+    """Reuse Chrome's startup page; normalize only this newly started browser.
+
+    With no positional URL Chrome creates/restores its window itself. Creating
+    another target would trigger delayed restore and duplicate that window.
+    This runs under the launch/control locks, before the human-wait phase.
+    """
+    transport = HttpCdpTransport(environment.cdp_url, timeout=1.0)
+
+    def remaining() -> float:
+        budget = deadline - time.monotonic()
+        if budget <= 0:
+            raise CdpError("entry-page startup deadline exhausted")
+        return budget
+
+    def pages() -> list[dict]:
+        return [
+            t
+            for t in transport.list_targets(timeout=remaining())
+            if t.get("type") == "page"
+        ]
+
+    targets = pages()
+    while not targets:
+        time.sleep(min(0.1, remaining()))
+        targets = pages()
+    keep = targets[0]
+    if not keep.get("id") or not keep.get("webSocketDebuggerUrl"):
+        raise CdpError("startup page has no target/session identifier")
+    session = transport.open_session(keep["webSocketDebuggerUrl"], timeout=remaining())
+    try:
+        session.navigate(environment.startup_url, remaining())
+    finally:
+        session.close()
+    stable = 0
+    while stable < 2:
+        targets = pages()
+        if not any(t.get("id") == keep["id"] for t in targets):
+            raise CdpError("startup entry page disappeared")
+        extra = [t for t in targets if t.get("id") != keep["id"]]
+        for target in extra:
+            remaining()
+            transport.close_target(target["id"])
+        stable = 0 if extra else stable + 1
+        time.sleep(min(0.1, remaining()))

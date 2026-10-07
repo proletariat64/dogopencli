@@ -75,8 +75,12 @@ class CdpTransport(ABC):
     """
 
     @abstractmethod
-    def version(self) -> dict[str, Any]:
+    def version(self, *, timeout: float | None = None) -> dict[str, Any]:
         """``/json/version``; raises ``CdpError`` when unreachable."""
+
+    def list_targets(self, *, timeout: float | None = None) -> list[dict[str, Any]]:
+        """Discover existing targets without creating or activating a tab."""
+        raise CdpError(f"{type(self).__name__} does not support target discovery")
 
     @abstractmethod
     def new_target(self, url: str, *, timeout: float | None = None) -> dict[str, Any]:
@@ -167,8 +171,14 @@ class HttpCdpTransport(CdpTransport):
         self._base = cdp_url.rstrip("/")
         self._timeout = timeout
 
-    def version(self) -> dict[str, Any]:
-        return self._get_json("/json/version")
+    def version(self, *, timeout: float | None = None) -> dict[str, Any]:
+        return self._get_json("/json/version", timeout=timeout)
+
+    def list_targets(self, *, timeout: float | None = None) -> list[dict[str, Any]]:
+        data = self._get_json("/json/list", timeout=timeout)
+        if not isinstance(data, list) or not all(isinstance(t, dict) for t in data):
+            raise CdpError("unexpected /json/list response")
+        return data
 
     def new_target(self, url: str, *, timeout: float | None = None) -> dict[str, Any]:
         import urllib.error
@@ -215,12 +225,13 @@ class HttpCdpTransport(CdpTransport):
             timeout=self._timeout if timeout is None else min(timeout, self._timeout),
         )
 
-    def _get_json(self, path: str) -> Any:
+    def _get_json(self, path: str, *, timeout: float | None = None) -> Any:
         import urllib.request
 
         req = urllib.request.Request(f"{self._base}{path}", method="GET")
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            budget = self._timeout if timeout is None else min(timeout, self._timeout)
+            with urllib.request.urlopen(req, timeout=max(0.001, budget)) as resp:
                 return json.loads(resp.read())
         except (OSError, ValueError) as exc:
             raise CdpError(f"CDP endpoint failure at {path}: {exc}") from exc
