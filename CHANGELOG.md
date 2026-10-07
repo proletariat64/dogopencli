@@ -9,7 +9,14 @@
 以及对应 `refresh liquidity <resource> detail get`。默认离线，live 不写缓存或回退，
 详情刷新独立于列表。需求核对 FUND_REQUIRE 及内外成功标志；网络保留原生版本；
 报价使用 form POST 并核对嵌套 quotationId。只公开各自允许字段，保留原生精度及空值，
-硬失败不覆盖旧详情。其余十四项 getter 保持资格化门槛，未变更版本或发布包。
+硬失败不覆盖旧详情。后续资格化范围见 #137，未变更版本或发布包。
+
+新增 `investment rfqs get --inquiry-sub-task-id` 和独立
+`network route-quotas get --route-id --account-alias`（实施 #139，资格化 #137）。
+RFQ 按原生页面将子任务 ID 传入 wire inquiryTaskId，并核对 TARGET_RFQ 与原生成员身份。
+路由额度是精确租户/路由/账户别名上下文的单个聚合，保留动态/静态数组及重复空 quotaId；
+请求范围与原生缺失回显分开，count 不作数组总数。均复用独立详情缓存、显式 refresh、
+live 隔离和失败保留契约。routes get 及其余十二项 getter 继续延期；未发布新版本。
 
 规范化全部受支持 list 命令的公共参数契约（规格 #127）：主日期区间统一为
 `--from-date`/`--to-date`（YYYY-MM-DD 首选，原 YYYYMMDD 继续接受），账户别名统一为
