@@ -256,9 +256,15 @@ def probe_login_completion(
         )
     deadline = monotonic() + timeout
     transport = make_transport(environment.cdp_url)
+    reachability_budget = deadline - monotonic()
     try:
-        transport.version(timeout=max(0.001, deadline - monotonic()))
+        transport.version(timeout=max(0.001, reachability_budget))
     except CdpError as exc:
+        if reachability_budget < 1.0:
+            raise AuthError(
+                SERVICE_FAILURE,
+                "quiet login probe has insufficient reachability budget",
+            ) from exc
         raise AuthError(
             BROWSER_UNAVAILABLE, "the headed Chrome is unreachable"
         ) from exc

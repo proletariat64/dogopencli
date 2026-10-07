@@ -168,6 +168,25 @@ def test_fetch_timeout_is_not_proof_of_browser_loss(setup, monkeypatch, elapsed)
     assert transport.session.closed
 
 
+@pytest.mark.parametrize("budget", [0.001, 0.5, 0.999])
+def test_initial_short_reachability_timeout_is_inconclusive(setup, monkeypatch, budget):
+    env, transport = setup
+    versions = []
+    monkeypatch.setattr("dogopencli.browser.probe.monotonic", lambda: 0.0)
+
+    def version(*, timeout=None):
+        versions.append(timeout)
+        raise cdp.CdpError("healthy Chrome cannot reply within this short budget")
+
+    monkeypatch.setattr(transport, "version", version)
+    with pytest.raises(AuthError) as caught:
+        probe_login_completion(env, timeout=budget)
+    assert caught.value.code == "service_failure"
+    assert versions == [budget]
+    assert transport.running
+    assert transport.expressions == []
+
+
 def test_browser_loss_aborts_wait(setup):
     env, transport = setup
     transport.running = False
