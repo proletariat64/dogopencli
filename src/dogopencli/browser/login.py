@@ -49,6 +49,11 @@ POLL_INTERVAL_SECONDS = 5.0
 HANDOFF_SETTLE_SECONDS = 20.0
 MAX_HANDOFF_ATTEMPTS = 3
 
+# A ready document can outlive a transient service outage. Recheck it only
+# twice, with backoff, while confirmed auth redirects stay document-gated.
+MAX_CANDIDATE_SERVICE_ATTEMPTS = 3
+CANDIDATE_SERVICE_RETRY_SECONDS = 5.0
+
 #: Why a GUI is mandatory: the company OAuth flow cannot be completed from a
 #: copied authorization URL, so the headed login on this host IS the recovery
 #: path.
@@ -119,6 +124,8 @@ def _human_login(
     attempts = 0
     rejected_candidates: set[tuple[str, float]] = set()
     candidate_failure = AUTH_REQUIRED
+    candidate_service_attempts: dict[tuple[str, float], int] = {}
+    candidate_retry_after: dict[tuple[str, float], float] = {}
     while True:
         try:
             candidate = _wait_for_human_auth(
@@ -126,6 +133,7 @@ def _human_login(
                 deadline=deadline,
                 rejected_candidates=rejected_candidates,
                 last_failure=candidate_failure,
+                candidate_retry_after=candidate_retry_after,
             )
             if environment.startup_url == LIQUIDITY_STARTUP_URL:
                 sleep(min(HANDOFF_SETTLE_SECONDS, max(0.0, deadline - monotonic())))
@@ -158,9 +166,19 @@ def _human_login(
         except AuthError as exc:
             if exc.code in {AUTH_REQUIRED, SERVICE_FAILURE} and monotonic() < deadline:
                 if candidate is not None:
-                    rejected_candidates.add(candidate)
                     candidate_failure = exc.code
-                continue  # require a new document before another verification
+                    if exc.code == AUTH_REQUIRED:
+                        rejected_candidates.add(candidate)
+                    else:
+                        count = candidate_service_attempts.get(candidate, 0) + 1
+                        candidate_service_attempts[candidate] = count
+                        if count >= MAX_CANDIDATE_SERVICE_ATTEMPTS:
+                            rejected_candidates.add(candidate)
+                        else:
+                            candidate_retry_after[candidate] = monotonic() + (
+                                CANDIDATE_SERVICE_RETRY_SECONDS * 2 ** (count - 1)
+                            )
+                continue  # quiet wait until a new document or a bounded retry
             raise
         print(
             "login: headed authentication verified; switching back to headless",
@@ -204,6 +222,7 @@ def _wait_for_human_auth(
     deadline: float,
     rejected_candidates: set[tuple[str, float]] | None = None,
     last_failure: str = AUTH_REQUIRED,
+    candidate_retry_after: dict[tuple[str, float], float] | None = None,
 ) -> tuple[str, float] | None:
     """Poll quietly for a completion signal, then let the caller verify auth.
 
@@ -224,10 +243,16 @@ def _wait_for_human_auth(
         remaining = deadline - monotonic()
         if remaining > 0:
             try:
+                blocked_candidates = set(rejected_candidates or ())
+                blocked_candidates.update(
+                    candidate
+                    for candidate, retry_at in (candidate_retry_after or {}).items()
+                    if monotonic() < retry_at
+                )
                 candidate = probe_login_completion(
                     environment,
                     timeout=min(15.0, remaining),
-                    rejected_candidates=rejected_candidates,
+                    rejected_candidates=blocked_candidates,
                 )
             except AuthError as exc:
                 if exc.code == BROWSER_UNAVAILABLE:
