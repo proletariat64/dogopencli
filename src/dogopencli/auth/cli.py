@@ -14,6 +14,7 @@ import contextlib
 import json
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -68,22 +69,32 @@ def resolve_config_dir(explicit: str | None) -> Path:
 
 
 def dispatch(spec: CommandSpec, args: argparse.Namespace) -> Result:
-    environment = environment_mod.resolve_environment(config_file=args.config_file)
-    if spec.handler == "auth.check":
-        domain = getattr(args, "domain", None) or "payment"
-        try:
-            startup_url = environment_mod.STARTUP_URLS[domain]
-        except KeyError as exc:
-            raise invalid(f"unknown auth check domain: {domain}") from exc
-        return Result(check_authentication(environment, startup_url=startup_url))
-    if spec.handler == "login":
-        return Result(login(environment, timeout_seconds=args.timeout_seconds))
+    domain = getattr(args, "domain", None) or "payment"
+    startup_url = environment_mod.STARTUP_URLS[domain]
+    try:
+        environment = environment_mod.resolve_environment(config_file=args.config_file)
+        if spec.handler in {"login", "auth.check"}:
+            environment = replace(environment, startup_url=startup_url)
+        if spec.handler == "auth.check":
+            return Result(check_authentication(environment))
+        if spec.handler == "login":
+            return Result(login(environment, timeout_seconds=args.timeout_seconds))
+    except AuthError as exc:
+        if spec.handler in {"login", "auth.check"}:
+            exc.details = {**exc.details, "domain": domain, "startup_url": startup_url}
+            if domain == "liquidity":
+                exc.message = exc.message.replace(
+                    "dogopencli login", "dogopencli login --domain liquidity"
+                )
+        raise
     if spec.handler == "logout":
         return Result(logout(environment))
     raise invalid(f"Unknown auth action: {spec.handler}")
 
 
 def _next_steps(exc: AuthError, command: str) -> list[str]:
+    domain = exc.details.get("domain", "payment")
+    selector = " --domain liquidity" if domain == "liquidity" else ""
     steps = list(exc.next)
     if steps:
         return steps
@@ -93,8 +104,8 @@ def _next_steps(exc: AuthError, command: str) -> list[str]:
         return ["dogopencli " + command.replace(".", " ") + " --help"]
     if exc.code in {AUTH_REQUIRED, BROWSER_UNAVAILABLE}:
         return [
-            "Run dogopencli login to restore the dedicated "
-            "browser/authentication, then re-run dogopencli auth check."
+            f"Run dogopencli login{selector} to restore the dedicated "
+            f"browser/authentication, then re-run dogopencli auth check{selector}."
         ]
     if exc.code == BROWSER_BUSY:
         return ["Retry after the active data work or browser mutation finishes."]
@@ -107,7 +118,8 @@ def _next_steps(exc: AuthError, command: str) -> list[str]:
         ]
     if exc.code == SERVICE_FAILURE:
         return [
-            "Retry dogopencli auth check; if it persists, check the payment "
+            f"Retry dogopencli auth check{selector}; if it persists, "
+            f"check the {domain} "
             "platform service state."
         ]
     if exc.code == CONFIG_INVALID:
@@ -139,6 +151,7 @@ def main(argv: list[str], command_hint: str | None = None) -> int:
     hint = SPECS.get((command_hint,)) if command_hint else None
     spec = hint if hint is not None else SPECS[()]
     format = "json"
+    domain_context = {}
     try:
         global_args, tokens = globals_parser().parse_known_args(values)
         format = global_args.format or "json"
@@ -162,6 +175,12 @@ def main(argv: list[str], command_hint: str | None = None) -> int:
             )
             return 0
         args = leaf_parser(spec).parse_args(remainder, namespace=global_args)
+        if spec.handler in {"login", "auth.check"}:
+            domain = args.domain
+            domain_context = {
+                "domain": domain,
+                "startup_url": environment_mod.STARTUP_URLS[domain],
+            }
         try:
             args.config_file = config_mod.config_path(args.config_dir)
         except config_mod.CliError as exc:
@@ -177,12 +196,15 @@ def main(argv: list[str], command_hint: str | None = None) -> int:
         emit(spec.command, result, None, format)
         return result.exit_code
     except (AuthError, OSError, ValueError) as exc:
-        emit(spec.command, Result(exit_code=1), error_dict(exc, spec.command), format)
+        error = error_dict(exc, spec.command)
+        error["details"] = {**error["details"], **domain_context}
+        emit(spec.command, Result(exit_code=1), error, format)
         return 1
     except KeyboardInterrupt:
         error = error_dict(
             AuthError("interrupted", "Command interrupted"), spec.command
         )
+        error["details"] = {**error["details"], **domain_context}
         emit(spec.command, Result(exit_code=130), error, format)
         return 130
     except Exception as exc:

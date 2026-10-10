@@ -346,6 +346,8 @@ def test_auth_expiry_maps_to_typed_error(setup, run_cli):
     )
     assert code == 1
     assert parse(out)["error"]["code"] == "AUTH_REQUIRED"
+    assert "dogopencli login --domain liquidity" in parse(out)["error"]["message"]
+    assert "dogopencli auth check --domain liquidity" in parse(out)["error"]["message"]
 
 
 def test_products_single_response_route(setup, run_cli):
@@ -1192,3 +1194,16 @@ def test_eviction_keeps_newer_complete_day_readable_offline(
     assert envelope["meta"]["complete"] is True
     assert envelope["meta"]["stale"] is False
     assert setup.state.transports == []
+
+
+def test_liquidity_initial_auth_failure_exposes_domain_login(setup, run_cli):
+    route_probes(setup.state, (SSO_URL,))
+    code, out, _ = run_cli(
+        ["liquidity", "investment", "holdings", "list", "--date", "20261001", "--live"]
+    )
+    assert code == 1
+    error = parse(out)["error"]
+    assert error["code"] == "AUTH_REQUIRED"
+    assert "dogopencli login --domain liquidity" in error["message"]
+    assert "dogopencli auth check --domain liquidity" in error["message"]
+    assert setup.state.business_requests == []
