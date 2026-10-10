@@ -212,7 +212,7 @@ def main(argv: list[str], command_hint: str | None = None) -> int:
             "code": "internal_error",
             "message": "Unexpected command failure",
             "retryable": False,
-            "details": {"exception_type": type(exc).__name__},
+            "details": {"exception_type": type(exc).__name__, **domain_context},
             "next": [],
         }
         emit(spec.command, Result(exit_code=1), error, format)

@@ -261,7 +261,10 @@ LIQUIDITY_CANDIDATE_STABILITY_SECONDS = 0.25
 
 
 def _liquidity_completion(
-    environment: BrowserEnvironment, *, timeout: float
+    environment: BrowserEnvironment,
+    *,
+    timeout: float,
+    rejected_candidates: set[tuple[str, float]] | None = None,
 ) -> tuple[str, float]:
     """Observe a stable returned entry document; it is never an auth verdict.
 
@@ -333,7 +336,9 @@ def _liquidity_completion(
                             break
                         sleep(LIQUIDITY_CANDIDATE_STABILITY_SECONDS)
                 if len(observations) == 2 and observations[0] == observations[1]:
-                    return target["webSocketDebuggerUrl"], observations[1]
+                    candidate = (target["webSocketDebuggerUrl"], observations[1])
+                    if not rejected_candidates or candidate not in rejected_candidates:
+                        return candidate
             except CdpError:
                 # A lost/transitioning document does not hide another ready tab.
                 pass
@@ -361,7 +366,10 @@ def _liquidity_completion(
 
 
 def probe_login_completion(
-    environment: BrowserEnvironment, *, timeout: float = 15.0
+    environment: BrowserEnvironment,
+    *,
+    timeout: float = 15.0,
+    rejected_candidates: set[tuple[str, float]] | None = None,
 ) -> tuple[str, float] | None:
     """Return on a completion candidate; otherwise raise a wait classification.
 
@@ -370,7 +378,9 @@ def probe_login_completion(
     back to navigations during human input, even on CORS/network failure.
     """
     if environment.startup_url == LIQUIDITY_STARTUP_URL:
-        return _liquidity_completion(environment, timeout=timeout)
+        return _liquidity_completion(
+            environment, timeout=timeout, rejected_candidates=rejected_candidates
+        )
     if environment.startup_url != PAYMENT_STARTUP_URL:
         raise AuthError(
             SERVICE_FAILURE, "quiet login probe has no verified entry contract"

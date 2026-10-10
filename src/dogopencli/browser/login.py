@@ -102,6 +102,11 @@ def _human_login(
 ) -> dict[str, Any]:
     """Headed human SSO verified by probes, then a verified headless handoff."""
     deadline = monotonic() + timeout_seconds
+    recovery_command = "dogopencli login" + (
+        " --domain liquidity"
+        if environment.startup_url == LIQUIDITY_STARTUP_URL
+        else ""
+    )
     print(
         "login: resuming the existing headed Chrome for human company SSO"
         if resume
@@ -139,7 +144,7 @@ def _human_login(
             print(
                 "dogopencli login interrupted while waiting for human "
                 "authentication; Chrome was left running as-is and coordination "
-                "was released; re-run dogopencli login to recover",
+                f"was released; re-run {recovery_command} to recover",
                 file=sys.stderr,
             )
             raise
@@ -220,7 +225,9 @@ def _wait_for_human_auth(
         if remaining > 0:
             try:
                 candidate = probe_login_completion(
-                    environment, timeout=min(15.0, remaining)
+                    environment,
+                    timeout=min(15.0, remaining),
+                    rejected_candidates=rejected_candidates,
                 )
             except AuthError as exc:
                 if exc.code == BROWSER_UNAVAILABLE:

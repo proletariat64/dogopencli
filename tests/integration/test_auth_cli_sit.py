@@ -818,13 +818,15 @@ def test_liquidity_interrupt_preserves_headed_domain_context(
         raise KeyboardInterrupt
 
     monkeypatch.setattr(login_mod, "sleep", interrupt)
-    code, value, _ = invoke(
+    code, value, err = invoke(
         run_cli, [*auth_setup.argv, "login", "--domain", "liquidity"]
     )
     assert code == 130
     assert value["error"]["details"]["domain"] == "liquidity"
     assert state.mode == "headed"
     assert locks_released(auth_setup.profile)
+
+    assert "re-run dogopencli login --domain liquidity" in err
 
 
 def test_liquidity_text_and_help_report_domain(run_cli, auth_setup):

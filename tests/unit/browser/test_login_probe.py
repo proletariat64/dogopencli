@@ -444,3 +444,52 @@ def test_liquidity_completed_other_tab_is_not_hidden_by_old_tab(setup, monkeypat
     candidate = probe_login_completion(env)
     assert candidate == ("ws://fake/completed", 123)
     assert len(sessions) == 2 and all(session.closed for session in sessions)
+
+
+def test_liquidity_rejected_old_ready_tab_does_not_hide_new_candidate(
+    setup, monkeypatch
+):
+    from dataclasses import replace
+
+    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+
+    env, transport = setup
+    env = replace(env, startup_url=LIQUIDITY_STARTUP_URL)
+    transport.targets = [
+        {
+            "type": "page",
+            "url": LIQUIDITY_STARTUP_URL,
+            "webSocketDebuggerUrl": "ws://fake/old",
+        },
+        {
+            "type": "page",
+            "url": LIQUIDITY_STARTUP_URL,
+            "webSocketDebuggerUrl": "ws://fake/completed",
+        },
+    ]
+    sessions = []
+
+    class DocumentSession(Session):
+        def __init__(self, transport, ws_url):
+            super().__init__(transport)
+            self.ws_url = ws_url
+
+        def evaluate(self, expression, timeout):
+            return {
+                "origin": "https://iliquidity.alipay.com",
+                "path": "/GUAPW3SG/menu/PortfolioMgmt",
+                "ready_state": "complete",
+                "document_id": 111 if self.ws_url.endswith("old") else 123,
+            }
+
+    def attach(ws_url, *, timeout):
+        session = DocumentSession(transport, ws_url)
+        sessions.append(session)
+        return session
+
+    monkeypatch.setattr(transport, "open_session", attach)
+    candidate = probe_login_completion(
+        env, rejected_candidates={("ws://fake/old", 111)}
+    )
+    assert candidate == ("ws://fake/completed", 123)
+    assert len(sessions) == 2 and all(session.closed for session in sessions)
