@@ -814,7 +814,7 @@ path = "/absolute/path/to/channel-dataset"
 
 ## 未完成的外部验收依赖
 
-- Liquidity 专用登录（[#145](https://github.com/proletariat64/dogopencli/issues/145)）的人工 SSO 与无头复验 UAT 待完成。UAT 使用独立 Chrome/profile 和未占用端口，禁止 9222、9223、9330–9340 及任何活跃会话端口；不得复制生产 cookies/profile。
+- Liquidity 专用登录（[#145](https://github.com/proletariat64/dogopencli/issues/145)）的独立生产认证 UAT 于 2026-10-11 通过 4/4：人工 SSO 与自动 headless 切换、认证检查、重复登录及 Payment 认证检查。共享 OAuth 保持认证的实际行为由用户接受，未人为构造服务端 Liquidity 过期。UAT 使用独立 Chrome/profile 和未占用端口，禁止 9222、9223、9330–9340 及任何活跃会话端口；不得复制生产 cookies/profile。
 - 付款 Channel 真实全量 UAT 仍待后端分页故障修复（[#1](https://github.com/proletariat64/dogopencli/issues/1)）；离线替代集不代表生产全量。
 - 认证 UAT 的 `logout` 范围仍需单独确认；当前规则查询验收复用已有会话，未执行登出。
 - 安静登录轮询已在独立 profile 验证未登录态及连续 fetch 不改变标签页/文档/测试输入，并完成真实人工 SSO、原有认证复验及 headed → headless 持久化闭环；用户确认闪屏消失。另一次全新 profile 验证只有一个可见入口页，登录后 payment/liquidity 认证检查及 payment cost、collection cost、liquidity cash balances 代表性只读查询成功。代表性查询不等于所有命令或全量 refresh 已验收。
