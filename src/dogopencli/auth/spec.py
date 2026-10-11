@@ -138,16 +138,28 @@ COMMANDS = (
             "destructive": False,
         },
         errors=("auth_required", "browser_unavailable", "service_failure"),
-        examples=("dogopencli auth check",),
+        examples=(
+            "dogopencli auth check",
+            "dogopencli auth check --domain liquidity --format text",
+        ),
         next=("dogopencli help login", "dogopencli help payment"),
         handler="auth.check",
     ),
     CommandSpec(
         ("login",),
         "Restore the dedicated login: verify headless authentication; on "
-        "expiry, open headed Chrome for the human company SSO, wait for "
+        "expiry in the selected domain, open headed Chrome for the human company "
+        "SSO, wait for "
         "verified completion, then switch back to headless and re-verify.",
-        options=(TIMEOUT_SECONDS,),
+        options=(
+            _option(
+                "domain",
+                "Application domain to restore in the dedicated profile.",
+                choices=("payment", "liquidity"),
+                default="payment",
+            ),
+            TIMEOUT_SECONDS,
+        ),
         effects={
             "mutates": True,
             "network": True,
@@ -162,7 +174,11 @@ COMMANDS = (
             "service_failure",
         ),
         handler="login",
-        examples=("dogopencli login", "dogopencli login --timeout-seconds 600"),
+        examples=(
+            "dogopencli login",
+            "dogopencli login --domain liquidity",
+            "dogopencli login --timeout-seconds 600",
+        ),
         next=("dogopencli auth check", "dogopencli help refresh"),
     ),
     CommandSpec(

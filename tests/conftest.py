@@ -301,15 +301,13 @@ def run_cli(
 
 @pytest.fixture(autouse=True)
 def _fast_entry_stability_window(monkeypatch: pytest.MonkeyPatch):
-    """Use short, equal timings for scripted browser responses.
-
-    Equal timings avoid consuming extra scripted samples during the entry
-    confirmation window. Timing-sensitive tests set their cadence explicitly.
-    """
+    """Shrink the probe's entry-stability window and poll interval in tests;
+    both are bounded waits, not part of any verdict. Tests exercising the
+    window set it explicitly."""
     from dogopencli.browser import cdp
 
-    monkeypatch.setattr(cdp, "ENTRY_STABILITY_SECONDS", 0.001)
-    monkeypatch.setattr(cdp, "POLL_INTERVAL_SECONDS", 0.001)
+    monkeypatch.setattr(cdp, "ENTRY_STABILITY_SECONDS", 0.01)
+    monkeypatch.setattr(cdp, "POLL_INTERVAL_SECONDS", 0.01)
 
 
 @pytest.fixture

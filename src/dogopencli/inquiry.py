@@ -7,7 +7,7 @@ from pathlib import Path
 from .browser import errors as auth_errors
 from .browser.cdp import CdpTransport, make_transport, url_origin
 from .browser.coordination import acquire_browser_control
-from .browser.environment import resolve_environment
+from .browser.environment import LIQUIDITY_STARTUP_URL, resolve_environment
 from .browser.errors import AuthError
 from .browser.probe import check_authentication, probe_entry
 from .errors import AUTH_REQUIRED, BROWSER_UNAVAILABLE, LOCKED, CliError
@@ -67,5 +67,27 @@ def inquiry_session(
             check_authentication(environment, startup_url=startup_url)
             cdp = make_transport(environment.cdp_url)
         except AuthError as error:
-            raise _map_auth_error(error) from error
-        yield InquirySession(cdp, startup_url or environment.startup_url, resources)
+            mapped = _map_auth_error(error)
+            if startup_url == LIQUIDITY_STARTUP_URL and mapped.code in {
+                AUTH_REQUIRED,
+                BROWSER_UNAVAILABLE,
+            }:
+                mapped.message += (
+                    "; run dogopencli login --domain liquidity; "
+                    "then dogopencli auth check --domain liquidity"
+                )
+            raise mapped from error
+        try:
+            yield InquirySession(cdp, startup_url or environment.startup_url, resources)
+        except CliError as error:
+            if startup_url == LIQUIDITY_STARTUP_URL and error.code in {
+                AUTH_REQUIRED,
+                BROWSER_UNAVAILABLE,
+            }:
+                error.message = error.message.replace(
+                    "dogopencli login", "dogopencli login --domain liquidity"
+                )
+                if "dogopencli login --domain liquidity" not in error.message:
+                    error.message += "; run dogopencli login --domain liquidity"
+                error.message += "; then dogopencli auth check --domain liquidity"
+            raise

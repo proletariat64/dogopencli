@@ -49,15 +49,20 @@ dogopencli refresh collection account-isolation
 dogopencli collection account-isolation list --require-fresh --require-complete
 ```
 
-`login` 打开可见 Chrome，等待人工完成 SSO，随后切回无头模式并复验会话。
+`login` 默认检查 Payment；`login --domain liquidity` 检查并恢复 Liquidity。
+两者使用同一套已配置的专用 Chrome profile，普通浏览器登录不能恢复此 profile。
+目标域已有有效的无头会话时直接成功；需要登录时打开可见 Chrome，等待人工
+完成 SSO，随后切回无头模式并复验目标域会话。结果明确标识实际检查的 `domain`。
 每次新启动 Chrome 都复用并整理初始页面，只保留一个入口页，不再额外追加
 入口标签页；模式切换通过正常关闭 Chrome 持久化 cookie 和已关闭标签页记录。
 页面整理仅发生在新启动阶段，不在人工输入期间执行；同模式复用不会整理页面。
-人工等待期间仅在现有页面里 fetch 已核实的只读用户初始化接口，不新建/关闭
+Payment 人工等待期间仅在现有页面里 fetch 已核实的只读用户初始化接口，不新建/关闭
 标签页、不导航表单，也不跟随重定向创建新的 SSO 页面。HTTP 200 本身不代表
 成功：用户初始化响应仅作为完成信号，仍需原有域入口导航验证及无头复验；
 网络/CORS/响应解析失败会继续
 等待并在超时后报不确定状态，不退回会打扰输入的导航轮询。
+Liquidity 人工等待只观察现有入口页面的稳定回归和就绪状态，不调用 Payment
+用户信息接口；此观察仅是完成候选，成功仍需 Liquidity 入口验证和无头复验。
 默认等待 600 秒，可用 `--timeout-seconds` 调整。`auth check` 只检查现有会话，
 不会启动或修复浏览器。
 
@@ -202,6 +207,7 @@ kind = "cdp"
 
 ```bash
 dogopencli help liquidity --format text
+dogopencli login --domain liquidity
 dogopencli auth check --domain liquidity
 dogopencli refresh liquidity investment holdings --date 20261001
 dogopencli liquidity investment holdings list --date 20261001
@@ -798,7 +804,7 @@ path = "/absolute/path/to/channel-dataset"
 | `CACHE_MISS` | 执行该能力的刷新命令；来源身份改变也需要刷新 |
 | `CACHE_STALE` | 刷新，或明确允许旧数据后移除 `--require-fresh` |
 | `INCOMPLETE_RESULT` | 检查覆盖或详情拒绝；VA 规则刷新可能已发布部分快照 |
-| `AUTH_REQUIRED` / `BROWSER_UNAVAILABLE` | 执行 `login` 恢复专用会话；启动失败时检查 Chrome 日志 |
+| `AUTH_REQUIRED` / `BROWSER_UNAVAILABLE` | 执行 `login` 恢复专用会话；Liquidity 使用 `login --domain liquidity`；启动失败时检查 Chrome 日志 |
 | `LOCKED` | 等待当前刷新或浏览器操作结束后重试 |
 | `INVALID_RESPONSE` | 后端响应不符合已验证契约；保留错误信息并排查，勿视为空结果 |
 | `SOURCE_SCOPE_UNAVAILABLE` / `LIVE_SOURCE_UNAVAILABLE` | 检查渠道替代集的范围及实时查询限制 |
@@ -808,6 +814,7 @@ path = "/absolute/path/to/channel-dataset"
 
 ## 未完成的外部验收依赖
 
+- Liquidity 专用登录（[#145](https://github.com/proletariat64/dogopencli/issues/145)）的人工 SSO 与无头复验 UAT 待完成。UAT 使用独立 Chrome/profile 和未占用端口，禁止 9222、9223、9330–9340 及任何活跃会话端口；不得复制生产 cookies/profile。
 - 付款 Channel 真实全量 UAT 仍待后端分页故障修复（[#1](https://github.com/proletariat64/dogopencli/issues/1)）；离线替代集不代表生产全量。
 - 认证 UAT 的 `logout` 范围仍需单独确认；当前规则查询验收复用已有会话，未执行登出。
 - 安静登录轮询已在独立 profile 验证未登录态及连续 fetch 不改变标签页/文档/测试输入，并完成真实人工 SSO、原有认证复验及 headed → headless 持久化闭环；用户确认闪屏消失。另一次全新 profile 验证只有一个可见入口页，登录后 payment/liquidity 认证检查及 payment cost、collection cost、liquidity cash balances 代表性只读查询成功。代表性查询不等于所有命令或全量 refresh 已验收。

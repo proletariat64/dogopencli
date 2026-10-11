@@ -26,7 +26,7 @@ not an authentication verdict; navigation and headless checks still decide.
 
 import json
 import math
-from time import monotonic
+from time import monotonic, sleep
 from typing import Any
 from urllib.parse import urlparse
 
@@ -38,7 +38,12 @@ from .cdp import (
     probe_final_url,
     url_origin,
 )
-from .environment import PAYMENT_STARTUP_URL, BrowserEnvironment
+from .environment import (
+    LIQUIDITY_STARTUP_URL,
+    PAYMENT_STARTUP_URL,
+    STARTUP_URLS,
+    BrowserEnvironment,
+)
 from .errors import (
     AUTH_REQUIRED,
     BROWSER_UNAVAILABLE,
@@ -153,7 +158,12 @@ def check_authentication(
     ``dogopencli login`` for recovery.
     """
     entry_url = environment.startup_url if startup_url is None else startup_url
-    guidance = ["dogopencli login"]
+    domain = next(
+        (name for name, url in STARTUP_URLS.items() if url == entry_url), None
+    )
+    guidance = [
+        "dogopencli login" + (" --domain liquidity" if domain == "liquidity" else "")
+    ]
     details = {"cdp_url": environment.cdp_url, "launch_command": guidance}
     transport = make_transport(environment.cdp_url)
     try:
@@ -174,6 +184,7 @@ def check_authentication(
         )
     final_origin = probe_entry(transport, entry_url, timeout=timeout)
     return {
+        "domain": domain,
         "authenticated": True,
         "healthy": True,
         "cdp_url": environment.cdp_url,
@@ -241,15 +252,135 @@ _FETCH_SIGNAL = r"""
 """
 
 
+# Observe only the existing document, without requests or SSO URL parameters.
+_LIQUIDITY_SIGNAL = """
+(() => ({origin: location.origin, path: location.pathname,
+         ready_state: document.readyState, document_id: performance.timeOrigin}))()
+"""
+LIQUIDITY_CANDIDATE_STABILITY_SECONDS = 0.25
+
+
+def _liquidity_completion(
+    environment: BrowserEnvironment,
+    *,
+    timeout: float,
+    rejected_candidates: set[tuple[str, float]] | None = None,
+) -> tuple[str, float]:
+    """Observe a stable returned entry document; it is never an auth verdict.
+
+    A still-open verified SSO/login tab blocks candidates, so an old entry tab
+    cannot interrupt human role/MFA input. Ambiguous tabs remain untouched.
+    """
+    deadline = monotonic() + timeout
+    transport = make_transport(environment.cdp_url)
+    session = None
+    try:
+        transport.version(timeout=max(0.001, deadline - monotonic()))
+    except CdpError as exc:
+        code = BROWSER_UNAVAILABLE if deadline - monotonic() >= 1.0 else SERVICE_FAILURE
+        raise AuthError(
+            code,
+            "the headed Chrome is unreachable or the reachability budget is exhausted",
+        ) from exc
+    try:
+        targets = transport.list_targets(timeout=max(0.001, deadline - monotonic()))
+        pages = [
+            t
+            for t in targets
+            if t.get("type") == "page" and isinstance(t.get("url"), str)
+        ]
+        if any(is_login_landing(t["url"]) for t in pages):
+            raise AuthError(
+                SERVICE_FAILURE,
+                "waiting for existing SSO/login tabs to return to Liquidity",
+            )
+        eligible = [
+            t
+            for t in pages
+            if url_origin(t["url"]) == url_origin(LIQUIDITY_STARTUP_URL)
+            and isinstance(t.get("webSocketDebuggerUrl"), str)
+        ]
+        for target in eligible:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
+            session = transport.open_session(
+                target["webSocketDebuggerUrl"], timeout=remaining
+            )
+            observations = []
+            try:
+                for sample in range(2):
+                    remaining = deadline - monotonic()
+                    if remaining <= 0:
+                        break
+                    observation = session.evaluate(_LIQUIDITY_SIGNAL, remaining)
+                    if not (
+                        isinstance(observation, dict)
+                        and observation.get("origin")
+                        == url_origin(LIQUIDITY_STARTUP_URL)
+                        and observation.get("path")
+                        == urlparse(LIQUIDITY_STARTUP_URL).path
+                        and observation.get("ready_state")
+                        in {"interactive", "complete"}
+                        and type(observation.get("document_id")) in {int, float}
+                        and math.isfinite(observation["document_id"])
+                        and observation["document_id"] > 0
+                    ):
+                        break
+                    observations.append(observation["document_id"])
+                    if sample == 0:
+                        if (
+                            deadline - monotonic()
+                            <= LIQUIDITY_CANDIDATE_STABILITY_SECONDS
+                        ):
+                            break
+                        sleep(LIQUIDITY_CANDIDATE_STABILITY_SECONDS)
+                if len(observations) == 2 and observations[0] == observations[1]:
+                    candidate = (target["webSocketDebuggerUrl"], observations[1])
+                    if not rejected_candidates or candidate not in rejected_candidates:
+                        return candidate
+            except CdpError:
+                # A lost/transitioning document does not hide another ready tab.
+                pass
+            finally:
+                session.close()
+                session = None
+        raise AuthError(
+            SERVICE_FAILURE, "waiting for a stable existing Liquidity entry document"
+        )
+    except CdpError as exc:
+        remaining = deadline - monotonic()
+        if remaining >= 1.0:
+            try:
+                transport.version(timeout=remaining)
+            except CdpError:
+                raise AuthError(
+                    BROWSER_UNAVAILABLE, "the headed Chrome became unreachable"
+                ) from exc
+        raise AuthError(
+            SERVICE_FAILURE, "quiet Liquidity observation is temporarily unavailable"
+        ) from exc
+    finally:
+        if session is not None:
+            session.close()
+
+
 def probe_login_completion(
-    environment: BrowserEnvironment, *, timeout: float = 15.0
-) -> None:
+    environment: BrowserEnvironment,
+    *,
+    timeout: float = 15.0,
+    rejected_candidates: set[tuple[str, float]] | None = None,
+) -> tuple[str, float] | None:
     """Return on a completion candidate; otherwise raise a wait classification.
 
     Attach only to existing payment/login page targets. A transitioning or
     closed target is retryable while Chrome remains reachable. Never fall
     back to navigations during human input, even on CORS/network failure.
     """
+    if environment.startup_url == LIQUIDITY_STARTUP_URL:
+        return _liquidity_completion(
+            environment, timeout=timeout, rejected_candidates=rejected_candidates
+        )
     if environment.startup_url != PAYMENT_STARTUP_URL:
         raise AuthError(
             SERVICE_FAILURE, "quiet login probe has no verified entry contract"

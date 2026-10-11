@@ -1,5 +1,7 @@
 /tmp/
 /.code-review-graph/
+/.qoder/
+/docs/research/
 /.venv/
 __pycache__/
 *.py[cod]

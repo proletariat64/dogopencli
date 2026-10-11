@@ -557,3 +557,455 @@ def test_auth_uses_custom_config_filename(run_cli, auth_setup, monkeypatch):
     code, value, _ = invoke(run_cli, ["auth", "check"])
     assert code == 0
     assert value["result"]["profile"] == str(auth_setup.profile)
+
+
+def test_liquidity_login_reuses_authenticated_target_domain(run_cli, auth_setup):
+    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+
+    auth_setup.state.href = LIQUIDITY_STARTUP_URL
+    code, value, _ = invoke(
+        run_cli, [*auth_setup.argv, "login", "--domain", "liquidity"]
+    )
+    assert code == 0
+    assert value["result"]["domain"] == "liquidity"
+    assert value["result"]["probe"]["startup_url"] == LIQUIDITY_STARTUP_URL
+    assert auth_setup.state.launches == []
+    assert all(
+        url == LIQUIDITY_STARTUP_URL
+        for t in auth_setup.state.transports
+        for url in t.created
+    )
+
+
+def test_liquidity_auth_failure_keeps_domain_recovery_commands(run_cli, auth_setup):
+    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+
+    auth_setup.state.href = SSO_URL
+    code, value, _ = invoke(
+        run_cli, [*auth_setup.argv, "auth", "check", "--domain", "liquidity"]
+    )
+    assert code == 1
+    assert value["error"]["details"]["domain"] == "liquidity"
+    assert value["error"]["details"]["startup_url"] == LIQUIDITY_STARTUP_URL
+    assert any(
+        "login --domain liquidity" in step and "auth check --domain liquidity" in step
+        for step in value["error"]["next"]
+    )
+
+
+def install_domain_browser(auth_setup):
+    from urllib.parse import urlparse
+
+    from fake_cdp import FakeTransport
+
+    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+
+    state = auth_setup.state
+    state.entries = []
+    state.launch_environments = []
+    state.liquidity_authenticated = False
+    state.human_observations = 0
+    state.complete_after = 2
+    state.requested_url = PAYMENT_URL
+    state.headless_expired = False
+    state.payment_expired = False
+    state.document_id = 1
+    state.quiet_browser_loss = False
+
+    class DomainTransport(FakeTransport):
+        def new_target(self, url, *, timeout=None):
+            state.requested_url = url
+            state.entries.append(url)
+            return super().new_target(url, timeout=timeout)
+
+        def list_targets(self, *, timeout=None):
+            return [
+                {
+                    "type": "page",
+                    "url": LIQUIDITY_STARTUP_URL,
+                    "webSocketDebuggerUrl": "ws://cdp/liquidity-human",
+                }
+            ]
+
+        def evaluate_probe(self, expression):
+            if "performance.timeOrigin" in expression:
+                if state.quiet_browser_loss:
+                    state.running = False
+                    raise cdp.CdpError("browser exited")
+                self.expressions.append(expression)
+                state.human_observations += 1
+                complete = state.human_observations >= state.complete_after
+                if complete:
+                    state.liquidity_authenticated = True
+                parsed = urlparse(LIQUIDITY_STARTUP_URL if complete else SSO_URL)
+                return {
+                    "origin": f"{parsed.scheme}://{parsed.netloc}",
+                    "path": parsed.path,
+                    "ready_state": "complete",
+                    "document_id": state.document_id,
+                }
+            return super().evaluate_probe(expression)
+
+    def href(browser):
+        if browser.requested_url == PAYMENT_URL:
+            return SSO_URL if browser.payment_expired else PAYMENT_URL
+        if browser.liquidity_authenticated and not (
+            browser.headless_expired and browser.mode == "headless"
+        ):
+            return LIQUIDITY_STARTUP_URL
+        return SSO_URL
+
+    state.href = href
+
+    def factory(url):
+        transport = DomainTransport(state)
+        state.transports.append(transport)
+        return transport
+
+    cdp.set_transport_factory(factory)
+    original_launch = state.launch
+
+    def launch(environment, mode, *, control_held=False):
+        state.launch_environments.append(environment)
+        return original_launch(environment, mode, control_held=control_held)
+
+    return state, launch
+
+
+def test_liquidity_login_payment_valid_requires_liquidity_human_sso(
+    run_cli, auth_setup, fast_clock, monkeypatch
+):
+    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+
+    state, launch = install_domain_browser(auth_setup)
+    monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
+    code, value, _ = invoke(run_cli, [*auth_setup.argv, "login"])
+    assert code == 0
+    assert value["result"]["domain"] == "payment"
+    assert state.launches == []
+    state.entries.clear()
+    code, value, _ = invoke(
+        run_cli, [*auth_setup.argv, "login", "--domain", "liquidity"]
+    )
+    assert code == 0
+    assert state.launches == ["headed", "headless"]
+    assert state.entries == [LIQUIDITY_STARTUP_URL] * 3
+    assert state.human_observations >= 3
+    assert all(
+        env.startup_url == LIQUIDITY_STARTUP_URL and env.profile == auth_setup.profile
+        for env in state.launch_environments
+    )
+    assert all(
+        "getUserInfomation" not in expr
+        for t in state.transports
+        for expr in t.expressions
+    )
+    assert value["result"]["domain"] == "liquidity"
+    assert value["result"]["mode"] == "headless"
+    assert list(auth_setup.tmp_path.rglob("*.sqlite3")) == []
+
+
+def test_liquidity_headless_handoff_failure_restores_headed(
+    run_cli, auth_setup, fast_clock, monkeypatch
+):
+    state, launch = install_domain_browser(auth_setup)
+    state.complete_after = 1
+    state.headless_expired = True
+    monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
+    monkeypatch.setattr(login_mod, "MAX_HANDOFF_ATTEMPTS", 2)
+    code, value, _ = invoke(
+        run_cli, [*auth_setup.argv, "login", "--domain", "liquidity"]
+    )
+    assert code == 1
+    assert value["error"]["code"] == "auth_required"
+    assert value["error"]["details"]["handoff_attempts"] == 2
+    assert state.mode == "headed"
+    assert locks_released(auth_setup.profile)
+
+
+def test_liquidity_rejected_unchanged_candidate_waits_quietly(
+    run_cli, auth_setup, fast_clock, monkeypatch
+):
+    from dogopencli.browser import probe as probe_mod
+    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+
+    state, launch = install_domain_browser(auth_setup)
+    state.complete_after = 1
+    state.href = lambda browser: (
+        SSO_URL if browser.mode == "headless" else "https://unknown.example/"
+    )
+    monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
+    clock = [0.0]
+    monkeypatch.setattr(login_mod, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(probe_mod, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(login_mod, "POLL_INTERVAL_SECONDS", 0.5)
+    monkeypatch.setattr(
+        login_mod, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+    )
+    monkeypatch.setattr(probe_mod, "LIQUIDITY_CANDIDATE_STABILITY_SECONDS", 0)
+    code, value, _ = invoke(
+        run_cli,
+        [
+            *auth_setup.argv,
+            "login",
+            "--domain",
+            "liquidity",
+            "--timeout-seconds",
+            "1.5",
+        ],
+    )
+    assert code == 1
+    assert value["error"]["code"] == "service_failure"
+    assert state.entries == [LIQUIDITY_STARTUP_URL] * 2
+    assert state.launches == ["headed"]
+    assert state.human_observations >= 6
+    assert state.mode == "headed"
+
+
+@pytest.mark.parametrize("command", [["login"], ["auth", "check"]])
+def test_unknown_login_domain_has_no_browser_side_effect(run_cli, auth_setup, command):
+    code, value, _ = invoke(
+        run_cli, [*auth_setup.argv, *command, "--domain", "collection"]
+    )
+    assert code == 1
+    assert value["error"]["code"] == "invalid_arguments"
+    assert auth_setup.state.transports == []
+    assert auth_setup.state.launches == []
+    assert not auth_setup.profile.exists()
+
+
+def test_liquidity_authenticated_while_payment_expired_is_idempotent(
+    run_cli, auth_setup, monkeypatch
+):
+    state, launch = install_domain_browser(auth_setup)
+    state.liquidity_authenticated = True
+    state.payment_expired = True
+    monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
+    for command in [["login"], ["auth", "check"], ["login"]]:
+        code, value, _ = invoke(
+            run_cli, [*auth_setup.argv, *command, "--domain", "liquidity"]
+        )
+        assert code == 0
+        assert value["result"]["domain"] == "liquidity"
+    assert state.launches == []
+    assert PAYMENT_URL not in state.entries
+
+
+@pytest.mark.parametrize(
+    "failure", ["https://unknown.example/", "chrome-error://chromewebdata/"]
+)
+def test_liquidity_initial_failure_does_not_start_manual_sso(
+    run_cli, auth_setup, failure
+):
+    auth_setup.state.href = failure
+    code, value, _ = invoke(
+        run_cli, [*auth_setup.argv, "login", "--domain", "liquidity"]
+    )
+    assert code == 1
+    assert value["error"]["code"] in {"service_failure", "browser_unavailable"}
+    assert value["error"]["details"]["domain"] == "liquidity"
+    assert auth_setup.state.launches == []
+
+
+def test_liquidity_interrupt_preserves_headed_domain_context(
+    run_cli, auth_setup, monkeypatch
+):
+    state, launch = install_domain_browser(auth_setup)
+    state.complete_after = 100
+    monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
+
+    def interrupt(_):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(login_mod, "sleep", interrupt)
+    code, value, err = invoke(
+        run_cli, [*auth_setup.argv, "login", "--domain", "liquidity"]
+    )
+    assert code == 130
+    assert value["error"]["details"]["domain"] == "liquidity"
+    assert state.mode == "headed"
+    assert locks_released(auth_setup.profile)
+
+    assert "re-run dogopencli login --domain liquidity" in err
+
+
+def test_liquidity_text_and_help_report_domain(run_cli, auth_setup):
+    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+
+    auth_setup.state.href = LIQUIDITY_STARTUP_URL
+    code, out, _ = run_cli(
+        [*auth_setup.argv, "login", "--domain", "liquidity", "--format", "text"]
+    )
+    assert code == 0
+    assert "domain: liquidity" in out
+    code, out, _ = run_cli(["login", "--help"])
+    assert code == 0
+    domain = next(o for o in json.loads(out)["options"] if o["name"] == "domain")
+    assert domain["choices"] == ["payment", "liquidity"]
+    assert domain["default"] == "payment"
+    code, out, _ = run_cli(["login", "--help", "--format", "text"])
+    assert code == 0
+    assert "--domain" in out and "liquidity" in out
+
+
+def test_liquidity_reentry_preserves_in_progress_headed_sso(
+    run_cli, auth_setup, fast_clock, monkeypatch
+):
+    state, launch = install_domain_browser(auth_setup)
+    state.mode = "headed"
+    state.complete_after = 1000
+    monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
+    code, value, _ = invoke(
+        run_cli,
+        [
+            *auth_setup.argv,
+            "login",
+            "--domain",
+            "liquidity",
+            "--timeout-seconds",
+            "0.05",
+        ],
+    )
+    assert code == 1
+    assert state.mode == "headed"
+    assert state.launches == []
+    assert state.entries == []
+    assert locks_released(auth_setup.profile)
+    state.complete_after = 1
+    code, value, _ = invoke(
+        run_cli, [*auth_setup.argv, "login", "--domain", "liquidity"]
+    )
+    assert code == 0
+    assert state.launches == ["headless"]
+    assert value["result"]["mode"] == "headless"
+
+
+def test_liquidity_browser_loss_during_quiet_wait_is_unavailable(
+    run_cli, auth_setup, fast_clock, monkeypatch
+):
+    state, launch = install_domain_browser(auth_setup)
+    state.quiet_browser_loss = True
+    monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
+    code, value, _ = invoke(
+        run_cli,
+        [*auth_setup.argv, "login", "--domain", "liquidity", "--timeout-seconds", "2"],
+    )
+    assert code == 1
+    assert value["error"]["code"] == "browser_unavailable"
+    assert state.launches == ["headed"]
+    assert locks_released(auth_setup.profile)
+
+
+def test_liquidity_settle_respects_deadline_and_keeps_headed(
+    run_cli, auth_setup, fast_clock, monkeypatch
+):
+    from dogopencli.browser import probe as probe_mod
+
+    state, launch = install_domain_browser(auth_setup)
+    state.complete_after = 1
+    monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
+    clock = [0.0]
+    monkeypatch.setattr(login_mod, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(probe_mod, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(probe_mod, "LIQUIDITY_CANDIDATE_STABILITY_SECONDS", 0)
+    monkeypatch.setattr(login_mod, "HANDOFF_SETTLE_SECONDS", 20)
+    monkeypatch.setattr(
+        login_mod, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+    )
+    code, value, _ = invoke(
+        run_cli,
+        [*auth_setup.argv, "login", "--domain", "liquidity", "--timeout-seconds", "1"],
+    )
+    assert code == 1
+    assert value["error"]["code"] == "auth_required"
+    assert clock[0] == 1
+    assert state.launches == ["headed"]
+    assert state.mode == "headed"
+
+
+@pytest.fixture
+def candidate_retry_clock(monkeypatch, fast_clock):
+    from dogopencli.browser import probe as probe_mod
+
+    clock = [0.0]
+    monkeypatch.setattr(login_mod, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(probe_mod, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        login_mod, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+    )
+    monkeypatch.setattr(login_mod, "POLL_INTERVAL_SECONDS", 5)
+    monkeypatch.setattr(probe_mod, "LIQUIDITY_CANDIDATE_STABILITY_SECONDS", 0)
+    return clock
+
+
+def test_liquidity_unchanged_candidate_recovers_after_transient_service_failure(
+    run_cli, auth_setup, monkeypatch, candidate_retry_clock
+):
+    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+
+    state, launch = install_domain_browser(auth_setup)
+    state.complete_after = 1
+    monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
+    headed_checks = []
+
+    def route(browser):
+        if browser.mode == "headless":
+            return LIQUIDITY_STARTUP_URL if browser.liquidity_authenticated else SSO_URL
+        headed_checks.append(candidate_retry_clock[0])
+        return (
+            "https://unknown.example/"
+            if len(headed_checks) == 1
+            else LIQUIDITY_STARTUP_URL
+        )
+
+    state.href = route
+    code, value, _ = invoke(
+        run_cli,
+        [*auth_setup.argv, "login", "--domain", "liquidity", "--timeout-seconds", "30"],
+    )
+    assert code == 0
+    assert value["result"]["mode"] == "headless"
+    assert headed_checks == [0, 5]
+    assert state.document_id == 1
+    assert state.entries == [LIQUIDITY_STARTUP_URL] * 4
+    assert state.launches == ["headed", "headless"]
+
+
+@pytest.mark.parametrize("classification", ["service_failure", "auth_required"])
+def test_liquidity_unchanged_candidate_verification_is_bounded(
+    run_cli, auth_setup, monkeypatch, candidate_retry_clock, classification
+):
+    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+
+    state, launch = install_domain_browser(auth_setup)
+    state.complete_after = 1
+    monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
+    headed_checks = []
+
+    def route(browser):
+        if browser.mode == "headed":
+            headed_checks.append(candidate_retry_clock[0])
+            return (
+                "https://unknown.example/"
+                if classification == "service_failure"
+                else SSO_URL
+            )
+        return SSO_URL
+
+    state.href = route
+    code, value, _ = invoke(
+        run_cli,
+        [*auth_setup.argv, "login", "--domain", "liquidity", "--timeout-seconds", "60"],
+    )
+    assert code == 1
+    if classification == "service_failure":
+        assert value["error"]["code"] == "service_failure"
+        assert headed_checks == [0, 5, 15]
+    else:
+        assert headed_checks == [0]
+    assert state.entries == [LIQUIDITY_STARTUP_URL] * (len(headed_checks) + 1)
+    assert sum(len(t.navigations) for t in state.transports) == len(headed_checks) + 1
+    assert state.launches == ["headed"]
+    assert state.mode == "headed"
+    assert candidate_retry_clock[0] == 60
+    assert locks_released(auth_setup.profile)
