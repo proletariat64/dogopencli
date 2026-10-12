@@ -253,12 +253,14 @@ def _collect_daily(
             day = start
             while day <= end:
                 last = day + timedelta(days=min(6, (end - day).days))
+                chunk_start = day.date().isoformat().replace("-", "")
+                chunk_end = last.date().isoformat().replace("-", "")
                 body = capability.page_body(
                     encode_scope(
                         {
                             "aliasNames": batch,
-                            "queryStartDate": day.strftime("%Y%m%d"),
-                            "queryDate": last.strftime("%Y%m%d"),
+                            "queryStartDate": chunk_start,
+                            "queryDate": chunk_end,
                         }
                     ),
                     0,
@@ -274,11 +276,7 @@ def _collect_daily(
                     if alias not in batch:
                         raise _invalid("returned alias is outside the requested chunk")
                     observed = series_value(capability.descriptor, record, "")
-                    if (
-                        not day.strftime("%Y%m%d")
-                        <= observed
-                        <= last.strftime("%Y%m%d")
-                    ):
+                    if not chunk_start <= observed <= chunk_end:
                         raise _invalid("returned date is outside the requested chunk")
                     if "balance" not in record:
                         raise _invalid("daily observation is missing source balance")

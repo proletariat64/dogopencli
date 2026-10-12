@@ -135,7 +135,10 @@ class CaptureEntry:
             raise _invalid("cached capture missing days are invalid")
         for day in missing_days:
             try:
-                if datetime.strptime(day, "%Y%m%d").strftime("%Y%m%d") != day:
+                if (
+                    _format_series_time(datetime.strptime(day, "%Y%m%d"), "%Y%m%d")
+                    != day
+                ):
                     raise ValueError
             except ValueError as error:
                 raise _invalid("cached capture missing days are invalid") from error
@@ -145,7 +148,9 @@ class CaptureEntry:
                 try:
                     if (
                         not isinstance(value, str)
-                        or datetime.strptime(value, "%Y%m%d").strftime("%Y%m%d")
+                        or _format_series_time(
+                            datetime.strptime(value, "%Y%m%d"), "%Y%m%d"
+                        )
                         != value
                     ):
                         raise ValueError
@@ -348,6 +353,11 @@ def _index_snapshot(
     return meta, [(index, canonical(record)) for index, record in enumerate(records, 1)]
 
 
+def _format_series_time(value: datetime, format_string: str) -> str:
+    """Keep the declared format while padding years on every platform."""
+    return value.strftime(format_string.replace("%Y", f"{value.year:04d}"))
+
+
 def series_value(
     list_spec: spec.ListSpec, record: dict[str, Any], fetched_at: str
 ) -> str:
@@ -363,13 +373,13 @@ def series_value(
         if list_spec.series_format is not None:
             try:
                 parsed = datetime.strptime(value, list_spec.series_format)
-                if parsed.strftime(list_spec.series_format) != value:
+                if _format_series_time(parsed, list_spec.series_format) != value:
                     raise ValueError
             except ValueError as error:
                 raise _invalid(
                     f"record has invalid series time {field_name}"
                 ) from error
-            return parsed.strftime("%Y%m%d")
+            return _format_series_time(parsed, "%Y%m%d")
         return value
     # Capture-history records order by capture time explicitly (ADR 0017);
     # capture time is never relabelled as source observation time.
@@ -982,4 +992,4 @@ def _next_day_like(value: str) -> str:
         parsed = datetime.strptime(value, "%Y%m%d")
     except ValueError:
         return value + " "
-    return (parsed + timedelta(days=1)).strftime("%Y%m%d")
+    return _format_series_time(parsed + timedelta(days=1), "%Y%m%d")

@@ -20,6 +20,10 @@ DATES = ["--from-date", "2026-10-01", "--to-date", "2026-10-02"]
         ["--from-date", "2026-10-03", "--to-date", "2026-10-02"],
         ["--from-date", "9999-12-32", "--to-date", "9999-12-31"],
         ["--from-date", "9999-12-31", "--to-date", "9999-12-30"],
+        ["--from-date", "0000-01-01", "--to-date", "0001-01-01"],
+        ["--from-date", "00000101", "--to-date", "00010101"],
+        ["--from-date", "001-01-01", "--to-date", "0001-01-01"],
+        ["--from-date", "0001-1-01", "--to-date", "0001-01-01"],
         [*DATES, "--timezone", "GMT+08"],
         [*DATES, "--page-size", "100"],
     ],
@@ -270,6 +274,137 @@ def test_last_calendar_day_retention_preserves_only_covered_days(
         assert code == 0, err
         assert parse(out)["data"] == []
         assert parse(out)["meta"]["complete"] is True
+
+
+@pytest.mark.parametrize("year", ["0001", "0999"])
+@pytest.mark.parametrize("empty", [True, False])
+@pytest.mark.parametrize("end_day", ["01", "08"])
+def test_early_calendar_year_live_refresh_and_offline(
+    setup, run_cli, year, empty, end_day
+):
+    chunks = []
+
+    def answer(payload, index):
+        if "wallet" in payload:
+            return roster([account()])
+        chunks.append((payload["queryStartDate"], payload["queryDate"]))
+        return daily(
+            []
+            if empty
+            else [observation(day=f"{year}-01-{payload['queryStartDate'][-2:]}")]
+        )
+
+    setup.state.business_handler = answer
+    options = [
+        "--entity",
+        "E1",
+        "--from-date",
+        f"{year}-01-01",
+        "--to-date",
+        f"{year}01{end_day}",
+    ]
+    code, out, err = run_cli([*QUERY, *options, "--live", "--require-complete"])
+    assert code == 0, err
+    acquired = parse(out)
+    expected_days = [f"{year}-01-01"]
+    expected_chunks = [(f"{year}0101", f"{year}0101")]
+    if end_day == "08":
+        expected_days.append(f"{year}-01-08")
+        expected_chunks = [
+            (f"{year}0101", f"{year}0107"),
+            (f"{year}0108", f"{year}0108"),
+        ]
+    assert acquired["data"] == (
+        []
+        if empty
+        else [
+            {
+                **observation(day=day),
+                "aliasName": "A1",
+                "entity": "E1",
+                "currency": "USD",
+            }
+            for day in expected_days
+        ]
+    )
+    assert acquired["meta"]["complete"] is True
+    assert chunks == expected_chunks
+    assert not setup.cache_path.exists()
+    chunks.clear()
+    code, out, err = run_cli([*REFRESH, *options, "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["meta"]["published"] is True
+    assert chunks == expected_chunks
+    before = setup.cache_path.read_bytes()
+    count = len(setup.state.business_requests)
+    setup.state.reachable = False
+    code, out, err = run_cli([*QUERY, *options, "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["data"] == acquired["data"]
+    assert parse(out)["meta"]["complete"] is True
+    assert len(setup.state.business_requests) == count
+    assert setup.cache_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("first_day", ["00010101", "00010102"])
+def test_early_calendar_retention_preserves_empty_prefix_and_later_days(
+    setup, run_cli, monkeypatch, first_day
+):
+    from dogopencli.plugins.liquidity import store
+
+    monkeypatch.setitem(store.plan_capture_publish.__kwdefaults__, "cap", 1)
+    install_daily(
+        setup,
+        rows=[observation(day="0001-01-02"), observation(day="0001-01-03")],
+    )
+    options = ["--entity", "E1", "--from-date", first_day, "--to-date", "0001-01-03"]
+    code, out, err = run_cli([*REFRESH, *options])
+    assert code == 0, err
+    assert parse(out)["meta"]["retention"]["dropped"] == 1
+    before = setup.cache_path.read_bytes()
+    count = len(setup.state.business_requests)
+    setup.state.reachable = False
+    code, out, err = run_cli([*QUERY, *options])
+    assert code == 0, err
+    assert [row["statisticalDate"] for row in parse(out)["data"]] == ["0001-01-03"]
+    assert parse(out)["meta"]["complete"] is False
+    covered_days = [("00010103", [observation(day="0001-01-03")])]
+    if first_day == "00010101":
+        covered_days.append(("00010101", []))
+    for day, expected in covered_days:
+        code, out, err = run_cli(
+            [
+                *QUERY,
+                "--entity",
+                "E1",
+                "--from-date",
+                day,
+                "--to-date",
+                day,
+                "--require-complete",
+            ]
+        )
+        assert code == 0, err
+        assert [row["statisticalDate"] for row in parse(out)["data"]] == [
+            row["statisticalDate"] for row in expected
+        ]
+        assert parse(out)["meta"]["complete"] is True
+    code, out, err = run_cli(
+        [
+            *QUERY,
+            "--entity",
+            "E1",
+            "--from-date",
+            "00010102",
+            "--to-date",
+            "00010102",
+            "--require-complete",
+        ]
+    )
+    assert code == 1, err
+    assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    assert len(setup.state.business_requests) == count
+    assert setup.cache_path.read_bytes() == before
 
 
 def test_daily_all_refresh_freezes_selection_and_offline_never_discovers(
