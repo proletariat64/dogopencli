@@ -1,5 +1,6 @@
 """Spec #76 candidates: public CLI, fake CDP and independent SQLite caches."""
 
+import json
 from dataclasses import replace
 
 import pytest
@@ -59,7 +60,29 @@ def candidate_catalog(monkeypatch):
     monkeypatch.setattr(helptree, "NODES", nodes)
 
 
+def synthetic_balance_id(row):
+    account = [row.get(field) for field in ("entity", "aliasName", "currency")]
+    return f"synthetic:{json.dumps(account, separators=(',', ':'), ensure_ascii=True)}"
+
+
+def expected_balance_record(entity, alias, currency, balance):
+    return {
+        "balance_record_id": synthetic_balance_id(
+            {"entity": entity, "aliasName": alias, "currency": currency}
+        ),
+        "account_holder_entity_id": entity,
+        "account_alias": alias,
+        "currency": currency,
+        "current_balance": balance,
+    }
+
+
 def response(item, rows, total=None):
+    if item is CASH_BALANCES:
+        rows = [
+            row if "balId" in row else {**row, "balId": synthetic_balance_id(row)}
+            for row in rows
+        ]
     total = len(rows) if total is None else total
     if item.envelope == "success":
         body = {"success": True, "data": {"data": rows, "totalCount": total}}
@@ -235,7 +258,12 @@ def test_latest_balances_default_width_100_collects_short_final_page(setup, run_
         ["liquidity", "cash", "balances", "list", "--entity", "Z21", "--live", "--all"]
     )
     assert code == 0, err
-    assert parse(out)["data"] == rows
+    assert parse(out)["data"] == [
+        expected_balance_record(
+            row["entity"], row["aliasName"], row["currency"], row["curBalance"]
+        )
+        for row in rows
+    ]
     assert [p["rowStart"] for p in setup.state.business_requests] == [0, 100]
     assert all(p["pageSize"] == 100 for p in setup.state.business_requests)
     assert "page 2/2" in err
@@ -262,7 +290,12 @@ def test_latest_width_override_refresh_and_offline_share_scope(setup, run_cli, w
     code, out, err = run_cli([*query, "--live", "--page-size", str(width)])
     assert code == 0, err
     live = parse(out)
-    assert live["data"] == rows
+    assert live["data"] == [
+        expected_balance_record(
+            row["entity"], row["aliasName"], row["currency"], row["curBalance"]
+        )
+        for row in rows
+    ]
     assert [p["rowStart"] for p in setup.state.business_requests] == list(
         range(0, 51, width)
     )
@@ -324,7 +357,7 @@ def test_latest_entity_ids_are_deduplicated_sorted_and_stable_offline(setup, run
         ]
     )
     assert code == 0, err
-    assert parse(out)["data"] == [row]
+    assert parse(out)["data"] == [expected_balance_record("E1", "A1", "USD", "1")]
 
 
 @pytest.mark.parametrize("bad_entity", ["E2", "", None, ["E1"]])
@@ -353,7 +386,7 @@ def test_latest_scope_mismatch_is_hard_failure_and_preserves_cache(
     setup.state.reachable = False
     code, out, err = run_cli(query)
     assert code == 0, err
-    assert parse(out)["data"] == [row]
+    assert parse(out)["data"] == [expected_balance_record("E1", "A1", "USD", "1")]
 
 
 @pytest.mark.parametrize("mode", ["live", "refresh"])
@@ -381,7 +414,7 @@ def test_latest_explicit_alias_scope_failure_preserves_prior_capture(
     count = len(setup.state.business_requests)
     code, out, err = run_cli(query)
     assert code == 0, err
-    assert parse(out)["data"] == [row]
+    assert parse(out)["data"] == [expected_balance_record("E1", "A1", "USD", "1")]
     assert len(setup.state.business_requests) == count
 
 
@@ -400,7 +433,10 @@ def test_latest_allowed_aliases_survive_live_refresh_and_offline(
     setup.state.business_handler = lambda payload, index: response(CASH_BALANCES, rows)
     code, out, err = run_cli([*query, "--live"])
     assert code == 0, err
-    assert parse(out)["data"] == rows
+    assert parse(out)["data"] == [
+        expected_balance_record("E1", alias, "USD", "1")
+        for alias in ("A1", "a2:/opaque")
+    ]
     assert not setup.cache_path.exists()
     code, _, err = run_cli(["refresh", "liquidity", "cash", "balances", *options])
     assert code == 0, err
@@ -408,7 +444,10 @@ def test_latest_allowed_aliases_survive_live_refresh_and_offline(
     count = len(setup.state.business_requests)
     code, out, err = run_cli(query)
     assert code == 0, err
-    assert parse(out)["data"] == rows
+    assert parse(out)["data"] == [
+        expected_balance_record("E1", alias, "USD", "1")
+        for alias in ("A1", "a2:/opaque")
+    ]
     assert len(setup.state.business_requests) == count
 
 
@@ -460,7 +499,9 @@ def test_latest_399_arrivals_396_identities_remain_incomplete(setup, run_cli):
     code, out, err = run_cli([*query, "--live"])
     assert code == 0, err
     envelope = parse(out)
-    assert envelope["data"] == rows
+    assert envelope["data"] == [
+        expected_balance_record("E1", f"A{i:03d}", "USD", "1") for i in range(396)
+    ]
     assert envelope["meta"]["complete"] is False
     assert envelope["meta"]["reported_total"] == 399
     assert envelope["meta"]["collected_total"] == 396
@@ -479,7 +520,9 @@ def test_latest_399_arrivals_396_identities_remain_incomplete(setup, run_cli):
     setup.state.reachable = False
     code, out, _ = run_cli(query)
     assert code == 0
-    assert parse(out)["data"] == rows
+    assert parse(out)["data"] == [
+        expected_balance_record("E1", f"A{i:03d}", "USD", "1") for i in range(396)
+    ]
     assert parse(out)["meta"]["complete"] is False
     assert run_cli([*query, "--require-complete"])[0] == 1
 

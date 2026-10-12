@@ -9,7 +9,9 @@
 
 live 不发布；显式 refresh 原子保存余额与冻结选择，离线不联网或重新发现目录。
 沿用 partial/strict、硬失败保留旧缓存及最新/每日独立缓存规则，不推断历史归属或补零。
-完整 latest ALL 的来源身份冲突（#155）仍阻塞生产放行。
+余额输出改用易读 snake_case 字段；原生缓存不变。最新余额按 balId 采集，
+同账户、币种及余额日只展示最后账单：同金额静默，金额变化仅告知正常银行账单更新，
+均成功退出。此前 #155 为 CLI 身份误判；完整 latest ALL 尚待重新验证。
 用法见 [README](README.md)，边界见[规格](docs/design/liquidity-cash-balances-v0.1.0.md)。
 
 ## v0.3.1（2026-10-11）

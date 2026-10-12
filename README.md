@@ -307,8 +307,11 @@ dogopencli refresh liquidity cash balances --entity INST_ID_A --from-date 2026-1
 dogopencli liquidity cash balances list --entity INST_ID_A --from-date 2026-10-01 --to-date 2026-10-07 --all
 ```
 
-`INST_ID_A` 须替换为实际 instId。完整 latest ALL 因来源身份冲突仍阻塞（#155）；
-每日 partial 刷新、严格拒绝和同次采集的断网缓存一致已验证，不代表全范围放行。
+`INST_ID_A` 须替换为实际 instId。余额输出使用易读字段，例如 `balance_record_id`、
+`account_alias`、`current_balance`、`intraday_balance` 和 `end_of_day_balance`。
+同账户、币种及余额日只展示最后一份账单：金额相同静默，金额变化仅提示正常银行账单更新，
+均正常退出；原生记录仍完整保存在缓存，采集完整性不因展示合并改变。
+此前 #155 是 CLI 身份误判，不是已证实的后端冲突；完整 latest ALL 尚待重新验证。
 规格见[现金余额读取契约](docs/design/liquidity-cash-balances-v0.1.0.md)。
 
 ### Swap 订单列表

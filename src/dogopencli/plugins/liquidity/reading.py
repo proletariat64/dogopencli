@@ -63,6 +63,37 @@ def _source_guide(
     }
 
 
+def _balance_schema(item: spec.ListSpec, schema: dict[str, Any]) -> dict[str, Any]:
+    from dogopencli.plugins.liquidity.balance_view import export_field_name
+
+    daily = item.endpoint == "/balStatisticalQuery.json"
+    properties = {}
+    for native, definition in schema["properties"].items():
+        if daily and native == "data":
+            continue
+        properties[export_field_name(native, daily=daily)] = {
+            **definition,
+            "x-native-field": native,
+        }
+    schema["properties"] = properties
+    schema["x-output-naming"] = "readable snake_case; native cache values unchanged"
+    if not daily:
+        schema["x-statement-selection"] = (
+            "One latest statement per account/currency/business day; statement"
+            " creation time, then update time. Amount changes are normal bank"
+            " updates and informational only; acquisition completeness is unchanged."
+        )
+    return schema
+
+
+def _public_balance_field(item: spec.ListSpec, field: str) -> str:
+    if item.path != ("cash", "balances"):
+        return field
+    from dogopencli.plugins.liquidity.balance_view import export_field_name
+
+    return export_field_name(field, daily=item.endpoint == "/balStatisticalQuery.json")
+
+
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
     if item.endpoint == "/balStatisticalQuery.json":
@@ -94,7 +125,9 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
                 "Frozen current-roster request binding;"
                 " historical ownership is unproven."
             )
-        return schema
+        return _balance_schema(item, schema)
+    if item.projection == "balances":
+        return _balance_schema(item, schema)
     if item.projection == "risk_sla":
         schema["additionalProperties"] = False
         schema["x-business-validation"] = "none; source values preserved"
@@ -521,8 +554,19 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                         if option.match
                     }
                 ),
-                "identity": list(item.identity),
-                "series_time": item.series_field,
+                "identity": [
+                    _public_balance_field(item, field) for field in item.identity
+                ],
+                **(
+                    {"native_identity": list(item.identity)}
+                    if item.path == ("cash", "balances")
+                    else {}
+                ),
+                "series_time": (
+                    _public_balance_field(item, item.series_field)
+                    if item.series_field
+                    else None
+                ),
                 "offline_profile": item.profile,
                 "notes": list(item.notes),
                 "scope_defaults": {
@@ -576,8 +620,19 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             "variants": variants,
             "kind": variant.kind,
             "offline_profile": variant.profile,
-            "identity": list(variant.identity),
-            "series_time": variant.series_field,
+            "identity": [
+                _public_balance_field(variant, field) for field in variant.identity
+            ],
+            **(
+                {"native_identity": list(variant.identity)}
+                if variant.path == ("cash", "balances")
+                else {}
+            ),
+            "series_time": (
+                _public_balance_field(variant, variant.series_field)
+                if variant.series_field
+                else None
+            ),
             "notes": list(variant.notes),
             "freshness": (
                 "stale measures capture age (fetched_at plus the configured"

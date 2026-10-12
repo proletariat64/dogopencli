@@ -81,7 +81,7 @@ CASH_BALANCES = ListSpec(
     envelope=ENV_SUCCESS,
     container=("data", "data"),
     total=("data", "totalCount"),
-    identity=("entity", "aliasName", "currency"),
+    identity=("balId",),
     profile=PROFILE_HISTORY,
     page_size=100,
     template={"tntInstId": TENANT},
@@ -104,6 +104,7 @@ CASH_BALANCES = ListSpec(
         _timezone(),
     ),
     table_columns=(
+        "balId",
         "entity",
         "aliasName",
         "currency",

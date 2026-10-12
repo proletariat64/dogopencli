@@ -17,6 +17,13 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
+from dogopencli.plugins.liquidity.balance_view import (
+    export_balance_record,
+    export_field_name,
+    latest_statement_rows,
+    update_notice,
+)
+
 from ... import config as config_mod
 from ...cache import Cache
 from ...cached_query import is_stale
@@ -97,12 +104,25 @@ def _emit_window(
     meta: dict[str, Any],
     fields: list[str] | None,
     error: dict[str, Any] | None = None,
+    *,
+    variant: spec_mod.ListSpec | None = None,
+    changed_groups: int = 0,
 ) -> int:
     meta = prepare_result(
         meta,
         require_complete=args.require_complete,
         mode="live" if args.live else "cache",
     )
+    if variant is not None and variant.path == ("cash", "balances"):
+        daily = variant.endpoint == "/balStatisticalQuery.json"
+        window = [export_balance_record(record, daily=daily) for record in window]
+        columns = tuple(export_field_name(name, daily=daily) for name in columns)
+        if fields is not None:
+            fields = [export_field_name(name, daily=daily) for name in fields]
+        notice = update_notice(changed_groups)
+        if notice is not None:
+            meta["warnings"] = [*meta.get("warnings", []), notice]
+            print(f"warning: {notice['code']}: {notice['message']}", file=sys.stderr)
     window = _project(window, fields)
     if args.format == "table":
         selected = tuple(fields) if fields is not None else columns
@@ -322,6 +342,9 @@ def run_list(args: argparse.Namespace) -> int:
             f"cached capture is older than {config.ttl_hours:g} hours"
             f" (fetched_at {oldest.fetched_at})",
         )
+    changed_groups = 0
+    if variant.projection == "balances":
+        rows, changed_groups = latest_statement_rows(rows)
     rows = _sort_rows(variant, rows, latest.fetched_at)
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
@@ -358,7 +381,15 @@ def run_list(args: argparse.Namespace) -> int:
     frozen = selection(latest.evidence)
     if frozen is not None:
         meta["selection"] = frozen
-    return _emit_window(args, variant.table_columns, window, meta, fields)
+    return _emit_window(
+        args,
+        variant.table_columns,
+        window,
+        meta,
+        fields,
+        variant=variant,
+        changed_groups=changed_groups,
+    )
 
 
 def _capture_meta_view(entry: capture_store.CaptureEntry) -> Any:
@@ -434,7 +465,11 @@ def _run_list_live(
             ),
         )
     evidence = evidence_for(result)
-    rows = _sort_rows(variant, _match(result.records, filters), now().isoformat())
+    rows = result.records
+    changed_groups = 0
+    if variant.projection == "balances":
+        rows, changed_groups = latest_statement_rows(rows)
+    rows = _sort_rows(variant, _match(rows, filters), now().isoformat())
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
     meta = {
@@ -464,7 +499,15 @@ def _run_list_live(
     frozen = selection(evidence)
     if frozen is not None:
         meta["selection"] = frozen
-    return _emit_window(args, variant.table_columns, window, meta, fields)
+    return _emit_window(
+        args,
+        variant.table_columns,
+        window,
+        meta,
+        fields,
+        variant=variant,
+        changed_groups=changed_groups,
+    )
 
 
 def run_detail(args: argparse.Namespace) -> int:

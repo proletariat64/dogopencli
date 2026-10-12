@@ -397,6 +397,7 @@ def test_inner_success_marker_is_strictly_boolean_true():
 def test_balances_parse_preserves_amount_precision_and_drops_extras():
     capability = LiquidityListCapability(CASH_BALANCES)
     row = {
+        "balId": "B1",
         "entity": "Z21",
         "aliasName": "A1",
         "currency": "USD",
@@ -409,6 +410,7 @@ def test_balances_parse_preserves_amount_precision_and_drops_extras():
     rows, total = capability.parse_rows(json.dumps(success_page([row], 1)).encode())
     assert total == 1
     projected = rows[0]
+    assert projected["balId"] == "B1"
     assert projected["curBalance"] == "1234.56"
     assert projected["avlBalance"] is None
     assert projected["openBalance"] == ""

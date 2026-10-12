@@ -3,8 +3,9 @@
 Authority: [GitHub Issue #147](https://github.com/proletariat64/dogopencli/issues/147).
 
 Status: runtime implementation integrated; scoped daily refresh/offline qualified.
-Client fixes and repository gates passed; full latest ALL rollout remains blocked
-by source identity conflicts (#155). See #150 and PR #151 for qualification status.
+Client fixes and repository gates passed; full latest ALL awaits requalification.
+The former #155 source-conflict diagnosis was a client account/record identity error.
+See #150 and PR #151 for qualification status.
 Date: 2026-10-12.
 
 Evidence: [source/date/entity/page-width research](../research/general/2026-10-12-cash-balances-date-entities-pagination.md).
@@ -71,7 +72,8 @@ The design is finalized for implementation, not a claim that production rollout 
 - Discover all entities through the existing GET `/entityMaintQuery.json` inquiry. Freeze the distinct native `instId` set once per online acquisition. Reject malformed/missing identities and never replace failed discovery with the old default entity or an empty-array request. A proven complete empty directory may produce a complete empty result without a balance request.
 - Use the native combined ID-array request; no unproven ALL sentinel or automatic singleton fan-out. Return scope metadata that distinguishes explicit selection from all-directory selection and records the resolved ID set and catalogue provenance.
 - Check every returned latest row's nonempty `entity` against the frozen request set before accepting it. An out-of-scope row is a hard scope failure, not safe partial data and not permission to rewrite its entity from an account catalogue.
-- Keep stable reported-total, typed identity, duplicate/conflict and convergence checks. Larger pages do not imply complete data. Do not silently deduplicate 399 arrivals to 396 rows and label them complete.
+- Acquire latest records by native `balId`, not account identity. Keep stable reported-total, duplicate/conflict and convergence checks; genuine same-ID contradictory content remains unsafe. Larger pages do not imply complete data.
+- Output readable snake_case names while retaining native cache records and source-field mappings in describe. For one account/currency/business day, show the latest statement creation time, then update time. Equal monetary values are silent; differing values produce an informational normal-bank-update notice, never an incompleteness flag or failure. Display reduction does not change native acquisition counts.
 - All-entity latest acquisition uses one explicit **1800-second** leaf-specific shared deadline, because the observed 28-page width-100 combined scope is likely to exceed the ordinary 900-second budget. Individual request timeouts and the existing 1000-page guard stay bounded. Other leaves and explicit selected-entity latest acquisitions keep their existing budgets. No per-page deadline reset or general retry/fallback framework. Full-scope UAT must prove this budget is suitable before rollout; failure remains actionable and preserves cache.
 
 ### Daily contract and account binding

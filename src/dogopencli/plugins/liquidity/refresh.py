@@ -13,6 +13,11 @@ import argparse
 import sys
 from typing import Any
 
+from dogopencli.plugins.liquidity.balance_view import (
+    latest_statement_rows,
+    update_notice,
+)
+
 from ... import config as config_mod
 from ...cache import Cache
 from ...errors import EXIT_OK
@@ -53,6 +58,9 @@ def run_refresh_list(args: argparse.Namespace) -> int:
                 ),
             )
         evidence = evidence_for(result)
+        changed_groups = 0
+        if variant.projection == "balances":
+            _, changed_groups = latest_statement_rows(result.records)
         check_complete(
             evidence,
             require_complete=getattr(args, "require_complete", False),
@@ -127,6 +135,10 @@ def run_refresh_list(args: argparse.Namespace) -> int:
     if frozen is not None:
         meta["selection"] = frozen
     meta = prepare_result(meta, mode="refresh")
+    notice = update_notice(changed_groups)
+    if notice is not None:
+        meta["warnings"] = [*meta.get("warnings", []), notice]
+        print(f"warning: {notice['code']}: {notice['message']}", file=sys.stderr)
     emit(
         {
             "namespace": plan.capture_meta.namespace,

@@ -1,5 +1,7 @@
 """Cash balance date/selection contracts at the public CLI seam."""
 
+import json
+
 import pytest
 
 from dogopencli.jsonutil import parse
@@ -81,21 +83,19 @@ def test_daily_live_is_native_source_days_not_latest(setup, run_cli):
     envelope = parse(out)
     assert envelope["data"] == [
         {
-            "id": "native",
-            "data": "A1",
-            "statisticalDate": "2026-10-01",
+            "source_id": "native",
+            "account_alias": "A1",
+            "statistical_date": "2026-10-01",
             "balance": "123.4500",
-            "aliasName": "A1",
-            "entity": "E1",
+            "account_holder_entity_id": "E1",
             "currency": "USD",
         },
         {
-            "id": "native",
-            "data": "A1",
-            "statisticalDate": "2026-10-02",
+            "source_id": "native",
+            "account_alias": "A1",
+            "statistical_date": "2026-10-02",
             "balance": "0",
-            "aliasName": "A1",
-            "entity": "E1",
+            "account_holder_entity_id": "E1",
             "currency": "USD",
         },
     ]
@@ -185,7 +185,7 @@ def test_last_calendar_day_live_refresh_and_offline(
     assert code == 0, err
     acquired = parse(out)
     assert acquired["meta"]["complete"] is True
-    assert [row["statisticalDate"] for row in acquired["data"]] == (
+    assert [row["statistical_date"] for row in acquired["data"]] == (
         []
         if empty
         else ["9999-12-31"]
@@ -319,9 +319,11 @@ def test_early_calendar_year_live_refresh_and_offline(
         if empty
         else [
             {
-                **observation(day=day),
-                "aliasName": "A1",
-                "entity": "E1",
+                "source_id": "repeated-native-id",
+                "account_alias": "A1",
+                "statistical_date": day,
+                "balance": "12.00",
+                "account_holder_entity_id": "E1",
                 "currency": "USD",
             }
             for day in expected_days
@@ -366,9 +368,17 @@ def test_early_calendar_retention_preserves_empty_prefix_and_later_days(
     setup.state.reachable = False
     code, out, err = run_cli([*QUERY, *options])
     assert code == 0, err
-    assert [row["statisticalDate"] for row in parse(out)["data"]] == ["0001-01-03"]
+    assert [row["statistical_date"] for row in parse(out)["data"]] == ["0001-01-03"]
     assert parse(out)["meta"]["complete"] is False
-    covered_days = [("00010103", [observation(day="0001-01-03")])]
+    expected_record = {
+        "source_id": "repeated-native-id",
+        "account_alias": "A1",
+        "statistical_date": "0001-01-03",
+        "balance": "12.00",
+        "account_holder_entity_id": "E1",
+        "currency": "USD",
+    }
+    covered_days = [("00010103", [expected_record])]
     if first_day == "00010101":
         covered_days.append(("00010101", []))
     for day, expected in covered_days:
@@ -385,9 +395,7 @@ def test_early_calendar_retention_preserves_empty_prefix_and_later_days(
             ]
         )
         assert code == 0, err
-        assert [row["statisticalDate"] for row in parse(out)["data"]] == [
-            row["statisticalDate"] for row in expected
-        ]
+        assert parse(out)["data"] == expected
         assert parse(out)["meta"]["complete"] is True
     code, out, err = run_cli(
         [
@@ -476,12 +484,11 @@ def test_daily_help_and_describe_expose_distinct_contracts(run_cli):
     assert history["request"]["page_size"] is None
     assert history["data_schema"]["x-source-timezone"] == "unknown"
     assert set(history["data_schema"]["properties"]) == {
-        "id",
-        "data",
-        "statisticalDate",
+        "source_id",
+        "statistical_date",
         "balance",
-        "aliasName",
-        "entity",
+        "account_alias",
+        "account_holder_entity_id",
         "currency",
     }
     for command in (["help", *QUERY], ["help", *REFRESH]):
@@ -503,10 +510,22 @@ def test_daily_help_and_describe_expose_distinct_contracts(run_cli):
         ]
 
 
+def synthetic_balance_id(row):
+    account = [row.get(field) for field in ("entity", "aliasName", "currency")]
+    return f"synthetic:{json.dumps(account, separators=(',', ':'), ensure_ascii=True)}"
+
+
 def latest(rows):
+    native_rows = [
+        row if "balId" in row else {**row, "balId": synthetic_balance_id(row)}
+        for row in rows
+    ]
     return {
         "status": 200,
-        "body": {"success": True, "data": {"data": rows, "totalCount": len(rows)}},
+        "body": {
+            "success": True,
+            "data": {"data": native_rows, "totalCount": len(native_rows)},
+        },
     }
 
 
@@ -548,7 +567,7 @@ def test_latest_all_uses_inst_ids_combined_and_explicit_all_stays_scoped(
     code, out, err = run_cli([*QUERY, *options, "--all", "--require-complete"])
     assert code == 0, err
     assert parse(out)["meta"]["selection"]["entities"] == expected
-    assert parse(out)["data"][0]["curBalance"] == "1"
+    assert parse(out)["data"][0]["current_balance"] == "1"
     assert len(setup.state.business_requests) == requests + 1
 
 
@@ -879,7 +898,7 @@ def test_mixed_daily_latest_retention_uses_each_axis_and_preserves_newest(
     setup.state.reachable = False
     code, out, err = run_cli([*QUERY, "--entity", "E1"])
     assert code == 0, err
-    assert parse(out)["data"][0]["curBalance"] == "10"
+    assert parse(out)["data"][0]["current_balance"] == "10"
     assert parse(out)["meta"]["complete"] is True
     code, out, err = run_cli([*QUERY, *dates])
     assert code == 1, err
