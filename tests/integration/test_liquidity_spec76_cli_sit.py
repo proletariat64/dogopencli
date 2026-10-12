@@ -356,6 +356,62 @@ def test_latest_scope_mismatch_is_hard_failure_and_preserves_cache(
     assert parse(out)["data"] == [row]
 
 
+@pytest.mark.parametrize("mode", ["live", "refresh"])
+@pytest.mark.parametrize("bad_alias", ["A2", "a1", "A1 "])
+def test_latest_explicit_alias_scope_failure_preserves_prior_capture(
+    setup, run_cli, mode, bad_alias
+):
+    row = {"entity": "E1", "aliasName": "A1", "currency": "USD", "curBalance": "1"}
+    options = ["--entity", "E1", "--account-alias", "A1"]
+    refresh = ["refresh", "liquidity", "cash", "balances", *options]
+    query = ["liquidity", "cash", "balances", "list", *options]
+    setup.state.business_handler = lambda payload, index: response(CASH_BALANCES, [row])
+    assert run_cli(refresh)[0] == 0
+    before = setup.cache_path.read_bytes()
+    setup.state.business_handler = lambda payload, index: response(
+        CASH_BALANCES, [{**row, "aliasName": bad_alias}]
+    )
+    command = [*query, "--live"] if mode == "live" else refresh
+    code, out, _ = run_cli(command)
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert parse(out)["data"] is None
+    assert setup.cache_path.read_bytes() == before
+    setup.state.reachable = False
+    count = len(setup.state.business_requests)
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    assert parse(out)["data"] == [row]
+    assert len(setup.state.business_requests) == count
+
+
+@pytest.mark.parametrize("filtered", [True, False], ids=["multi-alias", "unfiltered"])
+def test_latest_allowed_aliases_survive_live_refresh_and_offline(
+    setup, run_cli, filtered
+):
+    rows = [
+        {"entity": "E1", "aliasName": alias, "currency": "USD", "curBalance": "1"}
+        for alias in ("A1", "a2:/opaque")
+    ]
+    options = ["--entity", "E1"]
+    if filtered:
+        options += ["--account-alias", "A1", "--account-alias", "a2:/opaque"]
+    query = ["liquidity", "cash", "balances", "list", *options, "--all"]
+    setup.state.business_handler = lambda payload, index: response(CASH_BALANCES, rows)
+    code, out, err = run_cli([*query, "--live"])
+    assert code == 0, err
+    assert parse(out)["data"] == rows
+    assert not setup.cache_path.exists()
+    code, _, err = run_cli(["refresh", "liquidity", "cash", "balances", *options])
+    assert code == 0, err
+    setup.state.reachable = False
+    count = len(setup.state.business_requests)
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    assert parse(out)["data"] == rows
+    assert len(setup.state.business_requests) == count
+
+
 @pytest.mark.parametrize("width", ["0", "-1", "101", "500", "1.5", "many"])
 def test_latest_invalid_width_rejected_before_any_source(setup, run_cli, width):
     for command in (
