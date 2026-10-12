@@ -289,62 +289,27 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `rules transfer` | `list`, `get` |
 | `rules waterlevel` | `list`, `get` |
 
-### 现金余额：最新快照与每日历史（#147，未发布）
+### 现金余额：日期、全主体和页宽（#147，未发布）
 
-当前源码的 `cash balances list` 与 `refresh liquidity cash balances` 支持两种契约：
-不提供日期时读取最新余额快照，保留 current/available/opening 等原生字段；同时提供
-`--from-date` 和 `--to-date` 时读取包含两端的每日业务余额。日期首选 `YYYY-MM-DD`，
-也接受 `YYYYMMDD`；同日范围有效，单边、无效或倒置范围拒绝。
-每日结果使用 `statisticalDate` 和原生 `balance`，不是最新快照的历史副本；
-不推定余额子类型或时区，不补零，不制造历史可用余额、期初余额或折算金额。
-采集时间及最新快照的保留历史不能代替业务日期。
-
-`--entity` 可重复，值必须是原生 `instId`，不是 `instCode`。可先读取
-`reference entities list --all`，按返回目录核对两者对应关系。
-**兼容性变化：仅此余额叶子中，不带显式 `--entity` 的 `--all` 现在选择全部目录主体，
-并显示全部匹配行，不再只展开原默认主体的结果。** 显式指定主体后，`--all` 仍仅显示
-这些主体的全部匹配行；刷新采用相同选择规则。不带这两个选项时保留原默认主体范围，
-其他列表的 `--all` 语义不变。列表的 `--all` 仍与显式 `--limit` / `--offset` 冲突。
+- 无日期读取最新快照；成对 `--from-date` / `--to-date` 读取包含两端的每日原生余额。
+  支持 YYYY-MM-DD / YYYYMMDD；每日不是历史 current/available/opening，不推定时区或补零。
+- 默认读取缓存，`--live` 在线但不发布；显式 refresh 发布。
+- `--entity` 使用可重复的原生 `instId`。仅此叶子，无显式主体的 `--all` 扩大为全部目录主体；
+  有显式主体时仍只显示该范围全部行。离线使用冻结选择，不重新发现目录。
+- 最新在线/refresh 的 `--page-size` 默认 100，接受 1–100，与显示 limit/offset 和缓存键无关。
+  离线拒绝显式 page-size；每日拒绝 page-size/timezone，按最多 30 个别名 × 七日分块。
+- 安全 partial 保留告警和 `complete=false`；`--require-complete` 拒绝部分结果及发布。
+  硬失败保留旧缓存。目录当前 3710/3711 不完整，当前账户绑定不证明历史归属。
 
 ```bash
-dogopencli liquidity reference entities list --all
-dogopencli liquidity cash balances list --entity INST_ID_A --entity INST_ID_B --live --all --page-size 100
-dogopencli refresh liquidity cash balances --all --page-size 100
-dogopencli liquidity cash balances list --all
-dogopencli refresh liquidity cash balances --entity INST_ID_A \
-  --from-date 2026-10-01 --to-date 2026-10-07
-dogopencli liquidity cash balances list --entity INST_ID_A \
-  --from-date 2026-10-01 --to-date 2026-10-07 --all
-dogopencli liquidity cash balances list --entity INST_ID_A \
-  --from-date 2026-10-01 --to-date 2026-10-07 --live --all
+dogopencli liquidity cash balances list --all --live --page-size 100
+dogopencli refresh liquidity cash balances --entity INST_ID_A --from-date 2026-10-01 --to-date 2026-10-07
+dogopencli liquidity cash balances list --entity INST_ID_A --from-date 2026-10-01 --to-date 2026-10-07 --all
 ```
 
-`INST_ID_A` / `INST_ID_B` 是占位符，须替换为目录返回的实际 `instId`。
-最新模式的在线查询和刷新接受采集参数 `--page-size 1..100`，默认 **100**；
-这是客户端支持范围，不是已证明的服务端最大值。页宽控制原生采集偏移，不控制展示，
-也不改变缓存业务范围；`--limit` / `--offset` 只控制本地展示。
-离线读取拒绝显式 `--page-size`。每日模式拒绝显式 `--page-size` 和 `--timezone`；
-内部按最多 30 个账户别名、七个包含两端的日期分块，这些不是后端分页或原生最大值。
-每日采集共享 900 秒预算、最多 1000 个块；超限须缩小日期或账户范围。
-全部主体的最新采集共享 1800 秒预算，不保证任意生产范围均能完成。
-
-有无 `--live` 使用相同业务日期含义：默认只读匹配缓存，不发现新主体、不联网、不自动补洞；
-`--live` 在线发现所需目录并查询，但不写余额或依赖目录缓存。
-只有显式 refresh 原子发布余额与冻结的主体/账户选择、依赖质量；
-离线 ALL 使用所读采集的冻结集合，不按后来变化的目录重新解释结果。
-最新与每日缓存独立，旧最新快照不能满足每日范围，也不会因此被删除或改写。
-
-有效但覆盖不全的结果沿用 usable-partial 策略：默认查询及刷新可成功，
-保留 `complete=false` 与持续告警；`--require-complete` 拒绝部分数据及发布。
-认证、传输、结构、越界主体/别名/日期或身份冲突属于硬失败，不发布，也不修补来源身份。
-每日主体和币种标签来自冻结的当前账户目录，不证明历史归属或覆盖已删除账户；
-已观察到账户目录 3710/3711，成功执行所有每日块仍须继承该不完整性。
-
-本功能尚未完成生产放行：#148 的 scoped latest CLI smoke 仅证明所选范围
-12/12、页宽 100、完整且 live 不改缓存。完整 ALL、每日 CLI UAT、最终仓库检查及
-独立 Standards/Spec 审查仍待完成；此前 399 次到达/396 个唯一身份及越界主体回显
-等来源缺陷不能算作通过。规格与限制见
-[现金余额读取契约](docs/design/liquidity-cash-balances-v0.1.0.md)。
+`INST_ID_A` 须替换为实际 instId。完整 latest ALL 因来源身份冲突仍阻塞（#155）；
+每日 partial 刷新、严格拒绝和同次采集的断网缓存一致已验证，不代表全范围放行。
+规格见[现金余额读取契约](docs/design/liquidity-cash-balances-v0.1.0.md)。
 
 ### Swap 订单列表
 
