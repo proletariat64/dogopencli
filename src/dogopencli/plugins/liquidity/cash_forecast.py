@@ -8,6 +8,7 @@ The UAT allowlist is populated only after focused SIT and CLI inquiry UAT.
 from .spec import (
     ENV_RESULT_FLAG,
     ENV_SUCCESS,
+    PAGE_SINGLE,
     PROFILE_DATED,
     PROFILE_HISTORY,
     RUNTIMES,
@@ -114,6 +115,66 @@ CASH_BALANCES = ListSpec(
     projection="balances",
     schema_version=VERSION,
     notes=NOTES,
+)
+
+CASH_DAILY_BALANCES = ListSpec(
+    path=("cash", "balances"),
+    kind=RUNTIMES,
+    title="source daily balance observations",
+    endpoint="/balStatisticalQuery.json",
+    method="POST",
+    envelope=ENV_SUCCESS,
+    container=("data",),
+    identity=("entity", "aliasName", "currency", "statisticalDate"),
+    pagination=PAGE_SINGLE,
+    paged_request=False,
+    profile=PROFILE_DATED,
+    series_field="statisticalDate",
+    series_format="%Y-%m-%d",
+    template={"tntInstId": TENANT, "balanceType": "day"},
+    scope_options=(
+        ScopeOption(
+            "entity",
+            "entitys",
+            "Native instId selection.",
+            repeat=True,
+            default="Z21",
+            virtual=True,
+        ),
+        ScopeOption(
+            "account",
+            "aliasNames",
+            "Optional account aliases.",
+            repeat=True,
+            canonical_flag="--account-alias",
+        ),
+        ScopeOption(
+            "from_date",
+            "queryStartDate",
+            "Inclusive daily start; pair with --to-date.",
+            date=True,
+            window="from",
+        ),
+        ScopeOption(
+            "to_date",
+            "queryDate",
+            "Inclusive daily end; pair with --from-date.",
+            date=True,
+            window="to",
+        ),
+    ),
+    table_columns=("entity", "aliasName", "currency", "statisticalDate", "balance"),
+    schema_version="cash-daily-balances-v1",
+    notes=(
+        "Paired --from-date/--to-date select inclusive source daily observations;"
+        " no dates retain latest snapshots. Daily timezone and balance subtype"
+        " are unknown.",
+        "Daily labels use the frozen current account roster, not proven"
+        " historical ownership."
+        " No zero filling or historical current/available/opening balances.",
+        "Daily acquisition uses disjoint 30-alias/seven-day chunks, at most 1000"
+        " chunks under one 900-second deadline including dependencies.",
+    ),
 )
 
 _GROUP_OPTIONS = (
@@ -472,6 +533,7 @@ FORECAST_RESULTS = ListSpec(
 
 ACCEPTED_LIST_SPECS = (
     CASH_BALANCES,
+    CASH_DAILY_BALANCES,
     CASH_GROUPS,
     CASH_GROUP_BALANCES,
     CASH_POOLS,

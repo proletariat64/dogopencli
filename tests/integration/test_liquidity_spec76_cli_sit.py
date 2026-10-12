@@ -29,8 +29,12 @@ def candidate_catalog(monkeypatch):
     declarations = {
         path: replace(node, children=()) for path, node in catalog.NODES.items()
     }
+    grouped = {}
     for item in ACCEPTED_LIST_SPECS:
-        leaf = leaves.ListLeaf((item,))
+        grouped.setdefault(item.path, []).append(item)
+    for variants in grouped.values():
+        item = variants[0]
+        leaf = leaves.ListLeaf(tuple(variants))
         monkeypatch.setitem(leaves.LIST_LEAVES, item.path, leaf)
         monkeypatch.delitem(
             leaves.DEFERRED_BY_PATH, (*item.path, "list"), raising=False
@@ -228,7 +232,7 @@ def test_latest_balances_default_width_100_collects_short_final_page(setup, run_
         101,
     )
     code, out, err = run_cli(
-        ["liquidity", "cash", "balances", "list", "--live", "--all"]
+        ["liquidity", "cash", "balances", "list", "--entity", "Z21", "--live", "--all"]
     )
     assert code == 0, err
     assert parse(out)["data"] == rows

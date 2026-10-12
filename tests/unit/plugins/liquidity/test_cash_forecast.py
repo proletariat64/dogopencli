@@ -105,7 +105,9 @@ def test_release_distinguishes_complete_and_backend_compatible_uat():
     assert RELEASED == UAT_PASSED == UAT_COMPLETE_PASSED | UAT_COMPATIBILITY_PASSED
     for list_spec in ACCEPTED_LIST_SPECS:
         assert list_spec.schema_version == (
-            "pool-balances-v1"
+            "cash-daily-balances-v1"
+            if list_spec.endpoint == "/balStatisticalQuery.json"
+            else "pool-balances-v1"
             if list_spec.path == ("cash", "pool-balances")
             else "credit-usage-v1"
             if list_spec.path == ("cash", "credit-usage")

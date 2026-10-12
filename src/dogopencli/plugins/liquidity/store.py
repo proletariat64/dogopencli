@@ -385,6 +385,15 @@ def _owning_variant(list_spec: spec.ListSpec, entry: CaptureEntry) -> spec.ListS
     if leaf is None or len(leaf.variants) == 1:
         return list_spec
     scope = decode_scope(entry.scope)
+    if list_spec.path == ("cash", "balances"):
+        # Latest's legacy scope has no variant selector. Profile plus the
+        # persisted contract distinguishes it from new daily captures.
+        candidates = [
+            variant for variant in leaf.variants if variant.profile == entry.profile
+        ]
+        if len(candidates) != 1:
+            raise _invalid("retained cash balance variant is unknown")
+        return candidates[0]
     candidates = [
         variant
         for variant in leaf.variants
@@ -586,7 +595,7 @@ def plan_capture_publish(
         plan.index = IndexData(captures=entries)
         return plan
     for entry in entries:
-        if profile == spec.PROFILE_DATED and not entry.window_to:
+        if entry.profile == spec.PROFILE_DATED and not entry.window_to:
             raise _invalid(
                 "retention ordering is unavailable; refresh rejected and the"
                 " previous cache is retained"
@@ -618,7 +627,12 @@ def plan_capture_publish(
     # evict before the newer correction of it, whatever their namespaces.
     ranked.sort(
         key=lambda item: (
-            item.series,
+            # Cash daily days are compact; latest capture timestamps are ISO.
+            # Compare calendar prefixes without inventing a daily timezone or
+            # relabelling the capture axis. Report each original series value.
+            item.series.replace("-", "", 2)
+            if list_spec.path == ("cash", "balances")
+            else item.series,
             item.identity,
             item.fetched_at,
             item.namespace,
@@ -642,9 +656,9 @@ def plan_capture_publish(
         if not lost:
             survivors.append(entry)
             continue
-        retained_from = _retained_window_from(profile, entry, lost)
+        retained_from = _retained_window_from(entry.profile, entry, lost)
         if not remaining and (
-            profile != spec.PROFILE_DATED
+            entry.profile != spec.PROFILE_DATED
             or retained_from is None
             or entry.window_to is None
             or retained_from > entry.window_to
@@ -701,7 +715,7 @@ def plan_capture_publish(
             plan.trimmed[entry.namespace] = (trimmed_meta, trimmed_records)
         survivors.append(trimmed_entry)
         evicted.append(_eviction_record(entry, len(lost), partial=True))
-    if profile == spec.PROFILE_DATED:
+    if any(entry.profile == spec.PROFILE_DATED for entry in entries):
         # Older captures cannot repair a newer capture's lost day, but a newer
         # complete acquisition can. Publication order breaks fetched_at ties.
         generations = {
@@ -797,6 +811,18 @@ def select_captures(
         and (entry.requested_from or entry.window_from) <= window_to
         and (entry.requested_to or entry.window_to) >= window_from
     ]
+    if list_spec.path == ("cash", "balances") and covering:
+        from .cash_balances import binding_universe
+
+        # Resolve the universe BEFORE authority, rows or coverage are combined.
+        # A newer roster does not silently extend an older ALL capture.
+        newest = max(
+            enumerate(covering), key=lambda pair: (pair[1].fetched_at, pair[0])
+        )[1]
+        universe = binding_universe(newest.evidence)
+        covering = [
+            entry for entry in covering if binding_universe(entry.evidence) == universe
+        ]
     return covering, covers_window(covering, window_from, window_to)
 
 
@@ -805,10 +831,9 @@ def authoritative_capture(entries: list[CaptureEntry], day: str) -> CaptureEntry
     candidates = [
         (index, entry)
         for index, entry in enumerate(entries)
-        if (entry.requested_from or entry.window_from) is not None
-        and (entry.requested_to or entry.window_to) is not None
-        and (entry.requested_from or entry.window_from) <= day
-        and day <= (entry.requested_to or entry.window_to)
+        if (first := entry.requested_from or entry.window_from) is not None
+        and (last := entry.requested_to or entry.window_to) is not None
+        and first <= day <= last
     ]
     return max(
         candidates, key=lambda pair: (pair[1].fetched_at, pair[0]), default=(0, None)
@@ -925,11 +950,13 @@ def query_evidence(
         dataset_complete=covered,
         collected_total=collected_total,
         reported_total=evidence.reported_total if evidence and exact_window else None,
-        arrivals=evidence.arrivals if same_collection else None,
+        arrivals=evidence.arrivals if evidence and same_collection else None,
         unique_count=collected_total
         if evidence and evidence.unique_count is not None
         else None,
-        duplicate_count=evidence.duplicate_count if same_collection else None,
+        duplicate_count=evidence.duplicate_count
+        if evidence and same_collection
+        else None,
         total_semantics=evidence.total_semantics if evidence else "unknown",
         reasons=tuple(dict.fromkeys(reasons)),
         attempts=evidence.attempts if evidence else (),

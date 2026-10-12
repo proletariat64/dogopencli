@@ -21,6 +21,7 @@ from ...result_policy import check_complete, evidence_for, prepare_result
 from . import details as detail_store
 from . import spec
 from . import store as capture_store
+from .cash_balances import selection
 from .collect import acquire_liquidity_list
 from .common import emit, identity_values, load_config, now, provided, scope_flags
 from .leaves import DetailLeaf, detail_leaf, list_leaf
@@ -29,8 +30,11 @@ from .qualified_getters import detail_context_meta
 
 def run_refresh_list(args: argparse.Namespace) -> int:
     leaf = list_leaf(args.command_path[2:])
-    resolved = leaf.resolve(provided(args, scope_flags(leaf)))
+    resolved = leaf.resolve(
+        provided(args, scope_flags(leaf)), select_all=getattr(args, "all", False)
+    )
     variant = resolved.spec
+    unit = "chunk" if variant.endpoint == "/balStatisticalQuery.json" else "page"
     capability = leaf.acquisition_capability(
         variant, getattr(args, "page_size", None), online=True
     )
@@ -45,7 +49,7 @@ def run_refresh_list(args: argparse.Namespace) -> int:
                 capability,
                 resolved.request_scope,
                 progress=lambda done, total: print(
-                    f"refresh: collected page {done}/{total}", file=sys.stderr
+                    f"refresh: collected {unit} {done}/{total}", file=sys.stderr
                 ),
             )
         evidence = evidence_for(result)
@@ -119,6 +123,9 @@ def run_refresh_list(args: argparse.Namespace) -> int:
         "has_more": False,
         "retention": eviction,
     }
+    frozen = selection(evidence)
+    if frozen is not None:
+        meta["selection"] = frozen
     meta = prepare_result(meta, mode="refresh")
     emit(
         {

@@ -7,7 +7,8 @@ assertions: unknown units stay unknown, and null/empty/zero remain distinct
 source states.
 """
 
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, TypeVar
 
 from ...annotations import schema_annotations
 from ...helpspec import BizNode
@@ -26,8 +27,10 @@ from .investment_batch import VERSION as INVESTMENT_VERSION
 from .leaves import DEFERRED_BY_PATH, DETAIL_LEAVES
 from .operations_batch import SWAP_ORDERS
 
+_FieldName = TypeVar("_FieldName", bound=str)
 
-def _field_schema(fields: dict[str, str]) -> dict[str, Any]:
+
+def _field_schema(fields: Mapping[_FieldName, str]) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     for name, observed in sorted(fields.items()):
         properties[name] = {
@@ -62,6 +65,36 @@ def _source_guide(
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.endpoint == "/balStatisticalQuery.json":
+        schema = _field_schema(
+            dict.fromkeys(
+                (
+                    "id",
+                    "data",
+                    "statisticalDate",
+                    "balance",
+                    "aliasName",
+                    "entity",
+                    "currency",
+                ),
+                "str",
+            )
+        )
+        schema["additionalProperties"] = False
+        schema["x-source-timezone"] = "unknown"
+        schema["x-balance-subtype"] = "unknown; raw source balance"
+        schema["properties"]["id"]["description"] = (
+            "Native chart attribute; repeats across dates, not the daily identity."
+        )
+        schema["properties"]["statisticalDate"]["description"] = (
+            "Source business day, YYYY-MM-DD; inclusive query axis, not capture time."
+        )
+        for key in ("entity", "aliasName", "currency"):
+            schema["properties"][key]["description"] = (
+                "Frozen current-roster request binding;"
+                " historical ownership is unproven."
+            )
+        return schema
     if item.projection == "risk_sla":
         schema["additionalProperties"] = False
         schema["x-business-validation"] = "none; source values preserved"
@@ -475,13 +508,23 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                         item.endpoint, sampled_fields.get(item.name, {})
                     ),
                 ),
-                "selectors": {
-                    option.flag: option.match
-                    for option in item.scope_options
-                    if option.match
-                },
+                "selectors": (
+                    {
+                        "date_bounds": "paired"
+                        if item.profile == spec.PROFILE_DATED
+                        else "absent"
+                    }
+                    if item.path == ("cash", "balances")
+                    else {
+                        option.flag: option.match
+                        for option in item.scope_options
+                        if option.match
+                    }
+                ),
                 "identity": list(item.identity),
                 "series_time": item.series_field,
+                "offline_profile": item.profile,
+                "notes": list(item.notes),
                 "scope_defaults": {
                     option.flag: option.default
                     for option in item.scope_options

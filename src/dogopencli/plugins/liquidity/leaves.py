@@ -2618,9 +2618,30 @@ class ListLeaf:
             )
         return LiquidityListCapability(replace(variant, page_size=page_size))
 
-    def resolve(self, provided: dict[str, Any]) -> ResolvedScope:
-        candidates = []
-        for variant in self.variants:
+    def resolve(
+        self, provided: dict[str, Any], *, select_all: bool = False
+    ) -> ResolvedScope:
+        if self.path == ("cash", "balances"):
+            dated = bool(provided.get("from_date") or provided.get("to_date"))
+            if dated and provided.get("timezone") is not None:
+                raise CliError(
+                    INVALID_ARGUMENT,
+                    "daily balances do not accept --timezone",
+                    exit_code=EXIT_USAGE,
+                )
+            provided = {
+                key: value
+                for key, value in provided.items()
+                if value is not None and value != []
+            }
+            candidates = [
+                item
+                for item in self.variants
+                if (item.profile == PROFILE_DATED) == dated
+            ]
+        else:
+            candidates = []
+        for variant in () if self.path == ("cash", "balances") else self.variants:
             matched = True
             for option in variant.scope_options:
                 if option.virtual and option.match:
@@ -2638,8 +2659,13 @@ class ListLeaf:
             )
         variant = candidates[0]
         request_values, window = scope_values(variant.scope_options, provided)
-        if variant.endpoint == "/latestBalanceQuery.json":
+        if self.path == ("cash", "balances"):
             request_values["entitys"] = sorted(set(request_values["entitys"]))
+            if request_values.get("aliasNames"):
+                request_values["aliasNames"] = sorted(set(request_values["aliasNames"]))
+            if select_all and not provided.get("entity"):
+                request_values.pop("entitys")
+                request_values["__selection"] = "all-directory"
         if variant.projection == "funding_demands":
             validate_demand_query(request_values)
         if variant.projection == "rule_status":
@@ -2892,6 +2918,45 @@ def _filter_option(entry: tuple[str, ...]) -> OptionSpec:
     return option
 
 
+def _balance_all() -> OptionSpec:
+    return replace(
+        ALL,
+        summary="Without --entity, select all maintained instIds;"
+        " with explicit entities, retain that selection. List displays all rows."
+        " Offline uses the capture's frozen selection; no discovery.",
+        argument_contract=contract(
+            "boolean",
+            modes={
+                "cache": {"available": True, "role": "scope-selection"},
+                "live": {"available": True, "role": "scope-selection"},
+                "refresh": {"available": True, "role": "acquisition-scope"},
+            },
+            constraints=(
+                {"kind": "conflicts", "arguments": ["limit", "offset"]},
+                {
+                    "kind": "conditional-selection",
+                    "unless": "entity",
+                    "selection": "all-directory",
+                },
+            ),
+        ),
+    )
+
+
+def _list_option_spec(leaf: ListLeaf, option: ScopeOption) -> OptionSpec:
+    result = _option_spec(option)
+    if leaf.path == ("cash", "balances") and option.flag == "timezone":
+        # Resolve defaults after mode selection; an explicit timezone is invalid daily.
+        result = replace(
+            result,
+            default=None,
+            help_default=option.default,
+            summary=result.summary + " Latest only; explicit --timezone"
+            " is rejected with date bounds.",
+        )
+    return result
+
+
 def _acquisition_options(leaf: ListLeaf) -> tuple[OptionSpec, ...]:
     if leaf.path != ("cash", "balances"):
         return ()
@@ -2924,12 +2989,12 @@ def list_query_node(leaf: ListLeaf) -> BizNode:
         f"List {leaf.title} from the local cache (default) or the backend"
         f" with --live. Kind: {leaf.kind}.",
         options=(
-            *(_option_spec(option) for option in leaf.options),
+            *(_list_option_spec(leaf, option) for option in leaf.options),
             *(_filter_option(entry) for entry in variant.filters),
             *_acquisition_options(leaf),
             LIMIT,
             OFFSET,
-            ALL,
+            _balance_all() if leaf.path == ("cash", "balances") else ALL,
             LIVE,
             *CACHE_FLAGS,
             FORMAT_TABLE,
@@ -2939,7 +3004,11 @@ def list_query_node(leaf: ListLeaf) -> BizNode:
             CACHE_SEMANTICS,
             DISPLAY_WINDOW,
             *_SCOPE_CONSTRAINTS,
-            *variant.notes,
+            *(
+                tuple(note for item in leaf.variants for note in item.notes)
+                if leaf.path == ("cash", "balances")
+                else variant.notes
+            ),
         ),
         effects_variants=QUERY_EFFECTS_VARIANTS,
         output=QUERY_OUTPUT,
@@ -3011,19 +3080,30 @@ def detail_query_node(leaf: DetailLeaf) -> BizNode:
 
 def refresh_list_node(leaf: ListLeaf) -> BizNode:
     path = ("refresh", "liquidity", *leaf.path)
+    policy = (
+        "Validated partial acquisition publishes by default; strict or hard"
+        " failures preserve the previous cache."
+        if leaf.path == ("cash", "balances")
+        else "Incomplete acquisition preserves the previous cache."
+    )
     return BizNode(
         path,
         f"Refresh the {leaf.title} cache for the given scope through the"
-        f" existing CDP session; kind {leaf.kind}. Incomplete acquisition"
-        " preserves the previous cache.",
+        f" existing CDP session; kind {leaf.kind}. {policy}",
         options=(
-            *(_option_spec(option) for option in leaf.options),
+            *(_list_option_spec(leaf, option) for option in leaf.options),
+            *((_balance_all(),) if leaf.path == ("cash", "balances") else ()),
             *_acquisition_options(leaf),
         ),
         constraints=(
             "Requires an existing authenticated CDP session for the liquidity"
             " origin; only the local cache changes.",
             "Progress diagnostics go to stderr; the result envelope goes to stdout.",
+            *(
+                tuple(note for item in leaf.variants for note in item.notes)
+                if leaf.path == ("cash", "balances")
+                else ()
+            ),
             "Retention: at most 1,000,000 primary records per business leaf;"
             " time-series overflow evicts oldest records with a stderr"
             " warning, other overflow rejects the refresh (ADR 0017).",

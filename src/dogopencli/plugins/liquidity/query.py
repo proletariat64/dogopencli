@@ -42,6 +42,7 @@ from . import details as detail_store
 from . import spec as spec_mod
 from . import store as capture_store
 from .capability import LiquidityListCapability
+from .cash_balances import selection
 from .collect import acquire_liquidity_list
 from .common import emit, identity_values, load_config, now, provided, scope_flags
 from .leaves import DEFERRED_BY_PATH, DetailLeaf, ListLeaf, detail_leaf, list_leaf
@@ -189,7 +190,7 @@ def _coverage_meta(entries: list[capture_store.CaptureEntry]) -> list[dict[str, 
 def run_list(args: argparse.Namespace) -> int:
     leaf = list_leaf(args.command_path[1:-1])
     limit, offset, fields = _display_options(args)
-    resolved = leaf.resolve(provided(args, scope_flags(leaf)))
+    resolved = leaf.resolve(provided(args, scope_flags(leaf)), select_all=args.all)
     variant = resolved.spec
     filters = _local_filters(args, variant)
     capability = leaf.acquisition_capability(
@@ -354,6 +355,9 @@ def run_list(args: argparse.Namespace) -> int:
         quality_entries, covered, len(pairs), window=resolved.window
     )
     meta.update(evidence.meta())
+    frozen = selection(latest.evidence)
+    if frozen is not None:
+        meta["selection"] = frozen
     return _emit_window(args, variant.table_columns, window, meta, fields)
 
 
@@ -392,7 +396,7 @@ def _public_hint_value(option: spec_mod.ScopeOption, value: Any) -> str:
 
 
 def _hint_options(leaf: ListLeaf, values: dict[str, Any]) -> str:
-    parts = []
+    parts = ["--all"] if values.get("__selection") == "all-directory" else []
     for option in leaf.options:
         value = values.get(option.field)
         if value is None:
@@ -417,6 +421,7 @@ def _run_list_live(
     capability: LiquidityListCapability,
 ) -> int:
     variant = resolved.spec
+    unit = "chunk" if variant.endpoint == "/balStatisticalQuery.json" else "page"
     with inquiry_session(
         config_file=config_mod.config_path(), startup_url=capability.page_url
     ) as session:
@@ -425,7 +430,7 @@ def _run_list_live(
             capability,
             resolved.request_scope,
             progress=lambda done, total: print(
-                f"live: collected page {done}/{total}", file=sys.stderr
+                f"live: collected {unit} {done}/{total}", file=sys.stderr
             ),
         )
     evidence = evidence_for(result)
@@ -456,6 +461,9 @@ def _run_list_live(
         "returned_count": len(window),
         "has_more": offset + len(window) < matched_total,
     }
+    frozen = selection(evidence)
+    if frozen is not None:
+        meta["selection"] = frozen
     return _emit_window(args, variant.table_columns, window, meta, fields)
 
 
