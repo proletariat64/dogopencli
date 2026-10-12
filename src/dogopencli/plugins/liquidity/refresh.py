@@ -31,7 +31,9 @@ def run_refresh_list(args: argparse.Namespace) -> int:
     leaf = list_leaf(args.command_path[2:])
     resolved = leaf.resolve(provided(args, scope_flags(leaf)))
     variant = resolved.spec
-    capability = leaf.capability(variant)
+    capability = leaf.acquisition_capability(
+        variant, getattr(args, "page_size", None), online=True
+    )
     config = load_config()
     store = Cache(config.cache_path)
     with store.refresh_lock():

@@ -130,7 +130,7 @@ def test_balances_post_body_with_entity_and_account_arrays():
     contract = capability.contract
     assert contract.method == "POST"
     assert contract.path == "/latestBalanceQuery.json"
-    assert contract.page_size == 30
+    assert contract.page_size == 100
     fields, window = scope_values(
         CASH_BALANCES.scope_options, {"account": ["A1", "A2"]}
     )
@@ -140,14 +140,14 @@ def test_balances_post_body_with_entity_and_account_arrays():
         "aliasNames": ["A1", "A2"],
         "timeZone": "GMT+08",
     }
-    body = capability.page_body(encode_scope(fields), 30)
+    body = capability.page_body(encode_scope(fields), 100)
     assert body == {
         "tntInstId": "GUAPW3SG",
         "entitys": ["Z21"],
         "aliasNames": ["A1", "A2"],
         "timeZone": "GMT+08",
-        "rowStart": 30,
-        "pageSize": 30,
+        "rowStart": 100,
+        "pageSize": 100,
     }
     assert set(body) <= contract.allowed_body_keys
     assert contract.fixed_body_values == (("tntInstId", "GUAPW3SG"),)

@@ -41,6 +41,7 @@ from ..envelope import is_business_refusal
 from . import details as detail_store
 from . import spec as spec_mod
 from . import store as capture_store
+from .capability import LiquidityListCapability
 from .collect import acquire_liquidity_list
 from .common import emit, identity_values, load_config, now, provided, scope_flags
 from .leaves import DEFERRED_BY_PATH, DetailLeaf, ListLeaf, detail_leaf, list_leaf
@@ -191,10 +192,13 @@ def run_list(args: argparse.Namespace) -> int:
     resolved = leaf.resolve(provided(args, scope_flags(leaf)))
     variant = resolved.spec
     filters = _local_filters(args, variant)
+    capability = leaf.acquisition_capability(
+        variant, getattr(args, "page_size", None), online=args.live
+    )
     config = load_config()
     if args.live:
         return _run_list_live(
-            args, leaf, resolved, filters, limit, offset, fields, config
+            args, leaf, resolved, filters, limit, offset, fields, config, capability
         )
     store = Cache(config.cache_path)
     index = capture_store.read_index(store, variant.name)
@@ -410,9 +414,9 @@ def _run_list_live(
     offset: int,
     fields: list[str] | None,
     config: config_mod.Config,
+    capability: LiquidityListCapability,
 ) -> int:
     variant = resolved.spec
-    capability = leaf.capability(variant)
     with inquiry_session(
         config_file=config_mod.config_path(), startup_url=capability.page_url
     ) as session:

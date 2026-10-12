@@ -82,7 +82,7 @@ CASH_BALANCES = ListSpec(
     total=("data", "totalCount"),
     identity=("entity", "aliasName", "currency"),
     profile=PROFILE_HISTORY,
-    page_size=30,
+    page_size=100,
     template={"tntInstId": TENANT},
     scope_options=(
         ScopeOption(

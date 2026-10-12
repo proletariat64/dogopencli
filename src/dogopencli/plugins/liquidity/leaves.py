@@ -12,7 +12,7 @@ docs/research/general/2026-10-01-liquidity-live-probes.md.
 from dataclasses import dataclass, replace
 from typing import Any
 
-from ...errors import INVALID_ARGUMENT, CliError
+from ...errors import EXIT_USAGE, INVALID_ARGUMENT, CliError
 from ...helpspec import (
     ALL,
     CACHE_FLAGS,
@@ -2592,6 +2592,32 @@ class ListLeaf:
     def capability(self, variant: ListSpec) -> LiquidityListCapability:
         return self._capabilities[id(variant)]
 
+    def acquisition_capability(
+        self, variant: ListSpec, page_size: int | None, *, online: bool
+    ) -> LiquidityListCapability:
+        """Resolve execution width without changing the business/cache contract."""
+        if page_size is None:
+            return self.capability(variant)
+        if variant.endpoint != "/latestBalanceQuery.json":
+            raise CliError(
+                INVALID_ARGUMENT,
+                "--page-size is only supported for latest balances",
+                exit_code=EXIT_USAGE,
+            )
+        if not online:
+            raise CliError(
+                INVALID_ARGUMENT,
+                "--page-size requires --live or refresh",
+                exit_code=EXIT_USAGE,
+            )
+        if not 1 <= page_size <= 100:
+            raise CliError(
+                INVALID_ARGUMENT,
+                "--page-size must be an integer from 1 to 100",
+                exit_code=EXIT_USAGE,
+            )
+        return LiquidityListCapability(replace(variant, page_size=page_size))
+
     def resolve(self, provided: dict[str, Any]) -> ResolvedScope:
         candidates = []
         for variant in self.variants:
@@ -2612,6 +2638,8 @@ class ListLeaf:
             )
         variant = candidates[0]
         request_values, window = scope_values(variant.scope_options, provided)
+        if variant.endpoint == "/latestBalanceQuery.json":
+            request_values["entitys"] = sorted(set(request_values["entitys"]))
         if variant.projection == "funding_demands":
             validate_demand_query(request_values)
         if variant.projection == "rule_status":
@@ -2864,6 +2892,30 @@ def _filter_option(entry: tuple[str, ...]) -> OptionSpec:
     return option
 
 
+def _acquisition_options(leaf: ListLeaf) -> tuple[OptionSpec, ...]:
+    if leaf.path != ("cash", "balances"):
+        return ()
+    return (
+        OptionSpec(
+            "page_size",
+            "--page-size",
+            "Latest acquisition width (1–100); --live or refresh only."
+            " Not a display limit or cache scope. Default: 100.",
+            "int",
+            help_default=100,
+            argument_contract=contract(
+                "integer",
+                modes={
+                    "cache": {"available": False},
+                    "live": {"available": True, "role": "native-request"},
+                    "refresh": {"available": True, "role": "native-request"},
+                },
+                constraints=({"kind": "range", "min": 1, "max": 100},),
+            ),
+        ),
+    )
+
+
 def list_query_node(leaf: ListLeaf) -> BizNode:
     variant = leaf.variants[0]
     path = ("liquidity", *leaf.path, "list")
@@ -2874,6 +2926,7 @@ def list_query_node(leaf: ListLeaf) -> BizNode:
         options=(
             *(_option_spec(option) for option in leaf.options),
             *(_filter_option(entry) for entry in variant.filters),
+            *_acquisition_options(leaf),
             LIMIT,
             OFFSET,
             ALL,
@@ -2963,7 +3016,10 @@ def refresh_list_node(leaf: ListLeaf) -> BizNode:
         f"Refresh the {leaf.title} cache for the given scope through the"
         f" existing CDP session; kind {leaf.kind}. Incomplete acquisition"
         " preserves the previous cache.",
-        options=tuple(_option_spec(option) for option in leaf.options),
+        options=(
+            *(_option_spec(option) for option in leaf.options),
+            *_acquisition_options(leaf),
+        ),
         constraints=(
             "Requires an existing authenticated CDP session for the liquidity"
             " origin; only the local cache changes.",
