@@ -1,5 +1,7 @@
 # 文档索引
 
+- [现金余额日期、全主体与大页规格 #147](design/liquidity-cash-balances-v0.1.0.md)：live/cache 同义业务日期范围、instId 全主体发现、latest 默认页宽 100；[生产只读研究](research/general/2026-10-12-cash-balances-date-entities-pagination.md)记录 50/100 成功、500/1000/5000 拒绝及分页/主体回显和目录完整性门槛。
+
 - [资产交易与报价组原生 getter](research/general/2026-10-07-liquidity-asset-quote-group-getters.md)：#141 单交易根、报价组物理版本行、独立缓存与逐叶验收；[规格副本](design/liquidity-native-asset-quote-group-getters-v0.1.0.md)。
 - [Getter 资格化与实施](research/general/2026-10-07-liquidity-getter-qualification.md)：#137 新 RFQ 子任务绑定、独立上下文路由额度、十二项剩余证据门槛；实施票 #139。
 - [三项原生 getter 实施与验收](research/general/2026-10-07-liquidity-getters-acceptance.md)：#136 demands、realtime、quotes 的独立原生详情与缓存；本地验证与逐叶生产 UAT 分开记录。
