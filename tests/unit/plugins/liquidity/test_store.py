@@ -69,6 +69,66 @@ def test_capture_rejects_snapshot_count_mismatch(tmp_path):
     assert rejected.value.code == "INVALID_RESPONSE"
 
 
+@pytest.mark.parametrize(
+    "format_string, value",
+    [
+        ("%Y%m%d", "00010102"),
+        ("%Y-%m-%d", "0001-01-02"),
+        ("%Y%m%d%H%M", "000101021345"),
+        ("%Y%m%d", "09990102"),
+        ("%Y-%m-%d", "0999-01-02"),
+        ("%Y%m%d%H%M", "099901021345"),
+    ],
+)
+def test_early_calendar_series_formats_publish_and_reload(
+    tmp_path, format_string, value
+):
+    store = Cache(tmp_path / "cache.sqlite3")
+    list_spec = replace(FORECAST_CASHFLOWS, series_format=format_string)
+    rows = [{"expectValueDateTime": value}]
+    day = "00010102" if value.startswith("0001") else "09990102"
+    plan = capture_store.plan_capture_publish(
+        store, list_spec, "", (day, day), rows, 1, T1, T1
+    )
+    capture_store.commit_plan(store, list_spec.name, plan, T1)
+    index = capture_store.read_index(store, list_spec.name)
+    assert index is not None
+    selected, covered = capture_store.select_captures(index, list_spec, "", (day, day))
+    assert covered
+    assert capture_store.read_capture(store, selected[0]) == rows
+    assert capture_store.series_value(list_spec, rows[0], T1) == day
+
+
+@pytest.mark.parametrize(
+    "format_string, value",
+    [
+        ("%Y%m%d", "10102"),
+        ("%Y-%m-%d", "0001-1-02"),
+        ("%Y-%m-%d", "001-01-02"),
+        ("%Y%m%d%H%M", "00010102134"),
+        ("%Y%m%d%H%M", "000101022460"),
+        ("%Y-%m-%d", "0000-01-02"),
+    ],
+)
+def test_early_calendar_series_requires_exact_declared_format(
+    tmp_path, format_string, value
+):
+    store = Cache(tmp_path / "cache.sqlite3")
+    list_spec = replace(FORECAST_CASHFLOWS, series_format=format_string)
+    with pytest.raises(CliError, match="series time"):
+        capture_store.plan_capture_publish(
+            store,
+            list_spec,
+            "",
+            ("00010102", "00010102"),
+            [{"expectValueDateTime": value}],
+            1,
+            T1,
+            T1,
+        )
+    assert capture_store.read_index(store, list_spec.name) is None
+
+
 def test_cashflow_retention_uses_native_datetime_day(tmp_path):
     store = Cache(tmp_path / "cache.sqlite3")
     rows = [
