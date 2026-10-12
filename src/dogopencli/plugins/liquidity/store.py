@@ -459,7 +459,11 @@ def _retained_window_from(
     missing = set(entry.missing_days) | {item.series for item in lost}
     start = entry.window_from
     while start in missing:
-        start = _next_day_like(start)
+        try:
+            start = _next_day_like(start)
+        except OverflowError:
+            # The final calendar day has no successor or retained coverage.
+            return None
     return start
 
 
@@ -844,8 +848,7 @@ def coverage_segments(
     entries: list[CaptureEntry], start: str, end: str
 ) -> list[tuple[str, CaptureEntry | None]]:
     """Only request, trim and hole boundaries can change day-level authority."""
-    stop = _next_day_like(end)
-    boundaries = {start, stop}
+    boundaries = {start}
     for entry in entries:
         for first, last in (
             (
@@ -854,21 +857,16 @@ def coverage_segments(
             ),
             (entry.window_from, entry.window_to),
         ):
-            if first is not None and start < first < stop:
+            if first is not None and start < first <= end:
                 boundaries.add(first)
-            if last is not None:
-                after = _next_day_like(last)
-                if start < after < stop:
-                    boundaries.add(after)
+            if last is not None and start <= last < end:
+                boundaries.add(_next_day_like(last))
         for day in entry.missing_days:
             if start <= day <= end:
                 boundaries.add(day)
-                boundaries.add(_next_day_like(day))
-    return [
-        (day, authoritative_capture(entries, day))
-        for day in sorted(boundaries)
-        if day < stop
-    ]
+                if day < end:
+                    boundaries.add(_next_day_like(day))
+    return [(day, authoritative_capture(entries, day)) for day in sorted(boundaries)]
 
 
 def active_captures(

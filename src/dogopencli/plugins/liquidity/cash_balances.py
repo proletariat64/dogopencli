@@ -252,7 +252,7 @@ def _collect_daily(
             batch = aliases[offset : offset + 30]
             day = start
             while day <= end:
-                last = min(end, day + timedelta(days=6))
+                last = day + timedelta(days=min(6, (end - day).days))
                 body = capability.page_body(
                     encode_scope(
                         {
@@ -298,6 +298,8 @@ def _collect_daily(
                 chunks += 1
                 if progress is not None:
                     progress(chunks, chunk_count)
+                if last == end:
+                    break
                 day = last + timedelta(days=1)
     finally:
         transport.close()

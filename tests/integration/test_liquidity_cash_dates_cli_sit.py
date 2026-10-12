@@ -18,6 +18,8 @@ DATES = ["--from-date", "2026-10-01", "--to-date", "2026-10-02"]
         ["--to-date", "2026-10-02"],
         ["--from-date", "2026-02-30", "--to-date", "2026-10-02"],
         ["--from-date", "2026-10-03", "--to-date", "2026-10-02"],
+        ["--from-date", "9999-12-32", "--to-date", "9999-12-31"],
+        ["--from-date", "9999-12-31", "--to-date", "9999-12-30"],
         [*DATES, "--timezone", "GMT+08"],
         [*DATES, "--page-size", "100"],
     ],
@@ -144,6 +146,130 @@ def install_daily(setup, *, accounts=None, directory_rows=None, total=None, rows
         return daily(rows)
 
     setup.state.business_handler = answer
+
+
+@pytest.mark.parametrize("empty", [True, False])
+@pytest.mark.parametrize(
+    "start, expected_chunks",
+    [
+        ("9999-12-31", [("99991231", "99991231")]),
+        ("9999-12-24", [("99991224", "99991230"), ("99991231", "99991231")]),
+    ],
+)
+def test_last_calendar_day_live_refresh_and_offline(
+    setup, run_cli, empty, start, expected_chunks
+):
+    chunks = []
+
+    def answer(payload, index):
+        if "wallet" in payload:
+            return roster([account()])
+        chunks.append((payload["queryStartDate"], payload["queryDate"]))
+        return daily(
+            []
+            if empty
+            else [
+                observation(day="9999-12-31")
+                if payload["queryDate"] == "99991231"
+                else observation(day="9999-12-24")
+            ]
+        )
+
+    setup.state.business_handler = answer
+    options = ["--entity", "E1", "--from-date", start, "--to-date", "9999-12-31"]
+    code, out, err = run_cli([*QUERY, *options, "--live", "--require-complete"])
+    assert code == 0, err
+    acquired = parse(out)
+    assert acquired["meta"]["complete"] is True
+    assert [row["statisticalDate"] for row in acquired["data"]] == (
+        []
+        if empty
+        else ["9999-12-31"]
+        if start == "9999-12-31"
+        else ["9999-12-24", "9999-12-31"]
+    )
+    assert chunks == expected_chunks
+    assert not setup.cache_path.exists()
+    chunks.clear()
+    code, out, err = run_cli([*REFRESH, *options, "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["meta"]["published"] is True
+    assert parse(out)["meta"]["complete"] is True
+    assert chunks == expected_chunks
+    before = setup.cache_path.read_bytes()
+    count = len(setup.state.business_requests)
+    setup.state.reachable = False
+    code, out, err = run_cli([*QUERY, *options, "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["data"] == acquired["data"]
+    assert parse(out)["meta"]["complete"] is True
+    assert len(setup.state.business_requests) == count
+    assert setup.cache_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("old_start", ["9999-12-30", "9999-12-31"])
+def test_last_calendar_day_retention_preserves_only_covered_days(
+    setup, run_cli, monkeypatch, old_start
+):
+    from datetime import datetime, timezone
+
+    from dogopencli.plugins.liquidity import refresh, store
+
+    monkeypatch.setitem(store.plan_capture_publish.__kwdefaults__, "cap", 1)
+    install_daily(setup, rows=[observation(day="9999-12-31", balance="1")])
+    options = ["--entity", "E1", "--from-date", old_start, "--to-date", "9999-12-31"]
+    monkeypatch.setattr(
+        refresh, "now", lambda: datetime(2026, 10, 1, tzinfo=timezone.utc)
+    )
+    code, out, err = run_cli([*REFRESH, *options])
+    assert code == 0, err
+    install_daily(setup, rows=[observation(day="9999-12-31", balance="2")])
+    monkeypatch.setattr(
+        refresh, "now", lambda: datetime(2026, 10, 2, tzinfo=timezone.utc)
+    )
+    # A distinct alias-filter scope shares the same per-leaf retention budget.
+    retained = [
+        "--entity",
+        "E1",
+        "--account-alias",
+        "A1",
+        "--from-date",
+        "9999-12-31",
+        "--to-date",
+        "9999-12-31",
+    ]
+    code, out, err = run_cli([*REFRESH, *retained, "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["meta"]["retention"]["dropped"] == 1
+    setup.state.reachable = False
+    code, out, err = run_cli([*QUERY, *retained, "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["data"][0]["balance"] == "2"
+    code, out, err = run_cli([*QUERY, *options])
+    if old_start == "9999-12-31":
+        assert code == 1, err
+        assert parse(out)["error"]["code"] == "CACHE_MISS"
+    else:
+        assert code == 0, err
+        assert parse(out)["data"] == []
+        assert parse(out)["meta"]["complete"] is False
+        code, out, err = run_cli([*QUERY, *options, "--require-complete"])
+        assert code == 1, err
+        code, out, err = run_cli(
+            [
+                *QUERY,
+                "--entity",
+                "E1",
+                "--from-date",
+                old_start,
+                "--to-date",
+                old_start,
+                "--require-complete",
+            ]
+        )
+        assert code == 0, err
+        assert parse(out)["data"] == []
+        assert parse(out)["meta"]["complete"] is True
 
 
 def test_daily_all_refresh_freezes_selection_and_offline_never_discovers(
