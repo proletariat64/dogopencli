@@ -3,8 +3,8 @@
 Authority: [GitHub Issue #147](https://github.com/proletariat64/dogopencli/issues/147).
 
 Status: runtime implementation integrated; scoped daily refresh/offline qualified.
-Final client fixes/gates are pending; full latest ALL rollout remains blocked by
-source identity conflicts (#155). See #150 and PR #151 for qualification status.
+Client fixes and repository gates passed; full latest ALL rollout remains blocked
+by source identity conflicts (#155). See #150 and PR #151 for qualification status.
 Date: 2026-10-12.
 
 Evidence: [source/date/entity/page-width research](../research/general/2026-10-12-cash-balances-date-entities-pagination.md).
