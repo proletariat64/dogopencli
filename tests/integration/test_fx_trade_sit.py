@@ -356,6 +356,64 @@ def test_fx_refresh_replay_prune_and_empty_preservation(run_cli, fx_browser, env
     assert code == 1 and envelope(out)["error"]["code"] == "CACHE_MISS"
 
 
+@pytest.mark.parametrize(
+    "contender",
+    [
+        ["fx", "trade", "prune"],
+        ["refresh", "fx", "trade", "--trade-id", "competing"],
+    ],
+)
+def test_fx_refresh_blocks_competing_commands_during_fetch(
+    run_cli, fx_browser, envelope, contender
+):
+    fx_browser.allows_cache = True
+    fx_browser.business_handler = lambda payload, index: page([{"uniqueId": "saved"}])
+    assert run_cli(["refresh", "fx", "trade", "--trade-id", "saved"])[0] == 0
+    request_count = len(fx_browser.business_requests)
+    observed = []
+
+    def answer(payload, index):
+        trade_id = payload["queryRequest"]["uniqueIds"][0]
+        if trade_id == "outer":
+            transport_count = len(fx_browser.transports)
+            code, out, _ = run_cli(contender)
+            observed.append((code, envelope(out)))
+            assert len(fx_browser.transports) == transport_count
+        return page([{"uniqueId": trade_id}])
+
+    fx_browser.business_handler = answer
+    code, out, _ = run_cli(["refresh", "fx", "trade", "--trade-id", "outer"])
+    assert code == 0 and envelope(out)["meta"]["published"] is True
+    assert len(observed) == 1
+    assert observed[0][0] == 1
+    assert observed[0][1]["error"]["code"] == "LOCKED"
+    assert len(fx_browser.business_requests) == request_count + 1
+    code, out, _ = run_cli(["fx", "trade"])
+    assert code == 0 and envelope(out)["data"] == [{"uniqueId": "outer"}]
+    assert run_cli(["fx", "trade", "prune"])[0] == 0
+    assert run_cli(["fx", "trade"])[0] == 1
+
+
+@pytest.mark.parametrize("refresh", [True, False])
+def test_fx_locked_refresh_rejects_before_browser_but_live_proceeds(
+    run_cli, fx_browser, envelope, refresh
+):
+    from dogopencli.cache import Cache
+
+    store = Cache(query.config_mod.load([]).cache_path)
+    fx_browser.business_script.append(page([]))
+    args = ["refresh", "fx", "trade"] if refresh else ["fx", "trade", "--live"]
+    with store.refresh_lock():
+        code, out, _ = run_cli([*args, "--trade-id", "empty"])
+    if refresh:
+        assert code == 1 and envelope(out)["error"]["code"] == "LOCKED"
+        assert not fx_browser.transports
+        assert not fx_browser.business_requests
+    else:
+        assert code == 0 and envelope(out)["data"] == []
+        assert len(fx_browser.business_requests) == 1
+
+
 @pytest.mark.parametrize("offset", [0, 99])
 def test_fx_cached_strict_rejects_incomplete_before_display(
     run_cli, fx_browser, envelope, offset

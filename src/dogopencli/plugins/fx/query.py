@@ -1,6 +1,7 @@
 """Bounded live acquisition for the verified individual FX trade inquiry."""
 
 import time
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -162,22 +163,22 @@ def _online(args: Any, *, refresh: bool) -> int:
     query = query_request(args)
     store = Cache(config_mod.load([]).cache_path) if refresh else None
     started = time.monotonic()
-    with inquiry_session(
-        config_file=config_mod.config_path(), startup_url=FX_TRADE.page_url
-    ) as session:
-        rows, evidence, pages = acquire(session.transport(FX_TRADE), query)
-    fetched_at = datetime.now(timezone.utc).isoformat()
-    published = False
-    if refresh:
-        check_complete(
-            evidence,
-            require_complete=getattr(args, "require_complete", False),
-            mode="refresh",
-        )
-        # An empty candidate keeps both previous rows and acquisition timestamp.
-        if rows:
-            assert store is not None
-            with store.refresh_lock():
+    with store.refresh_lock() if store is not None else nullcontext():
+        with inquiry_session(
+            config_file=config_mod.config_path(), startup_url=FX_TRADE.page_url
+        ) as session:
+            rows, evidence, pages = acquire(session.transport(FX_TRADE), query)
+        fetched_at = datetime.now(timezone.utc).isoformat()
+        published = False
+        if refresh:
+            check_complete(
+                evidence,
+                require_complete=getattr(args, "require_complete", False),
+                mode="refresh",
+            )
+            # An empty candidate keeps both previous rows and acquisition timestamp.
+            if rows:
+                assert store is not None
                 published = (
                     publish_slot(
                         store,

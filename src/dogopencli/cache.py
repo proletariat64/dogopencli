@@ -261,6 +261,18 @@ class Cache:
         """Discard disposable legacy query data once; never create an absent DB."""
         if not self._path.exists():
             return
+        connection = self._connect_readonly()
+        try:
+            marker = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table'"
+                " AND name = 'cache_format'"
+            ).fetchone()
+            if marker is not None and connection.execute(
+                "SELECT version FROM cache_format"
+            ).fetchone() == (157,):
+                return
+        finally:
+            connection.close()
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")

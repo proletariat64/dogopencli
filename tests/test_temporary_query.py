@@ -1,3 +1,8 @@
+import sqlite3
+from stat import S_IMODE
+
+import pytest
+
 from dogopencli.cache import Cache
 from dogopencli.result_policy import AcquisitionEvidence
 from dogopencli.temporary_query import prune_slot, publish_slot, read_slot
@@ -109,9 +114,10 @@ def test_public_help_inventory_declares_uniform_list_operations(capsys):
         ), path
 
 
-def test_format_switch_discards_legacy_once_and_preserves_external_inputs(tmp_path):
-    import sqlite3
-
+@pytest.mark.parametrize("legacy_version", [None, 156])
+def test_format_switch_discards_legacy_once_and_preserves_external_inputs(
+    tmp_path, legacy_version
+):
     store = Cache(tmp_path / "cache.sqlite")
     external = tmp_path / "duckdog.db"
     external.write_bytes(b"external source stays private")
@@ -128,7 +134,10 @@ def test_format_switch_discards_legacy_once_and_preserves_external_inputs(tmp_pa
         fetched_at="2026-01-01T00:00:00+00:00",
     )
     with sqlite3.connect(tmp_path / "cache.sqlite") as connection:
-        connection.execute("DROP TABLE cache_format")
+        if legacy_version is None:
+            connection.execute("DROP TABLE cache_format")
+        else:
+            connection.execute("UPDATE cache_format SET version = ?", (legacy_version,))
         connection.execute("UPDATE snapshots SET namespace = 'legacy:list:cdp'")
         connection.execute("UPDATE records SET namespace = 'legacy:list:cdp'")
     assert read_slot(store, "payment.channel") == (None, [])
@@ -144,3 +153,65 @@ def test_format_switch_discards_legacy_once_and_preserves_external_inputs(tmp_pa
     assert read_slot(store, "payment.channel")[1] == [{"id": "new"}]
     assert read_slot(store, "payment.channel")[1] == [{"id": "new"}]
     assert external.read_bytes() == b"external source stays private"
+
+
+@pytest.fixture
+def updated_slot(tmp_path):
+    path = tmp_path / "cache" / "cache.sqlite"
+    store = Cache(path)
+    snapshot = publish_slot(
+        store,
+        "payment.channel",
+        [{"id": "saved"}],
+        capability="channel",
+        scope={},
+        evidence=AcquisitionEvidence.for_collection(
+            complete=True, collected_total=1, reported_total=1
+        ),
+        fetched_at="2026-01-01T00:00:00+00:00",
+    )
+    return store, path, snapshot
+
+
+def test_updated_slot_replays_without_write_access(updated_slot, monkeypatch):
+    store, path, snapshot = updated_slot
+    connection = sqlite3.connect(path)
+    # No WAL sidecars need creating in this read-only-directory fixture.
+    connection.execute("PRAGMA journal_mode=DELETE")
+    connection.close()
+    before = path.read_bytes()
+    path.chmod(0o444)
+    path.parent.chmod(0o550)
+
+    def deny_write_connection():
+        raise PermissionError("cache is read-only")
+
+    monkeypatch.setattr(store, "_connect", deny_write_connection)
+    try:
+        assert read_slot(store, "payment.channel") == (snapshot, [{"id": "saved"}])
+        assert path.read_bytes() == before
+        assert S_IMODE(path.stat().st_mode) == 0o444
+        assert S_IMODE(path.parent.stat().st_mode) == 0o550
+        assert list(path.parent.iterdir()) == [path]
+    finally:
+        path.parent.chmod(0o700)
+        path.chmod(0o600)
+
+
+def test_updated_slot_replays_while_writer_holds_lock(updated_slot, monkeypatch):
+    store, path, snapshot = updated_slot
+    connect = sqlite3.connect
+    writer = connect(path, isolation_level=None)
+    writer.execute("BEGIN IMMEDIATE")
+    writer.execute("UPDATE records SET body = ?", ('{"id":"uncommitted"}',))
+
+    def fast_connect(*args, **kwargs):
+        kwargs["timeout"] = 0.01
+        return connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", fast_connect)
+    try:
+        assert read_slot(store, "payment.channel") == (snapshot, [{"id": "saved"}])
+    finally:
+        writer.rollback()
+        writer.close()

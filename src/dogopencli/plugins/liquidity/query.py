@@ -335,8 +335,6 @@ def _offline_selection(args, leaf, variant, context, records):
             coverage = False
         rows = [row for row in rows if row.get(field) in values]
     filters = _local_filters(args, variant)
-    if filters and coverage is True:
-        coverage = None
     explicit.update(
         {
             entry[0]: getattr(args, entry[0], [])

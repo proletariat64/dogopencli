@@ -7,6 +7,55 @@ from dogopencli.jsonutil import parse
 pytest_plugins = ["test_liquidity_cli_sit"]
 
 
+@pytest.mark.parametrize("reported_total", [2, 3])
+@pytest.mark.parametrize("account", ["A", "B"])
+@pytest.mark.parametrize("currencies", [["USD"], ["JPY"], ["USD", "EUR"]])
+def test_filtered_waterlevels_preserve_source_completeness_and_scope(
+    setup, run_cli, reported_total, account, currencies
+):
+    rows = [
+        {"aliasName": "A", "currency": currency, "curAvlBal": "1.00"}
+        for currency in ("USD", "EUR")
+    ]
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {
+            "success": True,
+            "data": {"data": rows, "totalCount": reported_total},
+        },
+    }
+    code, out, err = run_cli(
+        ["refresh", "liquidity", "cash", "waterlevels", "--account-alias", "A"]
+    )
+    assert code == 0, err
+    before = setup.cache_path.read_bytes()
+    setup.state.transports.clear()
+    command = ["liquidity", "cash", "waterlevels", "list", "--account-alias", account]
+    for currency in currencies:
+        command.extend(["--currency", currency])
+    code, out, err = run_cli(command)
+    assert code == 0, err
+    result = parse(out)
+    complete = reported_total == len(rows) and account == "A"
+    assert result["meta"]["complete"] is complete
+    assert result["meta"]["source_acquisition"]["scope_complete"] is (
+        reported_total == len(rows)
+    )
+    assert result["meta"]["requested_scope_covered"] is (account == "A")
+    assert result["data"] == [
+        row for row in rows if account == "A" and row["currency"] in currencies
+    ]
+    code, out, err = run_cli([*command, "--require-complete"])
+    if complete:
+        assert code == 0, err
+        assert parse(out)["meta"]["complete"] is True
+    else:
+        assert code == 1
+        assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    assert setup.state.transports == []
+    assert setup.cache_path.read_bytes() == before
+
+
 def test_cash_online_default_is_native_alipaygm(setup, run_cli):
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
