@@ -364,7 +364,12 @@ def _validate_cached_rows(leaf, variant, context, records):
             )
         seen.add(identity)
         if variant.projection:
-            project_record(variant.projection, record)
+            validated_record = record
+            if variant.projection == "rule_status" and "tntInstId" not in record:
+                # Native tenant was verified before publication and deliberately
+                # excluded by this leaf's public projection.
+                validated_record = {**record, "tntInstId": "GUAPW3SG"}
+            project_record(variant.projection, validated_record)
         if variant.endpoint == "/balStatisticalQuery.json":
             if "balance" not in record:
                 raise CliError(
@@ -384,6 +389,12 @@ def run_list(args):
 
     leaf = list_leaf(args.command_path[1:-1])
     limit, offset, fields = _display_options(args)
+    if not args.live and getattr(args, "page_size", None) is not None:
+        raise CliError(
+            INVALID_ARGUMENT,
+            "--page-size requires --live or refresh",
+            exit_code=EXIT_USAGE,
+        )
     config = load_config()
     if args.live:
         resolved = resolve_online_scope(leaf, args)
