@@ -18,7 +18,7 @@ WSL 用户应使用 Linux 磁盘目录。
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install ./dogopencli-0.4.0-py3-none-any.whl
+python -m pip install ./dogopencli-0.4.1-py3-none-any.whl
 dogopencli --version
 ```
 

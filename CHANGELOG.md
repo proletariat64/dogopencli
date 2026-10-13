@@ -2,6 +2,24 @@
 
 ## 未发布
 
+## v0.4.1（2026-10-13）
+
+合并 PR #158（规格 #157）：所有已启用 list 及 FX trade 默认重放每叶唯一临时结果；
+`--live` 不写缓存，非空 refresh 原子替换完整采集，空结果保留旧缓存，
+每叶 prune 仅删除自己的结果。移除 `--all`（改用 `--limit 0`）、缓存 getter、
+详情 refresh、采集历史／保留规则和 Ledger balances（#144）。首次访问会丢弃旧业务缓存；
+配置、认证、profile 和外部 DuckDB 输入保持不变。
+
+Cash 在线默认 ALIPAYGM；`--entity ANY` 从只读 DuckDB 冻结原生 instId。
+FX 在线默认前一完整 GMT+08 日。Bootstrap 默认安装 DuckDB 可选依赖。
+修复本地过滤错误降低完整性、离线读取要求写权限、FX 采集未持有刷新锁的问题；
+完整缓存的声明本地过滤可通过严格模式，部分采集及未覆盖范围仍被拒绝。
+
+验证：3269 tests、28 subtests 通过，Ruff、doc-guard、远端 CI 和 Qoder 通过；
+Greptile 在包含三项修复的提交上给出 5/5。生产 smoke 为部分验收：窄范围 ANY、
+离线重放、原生 getter、prune 已通过；广范围 Cash 返回 incomplete，
+FX 昨日查询仍被后端拒绝（IPAY_RS_520000500），空结果保留的证据来自本地测试。
+
 ## v0.3.2（2026-10-13）
 
 新增现金余额日期范围、ALL 与可配置页宽（#147）：无日期保留最新快照；成对日期
