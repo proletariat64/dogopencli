@@ -51,7 +51,6 @@ def candidate_catalog(monkeypatch):
     monkeypatch.delitem(leaves.DEFERRED_BY_PATH, leaf.path, raising=False)
     for node in (
         leaves.detail_query_node(leaf),
-        leaves.refresh_detail_node(leaf),
         *leaves.group_nodes(),
     ):
         declarations[node.path] = node
@@ -208,7 +207,7 @@ def test_candidate_refresh_live_and_browser_disconnected_offline(
     setup, run_cli, item, options, row
 ):
     setup.state.business_handler = lambda payload, index: response(item, [row])
-    query = ["liquidity", *item.path, "list", *options, "--all"]
+    query = ["liquidity", *item.path, "list", *options, "--limit", "0"]
     code, out, err = run_cli(["refresh", "liquidity", *item.path, *options])
     assert code == 0, err
     assert parse(out)["meta"]["kind"] == item.kind
@@ -221,7 +220,9 @@ def test_candidate_refresh_live_and_browser_disconnected_offline(
     assert setup.cache_path.read_bytes() == before
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli([*query, "--require-complete"])
+    code, out, err = run_cli(
+        ["liquidity", *item.path, "list", "--limit", "0", "--require-complete"]
+    )
     assert code == 0, err
     offline = parse(out)
     assert offline["data"] == live["data"]
@@ -255,7 +256,17 @@ def test_latest_balances_default_width_100_collects_short_final_page(setup, run_
         101,
     )
     code, out, err = run_cli(
-        ["liquidity", "cash", "balances", "list", "--entity", "Z21", "--live", "--all"]
+        [
+            "liquidity",
+            "cash",
+            "balances",
+            "list",
+            "--entity",
+            "Z21",
+            "--live",
+            "--limit",
+            "0",
+        ]
     )
     assert code == 0, err
     assert parse(out)["data"] == [
@@ -286,7 +297,7 @@ def test_latest_width_override_refresh_and_offline_share_scope(setup, run_cli, w
         rows[payload["rowStart"] : payload["rowStart"] + payload["pageSize"]],
         51,
     )
-    query = ["liquidity", "cash", "balances", "list", "--entity", "E1", "--all"]
+    query = ["liquidity", "cash", "balances", "list", "--entity", "E1", "--limit", "0"]
     code, out, err = run_cli([*query, "--live", "--page-size", str(width)])
     assert code == 0, err
     live = parse(out)
@@ -418,39 +429,6 @@ def test_latest_explicit_alias_scope_failure_preserves_prior_capture(
     assert len(setup.state.business_requests) == count
 
 
-@pytest.mark.parametrize("filtered", [True, False], ids=["multi-alias", "unfiltered"])
-def test_latest_allowed_aliases_survive_live_refresh_and_offline(
-    setup, run_cli, filtered
-):
-    rows = [
-        {"entity": "E1", "aliasName": alias, "currency": "USD", "curBalance": "1"}
-        for alias in ("A1", "a2:/opaque")
-    ]
-    options = ["--entity", "E1"]
-    if filtered:
-        options += ["--account-alias", "A1", "--account-alias", "a2:/opaque"]
-    query = ["liquidity", "cash", "balances", "list", *options, "--all"]
-    setup.state.business_handler = lambda payload, index: response(CASH_BALANCES, rows)
-    code, out, err = run_cli([*query, "--live"])
-    assert code == 0, err
-    assert parse(out)["data"] == [
-        expected_balance_record("E1", alias, "USD", "1")
-        for alias in ("A1", "a2:/opaque")
-    ]
-    assert not setup.cache_path.exists()
-    code, _, err = run_cli(["refresh", "liquidity", "cash", "balances", *options])
-    assert code == 0, err
-    setup.state.reachable = False
-    count = len(setup.state.business_requests)
-    code, out, err = run_cli(query)
-    assert code == 0, err
-    assert parse(out)["data"] == [
-        expected_balance_record("E1", alias, "USD", "1")
-        for alias in ("A1", "a2:/opaque")
-    ]
-    assert len(setup.state.business_requests) == count
-
-
 @pytest.mark.parametrize("width", ["0", "-1", "101", "500", "1.5", "many"])
 def test_latest_invalid_width_rejected_before_any_source(setup, run_cli, width):
     for command in (
@@ -488,7 +466,7 @@ def test_latest_399_arrivals_396_identities_remain_incomplete(setup, run_cli):
         {"entity": "E1", "aliasName": f"A{i:03d}", "currency": "USD", "curBalance": "1"}
         for i in range(396)
     ]
-    query = ["liquidity", "cash", "balances", "list", "--entity", "E1", "--all"]
+    query = ["liquidity", "cash", "balances", "list", "--entity", "E1", "--limit", "0"]
     refresh = ["refresh", "liquidity", "cash", "balances", "--entity", "E1"]
     arrivals = [*rows, *rows[:3]]
     setup.state.business_handler = lambda payload, index: response(
@@ -599,7 +577,7 @@ def test_settings_runtime_same_endpoint_have_independent_scope_caches(setup, run
     code, out, _ = run_cli(["liquidity", "cash", "group-balances", "list"])
     runtime = parse(out)
     assert code == 0
-    assert settings["meta"]["scope"] != runtime["meta"]["scope"]
+    assert settings["meta"]["capability"] != runtime["meta"]["capability"]
     assert "currentBalance" not in settings["data"][0]
     assert runtime["data"][0]["currentBalance"] == "1"
 
@@ -617,14 +595,13 @@ def test_pool_native_get_failure_preserves_independent_list_and_detail(setup, ru
     assert len(setup.state.business_requests) == 1
     code, out, _ = run_cli(["liquidity", "cash", "pools", "get", "--pool-id", "P1"])
     assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+    before = setup.cache_path.read_bytes()
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": {"success": True, "data": pool},
     }
-    code, out, err = run_cli(
-        ["refresh", "liquidity", "cash", "pools", "detail", "get", "--pool-id", "P1"]
-    )
+    code, out, err = run_cli(["liquidity", "cash", "pools", "get", "--pool-id", "P1"])
     assert code == 0, err
     assert setup.state.business_requests[-1] == {
         "id": "P1",
@@ -636,17 +613,18 @@ def test_pool_native_get_failure_preserves_independent_list_and_detail(setup, ru
         "status": 200,
         "body": {"success": True, "data": {**pool, "id": "P2"}},
     }
-    code, out, _ = run_cli(
-        ["refresh", "liquidity", "cash", "pools", "detail", "get", "--pool-id", "P1"]
-    )
+    code, out, _ = run_cli(["liquidity", "cash", "pools", "get", "--pool-id", "P1"])
     assert code == 1
     assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
     setup.state.reachable = False
-    for query in [["list"], ["get", "--pool-id", "P1"]]:
+    assert setup.cache_path.read_bytes() == before
+    for query in [["list"]]:
         code, out, err = run_cli(["liquidity", "cash", "pools", *query])
         assert code == 0, err
         data = parse(out)["data"]
         assert (data[0] if isinstance(data, list) else data)["cashPoolName"] == "first"
+    assert run_cli(["liquidity", "cash", "pools", "get", "--pool-id", "P1"])[0] == 1
+    assert setup.cache_path.read_bytes() == before
 
 
 def test_credit_unstable_order_partial_live_and_failed_refresh_keep_cache(
@@ -675,7 +653,7 @@ def test_credit_unstable_order_partial_live_and_failed_refresh_keep_cache(
 
     setup.state.business_handler = overlap
     code, out, _ = run_cli(
-        ["liquidity", "cash", "credit-lines", "list", "--live", "--all"]
+        ["liquidity", "cash", "credit-lines", "list", "--live", "--limit", "0"]
     )
     assert code == 0
     envelope = parse(out)
@@ -714,7 +692,7 @@ def test_forecast_7504_7502_uses_accounts_partial_contract_and_preserves_cache(
     import json
 
     options = ["--from-date", "20261001", "--to-date", "20261001"]
-    query = ["liquidity", "forecast", "results", "list", *options, "--all"]
+    query = ["liquidity", "forecast", "results", "list", *options, "--limit", "0"]
     refresh = ["refresh", "liquidity", "forecast", "results", *options]
     seed = {
         "id": "previous-complete",
@@ -796,7 +774,7 @@ def test_forecast_7504_7502_uses_accounts_partial_contract_and_preserves_cache(
 def test_dated_response_must_fit_verified_window_before_live_or_publication(
     setup, run_cli, item, options, row, bad_date
 ):
-    query = ["liquidity", *item.path, "list", *options, "--all"]
+    query = ["liquidity", *item.path, "list", *options, "--limit", "0"]
     refresh = ["refresh", "liquidity", *item.path, *options]
     setup.state.business_handler = lambda payload, index: response(item, [row])
     code, _, err = run_cli(refresh)
@@ -813,7 +791,7 @@ def test_dated_response_must_fit_verified_window_before_live_or_publication(
         assert setup.cache_path.read_bytes() == before
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(query)
+    code, out, err = run_cli(["liquidity", *item.path, "list", "--limit", "0"])
     assert code == 0, err
     assert parse(out)["data"] == [row]
     assert parse(out)["meta"]["complete"] is True
@@ -826,7 +804,7 @@ def test_forecast_changing_total_fails_closed_in_every_mode_and_keeps_cache(
     import json
 
     options = ["--from-date", "20261001", "--to-date", "20261001"]
-    query = ["liquidity", "forecast", "results", "list", *options, "--all"]
+    query = ["liquidity", "forecast", "results", "list", *options, "--limit", "0"]
     refresh = ["refresh", "liquidity", "forecast", "results", *options]
     seed = {"id": "retained", "valueDate": "20261001", "forecastBalance": "0"}
     setup.state.business_handler = lambda payload, index: response(
@@ -881,10 +859,16 @@ def test_forecast_record_clocks_colon_compact_equivalence_and_defaults(setup, ru
     vo = json.loads(setup.state.business_requests[-1][FORECAST_RESULTS.vo_field])
     assert vo["recordStartTime"] == "091500"
     assert vo["recordEndTime"] == "173000"
-    # The compact legacy spelling reads the identical cached scope offline.
-    setup.state.reachable = False
+    # Compact and colon spellings construct the identical native request.
     compact = ["--record-from-time", "091500", "--record-to-time", "173000"]
-    code, out, err = run_cli([*query, *compact])
+    before = setup.cache_path.read_bytes()
+    assert run_cli([*query, *compact, "--live"])[0] == 0
+    assert (
+        json.loads(setup.state.business_requests[-1][FORECAST_RESULTS.vo_field]) == vo
+    )
+    assert setup.cache_path.read_bytes() == before
+    setup.state.reachable = False
+    code, out, err = run_cli(["liquidity", "forecast", "results", "list"])
     assert code == 0, err
     assert parse(out)["data"] == [row]
 
@@ -975,3 +959,36 @@ def test_forecast_record_clocks_stay_independent_from_the_date_window(setup, run
     )
     assert code == 2
     assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+
+
+@pytest.mark.parametrize("filtered", [True, False], ids=["multi-alias", "unfiltered"])
+def test_latest_allowed_aliases_survive_live_refresh_and_offline(
+    setup, run_cli, filtered
+):
+    rows = [
+        {"entity": "E1", "aliasName": alias, "currency": "USD", "curBalance": "1"}
+        for alias in ("A1", "a2:/opaque")
+    ]
+    options = ["--entity", "E1"]
+    if filtered:
+        options += ["--account-alias", "A1", "--account-alias", "a2:/opaque"]
+    query = ["liquidity", "cash", "balances", "list", *options, "--limit", "0"]
+    setup.state.business_handler = lambda payload, index: response(CASH_BALANCES, rows)
+    code, out, err = run_cli([*query, "--live"])
+    assert code == 0, err
+    assert parse(out)["data"] == [
+        expected_balance_record("E1", alias, "USD", "1")
+        for alias in ("A1", "a2:/opaque")
+    ]
+    assert not setup.cache_path.exists()
+    code, _, err = run_cli(["refresh", "liquidity", "cash", "balances", *options])
+    assert code == 0, err
+    setup.state.reachable = False
+    count = len(setup.state.business_requests)
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    assert parse(out)["data"] == [
+        expected_balance_record("E1", alias, "USD", "1")
+        for alias in ("A1", "a2:/opaque")
+    ]
+    assert len(setup.state.business_requests) == count

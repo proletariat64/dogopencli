@@ -2603,6 +2603,7 @@ class ListLeaf:
             raise CliError(
                 INVALID_ARGUMENT,
                 "exactly one contract variant must match the scope options",
+                exit_code=EXIT_USAGE,
             )
         variant = candidates[0]
         request_values, window = scope_values(variant.scope_options, provided)

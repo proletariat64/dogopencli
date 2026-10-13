@@ -528,6 +528,11 @@ def test_canonical_z_and_offset_forms_share_the_legacy_utc_scope(setup, run_cli)
     code, _, err = run_cli([*REFRESH, *Z_SCOPE])
     assert code == 0, err
     assert "deprecated" not in err
+    canonical_request = setup.state.business_requests[-1]
+    assert run_cli([*REFRESH, *OFFSET_SCOPE])[0] == 0
+    assert setup.state.business_requests[-1] == canonical_request
+    assert run_cli([*REFRESH, *SCOPE])[0] == 0
+    assert setup.state.business_requests[-1] == canonical_request
     # The emitted native request keeps the UTC space-separated representation.
     setup.state.business_handler = listing(rows)
     setup.state.reachable = False
