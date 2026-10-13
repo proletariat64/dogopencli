@@ -1,5 +1,7 @@
 """Temporary Liquidity acquisitions through CLI/fake CDP/temporary SQLite."""
 
+import pytest
+
 from dogopencli.jsonutil import parse
 
 pytest_plugins = ["test_liquidity_cli_sit"]
@@ -150,7 +152,7 @@ def test_daily_no_argument_replay_and_local_entity_filter(setup, run_cli):
 
 
 def test_any_freezes_duckdog_native_ids_then_replays_offline(setup, run_cli):
-    import duckdb
+    duckdb = pytest.importorskip("duckdb")
 
     database = setup.tmp_path / "selector.duckdb"
     connection = duckdb.connect(str(database))

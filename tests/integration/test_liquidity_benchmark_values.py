@@ -66,14 +66,14 @@ def test_primary_id_is_derived_and_stable_across_refresh_value_and_window(
 ):
     expected = "bmv1:GUAPW3SG:20261002:passiveInterestBenchmark:USD:RED"
     setup.state.business_handler = listing([benchmark(primaryId="UNTRUSTED SOURCE ID")])
-    code, out, err = run_cli(command("--live", "--all"))
+    code, out, err = run_cli(command("--live", "--limit", "0"))
     assert code == 0, err
     assert parse(out)["data"][0]["primaryId"] == expected
     assert parse(out)["data"][0]["id"] == ""
     code, _, err = run_cli(command(refresh=True))
     assert code == 0, err
     setup.state.reachable = False
-    code, out, err = run_cli(command("--all", "--fields", "primaryId"))
+    code, out, err = run_cli(command("--limit", "0", "--fields", "primaryId"))
     assert code == 0, err
     assert parse(out)["data"] == [{"primaryId": expected}]
     setup.state.reachable = True
@@ -82,7 +82,7 @@ def test_primary_id_is_derived_and_stable_across_refresh_value_and_window(
     code, _, err = run_cli(command(refresh=True, options=day))
     assert code == 0, err
     setup.state.reachable = False
-    code, out, err = run_cli(command("--all", options=day))
+    code, out, err = run_cli(command("--limit", "0", options=day))
     assert code == 0, err
     assert parse(out)["data"] == [dict(benchmark(value="3.00000"), primaryId=expected)]
 
@@ -103,7 +103,7 @@ def test_primary_id_escaping_is_reversible_and_component_boundaries_do_not_colli
         "bmv1:GUAPW3SG:20261002:%E7%AD%96%3A%E7%95%A5:U%25SD:%E7%BB%BF%2F%E8%89%B2",
     }
     setup.state.business_handler = listing(rows)
-    code, out, err = run_cli(command("--live", "--all"))
+    code, out, err = run_cli(command("--live", "--limit", "0"))
     assert code == 0, err
     output = parse(out)["data"]
     assert {row["primaryId"] for row in output} == expected
@@ -146,7 +146,7 @@ def test_composite_identity_wire_precision_privacy_and_offline_live_isolation(
     assert refreshed["meta"]["complete"] is True
     assert [body["rowStart"] for body in setup.state.business_requests] == [0, 10]
     before = setup.cache_path.read_bytes()
-    code, out, err = run_cli(command("--live", "--all", "--require-complete"))
+    code, out, err = run_cli(command("--live", "--limit", "0", "--require-complete"))
     assert code == 0, err
     live = parse(out)["data"]
     assert ordered(
@@ -156,7 +156,7 @@ def test_composite_identity_wire_precision_privacy_and_offline_live_isolation(
     assert setup.cache_path.read_bytes() == before
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(command("--all", "--require-complete"))
+    code, out, err = run_cli(command("--limit", "0", "--require-complete"))
     assert code == 0, err
     cached = parse(out)
     assert ordered(
@@ -183,7 +183,8 @@ def test_later_refresh_revises_same_identity_and_offline_subwindow_uses_business
     setup.state.reachable = False
     code, out, err = run_cli(
         command(
-            "--all",
+            "--limit",
+            "0",
             "--require-complete",
             options=["--from-date", "20261002", "--to-date", "20261002"],
         )
@@ -196,7 +197,8 @@ def test_later_refresh_revises_same_identity_and_offline_subwindow_uses_business
     ]
     code, out, err = run_cli(
         command(
-            "--all",
+            "--limit",
+            "0",
             "--require-complete",
             options=["--from-date", "20261003", "--to-date", "20261003"],
         )
@@ -208,22 +210,36 @@ def test_later_refresh_revises_same_identity_and_offline_subwindow_uses_business
 
 def test_empty_capture_and_empty_live_preserve_cache(setup, run_cli):
     setup.state.business_handler = listing([])
-    code, out, err = run_cli(command("--live", "--all", "--require-complete"))
+    code, out, err = run_cli(command("--live", "--limit", "0", "--require-complete"))
     assert code == 0, err
     assert parse(out)["data"] == []
     assert not setup.cache_path.exists()
     code, out, err = run_cli(command("--require-complete", refresh=True))
     assert code == 0, err
-    assert parse(out)["meta"]["published"] is True
-    before = setup.cache_path.read_bytes()
-    code, _, err = run_cli(command("--live", "--all"))
-    assert code == 0, err
-    assert setup.cache_path.read_bytes() == before
+    assert parse(out)["meta"]["published"] is False
+    assert not setup.cache_path.exists()
     setup.state.reachable = False
-    code, out, err = run_cli(command("--all", "--require-complete"))
+    code, out, _ = run_cli(command(options=[]))
+    assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
+    setup.state.reachable = True
+    setup.state.business_handler = listing([benchmark()])
+    assert run_cli(command(refresh=True))[0] == 0
+    before = setup.cache_path.read_bytes()
+    setup.state.business_handler = listing([])
+    for cmd in (command("--live"), command(refresh=True)):
+        code, out, err = run_cli(cmd)
+        assert code == 0, err
+        response = parse(out)
+        assert (
+            response["data"] == []
+            if "--live" in cmd
+            else response["data"]["row_count"] == 0
+        )
+        assert setup.cache_path.read_bytes() == before
+    setup.state.reachable = False
+    code, out, err = run_cli(command("--require-complete", options=[]))
     assert code == 0, err
-    assert parse(out)["data"] == []
-    assert parse(out)["meta"]["complete"] is True
+    assert len(parse(out)["data"]) == 1
 
 
 @pytest.mark.parametrize(
@@ -295,7 +311,7 @@ def test_hard_failure_preserves_prior_cache(setup, run_cli, defect):
     setup.state.business_handler = fail
     for refresh in (False, True):
         code, out, _ = run_cli(
-            command(*([] if refresh else ["--live", "--all"]), refresh=refresh)
+            command(*([] if refresh else ["--live", "--limit", "0"]), refresh=refresh)
         )
         assert code == 1
         assert parse(out)["data"] is None
@@ -330,12 +346,12 @@ def test_overlap_partial_policy_and_strict_no_publication(setup, run_cli):
     assert parse(out)["meta"]["complete"] is False
     assert parse(out)["meta"]["published"] is True
     setup.state.reachable = False
-    code, out, err = run_cli(command("--all"))
+    code, out, err = run_cli(command("--limit", "0"))
     assert code == 0, err
     assert len(parse(out)["data"]) == 11
     assert parse(out)["meta"]["complete"] is False
     assert "INCOMPLETE_RESULT" in err
-    code, out, _ = run_cli(command("--all", "--require-complete"))
+    code, out, _ = run_cli(command("--limit", "0", "--require-complete"))
     assert code == 1
     assert parse(out)["data"] is None
 
@@ -359,7 +375,7 @@ def test_offline_help_describe_documents_business_identity_and_percent(setup, ru
         "currency",
         "colorType",
     ]
-    assert guide["offline_profile"] == "dated"
+    assert guide["offline_profile"] == "single temporary leaf result"
     assert guide["series_time"] == "effectiveDate"
     assert guide["live_verified"] == "2026-10-04"
     properties = document["data_schema"]["properties"]

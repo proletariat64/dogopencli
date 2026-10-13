@@ -62,7 +62,7 @@ def test_pagination_projection_offline_live_coverage(setup, run_cli):
     assert code == 0, err
     assert parse(out)["meta"]["complete"] is True
     before = setup.cache_path.read_bytes()
-    code, out, err = run_cli(args("--live", "--all"))
+    code, out, err = run_cli(args("--live", "--limit", "0"))
     assert code == 0, err
     assert sorted(parse(out)["data"], key=lambda r: r["id"]) == sorted(
         rows, key=lambda r: r["id"]
@@ -71,12 +71,13 @@ def test_pagination_projection_offline_live_coverage(setup, run_cli):
     assert b"TEST PRIVATE" not in before
     setup.state.reachable = False
     for start, end in (("20260801", "20260831"), ("20260804", "20260804")):
-        code, out, err = run_cli(args("--all", start=start, end=end))
+        code, out, err = run_cli(args("--limit", "0", start=start, end=end))
         assert code == 0, err
         assert len(parse(out)["data"]) == 12
     code, out, _ = run_cli(args(start="20260701", end="20260731"))
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert code == 0
+    assert parse(out)["data"] == []
+    assert parse(out)["meta"]["requested_scope_covered"] is False
 
 
 @pytest.mark.parametrize(
@@ -94,8 +95,12 @@ def test_empty_partial_and_strict(setup, run_cli):
     code, out, err = run_cli(args(refresh=True))
     assert code == 0, err
     assert parse(out)["meta"]["complete"] is True
-    setup.state.business_handler = lambda body, index: page([ROW], 2)
+    assert parse(out)["meta"]["published"] is False
+    assert not setup.cache_path.exists()
+    setup.state.business_handler = listing([ROW])
+    assert run_cli(args(refresh=True))[0] == 0
     before = setup.cache_path.read_bytes()
+    setup.state.business_handler = lambda body, index: page([ROW], 2)
     code, out, _ = run_cli(args("--require-complete", refresh=True))
     assert code == 1
     assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
@@ -104,7 +109,7 @@ def test_empty_partial_and_strict(setup, run_cli):
     assert code == 0, err
     assert parse(out)["meta"]["complete"] is False
     setup.state.reachable = False
-    code, out, err = run_cli(args("--all"))
+    code, out, err = run_cli(args("--limit", "0"))
     assert code == 0, err
     assert parse(out)["meta"]["complete"] is False
     assert parse(out)["data"] == [ROW]
@@ -168,17 +173,19 @@ def test_business_failure_is_not_empty_success(setup, run_cli, inner, outer):
     assert parse(out)["data"] is None
 
 
-def test_previous_cache_not_migrated_or_deleted(setup, run_cli):
+def test_unrelated_legacy_table_preserved_during_format_switch(setup, run_cli):
     import sqlite3
 
     with sqlite3.connect(setup.cache_path) as connection:
         connection.execute("CREATE TABLE previous_valuation_capture (value TEXT)")
         connection.execute("INSERT INTO previous_valuation_capture VALUES ('preserve')")
-    before = setup.cache_path.read_bytes()
     code, out, _ = run_cli(args())
     assert code == 1
     assert parse(out)["error"]["code"] == "CACHE_MISS"
-    assert setup.cache_path.read_bytes() == before
+    with sqlite3.connect(setup.cache_path) as connection:
+        assert connection.execute(
+            "SELECT value FROM previous_valuation_capture"
+        ).fetchall() == [("preserve",)]
     setup.state.business_handler = listing([ROW])
     code, _, err = run_cli(args(refresh=True))
     assert code == 0, err

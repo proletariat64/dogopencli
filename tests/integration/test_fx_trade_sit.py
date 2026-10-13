@@ -356,6 +356,35 @@ def test_fx_refresh_replay_prune_and_empty_preservation(run_cli, fx_browser, env
     assert code == 1 and envelope(out)["error"]["code"] == "CACHE_MISS"
 
 
+@pytest.mark.parametrize("offset", [0, 99])
+def test_fx_cached_strict_rejects_incomplete_before_display(
+    run_cli, fx_browser, envelope, offset
+):
+    fx_browser.allows_cache = True
+    rows = [{"uniqueId": "saved"}]
+    fx_browser.business_script.append(page(rows, total=2))
+    assert run_cli(["refresh", "fx", "trade", "--trade-id", "saved"])[0] == 0
+    request_count = len(fx_browser.business_requests)
+    transport_count = len(fx_browser.transports)
+
+    code, out, _ = run_cli(
+        ["fx", "trade", "--require-complete", "--offset", str(offset)]
+    )
+    strict = envelope(out)
+    assert code == 1
+    assert strict["error"]["code"] == "INCOMPLETE_RESULT"
+    assert strict["data"] is None
+
+    code, out, err = run_cli(["fx", "trade"])
+    cached = envelope(out)
+    assert code == 0 and cached["data"] == rows
+    assert cached["meta"]["complete"] is False
+    assert "COUNT_SHORTFALL" in cached["meta"]["acquisition"]["reasons"]
+    assert "INCOMPLETE_RESULT" in err
+    assert len(fx_browser.business_requests) == request_count
+    assert len(fx_browser.transports) == transport_count
+
+
 def test_fx_refresh_keeps_full_rows_when_display_empty_and_replaces_scope(
     run_cli, fx_browser, envelope
 ):

@@ -13,7 +13,7 @@ ROOT = ["liquidity", "network", "realtime"]
 
 
 def query(*extra):
-    return [*ROOT, "list", "--all", *extra]
+    return [*ROOT, "list", "--limit", "0", *extra]
 
 
 def refresh(*extra):
@@ -113,7 +113,7 @@ def test_configuration_projection_exact_request_and_disconnected_lifecycle(
     assert cached["data"] == rows
     for field in ("scope", "fetched_at", "complete", "acquisition"):
         assert cached["meta"][field] == capture["meta"][field]
-    assert "realtime-network-settings-v1" in cached["meta"]["scope"]
+    assert cached["meta"]["capability"] == "liquidity.network.realtime.list"
     assert len(setup.state.business_requests) == requests
     assert cached["meta"]["source_observed_from"] is None
     assert cached["meta"]["source_observed_to"] is None
@@ -152,11 +152,15 @@ def test_covered_arbitrary_count_and_empty_are_complete(setup, run_cli):
     code, out, err = run_cli(query("--require-complete"))
     assert code == 0, err
     assert parse(out)["data"] == rows
-    seed(setup, run_cli, [])
+    before = setup.cache_path.read_bytes()
+    empty = seed(setup, run_cli, [])
+    assert empty["data"]["row_count"] == 0 and empty["meta"]["complete"] is True
+    assert empty["meta"]["published"] is False
+    assert setup.cache_path.read_bytes() == before
     setup.state.reachable = False
     code, out, err = run_cli(query("--require-complete"))
     assert code == 0, err
-    assert parse(out)["data"] == [] and parse(out)["meta"]["complete"] is True
+    assert parse(out)["data"] == rows and parse(out)["meta"]["complete"] is True
 
 
 @pytest.mark.parametrize(
@@ -260,7 +264,7 @@ def test_discovery_snapshot_and_unrelated_guards_stay_offline(setup, run_cli):
     assert parse(out)["read_guide"]["live_verified"] == "2026-10-05"
     description = parse(out)
     guide = description["read_guide"]
-    assert guide["offline_profile"] == "snapshot"
+    assert guide["offline_profile"] == "single temporary leaf result"
     assert guide["request"]["pagination"] == "single"
     assert guide["request"]["page_size"] == 5000
     assert guide["identity"] == ["id"]
@@ -293,7 +297,7 @@ def test_other_list_capture_isolation_and_partial_snapshot_quality(setup, run_cl
     assert parse(out)["meta"]["complete"] is False
     setup.state.reachable = False
     count = len(setup.state.business_requests)
-    code, out, err = run_cli([*other, "list", "--all"])
+    code, out, err = run_cli([*other, "list", "--limit", "0"])
     assert code == 0, err
     assert parse(out)["data"] == [rule]
     code, out, err = run_cli(query())
