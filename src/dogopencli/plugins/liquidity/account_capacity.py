@@ -67,8 +67,8 @@ ACCOUNT_CAPACITY = ListSpec(
     notes=(
         "One GET per explicit alias, with only aliasName; no dates, tenant "
         "parameter, pagination or automatic account discovery.",
-        "Aliases form a sorted exact cache scope. The 10-account fan-out "
-        "budget is a client bound; --all affects only display.",
+        "Aliases form a sorted explicit source scope. The 10-account fan-out "
+        "budget is a client bound; --limit 0 affects only display.",
         "Complete means one validated native object for every requested alias; "
         "requested_count/resolved_count describe this set, reported_total is "
         "null because there is no native global account total.",
@@ -84,8 +84,8 @@ ACCOUNT_CAPACITY = ListSpec(
         "values remain unchanged; no arithmetic, currency audit or scaling.",
         "valueTime stays the original source-time string; its timezone is "
         "unknown and fetched_at is independent capture time.",
-        "Independent history captures cover only the exact requested account "
-        "set; no account enumeration, detail or history command is enabled.",
+        "The saved temporary result records the requested account set; "
+        "no account enumeration, detail or history command is enabled.",
     ),
 )
 

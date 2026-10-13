@@ -7,7 +7,6 @@ retention metadata, deferred discovery and auth expiry. All data synthetic.
 """
 
 import json
-from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -126,7 +125,7 @@ def test_refresh_then_offline_list_with_kind_and_origin(setup, run_cli):
     assert PAYMENT_URL not in created
     assert LIQUIDITY_URL in created
     code, out, err = run_cli(
-        ["liquidity", "investment", "holdings", "list", "--date", "20261001", "--all"]
+        ["liquidity", "investment", "holdings", "list", "--limit", "0"]
     )
     assert code == 0, err
     envelope = parse(out)
@@ -138,8 +137,8 @@ def test_refresh_then_offline_list_with_kind_and_origin(setup, run_cli):
     assert meta["complete"] is True
     assert meta["reported_total"] == 512
     assert meta["requested_window"] is None
-    assert 'date="20261001"' in meta["scope"]
-    assert meta["retained_coverage"][0]["row_count"] == 512
+    assert meta["query"]["date"] == "20261001"
+    assert meta["collected_total"] == 512
     assert [row["investmentNo"] for row in envelope["data"]] == [
         row["investmentNo"] for row in rows
     ]
@@ -155,30 +154,19 @@ def test_offline_list_never_opens_the_browser(setup, run_cli):
     assert setup.state.business_requests == []
 
 
-def test_missing_and_spanning_windows_are_explicit(setup, run_cli):
-    seed_holdings(run_cli, setup, total=2, day="20261001")
-    code, out, _ = run_cli(
+def test_source_only_scope_requires_online_query(setup, run_cli):
+    seed_holdings(run_cli, setup, total=2)
+    code, out, err = run_cli(
         ["liquidity", "investment", "holdings", "list", "--date", "20260930"]
     )
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
-    code, out, _ = run_cli(
-        [
-            "liquidity",
-            "investment",
-            "holdings",
-            "list",
-            "--date",
-            "20261001",
-            "--fields",
-            "investmentNo",
-        ]
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert "--live or refresh" in parse(out)["error"]["message"]
+    code, out, err = run_cli(
+        ["liquidity", "investment", "holdings", "list", "--fields", "investmentNo"]
     )
     assert code == 0
-    assert parse(out)["data"] == [
-        {"investmentNo": "H0000"},
-        {"investmentNo": "H0001"},
-    ]
+    assert parse(out)["data"] == [{"investmentNo": "H0000"}, {"investmentNo": "H0001"}]
 
 
 def test_date_validation_rejects_malformed_scope(setup, run_cli):
@@ -199,45 +187,6 @@ def test_date_validation_rejects_malformed_scope(setup, run_cli):
         assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
-def test_detail_refresh_then_offline_get_and_missing_hint(setup, run_cli):
-    setup.state.business_handler = lambda payload, index: {
-        "status": 200,
-        "body": {
-            "success": True,
-            "data": {"orderId": payload["orderId"], "amount": "10.00"},
-        },
-    }
-    code, out, err = run_cli(
-        [
-            "refresh",
-            "liquidity",
-            "investment",
-            "holdings",
-            "detail",
-            "get",
-            "--investment-no",
-            "H0001",
-        ]
-    )
-    assert code == 0, err
-    code, out, err = run_cli(
-        ["liquidity", "investment", "holdings", "get", "--investment-no", "H0001"]
-    )
-    assert code == 0, err
-    envelope = parse(out)
-    assert envelope["data"]["orderId"] == "H0001"
-    assert envelope["meta"]["kind"] == "runtimes"
-    assert envelope["meta"]["detail_fetched_at"]
-    code, out, _ = run_cli(
-        ["liquidity", "investment", "holdings", "get", "--investment-no", "H9999"]
-    )
-    assert code == 1
-    error = parse(out)["error"]
-    assert error["code"] == "CACHE_MISS"
-    assert "refresh liquidity investment holdings detail get" in error["message"]
-    assert "NOT_FOUND" not in error["code"]
-
-
 def test_detail_form_encoding_and_string_identity(setup, run_cli):
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
@@ -246,11 +195,9 @@ def test_detail_form_encoding_and_string_identity(setup, run_cli):
     assert (
         run_cli(
             [
-                "refresh",
                 "liquidity",
                 "investment",
                 "holdings",
-                "detail",
                 "get",
                 "--investment-no",
                 "H0001",
@@ -267,6 +214,8 @@ def test_detail_form_encoding_and_string_identity(setup, run_cli):
     assert any("application/x-www-form-urlencoded" in e for e in expressions)
     assert setup.state.business_requests[0]["orderId"] == "H0001"
 
+    assert not setup.cache_path.exists()
+
 
 def test_refresh_failure_preserves_the_previous_cache(setup, run_cli):
     seed_holdings(run_cli, setup, total=2)
@@ -279,9 +228,7 @@ def test_refresh_failure_preserves_the_previous_cache(setup, run_cli):
     )
     assert code == 1
     assert parse(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"
-    code, out, _ = run_cli(
-        ["liquidity", "investment", "holdings", "list", "--date", "20261001"]
-    )
+    code, out, _ = run_cli(["liquidity", "investment", "holdings", "list"])
     assert code == 0
     assert len(parse(out)["data"]) == 2
 
@@ -400,7 +347,7 @@ def test_kind_in_help_and_describe(setup, run_cli):
     assert document["describe_version"] == 1
     guide = document["read_guide"]
     assert guide["kind"] == "runtimes"
-    assert guide["offline_profile"] == "history"
+    assert guide["offline_profile"] == "single temporary leaf result"
     assert document["data_schema"]["properties"]["investmentNo"]
 
 
@@ -517,7 +464,7 @@ def test_accounts_partial_refresh_replaces_cache_and_warns(setup, run_cli):
     assert envelope["error"] is None
     assert envelope["meta"]["complete"] is False
     assert envelope["meta"]["published"] is True
-    assert envelope["meta"]["source"] == "cache"
+    assert envelope["meta"]["source"] == "live"
     assert setup.cache_path.read_bytes() != before
     code, out, _ = run_cli(["liquidity", "cash", "accounts", "list"])
     assert code == 0
@@ -572,22 +519,12 @@ def test_cash_forecast_empty_refresh_then_offline_parameters(
     code, out, err = run_cli(["refresh", "liquidity", *path, *scope])
     assert code == 0, err
     assert parse(out)["data"]["row_count"] == 0
+    assert parse(out)["meta"]["published"] is False
+    assert not setup.cache_path.exists()
     before = len(setup.state.transports)
-    for flags in [
-        [],
-        ["--all", "--require-complete", "--require-fresh"],
-        ["--limit", "1"],
-        ["--offset", "1"],
-        ["--fields", "currency"],
-    ]:
-        code, out, err = run_cli(["liquidity", *path, "list", *scope, *flags])
-        assert code == 0, err
-        doc = parse(out)
-        assert doc["data"] == []
-        assert doc["meta"]["complete"] is True
-        assert doc["meta"]["matched_total"] == 0
-    code, out, err = run_cli(["liquidity", *path, "list", *scope, "--format", "table"])
-    assert code == 0 and out.strip(), err
+    code, out, err = run_cli(["liquidity", *path, "list"])
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
     assert len(setup.state.transports) == before
 
 
@@ -644,7 +581,9 @@ def test_cashflows_native_time_and_duplicate_occurrences_end_to_end(setup, run_c
         "20260930",
     ]
     base = ["liquidity", "forecast", "cashflows", "list"]
-    code, out, err = run_cli([*base, *scope, "--live", "--all", "--require-complete"])
+    code, out, err = run_cli(
+        [*base, *scope, "--live", "--limit", "0", "--require-complete"]
+    )
     assert code == 0, err
     assert parse(out)["data"] == rows
     for start in ["20260929", "20260930"]:
@@ -656,7 +595,7 @@ def test_cashflows_native_time_and_duplicate_occurrences_end_to_end(setup, run_c
         assert code == 0, err
         assert parse(out)["data"]["row_count"] == 3
     before = len(setup.state.transports)
-    code, out, err = run_cli([*base, *scope, "--all", "--require-complete"])
+    code, out, err = run_cli([*base, *scope, "--limit", "0", "--require-complete"])
     assert code == 0, err
     assert parse(out)["data"] == rows  # not 2 from deduplication, or 6 from overlap
     code, out, err = run_cli([*base, *scope, "--offset", "1", "--limit", "1"])
@@ -678,8 +617,6 @@ def test_table_format_renders(setup, run_cli):
             "investment",
             "holdings",
             "list",
-            "--date",
-            "20261001",
             "--format",
             "table",
         ]
@@ -691,8 +628,9 @@ def test_table_format_renders(setup, run_cli):
 
 def test_offline_cash_returns_uses_cash_identity_and_time(setup, run_cli):
     from dogopencli.cache import Cache
-    from dogopencli.plugins.liquidity import store as captures
     from dogopencli.plugins.liquidity.leaves import list_leaf
+    from dogopencli.result_policy import AcquisitionEvidence
+    from dogopencli.temporary_query import publish_slot
 
     leaf = list_leaf(("investment", "returns"))
     resolved = leaf.resolve(
@@ -700,17 +638,19 @@ def test_offline_cash_returns_uses_cash_identity_and_time(setup, run_cli):
     )
     rows = [{"transactionId": "T1", "settlementDate": "20261001"}]
     cache = Cache(setup.cache_path)
-    plan = captures.plan_capture_publish(
-        cache,
-        resolved.spec,
-        resolved.scope_key,
-        resolved.window,
-        rows,
-        1,
-        "2026-10-01T00:00:00+00:00",
-        "2026-10-01T00:00:00+00:00",
-    )
-    captures.commit_plan(cache, resolved.spec.name, plan, "2026-10-01T00:00:00+00:00")
+    with cache.refresh_lock():
+        publish_slot(
+            cache,
+            "liquidity.investment.returns",
+            rows,
+            capability=resolved.spec.name,
+            scope=resolved.request_values,
+            variant=resolved.spec.endpoint,
+            fetched_at="2026-10-01T00:00:00+00:00",
+            evidence=AcquisitionEvidence.for_collection(
+                complete=True, reported_total=1, collected_total=1
+            ),
+        )
     code, out, err = run_cli(
         [
             "liquidity",
@@ -733,42 +673,17 @@ def test_offline_cash_returns_uses_cash_identity_and_time(setup, run_cli):
     assert "/cashBaseList.json" in out and "transactionId" in out
 
 
-def test_detail_freshness_is_per_object_not_latest_upsert(setup, run_cli):
-    from dogopencli.cache import Cache
-    from dogopencli.plugins.liquidity import details
-    from dogopencli.plugins.liquidity.common import now
-    from dogopencli.plugins.liquidity.leaves import detail_leaf
-
-    cache = Cache(setup.cache_path)
-    leaf = detail_leaf(("investment", "holdings", "get"))
-    old = "2000-01-01T00:00:00+00:00"
-    fresh = now().isoformat()
-    details.upsert_detail(
-        cache,
-        leaf.spec.name,
-        details.detail_key({"investment_no": "A"}, leaf.spec.identity),
-        {"orderId": "A"},
-        old,
-        old,
-    )
-    details.upsert_detail(
-        cache,
-        leaf.spec.name,
-        details.detail_key({"investment_no": "B"}, leaf.spec.identity),
-        {"orderId": "B"},
-        fresh,
-        fresh,
-    )
-    args = ["liquidity", "investment", "holdings", "get", "--investment-no", "A"]
-    code, out, err = run_cli(args)
-    assert code == 0, err
-    assert parse(out)["meta"]["fetched_at"] == old
-    assert parse(out)["meta"]["stale"] is True
-    code, out, _ = run_cli([*args, "--require-fresh"])
-    assert code == 1 and parse(out)["error"]["code"] == "CACHE_STALE"
-
-
 def test_declared_customer_version_is_not_global_version(setup, run_cli):
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {
+            "success": True,
+            "data": {
+                "customerNo": payload["customerNo"],
+                "version": int(payload["version"]),
+            },
+        },
+    }
     code, out, _ = run_cli(
         [
             "liquidity",
@@ -781,9 +696,9 @@ def test_declared_customer_version_is_not_global_version(setup, run_cli):
             "1",
         ]
     )
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
-    assert not setup.state.transports
+    assert code == 0, out
+    assert parse(out)["data"]["version"] == 1
+    assert not setup.cache_path.exists()
 
 
 def test_liquidity_does_not_require_payment_auth(setup, run_cli):
@@ -855,345 +770,9 @@ RETURNS_QUERY = [
     "list",
     "--basis",
     "cash",
-    "--all",
+    "--limit",
+    "0",
 ]
-
-
-def test_overlapping_captures_resolve_to_the_newest_value(setup, run_cli):
-    from dogopencli.plugins.liquidity.common import now
-
-    recent = (now() - timedelta(hours=1)).isoformat()
-    newest = now().isoformat()
-    _seed_returns_captures(
-        setup,
-        [
-            (("20260930", "20261001"), [_returns_row("T1", "20261001", "OLD")], recent),
-            (("20261001", "20261001"), [_returns_row("T1", "20261001", "NEW")], newest),
-        ],
-    )
-    code, out, err = run_cli(
-        [*RETURNS_QUERY, "--from-date", "20261001", "--to-date", "20261001"]
-    )
-    assert code == 0, err
-    data = parse(out)["data"]
-    # One identity, two retained captures: the later acquisition wins.
-    assert [row["interestIncome"] for row in data] == ["NEW"]
-
-
-def test_require_fresh_covers_every_contributing_capture(setup, run_cli):
-    from dogopencli.plugins.liquidity.common import now
-
-    expired = (now() - timedelta(hours=100)).isoformat()  # beyond the 72h ttl
-    fresh = now().isoformat()
-    _seed_returns_captures(
-        setup,
-        [
-            (("20260930", "20260930"), [_returns_row("T1", "20260930", "1")], expired),
-            (("20261001", "20261001"), [_returns_row("T2", "20261001", "2")], fresh),
-        ],
-    )
-    query = [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20261001"]
-    code, out, err = run_cli(query)
-    assert code == 0, err
-    envelope = parse(out)
-    assert [row["transactionId"] for row in envelope["data"]] == ["T1", "T2"]
-    # A freshly refreshed day does not vouch for the expired one it merged with.
-    assert envelope["meta"]["stale"] is True
-    code, out, err = run_cli([*query, "--require-fresh"])
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_STALE"
-
-
-def test_expired_capture_contributing_nothing_keeps_result_fresh(setup, run_cli):
-    from dogopencli.plugins.liquidity.common import now
-
-    expired = (now() - timedelta(hours=100)).isoformat()  # beyond the 72h ttl
-    fresh = now().isoformat()
-    _seed_returns_captures(
-        setup,
-        [
-            (
-                ("20260930", "20261001"),
-                [_returns_row("T1", "20261001", "OLD")],
-                expired,
-            ),
-            (
-                ("20261001", "20261001"),
-                [_returns_row("T1", "20261001", "NEW")],
-                fresh,
-            ),
-        ],
-    )
-    query = [*RETURNS_QUERY, "--from-date", "20261001", "--to-date", "20261001"]
-    code, out, err = run_cli([*query, "--require-fresh"])
-    assert code == 0, err
-    envelope = parse(out)
-    # The expired capture is retained and covers the window, but every row it
-    # holds is superseded, so it contributes nothing to the reported result.
-    assert [row["interestIncome"] for row in envelope["data"]] == ["NEW"]
-    assert envelope["meta"]["stale"] is False
-
-
-def test_expired_sole_coverage_of_an_empty_day_is_not_fresh(setup, run_cli):
-    from dogopencli.plugins.liquidity.common import now
-
-    expired = (now() - timedelta(hours=100)).isoformat()  # beyond the 72h ttl
-    fresh = now().isoformat()
-    _seed_returns_captures(
-        setup,
-        [
-            (("20260930", "20260930"), [], expired),
-            (("20261001", "20261001"), [_returns_row("T2", "20261001", "2")], fresh),
-        ],
-    )
-    query = [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20261001"]
-    code, out, err = run_cli(query)
-    assert code == 0, err
-    envelope = parse(out)
-    assert [row["transactionId"] for row in envelope["data"]] == ["T2"]
-    # The empty 20260930 rests only on the expired capture, so the combined
-    # answer is not fresh even though every reported row came from a fresh one.
-    assert envelope["meta"]["stale"] is True
-    code, out, err = run_cli([*query, "--require-fresh"])
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_STALE"
-
-
-def test_integer_detail_identity_spellings_share_one_cache_entry(setup, run_cli):
-    setup.state.business_handler = lambda payload, index: {
-        "status": 200,
-        "body": {"success": True, "data": {"id": payload["id"], "name": "SVC"}},
-    }
-    refresh = [
-        "refresh",
-        "liquidity",
-        "network",
-        "account-capabilities",
-        "detail",
-        "get",
-        "--id",
-        "007",
-    ]
-    code, out, err = run_cli(refresh)
-    assert code == 0, err
-    assert setup.state.business_requests[0]["id"] == 7
-    code, out, err = run_cli(
-        ["liquidity", "network", "account-capabilities", "get", "--id", "7"]
-    )
-    assert code == 0, err
-    assert parse(out)["data"]["id"] == 7
-
-
-def test_latest_window_owns_proven_empty_day(setup, run_cli):
-    from dogopencli.plugins.liquidity.common import now
-
-    fresh = now().isoformat()
-    recent = (now() - timedelta(hours=1)).isoformat()
-    _seed_returns_captures(
-        setup,
-        [
-            (("20260930", "20260930"), [_returns_row("T1", "20260930", "IN")], recent),
-            (("20260930", "20261001"), [_returns_row("T1", "20261001", "OUT")], fresh),
-        ],
-    )
-    code, out, err = run_cli(
-        [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20260930"]
-    )
-    assert code == 0, err
-    # The latest complete request proves the earlier day empty.
-    assert parse(out)["data"] == []
-    assert parse(out)["meta"]["complete"] is True
-
-
-@pytest.mark.parametrize("fresh_empty_day", [False, True])
-def test_redundant_expired_empty_coverage_needs_fresh_evidence(
-    setup, run_cli, fresh_empty_day
-):
-    from dogopencli.plugins.liquidity.common import now
-
-    expired = (now() - timedelta(hours=100)).isoformat()
-    fresh = now().isoformat()
-    captures = [
-        (("20260929", "20260930"), [], expired),
-        (("20260930", "20260930"), [], expired),
-        (("20261001", "20261001"), [_returns_row("T2", "20261001", "2")], fresh),
-    ]
-    if fresh_empty_day:
-        captures.append((("20260930", "20261001"), [], fresh))
-    _seed_returns_captures(setup, captures)
-    query = [*RETURNS_QUERY, "--from-date", "20260930", "--to-date", "20261001"]
-    code, out, err = run_cli(query)
-    assert code == 0, err
-    assert parse(out)["meta"]["stale"] is (not fresh_empty_day)
-    code, out, err = run_cli([*query, "--require-fresh"])
-    assert code == (0 if fresh_empty_day else 1), err
-    if not fresh_empty_day:
-        assert parse(out)["error"]["code"] == "CACHE_STALE"
-
-
-def test_eviction_preserves_earlier_empty_day_end_to_end(setup, run_cli, monkeypatch):
-    from functools import partial
-
-    from dogopencli.plugins.liquidity import store as capture_store
-    from dogopencli.plugins.liquidity.common import now
-
-    monkeypatch.setattr(
-        capture_store,
-        "plan_capture_publish",
-        partial(capture_store.plan_capture_publish, cap=1),
-    )
-    fresh = now().isoformat()
-    _seed_returns_captures(
-        setup,
-        [
-            (("20260928", "20260929"), [], fresh),
-            (("20260929", "20260929"), [_returns_row("T1", "20260929", "1")], fresh),
-            (("20260930", "20260930"), [_returns_row("T2", "20260930", "2")], fresh),
-        ],
-    )
-    query = [*RETURNS_QUERY, "--from-date", "20260928", "--to-date", "20260928"]
-    code, out, err = run_cli([*query, "--require-fresh"])
-    assert code == 0, err
-    envelope = parse(out)
-    assert envelope["data"] == []
-    assert envelope["meta"]["complete"] is True
-    assert envelope["meta"]["retained_coverage"][0]["missing_days"] == ["20260929"]
-    spanning = [*RETURNS_QUERY, "--from-date", "20260928", "--to-date", "20260930"]
-    code, out, err = run_cli(spanning)
-    assert code == 0
-    assert parse(out)["error"] is None
-    assert parse(out)["meta"]["complete"] is False
-    # A complete acquisition restores only the refreshed day's coverage.
-    _seed_returns_captures(setup, [(("20260929", "20260929"), [], fresh)])
-    code, out, err = run_cli([*spanning, "--require-fresh"])
-    assert code == 0, err
-    assert [row["transactionId"] for row in parse(out)["data"]] == ["T2"]
-
-
-@pytest.mark.parametrize("older_start", ["20260928", "20260929"])
-@pytest.mark.parametrize(
-    "refreshed_rows", [[], [_returns_row("T3", "20260929", "NEW")]]
-)
-def test_partial_day_rows_do_not_enter_restored_complete_result(
-    setup, run_cli, monkeypatch, older_start, refreshed_rows
-):
-    from functools import partial
-
-    from dogopencli.plugins.liquidity import store as capture_store
-    from dogopencli.plugins.liquidity.common import now
-
-    expired = (now() - timedelta(hours=100)).isoformat()
-    fresh = now().isoformat()
-    original_publish = capture_store.plan_capture_publish
-    monkeypatch.setattr(
-        capture_store, "plan_capture_publish", partial(original_publish, cap=1)
-    )
-    _seed_returns_captures(
-        setup,
-        [
-            (
-                (older_start, "20260930"),
-                [
-                    _returns_row("T1", "20260929", "EVICTED"),
-                    _returns_row("T2", "20260929", "PARTIAL"),
-                ],
-                expired,
-            ),
-        ],
-    )
-    monkeypatch.setattr(capture_store, "plan_capture_publish", original_publish)
-    # Restore coverage through a different namespace, so the partial capture
-    # remains stored with either an interior hole or a narrowed leading edge.
-    refreshed_start = "20260929" if older_start == "20260928" else "20260928"
-    _seed_returns_captures(
-        setup,
-        [
-            ((refreshed_start, "20260930"), refreshed_rows, fresh),
-        ],
-    )
-    query = [*RETURNS_QUERY, "--from-date", "20260929", "--to-date", "20260930"]
-    code, out, err = run_cli(query)
-    assert code == 0, err
-    envelope = parse(out)
-    assert envelope["data"] == refreshed_rows
-    assert envelope["meta"]["complete"] is True
-    assert envelope["meta"]["stale"] is False
-    code, out, err = run_cli([*query, "--require-fresh"])
-    assert code == 0, err
-    assert parse(out)["data"] == refreshed_rows
-
-
-@pytest.mark.parametrize("scenario", ["new", "existing", "empty"])
-def test_eviction_keeps_newer_complete_day_readable_offline(
-    setup, run_cli, monkeypatch, scenario
-):
-    from functools import partial
-
-    from dogopencli.plugins.liquidity import store as capture_store
-    from dogopencli.plugins.liquidity.common import now
-
-    older_at = (now() - timedelta(hours=100)).isoformat()
-    newer_at = now().isoformat()
-    old_rows = [
-        _returns_row("T1", "20260929", "OLD1"),
-        _returns_row("T2", "20260929", "OLD2"),
-    ]
-    new_rows = (
-        []
-        if scenario == "empty"
-        else [
-            _returns_row("T1", "20260929", "NEW1"),
-            _returns_row("T2", "20260929", "NEW2"),
-        ]
-    )
-    _seed_returns_captures(
-        setup,
-        [(("20260928", "20260930"), old_rows, older_at)],
-    )
-    original_publish = capture_store.plan_capture_publish
-    cap = len(old_rows) + len(new_rows) - 1
-    if scenario != "existing":
-        monkeypatch.setattr(
-            capture_store, "plan_capture_publish", partial(original_publish, cap=cap)
-        )
-    _seed_returns_captures(setup, [(("20260929", "20260929"), new_rows, newer_at)])
-    if scenario == "existing":
-        monkeypatch.setattr(
-            capture_store,
-            "plan_capture_publish",
-            partial(original_publish, cap=cap + 1),
-        )
-        _seed_returns_captures(
-            setup,
-            [
-                (
-                    ("20261001", "20261001"),
-                    [_returns_row("T3", "20261001", "OTHER")],
-                    newer_at,
-                )
-            ],
-        )
-
-    def disconnected(*args, **kwargs):
-        raise AssertionError("offline query opened browser transport")
-
-    cdp.set_transport_factory(disconnected)
-    query = [
-        *RETURNS_QUERY,
-        "--from-date",
-        "20260929",
-        "--to-date",
-        "20260929",
-        "--require-complete",
-        "--require-fresh",
-    ]
-    code, out, err = run_cli(query)
-    assert code == 0, err
-    envelope = parse(out)
-    assert envelope["data"] == new_rows
-    assert envelope["meta"]["complete"] is True
-    assert envelope["meta"]["stale"] is False
-    assert setup.state.transports == []
 
 
 def test_liquidity_initial_auth_failure_exposes_domain_login(setup, run_cli):

@@ -148,7 +148,7 @@ def test_each_local_filter_matches_whole_value(run_cli, envelope, setup, flag, p
 def test_empty_complete_library_and_no_detail_or_mutations(run_cli, envelope, setup):
     setup.state.business_script.extend([list_page([]), list_page([])])
     assert refresh(run_cli)[0] == 0
-    assert envelope(listing(run_cli)[1])["data"] == []
+    assert envelope(listing(run_cli)[1])["error"]["code"] == "CACHE_MISS"
     for verb in ("get", "run", "approve", "edit", "verify", "export"):
         assert run_cli(["payment", "ptr", "cases", verb])[0] == 2
 
@@ -191,7 +191,7 @@ def test_help_describe_and_window_are_offline(run_cli, envelope, setup):
     assert listing(run_cli, "--format", "table", "--limit", "1")[0] == 0
     for flags in (
         ("--all", "--limit", "1"),
-        ("--limit", "0"),
+        ("--limit", "-1"),
         ("--offset", "-1"),
         ("--fields", " "),
     ):

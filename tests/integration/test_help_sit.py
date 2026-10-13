@@ -54,13 +54,13 @@ GROUP_CHILDREN = {
     (): ROOT_CHILDREN,
     ("payment",): ["ptr", "rules", "channel", "cost", "sla"],
     ("payment", "ptr"): ["cases", "orders"],
-    ("payment", "ptr", "orders"): ["list"],
-    ("payment", "ptr", "cases"): ["list"],
-    ("payment", "channel"): ["list"],
-    ("payment", "cost"): ["list"],
+    ("payment", "ptr", "orders"): ["list", "prune"],
+    ("payment", "ptr", "cases"): ["list", "prune"],
+    ("payment", "channel"): ["list", "prune"],
+    ("payment", "cost"): ["list", "prune"],
     ("payment", "sla"): ["baselines"],
-    ("payment", "sla", "baselines"): ["list", "get"],
-    ("refresh",): ["payment", "collection", "liquidity"],
+    ("payment", "sla", "baselines"): ["list", "get", "prune"],
+    ("refresh",): ["payment", "collection", "liquidity", "fx"],
     ("refresh", "payment"): ["ptr", "rules", "channel", "cost", "sla"],
     ("refresh", "payment", "ptr"): ["cases", "orders"],
     ("collection",): [
@@ -71,13 +71,13 @@ GROUP_CHILDREN = {
         "cost",
         "va",
     ],
-    ("collection", "account-isolation"): ["list"],
+    ("collection", "account-isolation"): ["list", "prune"],
     ("collection", "sla"): ["configs"],
-    ("collection", "sla", "configs"): ["list", "get"],
-    ("collection", "cost"): ["list"],
+    ("collection", "sla", "configs"): ["list", "get", "prune"],
+    ("collection", "cost"): ["list", "prune"],
     ("collection", "va"): ["rules", "capacity"],
-    ("collection", "va", "rules"): ["list", "get"],
-    ("collection", "va", "capacity"): ["list"],
+    ("collection", "va", "rules"): ["list", "get", "prune"],
+    ("collection", "va", "capacity"): ["list", "prune"],
     ("refresh", "collection"): [
         "clearing-system",
         "card-template",
@@ -233,8 +233,7 @@ def _assert_window_and_format_options(options):
     assert options["limit"]["required"] is False
     assert options["offset"]["type"] == "int"
     assert options["offset"]["default"] == 0
-    assert options["all"]["type"] == "bool"
-    assert options["all"]["default"] is False
+    assert "all" not in options
     assert options["format"]["choices"] == ["json", "table"]
     assert options["format"]["default"] == "json"
     assert options["fields"]["type"] == "str"
@@ -250,7 +249,7 @@ def test_channel_list_contract(run_cli):
     doc = help_json(run_cli, ["help", "payment", "channel", "list"])
     options = options_by_name(doc)
     assert options["payout_type"]["type"] == "str"
-    assert options["payout_type"]["default"] == "EXTERNAL"
+    assert options["payout_type"]["default"] == "EXTERNAL (online only)"
     assert options["payout_type"]["choices"] == list(SCOPES)
     for name in (
         "financial_inst_id",
@@ -272,7 +271,7 @@ def test_channel_list_contract(run_cli):
     joined = " ".join(doc["constraints"])
     assert "72 hours" in joined
     assert "seqid" in joined
-    assert "--all" in joined
+    assert "--limit 0" in joined
     assert any("--live" in example for example in doc["examples"])
 
 
@@ -312,7 +311,8 @@ def test_sla_get_contract(run_cli):
     assert options["id"]["required"] is True
     assert options["id"]["type"] == "str"
     assert options["id"]["default"] is None
-    _assert_cache_flags(options)
+    assert "require_fresh" not in options
+    assert options["require_complete"]["type"] == "bool"
     assert options["format"]["choices"] == ["json", "table"]
     assert "limit" not in options and "all" not in options
     assert any("--id BASELINE_ID" in example for example in doc["examples"])
@@ -321,6 +321,11 @@ def test_sla_get_contract(run_cli):
 @pytest.mark.parametrize("path", QUERY_LEAVES, ids=lambda p: " ".join(p))
 def test_query_leaf_effects(run_cli, path):
     doc = help_json(run_cli, ["help", *path])
+    if path[-1] == "get":
+        assert doc["effects"]["network"] is True
+        assert doc["effects"]["browser_required"] is True
+        assert doc.get("effects_variants", []) == []
+        return
     assert doc["effects"] == {
         "mutates": False,
         "network": False,
@@ -724,7 +729,7 @@ def test_leaf_unknown_option_uses_business_envelope(run_cli, monkeypatch, path):
     [
         ["--limit", "not-an-int"],
         ["--limit"],
-        ["--limit", "0"],
+        ["--limit", "-1"],
         ["--lim", "1"],
         ["--format", "bogus"],
     ],

@@ -69,7 +69,7 @@ def test_padded_acquisition_publishes_only_exact_half_open_scope(
         * 2
     )
     setup.state.running = False
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert code == 0, out
     assert envelope(out)["data"] == [rows[2], rows[3], rows[1]]
     assert envelope(out)["meta"]["complete"] is True
@@ -80,15 +80,17 @@ def test_exact_windows_have_independent_snapshots(run_cli, envelope, setup):
     setup.state.business_script.extend([page([first]), page([first])])
     assert refresh(run_cli)[0] == 0
     next_window = ["--updated-from", END, "--updated-to", "2025-01-03T00:00:00+08:00"]
-    missing = envelope(listing(run_cli, window=next_window)[1])["error"]
-    assert missing["code"] == "CACHE_MISS"
-    assert f"--updated-from {END}" in missing["message"]
-    assert "--updated-to 2025-01-03T00:00:00+08:00" in missing["message"]
+    unmatched = envelope(listing(run_cli, window=next_window)[1])
+    assert unmatched["data"] == []
+    assert unmatched["meta"]["requested_coverage"] is False
     second = order("SECOND", END_MS + 500)
     setup.state.business_script.extend([page([second]), page([second])])
     assert refresh(run_cli, next_window)[0] == 0
     setup.state.running = False
-    assert envelope(listing(run_cli)[1])["data"] == [first]
+    assert envelope(listing(run_cli)[1])["data"] == []
+    assert envelope(run_cli(["payment", "ptr", "orders", "list"])[1])["data"] == [
+        second
+    ]
     assert envelope(listing(run_cli, window=next_window)[1])["data"] == [second]
 
 
@@ -212,7 +214,7 @@ def test_empty_scope_and_required_bounds_in_offline_help(run_cli, envelope, setu
 
     setup.state.business_script.extend([page([]), page([])])
     assert refresh(run_cli)[0] == 0
-    assert envelope(listing(run_cli)[1])["data"] == []
+    assert envelope(listing(run_cli)[1])["error"]["code"] == "CACHE_MISS"
     setup.state.running = False
     code, out, _ = run_cli(["describe", "payment", "ptr", "orders", "list"])
     assert code == 0
@@ -223,8 +225,8 @@ def test_empty_scope_and_required_bounds_in_offline_help(run_cli, envelope, setu
     ):
         help_doc = json.loads(run_cli(["help", *path])[1])
         required = {o["name"] for o in help_doc["options"] if o["required"]}
-        assert required == {"updated_from", "updated_to"}
-        assert run_cli(path)[0] == 2
+        assert required == set()
+        assert run_cli(path)[0] == (2 if path[0] == "refresh" else 1)
     for verb in ("get", "approve", "verify", "retry", "export"):
         assert run_cli(["payment", "ptr", "orders", verb])[0] == 2
 
@@ -244,7 +246,7 @@ def test_equivalent_numeric_offsets_share_the_baseline_scope_and_cache(
         "--updated-to",
         "2025-01-01T16:00:00+00:00",
     ]
-    code, out, _ = listing(run_cli, "--all", window=equivalent)
+    code, out, _ = listing(run_cli, "--limit", "0", window=equivalent)
     assert code == 0, out
     assert envelope(out)["data"] == rows
     # The equivalent refresh emits byte-identical padded native requests.

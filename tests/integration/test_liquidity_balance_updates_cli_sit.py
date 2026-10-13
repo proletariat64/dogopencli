@@ -5,7 +5,7 @@ import pytest
 from dogopencli.jsonutil import parse
 
 pytest_plugins = ["test_liquidity_cli_sit"]
-QUERY = ["liquidity", "cash", "balances", "list", "--entity", "E1", "--all"]
+QUERY = ["liquidity", "cash", "balances", "list", "--entity", "E1", "--limit", "0"]
 REFRESH = ["refresh", "liquidity", "cash", "balances", "--entity", "E1"]
 
 
@@ -170,55 +170,3 @@ def test_malformed_account_attributes_never_merge_or_publish(
         assert result["error"]["code"] == "INVALID_RESPONSE"
         assert result["data"] is None
         assert setup.cache_path.read_bytes() == before
-
-
-@pytest.mark.parametrize(
-    "reverse_entities,reverse_aliases", [(True, False), (False, True), (True, True)]
-)
-def test_old_unsorted_latest_capture_remains_readable_offline(
-    setup, run_cli, reverse_entities, reverse_aliases
-):
-    from dogopencli.cache import Cache
-    from dogopencli.plugins.liquidity import store as capture_store
-    from dogopencli.plugins.liquidity.capability import decode_scope, encode_scope
-    from dogopencli.plugins.liquidity.common import now
-    from dogopencli.plugins.liquidity.leaves import list_leaf
-
-    leaf = list_leaf(("cash", "balances"))
-    resolved = leaf.resolve({"entity": ["E1", "E2"], "account": ["A1", "A2"]})
-    old_values = decode_scope(resolved.scope_key)
-    if reverse_entities:
-        old_values["entitys"] = ["E2", "E1", "E2"]
-    if reverse_aliases:
-        old_values["aliasNames"] = ["A2", "A1", "A2"]
-    old_scope = encode_scope(old_values)
-    store = Cache(setup.cache_path)
-    at = now().isoformat()
-    plan = capture_store.plan_capture_publish(
-        store, resolved.spec, old_scope, (None, None), [balance()], 1, at, at
-    )
-    capture_store.commit_plan(store, resolved.spec.name, plan, at)
-    before = setup.cache_path.read_bytes()
-    setup.state.reachable = False
-    code, out, err = run_cli(
-        [
-            "liquidity",
-            "cash",
-            "balances",
-            "list",
-            "--entity",
-            "E2",
-            "--entity",
-            "E1",
-            "--account-alias",
-            "A2",
-            "--account-alias",
-            "A1",
-            "--require-complete",
-        ]
-    )
-    assert code == 0, err
-    assert parse(out)["data"][0]["balance_record_id"] == "B1"
-    assert parse(out)["meta"]["complete"] is True
-    assert setup.state.business_requests == []
-    assert setup.cache_path.read_bytes() == before

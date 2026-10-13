@@ -66,7 +66,7 @@ def test_returns_partial_contract_publishes_truthful_offline_capture(
     before = cache.read_bytes()
     total = 3
 
-    code, out, err = run_cli([*query, "--live", "--all"])
+    code, out, err = run_cli([*query, "--live", "--limit", "0"])
     assert code == 0
     result = parse(out)
     assert result["data"] == records
@@ -78,7 +78,7 @@ def test_returns_partial_contract_publishes_truthful_offline_capture(
     assert "warning: INCOMPLETE_RESULT" in err
     assert cache.read_bytes() == before
 
-    code, out, _ = run_cli([*query, "--live", "--all", "--require-complete"])
+    code, out, _ = run_cli([*query, "--live", "--limit", "0", "--require-complete"])
     assert code == 1
     assert parse(out)["data"] is None
     assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
@@ -99,7 +99,7 @@ def test_returns_partial_contract_publishes_truthful_offline_capture(
         pytest.fail("offline returns query contacted the browser")
 
     cdp.set_transport_factory(disconnected)
-    code, out, _ = run_cli([*query, "--all"])
+    code, out, _ = run_cli([*query, "--limit", "0"])
     assert code == 0
     assert parse(out)["data"] == records
     assert parse(out)["meta"]["complete"] is False

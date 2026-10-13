@@ -11,7 +11,7 @@ ROOT = ["liquidity", "pricing", "factors"]
 
 
 def query(*extra):
-    return [*ROOT, "list", "--all", *extra]
+    return [*ROOT, "list", "--limit", "0", *extra]
 
 
 def refresh(*extra):
@@ -67,7 +67,7 @@ def test_definition_contract_disconnected_capture_and_live_no_write(setup, run_c
     code, out, err = run_cli(query("--live", "--require-complete"))
     assert code == 0, err
     live = parse(out)
-    assert live["data"] == sorted(rows, key=lambda row: row["code"])
+    assert live["data"] == rows
     assert live["meta"]["kind"] == "reference"
     assert live["meta"]["reported_total"] is None
     assert setup.cache_path.read_bytes() == before
@@ -78,7 +78,7 @@ def test_definition_contract_disconnected_capture_and_live_no_write(setup, run_c
     assert cached["data"] == live["data"]
     for key in ("scope", "fetched_at", "complete", "reported_total"):
         assert cached["meta"][key] == seeded["meta"][key]
-    assert "factor-definitions-v1" in cached["meta"]["scope"]
+    assert cached["meta"]["capability"].endswith(".list")
     assert cached["meta"]["source_observed_from"] is None
     assert cached["meta"]["source_observed_to"] is None
     assert len(setup.state.business_requests) == 2
@@ -193,8 +193,8 @@ def test_complete_empty_replaces_one_current_reference_capture(setup, run_cli):
     setup.state.reachable = False
     code, out, err = run_cli(query("--require-complete"))
     assert code == 0, err
-    assert parse(out)["data"] == []
-    assert parse(out)["meta"]["fetched_at"] == empty["meta"]["fetched_at"]
+    assert parse(out)["data"] == [factor()]
+    assert empty["meta"]["published"] is False
 
 
 def test_discovery_kind_factor_values_and_get_boundaries(setup, run_cli):
@@ -231,7 +231,6 @@ def test_old_placeholder_capture_not_reused_and_factor_values_cache_is_independe
     from dataclasses import replace
 
     from dogopencli.cache import Cache
-    from dogopencli.plugins.liquidity import store as capture_store
     from dogopencli.plugins.liquidity.leaves import PRICING_FACTORS
 
     # A legacy settings capture with no schema-specific scope cannot satisfy
@@ -239,10 +238,26 @@ def test_old_placeholder_capture_not_reused_and_factor_values_cache_is_independe
     legacy = replace(PRICING_FACTORS, kind="settings", schema_version="")
     cache = Cache(setup.cache_path)
     at = "2026-10-05T00:00:00+00:00"
-    plan = capture_store.plan_capture_publish(
-        cache, legacy, "{}", (None, None), [factor("OLD")], None, at, at
+    from dogopencli.cache import SnapshotMeta
+    from dogopencli.jsonutil import canonical
+
+    meta = SnapshotMeta(
+        namespace="legacy-liquidity",
+        capability=legacy.name,
+        scope="{}",
+        source_kind="cdp",
+        snapshot_id="old",
+        dataset_id=None,
+        simulated=False,
+        backend_complete=True,
+        dataset_complete=True,
+        fetched_at=at,
+        loaded_at=at,
+        source_observed_from=None,
+        source_observed_to=None,
+        row_count=1,
     )
-    capture_store.commit_plan(cache, legacy.name, plan, at)
+    cache.publish(meta, [(1, canonical(factor("OLD")))])
     code, out, _ = run_cli(query())
     assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
     assert setup.state.transports == []
@@ -267,7 +282,7 @@ def test_old_placeholder_capture_not_reused_and_factor_values_cache_is_independe
     value_capture = parse(out)
     seed(setup, run_cli)
     setup.state.reachable = False
-    code, out, err = run_cli([*value_root, "list", *bounds, "--all"])
+    code, out, err = run_cli([*value_root, "list", *bounds, "--limit", "0"])
     assert code == 0, err
     values = parse(out)
     assert values["data"] == [value]

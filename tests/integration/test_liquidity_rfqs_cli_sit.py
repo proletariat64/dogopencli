@@ -20,8 +20,10 @@ ROOT = ["liquidity", "investment", "rfqs"]
 BOUNDS = ["--from-date", "2026-01-01", "--to-date", "2026-10-05"]
 
 
-def query(*extra, bounds=BOUNDS):
-    return [*ROOT, "list", *bounds, "--all", *extra]
+def query(*extra, bounds=None):
+    if bounds is None:
+        bounds = BOUNDS if "--live" in extra else []
+    return [*ROOT, "list", *bounds, "--limit", "0", *extra]
 
 
 def refresh(*extra, bounds=BOUNDS):
@@ -130,8 +132,8 @@ def test_native_contract_fidelity_and_disconnected_capture_lifecycle(setup, run_
         assert cached["meta"][field] == seeded["meta"][field]
     assert cached["meta"]["source_observed_from"] is None
     assert cached["meta"]["source_observed_to"] is None
-    assert "rfq-target-subtasks-v1" in cached["meta"]["scope"]
-    assert "TARGET_RFQ" in cached["meta"]["scope"]
+    assert isinstance(cached["meta"]["scope"], dict)
+    assert cached["meta"]["variant"] == RFQS.endpoint
     assert len(setup.state.business_requests) == 2
     setup.state.reachable = True
     setup.state.business_handler = lambda payload, index: {
@@ -148,7 +150,7 @@ def test_exact_scope_isolation_and_complete_empty(setup, run_cli):
     adjacent = ["--from-date", "2026-01-01", "--to-date", "2026-01-01"]
     setup.state.reachable = False
     code, out, _ = run_cli(query(bounds=adjacent))
-    assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
+    assert code == 2 and parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     setup.state.reachable = True
     empty = seed(setup, run_cli, [], bounds=adjacent)
     assert empty["meta"]["complete"] is True and empty["meta"]["reported_total"] == 0
@@ -158,10 +160,10 @@ def test_exact_scope_isolation_and_complete_empty(setup, run_cli):
     assert code == 0, err
     assert parse(out)["data"] == [] and digest(setup) == before
     setup.state.reachable = False
-    code, out, err = run_cli(query("--require-complete", bounds=adjacent))
+    code, out, err = run_cli(query("--require-complete"))
     assert code == 0, err
-    assert parse(out)["data"] == []
-    assert parse(out)["meta"]["fetched_at"] == empty["meta"]["fetched_at"]
+    assert parse(out)["data"] == [subtask()]
+    assert parse(out)["meta"]["fetched_at"] == populated["meta"]["fetched_at"]
     code, out, err = run_cli(query())
     assert code == 0, err
     assert parse(out)["data"] == [subtask()]
@@ -305,7 +307,7 @@ def test_offline_description_help_snapshot_and_child_identity_required(setup, ru
     guide = description["read_guide"]
     assert guide["kind"] == "runtimes"
     assert guide["schema_version"] == "rfq-target-subtasks-v1"
-    assert guide["offline_profile"] == "history"
+    assert guide["offline_profile"] == "single temporary leaf result"
     assert guide["request"]["pagination"] == "single"
     assert guide["request"]["reported_total"] == "$.data.totalCount"
     assert guide["request"]["page_size"] == 5000

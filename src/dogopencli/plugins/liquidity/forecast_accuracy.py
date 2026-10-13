@@ -125,8 +125,8 @@ FORECAST_ACCURACY = ListSpec(
         "query day and full creation time range. GMT is a UI label, not a "
         "verified server timezone.",
         "valueDate and baseValueDate remain distinct from record-date. "
-        "Capture time is the retention axis; exact account/day scopes never "
-        "fall back or merge across days.",
+        "Acquisition scope remains visible; one temporary result replaces "
+        "the previous account/day query.",
         "One base response must prove arrivals = unique id = reported count "
         "before any metric requests; client scope budget is 100 base records, "
         "not a backend capacity rule.",

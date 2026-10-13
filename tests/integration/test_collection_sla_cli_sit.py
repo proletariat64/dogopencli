@@ -73,54 +73,38 @@ def refresh(run_cli, *flags):
 
 
 def seed(run_cli, setup):
-    setup.state.business_script.extend([page(), detail()])
+    setup.state.business_script.append(page())
     assert refresh(run_cli)[0] == 0
-    return listing(run_cli)[1], getting(run_cli, "--id", "1")[1]
+    return listing(run_cli)[1], None
 
 
-def test_core_refresh_true_details_offline_and_display(run_cli, envelope, setup):
+def test_list_refresh_avoids_details_get_is_online(run_cli, envelope, setup):
     rows = [row("20"), row("2")]
-    setup.state.business_script.extend([page(rows), detail("2"), detail("20")])
+    setup.state.business_script.append(page(rows))
     code, out, _ = refresh(run_cli)
-    assert code == 0, out
+    assert code == 0
     assert (
-        envelope(out)["data"]["namespace"] == "collection.sla.configs.list:configs:cdp"
+        envelope(out)["data"]["namespace"] == "temporary-query:collection.sla.configs"
     )
-    assert setup.state.business_requests == [
-        {"pageNo": 0, "pageSize": 1000},
-        {"slaConfigId": "2"},
-        {"slaConfigId": "20"},
-    ]
-    before = len(setup.state.transports)
+    assert setup.state.business_requests == [{"pageNo": 0, "pageSize": 1000}]
+    before = setup.cache_path.read_bytes()
     setup.state.running = False
-    result = envelope(
-        listing(run_cli, "--all", "--require-fresh", "--require-complete")[1]
-    )
+    result = envelope(listing(run_cli, "--limit", "0", "--require-complete")[1])
     assert result["data"] == list(reversed(rows))
     assert result["meta"]["complete"] and not result["meta"]["has_more"]
-    for identity in ["2", "20"]:
-        code, out, _ = getting(
-            run_cli, "--id", identity, "--require-fresh", "--require-complete"
-        )
-        assert code == 0
-        assert envelope(out)["data"] == detail(identity)["body"]["resultData"]
     projected = envelope(
         listing(run_cli, "--limit", "1", "--fields", "slaConfigId,holidayLimit")[1]
     )
     assert projected["data"] == [
         {key: rows[1][key] for key in ["slaConfigId", "holidayLimit"]}
     ]
-    assert projected["meta"]["complete"] and projected["meta"]["has_more"]
-    assert envelope(listing(run_cli, "--offset", "1")[1])["data"] == [rows[0]]
-    assert "slaConfigId" in listing(run_cli, "--format", "table")[1]
-    assert (
-        "detailOnly"
-        in getting(run_cli, "--id", "2", "--format", "table", "--fields", "detailOnly")[
-            1
-        ]
-    )
-    assert len(setup.state.transports) == before
-    assert b"FAKE-CTOKEN-SECRET" not in setup.cache_path.read_bytes()
+    assert projected["meta"]["has_more"]
+    setup.state.running = True
+    setup.state.business_script.append(detail("2"))
+    code, out, _ = getting(run_cli, "--id", "2")
+    assert code == 0 and envelope(out)["data"]["detailOnly"]
+    assert envelope(out)["meta"]["source"] == "live"
+    assert setup.cache_path.read_bytes() == before
 
 
 def test_cache_miss_live_nonwriting_and_null_not_missing(run_cli, envelope, setup):
@@ -138,10 +122,10 @@ def test_cache_miss_live_nonwriting_and_null_not_missing(run_cli, envelope, setu
         envelope(getting(run_cli, "--id", "3", "--live")[1])["error"]["code"]
         == "INVALID_RESPONSE"
     )
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
-    assert (
-        envelope(getting(run_cli, "--id", "absent")[1])["error"]["code"] == "NOT_FOUND"
-    )
+    assert (listing(run_cli)[1], None) == old
+    setup.state.business_script.append(detail("absent"))
+    code, out, _ = getting(run_cli, "--id", "absent")
+    assert code == 0 and envelope(out)["data"]["slaConfigId"] == "absent"
 
 
 @pytest.mark.parametrize(
@@ -178,7 +162,7 @@ def test_list_rejects_incomplete_or_bad_data(
     )
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == code
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
 
 
 @pytest.mark.parametrize(
@@ -187,37 +171,40 @@ def test_list_rejects_incomplete_or_bad_data(
         ({"success": False}, "BUSINESS_QUERY_FAILED"),
         ({"success": True, "resultData": None}, "INVALID_RESPONSE"),
         ({"success": True, "resultData": row("wrong")}, "INVALID_RESPONSE"),
-        ({"success": True, "resultData": row(endToEndSla=9)}, "INVALID_RESPONSE"),
     ],
 )
-def test_detail_failure_preserves_atomic_pair(run_cli, envelope, setup, bad, expected):
+def test_native_detail_failure_preserves_list_slot(
+    run_cli, envelope, setup, bad, expected
+):
     old = seed(run_cli, setup)
-    setup.state.business_script.extend([page(), {"status": 200, "body": bad}])
-    result = refresh(run_cli)
-    assert result[0] == 1
-    assert envelope(result[1])["error"]["code"] == expected
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    before = setup.cache_path.read_bytes()
+    setup.state.business_script.append({"status": 200, "body": bad})
+    result = getting(run_cli, "--id", "1")
+    assert result[0] == 1 and envelope(result[1])["error"]["code"] == expected
+    assert listing(run_cli)[1] == old[0]
+    assert setup.cache_path.read_bytes() == before
 
 
 def test_interrupted_detail_preserves_snapshot(run_cli, setup):
     old = seed(run_cli, setup)
+    before = setup.cache_path.read_bytes()
 
     def interrupted(payload, index):
-        if "slaConfigId" in payload:
-            raise KeyboardInterrupt
-        return page([row("99")])
+        raise KeyboardInterrupt
 
     setup.state.business_handler = interrupted
-    assert refresh(run_cli)[0] == 130
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert getting(run_cli, "--id", "1")[0] == 130
+    assert listing(run_cli)[1] == old[0]
+    assert setup.cache_path.read_bytes() == before
 
 
-def test_empty_scope(run_cli, envelope, setup):
-    seed(run_cli, setup)
+def test_empty_refresh_preserves_prior_result(run_cli, envelope, setup):
+    old = seed(run_cli, setup)
     setup.state.business_script.append(page([]))
-    assert refresh(run_cli)[0] == 0
-    assert envelope(listing(run_cli)[1])["data"] == []
-    assert envelope(getting(run_cli, "--id", "1")[1])["error"]["code"] == "NOT_FOUND"
+    code, out, _ = refresh(run_cli)
+    assert code == 0 and envelope(out)["meta"]["published"] is False
+    assert envelope(out)["meta"]["collected_total"] == 0
+    assert listing(run_cli)[1] == old[0]
 
 
 @pytest.mark.parametrize(
@@ -252,7 +239,7 @@ def test_offline_navigation_schema_and_arguments(run_cli, envelope, monkeypatch)
         Draft202012Validator(schema).validate(data)
     for flags in [
         ("--all", "--limit", "1"),
-        ("--limit", "0"),
+        ("--limit", "-1"),
         ("--offset", "-1"),
         ("--fields", " , "),
         ("--business-line", " "),
@@ -292,11 +279,9 @@ def test_transport_restrictions_before_browser(setup):
 
 
 def test_payment_and_collection_cache_isolation(run_cli, envelope, setup):
-    from test_sla_cli_sit import detail_outcome, list_page, sla_row
+    from test_sla_cli_sit import list_page, sla_row
 
-    setup.state.business_script.extend(
-        [list_page([sla_row("900")]), detail_outcome("900")]
-    )
+    setup.state.business_script.extend([list_page([sla_row("900")])])
     assert run_cli(["refresh", "payment", "sla"])[0] == 0
     payment_before = run_cli(["payment", "sla", "baselines", "list"])[1]
     seed(run_cli, setup)
@@ -310,52 +295,41 @@ def test_freshness_and_incomplete_cache_requirements(run_cli, envelope, setup):
     seed(run_cli, setup)
     config = setup.tmp_path / "config.toml"
     config.write_text(config.read_text().replace("ttl_hours = 72", "ttl_hours = 0"))
-    for query in [
-        lambda *flags: listing(run_cli, *flags),
-        lambda *flags: getting(run_cli, "--id", "1", *flags),
-    ]:
-        assert envelope(query()[1])["meta"]["stale"]
-        assert envelope(query("--require-fresh")[1])["error"]["code"] == "CACHE_STALE"
-        assert query("--require-complete")[0] == 0
+    assert envelope(listing(run_cli)[1])["meta"]["stale"]
+    assert (
+        envelope(listing(run_cli, "--require-fresh")[1])["error"]["code"]
+        == "CACHE_STALE"
+    )
+    assert listing(run_cli, "--require-complete")[0] == 0
+    assert getting(run_cli, "--id", "1", "--require-fresh")[0] == 2
     with sqlite3.connect(setup.cache_path) as connection:
-        # Synthetic incomplete metadata; production snapshots remain untouched.
         connection.execute(
             "UPDATE snapshots SET backend_complete = 0, acquisition = NULL"
         )
-    for query in [
-        lambda *flags: listing(run_cli, *flags),
-        lambda *flags: getting(run_cli, "--id", "1", *flags),
-    ]:
-        assert (
-            envelope(query("--require-complete")[1])["error"]["code"]
-            == "INCOMPLETE_RESULT"
-        )
+    assert (
+        envelope(listing(run_cli, "--require-complete")[1])["error"]["code"]
+        == "INCOMPLETE_RESULT"
+    )
 
 
-def test_last_detail_failure_and_deadline_preserve_all_rows(
+def test_native_detail_deadline_preserves_all_list_rows(
     run_cli, envelope, setup, monkeypatch
 ):
     import dogopencli.collect as collect_mod
 
     old = seed(run_cli, setup)
-    setup.state.business_script.extend(
-        [page([row("2"), row("3")]), detail("2"), detail("3", creditorCurrency="EUR")]
-    )
-    assert envelope(refresh(run_cli)[1])["error"]["code"] == "INVALID_RESPONSE"
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
     clock = [0.0]
     monkeypatch.setattr(collect_mod, "_monotonic", lambda: clock[0])
     monkeypatch.setattr(collect_mod, "REFRESH_BUDGET_SECONDS", 1.0)
 
     def delayed(payload, index):
-        if "slaConfigId" in payload:
-            clock[0] += 2
-            return detail()
-        return page()
+        clock[0] += 2
+        return detail()
 
     setup.state.business_handler = delayed
-    assert envelope(refresh(run_cli)[1])["error"]["code"] == "TIMEOUT"
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    result = getting(run_cli, "--id", "1")
+    assert result[0] == 1 and envelope(result[1])["error"]["code"] == "TIMEOUT"
+    assert listing(run_cli)[1] == old[0]
 
 
 def test_detail_retries_authentication_and_business_failures(
@@ -401,13 +375,6 @@ def test_local_filters_identical_cached_live(run_cli, envelope, setup, flag, fie
     ]
     del rows[4][field]
     setup.state.business_script.append(page(rows))
-    setup.state.business_script.extend(
-        {
-            "status": 200,
-            "body": {"success": True, "resultData": {field: None, **record}},
-        }
-        for record in sorted(rows, key=lambda record: int(record["slaConfigId"]))
-    )
     assert refresh(run_cli)[0] == 0
     before = setup.cache_path.read_bytes()
     cases = [
@@ -448,10 +415,6 @@ def test_local_filter_cross_field_and_before_window(run_cli, envelope, setup):
         row("6", businessCategory="OTHER"),
     ]
     setup.state.business_script.append(page(rows))
-    setup.state.business_script.extend(
-        {"status": 200, "body": {"success": True, "resultData": record}}
-        for record in sorted(rows, key=lambda record: int(record["slaConfigId"]))
-    )
     assert refresh(run_cli)[0] == 0
     flags = [
         "--business-line",
@@ -509,13 +472,11 @@ def test_incomplete_detail_rejected_without_replacing_cache(
     old = seed(run_cli, setup)
     response = detail()
     del response["body"]["resultData"][field]
-    if not live:
-        setup.state.business_script.append(page())
     setup.state.business_script.append(response)
-    result = getting(run_cli, "--live", "--id", "1") if live else refresh(run_cli)
+    result = getting(run_cli, "--id", "1")
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
 
 
 @pytest.mark.parametrize(
@@ -535,25 +496,16 @@ def test_malformed_holiday_detail_rejected(run_cli, envelope, setup, holiday):
     assert not setup.cache_path.exists()
 
 
-def test_detail_must_preserve_list_extension_but_not_list_only_field(
-    run_cli, envelope, setup
-):
-    old = seed(run_cli, setup)
+def test_native_detail_independent_of_list_only_extensions(run_cli, envelope, setup):
+    setup.state.business_script.append(page([row(viewProcessInstanceRequired=True)]))
+    assert refresh(run_cli)[0] == 0
     response = detail()
     del response["body"]["resultData"]["unknownExtension"]
-    setup.state.business_script.extend([page(), response])
-    result = refresh(run_cli)
-    assert result[0] == 1
-    assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
-    setup.state.business_script.extend(
-        [page([row(viewProcessInstanceRequired=True)]), detail()]
-    )
-    assert refresh(run_cli)[0] == 0
-    assert (
-        "viewProcessInstanceRequired"
-        not in envelope(getting(run_cli, "--id", "1")[1])["data"]
-    )
+    setup.state.business_script.append(response)
+    code, out, _ = getting(run_cli, "--id", "1")
+    assert code == 0
+    assert "viewProcessInstanceRequired" not in envelope(out)["data"]
+    assert "unknownExtension" not in envelope(out)["data"]
 
 
 def test_explicit_nullable_detail_values_preserved(run_cli, envelope, setup):
@@ -578,20 +530,18 @@ def test_omitted_empty_rows_and_invalid_absence(run_cli, envelope, setup, total,
         assert result[0] == 0
         setup.state.running = False
         cached = envelope(listing(run_cli, "--require-complete")[1])
-        assert cached["data"] == [] and cached["meta"]["complete"]
-        assert (
-            envelope(getting(run_cli, "--id", "1")[1])["error"]["code"] == "NOT_FOUND"
-        )
+        assert cached["data"] == [row()] and cached["meta"]["complete"]
+        assert listing(run_cli)[1] == old[0]
     else:
         assert result[0] == 1
         assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
-        assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+        assert (listing(run_cli)[1], None) == old
 
 
 def test_stable_id_order_preserves_original_strings(run_cli, envelope, setup):
     identities = ["20", "2", "02", "a", "١", "²", "A"]
     setup.state.business_script.append(page([row(identity) for identity in identities]))
-    result = envelope(listing(run_cli, "--live", "--all")[1])
+    result = envelope(listing(run_cli, "--live", "--limit", "0")[1])
     assert [record["slaConfigId"] for record in result["data"]] == [
         "02",
         "2",
@@ -611,8 +561,6 @@ def test_permission_http_evidence_preserved_without_retry_or_cache_change(
 ):
     old = seed(run_cli, setup)
     count = len(setup.state.business_requests)
-    if action == "refresh":
-        setup.state.business_script.append(page())
     setup.state.business_script.append({"status": 403, "body": {}})
     if action == "list":
         result = listing(run_cli, "--live")
@@ -625,8 +573,8 @@ def test_permission_http_evidence_preserved_without_retry_or_cache_change(
     assert error["code"] == "BUSINESS_QUERY_FAILED"
     assert "403" in error["message"]
     assert error["retryable"] is False
-    assert len(setup.state.business_requests) == count + 1 + int(action == "refresh")
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert len(setup.state.business_requests) == count + 1
+    assert (listing(run_cli)[1], None) == old
 
 
 def test_unverified_backend_denial_text_not_classified_or_leaked(

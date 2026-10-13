@@ -45,8 +45,8 @@ RISK_SLA = ListSpec(
         "there is no offset fallback or additional detail inquiry.",
         "slaConfigId is the nonempty native string identity within the application "
         "tenant and source scope; version is a separate native string.",
-        "Configuration summaries only; existing get and its detail cache remain "
-        "independent. Rule arrays and notification recipients are excluded.",
+        "Configuration summaries only; genuine get queries online independently. "
+        "Rule arrays and notification recipients are excluded.",
         "Native statuses remain raw; no alert effectiveness or processing outcome "
         "is inferred. Unknown additive fields do not create missing pages.",
         "gmtCreate and gmtModified describe configuration source times; timezone "

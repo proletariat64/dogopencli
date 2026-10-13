@@ -93,8 +93,6 @@ def test_partial_refresh_replaces_latest_and_offline_quality_is_preserved(  # no
 
     def script(total):
         state.business_script.append(outcome(total))
-        if module_name in ("collection_sla_cli", "collection_va_rule_cli"):
-            state.business_script.append(module.detail())
 
     script(1)
     assert run_cli(list(refresh_path))[0] == 0

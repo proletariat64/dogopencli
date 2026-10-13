@@ -5,12 +5,12 @@ This layer never reads source files and never attempts an implicit refresh.
 """
 
 from collections.abc import Callable, Hashable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any
 
-from .cache import Cache, SnapshotMeta, namespace
-from .config import SOURCE_SNAPSHOT, Config, SourceConfig
+from .cache import Cache, SnapshotMeta
+from .config import Config, SourceConfig
 from .errors import (
     CACHE_MISS,
     CACHE_STALE,
@@ -20,6 +20,8 @@ from .errors import (
 )
 from .jsonutil import parse
 from .result_policy import AcquisitionEvidence, check_complete
+from .temporary_query import query_namespace as namespace
+from .temporary_query import slot_context
 
 
 def snapshot_meta(
@@ -58,6 +60,16 @@ def snapshot_meta(
         )
     )
     result.update(evidence.meta())
+    if snapshot.scope.startswith("{"):
+        context = parse(snapshot.scope)
+        if isinstance(context, dict) and "query" in context:
+            result.update(slot_context(snapshot))
+        else:
+            result["query"] = context
+    else:
+        result["query"] = {"scope": snapshot.scope}
+    if isinstance(result.get("query"), dict) and "scope" in result["query"]:
+        result["scope"] = result["query"]["scope"]
     return result
 
 
@@ -115,9 +127,15 @@ class CachedQuery:
         return records
 
     def meta(
-        self, matched_total: int, returned_count: int, *, offset: int = 0
+        self,
+        matched_total: int,
+        returned_count: int,
+        *,
+        offset: int = 0,
+        local_filters: dict | None = None,
+        requested_coverage: bool | None = True,
     ) -> dict[str, Any]:
-        return snapshot_meta(
+        meta = snapshot_meta(
             "cache",
             self.snapshot,
             self.stale,
@@ -125,6 +143,23 @@ class CachedQuery:
             returned_count,
             offset + returned_count < matched_total,
         )
+        meta["source_acquisition"] = meta["acquisition"]
+        meta["local_filters"] = local_filters or {}
+        meta["requested_coverage"] = requested_coverage
+        if matched_total == 0:
+            meta["cache_only_absence"] = (
+                "No matching rows in the saved acquisition; "
+                "backend absence is not established."
+            )
+        if requested_coverage is not True:
+            evidence = AcquisitionEvidence.from_record(meta["acquisition"])
+            evidence = replace(
+                evidence,
+                scope_complete=False,
+                reasons=tuple(dict.fromkeys((*evidence.reasons, "COVERAGE_UNPROVEN"))),
+            )
+            meta.update(evidence.meta())
+        return meta
 
 
 def read_cached_query(
@@ -144,9 +179,9 @@ def read_cached_query(
     available after its source files have been removed.
     """
     try:
-        snapshot, stored = Cache(config.cache_path).read(
-            namespace(capability, scope, source.kind)
-        )
+        store = Cache(config.cache_path)
+        store.ensure_temporary_format()
+        snapshot, stored = store.read(namespace(capability, scope, source.kind))
     except CliError as error:
         if error.code != INVALID_RESPONSE:
             raise
@@ -160,14 +195,6 @@ def read_cached_query(
     hint = f"run: dogopencli {refresh_command}"
     if snapshot is None:
         raise CliError(CACHE_MISS, f"no cached snapshot; {hint}")
-    if (source.dataset_id is not None and snapshot.dataset_id != source.dataset_id) or (
-        source.kind == SOURCE_SNAPSHOT
-        and snapshot.source_path != str(source.path.expanduser().resolve())
-    ):
-        raise CliError(
-            CACHE_MISS,
-            f"cached dataset does not match the configured source identity; {hint}",
-        )
     stale = is_stale(snapshot, config.ttl_hours, now)
     if require_fresh and stale:
         raise CliError(

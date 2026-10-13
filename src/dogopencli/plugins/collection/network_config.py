@@ -160,7 +160,7 @@ def list_node(cap: NetworkConfigCapability) -> BizNode:
         effects_variants=QUERY_EFFECTS_VARIANTS,
         output=QUERY_OUTPUT,
         errors=ERRORS,
-        examples=(f"dogopencli collection {cap.slug} list --all",),
+        examples=(f"dogopencli collection {cap.slug} list --limit 0",),
         next=(f"dogopencli help refresh collection {cap.slug}",),
         handler=f"cmd_collection_{cap.slug.replace('-', '_')}_list",
     )

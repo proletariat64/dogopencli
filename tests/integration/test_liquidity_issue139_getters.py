@@ -9,6 +9,17 @@ from dogopencli.jsonutil import parse
 pytest_plugins = ["test_liquidity_cli_sit"]
 
 
+@pytest.fixture(autouse=True)
+def native_details_do_not_create_cache(setup, request):
+    yield
+    if request.node.originalname not in {
+        "test_populated_parent_list_does_not_substitute_native_get",
+        "test_native_get_does_not_touch_parent_list_cache",
+        "test_asset_list_cache_cannot_satisfy_or_be_changed_by_native_get",
+    }:
+        assert not setup.cache_path.exists()
+
+
 def rfq(identity="SYN-CHILD"):
     return {
         "success": True,
@@ -30,23 +41,17 @@ def rfq(identity="SYN-CHILD"):
     }
 
 
-def command(refresh=False, identity="SYN-CHILD"):
-    path = ["liquidity", "investment", "rfqs"]
-    return [
-        *(["refresh", *path, "detail"] if refresh else path),
-        "get",
-        "--inquiry-sub-task-id",
-        identity,
-    ]
+def command(identity="SYN-CHILD"):
+    return ["liquidity", "investment", "rfqs", "get", "--inquiry-sub-task-id", identity]
 
 
-def test_rfq_child_native_request_and_offline_roundtrip(setup, run_cli):
+def test_rfq_child_native_request_and_precision(setup, run_cli):
     native = rfq()
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": native,
     }
-    code, out, err = run_cli(command(True))
+    code, out, err = run_cli(command())
     assert code == 0, (out, err)
     assert setup.state.business_requests == [{"inquiryTaskId": "SYN-CHILD"}]
     expressions = [
@@ -56,7 +61,6 @@ def test_rfq_child_native_request_and_offline_roundtrip(setup, run_cli):
         "/rfq/subInquiryTask/queryInquiryTaskDetail.json" in e and 'method: "GET"' in e
         for e in expressions
     )
-    setup.state.running = False
     code, out, err = run_cli(command())
     assert code == 0, (out, err)
     expected = {
@@ -93,10 +97,11 @@ def quotas():
     }
 
 
-def quota_command(refresh=False, alias="SYN-ALIAS", route="SYN-ROUTE"):
-    path = ["liquidity", "network", "route-quotas"]
+def quota_command(alias="SYN-ALIAS", route="SYN-ROUTE"):
     return [
-        *(["refresh", *path, "detail"] if refresh else path),
+        "liquidity",
+        "network",
+        "route-quotas",
         "get",
         "--route-id",
         route,
@@ -111,7 +116,7 @@ def test_quotas_context_aggregate_preserves_duplicates_and_metadata(setup, run_c
         "status": 200,
         "body": native,
     }
-    code, out, err = run_cli(quota_command(True))
+    code, out, err = run_cli(quota_command())
     assert code == 0, (out, err)
     assert setup.state.business_requests == [
         {"routeId": "SYN-ROUTE", "aliasName": "SYN-ALIAS", "tntInstId": "GUAPW3SG"}
@@ -125,7 +130,6 @@ def test_quotas_context_aggregate_preserves_duplicates_and_metadata(setup, run_c
         for e in expressions
     )
     assert parse(out)["meta"]["request_scope"] == setup.state.business_requests[0]
-    setup.state.running = False
     code, out, err = run_cli(quota_command())
     assert code == 0, (out, err)
     result = parse(out)
@@ -168,35 +172,21 @@ LEAVES = ((command, rfq), (quota_command, quotas))
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
-def test_offline_miss_live_isolation_and_refresh_failure_preserves_cache(
-    setup, run_cli, leaf
-):
+def test_native_get_and_auth_failure_never_publish(setup, run_cli, leaf):
     invoke, factory = leaf
-    code, out, _ = run_cli(invoke())
-    assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
-    assert "detail get" in out
-    assert setup.state.transports == []
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": factory(),
     }
-    assert run_cli(invoke(True))[0] == 0
-    code, out, err = run_cli(invoke())
-    assert code == 0, (out, err)
-    cached = parse(out)
-    prior = setup.cache_path.read_bytes()
-    code, out, err = run_cli([*invoke(), "--live", "--require-complete"])
+    code, out, err = run_cli([*invoke()])
     assert code == 0, (out, err)
     assert parse(out)["meta"]["source"] == "live"
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
     setup.state.business_handler = lambda payload, index: {"status": 401, "body": {}}
-    for args in (invoke(True), [*invoke(), "--live"]):
-        code, out, _ = run_cli(args)
-        assert code == 1 and parse(out)["error"]["code"] == "AUTH_REQUIRED"
-        assert parse(out)["data"] is None
-        assert setup.cache_path.read_bytes() == prior
-    setup.state.running = False
-    assert parse(run_cli(invoke())[1])["data"] == cached["data"]
+    code, out, _ = run_cli(invoke())
+    assert code == 1 and parse(out)["error"]["code"] == "AUTH_REQUIRED"
+    assert parse(out)["data"] is None
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize(
@@ -212,7 +202,7 @@ def test_offline_miss_live_isolation_and_refresh_failure_preserves_cache(
         ("inquiryOrderListVOList", [{"inquiryId": "DUP"}, {"inquiryId": "DUP"}]),
     ],
 )
-def test_rfq_hard_identity_and_member_failures_preserve_valid_cache(
+def test_rfq_hard_identity_and_member_failures_refuse_invalid_response(
     setup, run_cli, field, value
 ):
     native = rfq()
@@ -220,12 +210,12 @@ def test_rfq_hard_identity_and_member_failures_preserve_valid_cache(
         "status": 200,
         "body": native,
     }
-    assert run_cli(command(True))[0] == 0
-    prior = setup.cache_path.read_bytes()
+    assert run_cli(command())[0] == 0
+    assert not setup.cache_path.exists()
     native["data"][field] = value
-    code, out, _ = run_cli(command(True))
+    code, out, _ = run_cli(command())
     assert code == 1 and parse(out)["error"]["code"] == "INVALID_RESPONSE"
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize(
@@ -240,7 +230,7 @@ def test_rfq_hard_identity_and_member_failures_preserve_valid_cache(
         ("aliasName", 7),
     ],
 )
-def test_quota_malformed_arrays_and_conflicting_echoes_preserve_cache(
+def test_quota_malformed_arrays_and_conflicting_echoes_refuse_invalid_response(
     setup, run_cli, field, value
 ):
     native = quotas()
@@ -248,12 +238,12 @@ def test_quota_malformed_arrays_and_conflicting_echoes_preserve_cache(
         "status": 200,
         "body": native,
     }
-    assert run_cli(quota_command(True))[0] == 0
-    prior = setup.cache_path.read_bytes()
+    assert run_cli(quota_command())[0] == 0
+    assert not setup.cache_path.exists()
     native["result"]["data"][field] = value
-    code, out, _ = run_cli(quota_command(True))
+    code, out, _ = run_cli(quota_command())
     assert code == 1 and parse(out)["error"]["code"] == "INVALID_RESPONSE"
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize("missing", ["dynamicQuotas", "staticQuotas"])
@@ -264,7 +254,7 @@ def test_quota_missing_component_is_never_fabricated_empty(setup, run_cli, missi
         "status": 200,
         "body": native,
     }
-    code, out, _ = run_cli([*quota_command(), "--live"])
+    code, out, _ = run_cli([*quota_command()])
     assert code == 1 and parse(out)["error"]["code"] == "INVALID_RESPONSE"
 
 
@@ -283,14 +273,14 @@ def test_quota_strict_success_markers(setup, run_cli, marker):
         "status": 200,
         "body": native,
     }
-    code, out, _ = run_cli([*quota_command(), "--live"])
+    code, out, _ = run_cli([*quota_command()])
     assert code == 1
     assert parse(out)["error"]["code"] == (
         "INVALID_RESPONSE" if marker == "inner-missing" else "BUSINESS_QUERY_FAILED"
     )
 
 
-def test_quota_scopes_do_not_collide_and_both_empty_components_are_valid(
+def test_quotas_use_each_compound_native_context_and_empty_components_are_valid(
     setup, run_cli
 ):
     contexts = [("SYN-A", "SYN-R1"), ("SYN-B", "SYN-R1"), ("SYN-A", "SYN-R2")]
@@ -301,24 +291,24 @@ def test_quota_scopes_do_not_collide_and_both_empty_components_are_valid(
             "status": 200,
             "body": native,
         }
-        assert run_cli(quota_command(True, alias, route))[0] == 0
-    setup.state.running = False
-    requests = len(setup.state.business_requests)
-    for index, (alias, route) in enumerate(contexts):
-        code, out, err = run_cli(quota_command(False, alias, route))
+        code, out, err = run_cli(quota_command(alias, route))
         assert code == 0, (out, err)
         assert parse(out)["data"]["staticQuotas"][0]["usedQuota"] == str(index)
-    assert len(setup.state.business_requests) == requests
-    setup.state.running = True
+        assert setup.state.business_requests[-1] == {
+            "routeId": route,
+            "aliasName": alias,
+            "tntInstId": "GUAPW3SG",
+        }
     native = quotas()
     native["result"]["data"] = {"dynamicQuotas": [], "staticQuotas": []}
     setup.state.business_handler = lambda payload, count: {
         "status": 200,
         "body": native,
     }
-    code, out, err = run_cli([*quota_command(), "--live"])
+    code, out, err = run_cli(quota_command())
     assert code == 0, (out, err)
     assert parse(out)["data"] == native["result"]["data"]
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize("invoke", [command, quota_command])
@@ -326,6 +316,9 @@ def test_quota_scopes_do_not_collide_and_both_empty_components_are_valid(
     "extra",
     [
         ["--id", "x"],
+        ["--live"],
+        ["--require-fresh"],
+        ["--require-complete"],
         ["--all"],
         ["--limit", "1"],
         ["--offset", "0"],
@@ -341,9 +334,9 @@ def test_unknown_options_rejected_before_browser(setup, run_cli, invoke, extra):
 @pytest.mark.parametrize(
     "invoke",
     [
-        lambda: command(True, ""),
-        lambda: quota_command(True, ""),
-        lambda: quota_command(True, route=" "),
+        lambda: command(""),
+        lambda: quota_command(""),
+        lambda: quota_command(route=" "),
     ],
 )
 def test_blank_identity_rejected_before_browser(setup, run_cli, invoke):
@@ -364,85 +357,29 @@ def test_routes_remains_unsupported_and_quota_help_declares_exact_context(
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
-def test_list_and_detail_refreshes_remain_independent(setup, run_cli, leaf):
+def test_native_get_does_not_touch_parent_list_cache(setup, run_cli, leaf):
     invoke, factory = leaf
     if invoke is command:
-        from test_liquidity_rfqs_cli_sit import query, refresh, response, subtask
+        from test_liquidity_rfqs_cli_sit import refresh, response, subtask
 
         row = subtask("SYN-CHILD")
     else:
-        from test_liquidity_realtime_network_cli_sit import (
-            network,
-            query,
-            refresh,
-            response,
-        )
+        from test_liquidity_realtime_network_cli_sit import network, refresh, response
 
         row = network()
     setup.state.business_handler = lambda payload, index: response([row])
     assert run_cli(refresh())[0] == 0
-    parent = parse(run_cli(query())[1])
-    requests = len(setup.state.business_requests)
-    transports = len(setup.state.transports)
-    code, out, _ = run_cli(invoke())
-    assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
-    assert len(setup.state.business_requests) == requests
-    assert len(setup.state.transports) == transports
-    setup.state.business_handler = lambda payload, index: {
-        "status": 200,
-        "body": factory(),
-    }
-    assert run_cli(invoke(True))[0] == 0
-    parent_after = parse(run_cli(query())[1])
-    assert parent_after["data"] == parent["data"]
-    assert parent_after["meta"]["snapshot_id"] == parent["meta"]["snapshot_id"]
-    detail = parse(run_cli(invoke())[1])
-    setup.state.business_handler = lambda payload, index: response([])
-    assert run_cli(refresh())[0] == 0
-    setup.state.running = False
-    assert parse(run_cli(query())[1])["data"] == []
-    detail_after = parse(run_cli(invoke())[1])
-    assert detail_after["data"] == detail["data"]
-    assert (
-        detail_after["meta"]["detail_fetched_at"] == detail["meta"]["detail_fetched_at"]
-    )
-
-
-@pytest.mark.parametrize(
-    "leaf,path",
-    [
-        (LEAVES[0], ("investment", "rfqs", "get")),
-        (LEAVES[1], ("network", "route-quotas", "get")),
-    ],
-)
-def test_schema_version_change_is_offline_cache_miss(
-    setup, run_cli, monkeypatch, leaf, path
-):
-    from dataclasses import replace
-
-    from dogopencli.plugins.liquidity.leaves import DETAIL_LEAVES, DetailLeaf
-
-    invoke, factory = leaf
-    setup.state.business_handler = lambda payload, index: {
-        "status": 200,
-        "body": factory(),
-    }
-    assert run_cli(invoke(True))[0] == 0
-    original = DETAIL_LEAVES[path]
-    monkeypatch.setitem(
-        DETAIL_LEAVES,
-        path,
-        DetailLeaf(replace(original.spec, schema_version="synthetic-next")),
-    )
     prior = setup.cache_path.read_bytes()
-    requests = len(setup.state.business_requests)
-    setup.state.running = False
-    code, out, _ = run_cli(invoke())
-    assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
-    assert len(setup.state.business_requests) == requests
+    count = len(setup.state.business_requests)
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": factory(),
+    }
+    code, out, err = run_cli(invoke())
+    assert code == 0, (out, err)
+    assert parse(out)["meta"]["source"] == "live"
+    assert len(setup.state.business_requests) == count + 1
     assert setup.cache_path.read_bytes() == prior
-    monkeypatch.setitem(DETAIL_LEAVES, path, original)
-    assert run_cli(invoke())[0] == 0
 
 
 def test_rfq_public_projection_excludes_free_text_and_workflow_identity(setup, run_cli):
@@ -453,7 +390,7 @@ def test_rfq_public_projection_excludes_free_text_and_workflow_identity(setup, r
         "status": 200,
         "body": native,
     }
-    assert run_cli(command(True))[0] == 0
+    assert run_cli(command())[0] == 0
     code, out, err = run_cli(command())
     assert code == 0, (out, err)
     assert "synthetic memo" not in out and "PRIVATE-PROCESS" not in out
@@ -467,7 +404,7 @@ def test_quota_native_matching_blank_null_echoes_stay_native(setup, run_cli):
         "status": 200,
         "body": native,
     }
-    code, out, err = run_cli([*quota_command(), "--live"])
+    code, out, err = run_cli([*quota_command()])
     assert code == 0, (out, err)
     result = parse(out)
     assert result["data"]["routeId"] == "SYN-ROUTE"
@@ -477,17 +414,15 @@ def test_quota_native_matching_blank_null_echoes_stay_native(setup, run_cli):
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
-def test_policies_fields_and_table_remain_available(setup, run_cli, leaf):
+def test_fields_and_table_remain_available(setup, run_cli, leaf):
     invoke, factory = leaf
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": factory(),
     }
-    assert run_cli(invoke(True))[0] == 0
+    assert run_cli(invoke())[0] == 0
     field = "inquiryTaskId" if invoke is command else "dynamicQuotas"
-    code, out, err = run_cli(
-        [*invoke(), "--require-fresh", "--require-complete", "--fields", field]
-    )
+    code, out, err = run_cli([*invoke(), "--fields", field])
     assert code == 0, (out, err)
     assert list(parse(out)["data"]) == [field]
     assert run_cli([*invoke(), "--format", "table"])[0] == 0
@@ -509,7 +444,7 @@ def test_rfq_business_marker_and_null_success_refuse_without_not_found(
         "status": 200,
         "body": document,
     }
-    code, out, _ = run_cli([*command(), "--live"])
+    code, out, _ = run_cli([*command()])
     assert code == 1
     assert parse(out)["error"]["code"] == (
         "INVALID_RESPONSE"
@@ -520,24 +455,22 @@ def test_rfq_business_marker_and_null_success_refuse_without_not_found(
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
-def test_browser_failure_never_falls_back_to_valid_capture(setup, run_cli, leaf):
+def test_browser_failure_never_replays_previous_native_result(setup, run_cli, leaf):
     invoke, factory = leaf
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": factory(),
     }
-    assert run_cli(invoke(True))[0] == 0
-    prior = setup.cache_path.read_bytes()
+    assert run_cli(invoke())[0] == 0
+    assert not setup.cache_path.exists()
     setup.state.running = False
-    code, out, _ = run_cli([*invoke(), "--live"])
+    code, out, _ = run_cli([*invoke()])
     assert code == 1 and parse(out)["error"]["code"] == "BROWSER_UNAVAILABLE"
     assert parse(out)["data"] is None
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
 
 
-def test_quota_future_native_member_fields_survive_live_refresh_and_offline(
-    setup, run_cli
-):
+def test_quota_future_native_member_fields_survive_native_projection(setup, run_cli):
     native = quotas()
     data = native["result"]["data"]
     data["dynamicQuotas"][0]["futureNativeScope"] = {
@@ -549,14 +482,13 @@ def test_quota_future_native_member_fields_survive_live_refresh_and_offline(
         "status": 200,
         "body": native,
     }
-    code, out, err = run_cli([*quota_command(), "--live"])
+    code, out, err = run_cli([*quota_command()])
     assert code == 0, (out, err)
     assert parse(out)["data"] == data
     assert parse(out)["meta"]["native_context_echo"] == dict.fromkeys(
         ("routeId", "aliasName", "tntInstId"), "absent"
     )
-    assert run_cli(quota_command(True))[0] == 0
-    setup.state.running = False
+    assert run_cli(quota_command())[0] == 0
     code, out, err = run_cli(quota_command())
     assert code == 0, (out, err)
     assert parse(out)["data"] == data

@@ -47,7 +47,7 @@ WINDOW_OPTIONS = (
             {"kind": "not-future"},
             {"kind": "half-open", "role": "inclusive"},
         ),
-        required=True,
+        required=False,
     ),
     scope_opt(
         "updated_to",
@@ -63,7 +63,7 @@ WINDOW_OPTIONS = (
             {"kind": "not-future"},
             {"kind": "half-open", "role": "exclusive"},
         ),
-        required=True,
+        required=False,
     ),
 )
 MATCHING = (
@@ -153,7 +153,7 @@ LIST_NODE = BizNode(
     effects_variants=QUERY_EFFECTS_VARIANTS,
     output=QUERY_OUTPUT,
     errors=ERRORS,
-    examples=(f"dogopencli payment ptr orders list {EXAMPLE_WINDOW} --all",),
+    examples=(f"dogopencli payment ptr orders list {EXAMPLE_WINDOW} --limit 0",),
     next=("dogopencli help refresh payment ptr orders",),
     handler="cmd_payment_ptr_orders_list",
 )
@@ -198,7 +198,7 @@ def description(node: BizNode) -> dict[str, Any]:
                 "Equivalent instants normalize so both exact bounds retain "
                 "literal +08:00. Configure "
                 "sources.payment_ptr_orders kind=cdp. Different intervals never "
-                "share a snapshot; --all expands only the requested interval."
+                "share a snapshot; --limit 0 expands only the requested interval."
             ),
             "filters": [MATCHING, *[f"--{f}: {k}" for f, k in ORDERS.filters]],
             "access_modes": {
@@ -231,6 +231,8 @@ def description(node: BizNode) -> dict[str, Any]:
             "evidence": (
                 "docs/research/payment/2026-09-27-payment-ptr-orders-contract.md"
             ),
-            "examples": [f"dogopencli payment ptr orders list {EXAMPLE_WINDOW} --all"],
+            "examples": [
+                f"dogopencli payment ptr orders list {EXAMPLE_WINDOW} --limit 0"
+            ],
         },
     }

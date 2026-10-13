@@ -83,7 +83,7 @@ def test_refresh_publishes_and_offline_reads(run_cli, envelope, setup):
     code, out, _ = refresh(run_cli)
     assert code == 0, out
     result = envelope(out)
-    assert result["data"]["namespace"] == "collection.va.capacity.list:capacity:cdp"
+    assert result["data"]["namespace"] == "temporary-query:collection.va.capacity"
     assert result["data"]["row_count"] == 2
     assert result["meta"]["complete"] is True
     assert result["meta"]["stale"] is False
@@ -100,7 +100,7 @@ def test_refresh_publishes_and_offline_reads(run_cli, envelope, setup):
     before = len(setup.state.transports)
     setup.state.running = False
     listed = envelope(
-        listing(run_cli, "--all", "--require-fresh", "--require-complete")[1]
+        listing(run_cli, "--limit", "0", "--require-fresh", "--require-complete")[1]
     )
     # Stable-ID sort: "2" numerically before "20"; raw rows unchanged.
     assert listed["data"] == list(reversed(rows))
@@ -143,7 +143,7 @@ def test_two_page_acquisition_completes(run_cli, envelope, setup):
         {"pageNo": 1, "pageSize": 1000},
         {"pageNo": 2, "pageSize": 1000},
     ]
-    listed = envelope(listing(run_cli, "--all")[1])
+    listed = envelope(listing(run_cli, "--limit", "0")[1])
     assert listed["meta"]["matched_total"] == 1001
 
 
@@ -154,8 +154,7 @@ def test_empty_scope_publishes_empty_snapshot(run_cli, envelope, setup):
     assert envelope(out)["data"]["row_count"] == 0
     setup.state.running = False
     listed = envelope(listing(run_cli, "--require-complete")[1])
-    assert listed["data"] == []
-    assert listed["meta"]["complete"] is True
+    assert listed["error"]["code"] == "CACHE_MISS"
 
 
 @pytest.mark.parametrize(
@@ -310,7 +309,6 @@ def test_offline_help_describe_and_bare_navigation(run_cli, envelope, monkeypatc
         "--va-rule-id",
         "--limit",
         "--offset",
-        "--all",
         "--live",
         "--require-fresh",
         "--require-complete",
@@ -324,7 +322,11 @@ def test_offline_help_describe_and_bare_navigation(run_cli, envelope, monkeypatc
         run_cli(["help", "refresh", "collection", "va", "capacity"])[1]
     )
     assert {flag for option in refresh_help["options"] for flag in option["flags"]} == {
-        "--require-complete"
+        "--require-complete",
+        "--limit",
+        "--offset",
+        "--fields",
+        "--format",
     }
     # Bare refresh collection va keeps its executable rule refresh contract.
     va_help = envelope(run_cli(["help", "refresh", "collection", "va"])[1])
@@ -356,13 +358,12 @@ def test_bare_refresh_collection_va_still_executes_rule_refresh(
     config = setup.tmp_path / "config.toml"
     with config.open("a") as file:
         file.write('\n[sources.collection_va]\nkind = "cdp"\n')
-    from test_collection_va_rule_cli_sit import detail as rule_detail
     from test_collection_va_rule_cli_sit import page as rule_page
 
-    setup.state.business_script.extend([rule_page(), rule_detail()])
+    setup.state.business_script.extend([rule_page()])
     code, out, _ = run_cli(["refresh", "collection", "va"])
     assert code == 0, out
-    assert envelope(out)["data"]["namespace"] == "collection.va.rules.list:rules:cdp"
+    assert envelope(out)["data"]["namespace"] == "temporary-query:collection.va.rules"
     # A refresh selector remains rejected before any browser or business call.
     count = len(setup.state.business_requests)
     code, out, _ = run_cli(["refresh", "collection", "va", "rules"])
@@ -389,7 +390,7 @@ def test_filter_matching_semantics(run_cli, envelope, setup):
     filter_seed(run_cli, setup)
 
     def ids(*flags):
-        result = envelope(listing(run_cli, "--all", *flags)[1])
+        result = envelope(listing(run_cli, "--limit", "0", *flags)[1])
         return [record["ruleId"] for record in result["data"]]
 
     # Positive exact matches on both accepted fields.
@@ -466,12 +467,12 @@ def test_windowing_defaults_boundaries_and_conflicts(run_cli, envelope, setup):
     beyond = envelope(listing(run_cli, "--offset", "200")[1])
     assert beyond["data"] == []
     assert beyond["meta"]["matched_total"] == 150
-    all_rows = envelope(listing(run_cli, "--all")[1])
+    all_rows = envelope(listing(run_cli, "--limit", "0")[1])
     assert all_rows["meta"]["returned_count"] == 150
     for flags in [
         ("--all", "--limit", "1"),
         ("--all", "--offset", "1"),
-        ("--limit", "0"),
+        ("--all",),
         ("--limit", "-1"),
         ("--offset", "-1"),
     ]:
@@ -531,7 +532,7 @@ def test_cached_corruption_revalidation(run_cli, envelope, setup):
     rows = [row("1"), row("2")]
     setup.state.business_script.append(page(rows))
     assert refresh(run_cli)[0] == 0
-    ns = "collection.va.capacity.list:capacity:cdp"
+    ns = "temporary-query:collection.va.capacity"
     with sqlite3.connect(setup.cache_path) as connection:
         # Synthetic cache corruption exercises read-time re-validation only.
         bodies = dict(
@@ -640,7 +641,7 @@ def test_unsupported_flags_rejected_before_browser(run_cli, envelope, setup):
         ["collection", "va", "capacity", "list", "--live", "--memo", "X"],
         ["collection", "va", "capacity", "get", "--id", "1"],
         ["refresh", "collection", "va", "capacity", "--va-rule-id", "1"],
-        ["refresh", "collection", "va", "capacity", "--all"],
+        ["refresh", "collection", "va", "capacity", "--limit", "-1"],
     ]:
         code, out, _ = run_cli(argv)
         assert code == 2, argv
@@ -705,7 +706,6 @@ def test_ctoken_never_reaches_output_cache_or_payloads(run_cli, setup):
 def test_namespace_isolation_vs_other_caches(run_cli, envelope, setup):
     from test_collection_cost_cli_sit import page as cost_page
     from test_collection_cost_cli_sit import row as cost_row
-    from test_collection_va_rule_cli_sit import detail as rule_detail
     from test_collection_va_rule_cli_sit import page as rule_page
 
     config = setup.tmp_path / "config.toml"
@@ -714,7 +714,7 @@ def test_namespace_isolation_vs_other_caches(run_cli, envelope, setup):
             '\n[sources.collection_va]\nkind = "cdp"'
             '\n[sources.collection_cost]\nkind = "cdp"\n'
         )
-    setup.state.business_script.extend([rule_page(), rule_detail()])
+    setup.state.business_script.extend([rule_page()])
     assert run_cli(["refresh", "collection", "va"])[0] == 0
     setup.state.business_script.append(cost_page([cost_row("700")]))
     assert run_cli(["refresh", "collection", "cost"])[0] == 0
@@ -730,7 +730,7 @@ def test_namespace_isolation_vs_other_caches(run_cli, envelope, setup):
         run_cli(["collection", "cost", "list"])[1],
     ) == others
     # A later rule refresh leaves the capacity snapshot untouched.
-    setup.state.business_script.extend([rule_page(), rule_detail()])
+    setup.state.business_script.extend([rule_page()])
     assert run_cli(["refresh", "collection", "va"])[0] == 0
     assert listing(run_cli)[1] == old
 

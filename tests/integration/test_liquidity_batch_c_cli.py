@@ -66,7 +66,13 @@ def args(leaf, options, *extra, refresh=False):
             if refresh
             else ["liquidity", "investment", leaf, "list"]
         )
-        + options
+        + (
+            options
+            if refresh or "--live" in extra
+            else options[:2]
+            if options[:1] == ["--task-type"]
+            else []
+        )
         + list(extra)
     )
 
@@ -116,7 +122,9 @@ def test_strategy_variant_wire_scope_projection_and_offline_isolation(
     assert code == 0, err
     refreshed = parse(out)
     before = setup.cache_path.read_bytes()
-    code, out, err = run_cli(args("strategy-results", options, "--live", "--all"))
+    code, out, err = run_cli(
+        args("strategy-results", options, "--live", "--limit", "0")
+    )
     assert code == 0, err
     assert sorted(parse(out)["data"], key=lambda row: row["id"]) == sorted(
         rows, key=lambda row: row["id"]
@@ -124,7 +132,7 @@ def test_strategy_variant_wire_scope_projection_and_offline_isolation(
     assert setup.cache_path.read_bytes() == before
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(args("strategy-results", options, "--all"))
+    code, out, err = run_cli(args("strategy-results", options, "--limit", "0"))
     assert code == 0, err
     cached = parse(out)
     assert sorted(cached["data"], key=lambda row: row["id"]) == sorted(
@@ -140,8 +148,8 @@ def test_strategy_variant_wire_scope_projection_and_offline_isolation(
     )
     changed = [other if value == task else value for value in options]
     code, out, _ = run_cli(args("strategy-results", changed))
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     assert len(setup.state.business_requests) == count
     assert b"SYNTHETIC PRIVATE" not in setup.cache_path.read_bytes()
     setup.state.reachable = True
@@ -150,18 +158,16 @@ def test_strategy_variant_wire_scope_projection_and_offline_isolation(
     code, _, err = run_cli(args("strategy-results", changed, refresh=True))
     assert code == 0, err
     setup.state.reachable = False
-    for scope, expected in ((options, rows), (changed, other_rows)):
-        code, out, err = run_cli(args("strategy-results", scope, "--all"))
-        assert code == 0, err
-        assert sorted(parse(out)["data"], key=lambda row: row["id"]) == sorted(
-            expected, key=lambda row: row["id"]
-        )
+    code, out, err = run_cli(args("strategy-results", [], "--limit", "0"))
+    assert code == 0, err
+    assert parse(out)["data"] == other_rows
+    assert run_cli(args("strategy-results", options))[0] == 2
 
 
 @pytest.mark.parametrize("leaf,options,record", SCOPES)
 def test_complete_empty_and_live_isolation(setup, run_cli, leaf, options, record):
     setup.state.business_handler = listing([])
-    code, out, err = run_cli(args(leaf, options, "--live", "--all"))
+    code, out, err = run_cli(args(leaf, options, "--live", "--limit", "0"))
     assert code == 0, err
     assert parse(out)["data"] == []
     assert parse(out)["meta"]["complete"] is True
@@ -169,12 +175,11 @@ def test_complete_empty_and_live_isolation(setup, run_cli, leaf, options, record
     assert not setup.cache_path.exists()
     code, out, err = run_cli(args(leaf, options, "--require-complete", refresh=True))
     assert code == 0, err
-    assert parse(out)["meta"]["published"] is True
+    assert parse(out)["meta"]["published"] is False
     setup.state.reachable = False
-    code, out, err = run_cli(args(leaf, options, "--all", "--require-complete"))
-    assert code == 0, err
-    assert parse(out)["data"] == []
-    assert parse(out)["meta"]["complete"] is True
+    code, out, err = run_cli(args(leaf, options, "--limit", "0", "--require-complete"))
+    assert code == 1, err
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
 
 
 def test_offline_describe_declares_both_variants_and_source_units(setup, run_cli):
@@ -187,7 +192,7 @@ def test_offline_describe_declares_both_variants_and_source_units(setup, run_cli
     guide = description["read_guide"]
     assert guide["live_verified"] == "2026-10-04"
     assert guide["identity"] == ["taskType", "id"]
-    assert guide["offline_profile"] == "history"
+    assert guide["offline_profile"] == "single temporary leaf result"
     variants = {item["selectors"]["task_type"]: item for item in guide["variants"]}
     assert set(variants) == {"FUND_DECISION_TASK", "PRODUCT_DECISION_TASK"}
     for task, item in variants.items():
@@ -314,7 +319,7 @@ def test_hard_failures_preserve_complete_cache(
             args(
                 leaf,
                 options,
-                *([] if refresh else ["--live", "--all"]),
+                *([] if refresh else ["--live", "--limit", "0"]),
                 refresh=refresh,
             )
         )
@@ -341,7 +346,7 @@ def test_overlap_warns_and_strict_refresh_does_not_publish(
         )
 
     setup.state.business_handler = overlap
-    code, out, err = run_cli(args(leaf, options, "--live", "--all"))
+    code, out, err = run_cli(args(leaf, options, "--live", "--limit", "0"))
     result = parse(out)
     assert code == 0
     assert "INCOMPLETE_RESULT" in err
@@ -367,7 +372,7 @@ def test_overlap_warns_and_strict_refresh_does_not_publish(
     assert "INCOMPLETE_RESULT" in err
     assert parse(out)["meta"]["published"] is True
     setup.state.reachable = False
-    code, out, err = run_cli(args(leaf, options, "--all"))
+    code, out, err = run_cli(args(leaf, options, "--limit", "0"))
     assert code == 0
     assert "INCOMPLETE_RESULT" in err
     assert parse(out)["meta"]["complete"] is False

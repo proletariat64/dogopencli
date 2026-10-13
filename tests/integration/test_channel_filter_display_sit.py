@@ -150,7 +150,7 @@ def test_or_within_field_and_across_fields(run_cli, envelope, refreshed):
 
 
 def test_all_statuses_and_versions_preserved(run_cli, envelope, refreshed):
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert code == 0
     rows = envelope(out)["data"]
     assert {row["status"] for row in rows} == {
@@ -224,7 +224,7 @@ def test_pagination_boundaries(run_cli, envelope, refreshed):
     assert seqids(result) == enable[2:4]
     assert meta_has(result, matched=4, returned=2, more=False)
 
-    code, out, _ = listing(run_cli, "--status", "ENABLE", "--all")
+    code, out, _ = listing(run_cli, "--status", "ENABLE", "--limit", "0")
     assert code == 0
     result = envelope(out)
     assert seqids(result) == enable
@@ -431,5 +431,5 @@ def test_table_cache_miss_goes_to_stderr(
 def test_table_argument_error_exit_2(run_cli, refreshed):
     code, out, err = listing(run_cli, "--format", "table", "--all", "--limit", "5")
     assert code == 2
-    assert out == ""
-    assert "INVALID_ARGUMENT" in err
+    assert "INVALID_ARGUMENT" in out
+    assert "--all removed" in out

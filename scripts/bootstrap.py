@@ -123,6 +123,8 @@ def main() -> None:
             "--locked",
             "--extra",
             "dev",
+            "--extra",
+            "duckdog",
             "--inexact",
             "--link-mode",
             "hardlink",
@@ -134,7 +136,7 @@ def main() -> None:
     )
     verification = """
 import pathlib, sys
-import dogopencli, pytest, ruff
+import dogopencli, duckdb, pytest, ruff
 root = pathlib.Path(sys.argv[1]).resolve()
 assert pathlib.Path(sys.prefix).resolve() == root / '.venv', sys.prefix
 expected = root / 'src/dogopencli/__init__.py'

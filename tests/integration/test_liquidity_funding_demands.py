@@ -72,7 +72,9 @@ def test_refresh_offline_and_live_preserve_projection_precision_and_exact_scope(
     assert result["meta"]["complete"] is True
     assert result["meta"]["published"] is True
     before = setup.cache_path.read_bytes()
-    code, out, err = run_cli([*QUERY, *SCOPE, "--live", "--all", "--require-complete"])
+    code, out, err = run_cli(
+        [*QUERY, *SCOPE, "--live", "--limit", "0", "--require-complete"]
+    )
     assert code == 0, err
     live = parse(out)
     assert live["data"][0]["amount"] == rows[0]["amount"]
@@ -83,14 +85,14 @@ def test_refresh_offline_and_live_preserve_projection_precision_and_exact_scope(
     assert setup.cache_path.read_bytes() == before
     request_count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *SCOPE, "--all", "--require-complete"])
+    code, out, err = run_cli([*QUERY, "--limit", "0", "--require-complete"])
     assert code == 0, err
     assert parse(out)["data"] == live["data"]
     assert len(setup.state.business_requests) == request_count
     changed = [*SCOPE[:2], "--execute-to", "2026-04-03 00:00:00"]
     code, out, _ = run_cli([*QUERY, *changed])
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
 @pytest.mark.parametrize(
@@ -128,7 +130,7 @@ def test_invalid_native_rows_fail_without_publishing(setup, run_cli, changes):
     code, out, _ = run_cli([*REFRESH, *SCOPE])
     assert code == 1
     assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
-    code, out, _ = run_cli([*QUERY, *SCOPE])
+    code, out, _ = run_cli([*QUERY])
     assert code == 1
     assert parse(out)["error"]["code"] == "CACHE_MISS"
 
@@ -153,7 +155,11 @@ def test_business_failure_preserves_previously_published_capture(setup, run_cli)
     assert code == 1
     assert parse(out)["error"] is not None
     assert setup.cache_path.read_bytes() == before
-    code, out, err = run_cli([*QUERY, *SCOPE])
+    code, out, err = run_cli(
+        [
+            *QUERY,
+        ]
+    )
     assert code == 0, err
     assert parse(out)["data"][0]["taskId"] == demand()["taskId"]
 
@@ -164,9 +170,9 @@ def test_verified_empty_capture_is_published_and_read_offline(setup, run_cli):
     assert code == 0, err
     assert parse(out)["data"]["row_count"] == 0
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *SCOPE, "--require-complete"])
-    assert code == 0, err
-    assert parse(out)["data"] == []
+    code, out, err = run_cli([*QUERY, "--require-complete"])
+    assert code == 1, err
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
 
 
 def test_duplicate_arrivals_warn_and_strict_refresh_preserves_cache(setup, run_cli):
@@ -176,7 +182,7 @@ def test_duplicate_arrivals_warn_and_strict_refresh_preserves_cache(setup, run_c
     setup.state.business_handler = lambda payload, index: response(
         [demand(), demand()], 2
     )
-    code, out, err = run_cli([*QUERY, *SCOPE, "--live", "--all"])
+    code, out, err = run_cli([*QUERY, *SCOPE, "--live", "--limit", "0"])
     assert code == 0
     assert "INCOMPLETE_RESULT" in err
     assert parse(out)["meta"]["complete"] is False
@@ -234,13 +240,17 @@ def test_demand_canonical_t_form_shares_the_legacy_space_scope(setup, run_cli):
         vo = json.loads(payload["riskActionTaskQueryVO"])
         assert vo["startExecuteTime"] == SCOPE[1]
         assert vo["endExecuteTime"] == SCOPE[3]
-    canonical_meta = parse(run_cli([*QUERY, *T_SCOPE])[1])["meta"]
+    canonical_meta = parse(run_cli([*QUERY])[1])["meta"]
     # The legacy space form reads the identical cached scope offline.
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *T_SCOPE])
+    code, out, err = run_cli([*QUERY])
     assert code == 0, err
     canonical = parse(out)
-    code, out, err = run_cli([*QUERY, *SCOPE])
+    code, out, err = run_cli(
+        [
+            *QUERY,
+        ]
+    )
     assert code == 0, err
     legacy = parse(out)
     assert legacy["data"] == canonical["data"]

@@ -314,7 +314,11 @@ def test_single_page_boundaries_and_unfiltered_request(
             "pageSize": 1000,
         }
     ]
-    assert len(envelope(listing(run_cli, slug, "--all")[1])["data"]) == size
+    result = envelope(listing(run_cli, slug, "--limit", "0")[1])
+    if size:
+        assert len(result["data"]) == size
+    else:
+        assert result["error"]["code"] == "CACHE_MISS"
 
 
 @pytest.mark.parametrize("slug", SLUGS)
@@ -412,7 +416,7 @@ def test_display_options_navigation_and_excluded_commands(
     setup.state.running = False
     assert len(envelope(listing(run_cli, slug)[1])["data"]) == 100
     assert envelope(listing(run_cli, slug)[1])["meta"]["has_more"] is True
-    assert len(envelope(listing(run_cli, slug, "--all")[1])["data"]) == 150
+    assert len(envelope(listing(run_cli, slug, "--limit", "0")[1])["data"]) == 150
     assert (
         len(
             envelope(listing(run_cli, slug, "--offset", "145", "--limit", "10")[1])[
@@ -433,7 +437,7 @@ def test_display_options_navigation_and_excluded_commands(
     for flags in [
         ("--all", "--limit", "1"),
         ("--all", "--offset", "1"),
-        ("--limit", "0"),
+        ("--limit", "-1"),
         ("--offset", "-1"),
         ("--fields", ""),
         ("--format", "xml"),

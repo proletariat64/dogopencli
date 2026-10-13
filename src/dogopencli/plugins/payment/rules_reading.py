@@ -161,7 +161,7 @@ def list_node(cap: RuleListCapability) -> BizNode:
         effects_variants=QUERY_EFFECTS_VARIANTS,
         output=QUERY_OUTPUT,
         errors=ERRORS,
-        examples=(f"dogopencli {cap.command_path} list --all",),
+        examples=(f"dogopencli {cap.command_path} list --limit 0",),
         next=(f"dogopencli help refresh {cap.command_path}",),
         handler=f"cmd_payment_rules_{cap.slug.replace('-', '_')}_list",
     )
@@ -304,6 +304,6 @@ def description(node: BizNode) -> dict[str, Any]:
                 "Configurations do not prove actual execution or savings.",
             ],
             "evidence": "docs/research/payment/2026-09-27-payment-rules-contract.md",
-            "examples": [f"dogopencli {cap.command_path} list --all"],
+            "examples": [f"dogopencli {cap.command_path} list --limit 0"],
         },
     }

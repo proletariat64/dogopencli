@@ -3,7 +3,7 @@
 Every shipped business leaf declares exactly one kind (runtimes | settings |
 reference), its verified origin/method/path/encoding, exact request template,
 native record container and reported-total paths, typed identity, offline
-profile and retention series. Deferred leaves stay discoverable through
+business-date profile and native series. Deferred leaves stay discoverable through
 ``DeferredLeaf`` with their evidence status and reason; they never become
 placeholder commands. Evidence:
 docs/research/general/2026-10-01-liquidity-live-probes.md.
@@ -40,11 +40,6 @@ ENC_FORM = "form"
 TENANT = "GUAPW3SG"
 HOST = "iliquidity.alipay.com"
 PAGE_SIZE = 10  # default for leaves without a larger verified request width
-
-# Product retention cap per liquidity business leaf (ADR 0017): primary
-# business records across that leaf's retained dates, captures and filter
-# variants. A product policy, not a proven SQLite capacity limit.
-RETENTION_CAP = 1_000_000
 
 
 @dataclass(frozen=True)

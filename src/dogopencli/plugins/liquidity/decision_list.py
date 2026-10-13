@@ -109,8 +109,7 @@ DECISIONS = ListSpec(
         "Start Time filters executionTimeStart; Created Time filters gmtCreate.",
         "Native timestamp strings pass through unchanged;"
         " no source timezone is inferred.",
-        "Exact tenant and filter scope captures are retained independently;"
-        " dates are not merged.",
+        "One temporary result per leaf; scopes replace rather than accumulate.",
         "Integer id identifies a report within this tenant; reportId, groupId"
         " and associated orderNo are separate identifiers.",
         "Amounts preserve native decimal strings without unit conversion;"

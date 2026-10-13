@@ -414,7 +414,7 @@ class LiquidityListCapability:
             validate_strategy_rows_scope(rows, decode_scope(scope))
         if not (self._spec.schema_version and self._spec.profile == spec.PROFILE_DATED):
             return
-        # Use the retention reader's native series parser so acquisition and
+        # Use the native business-date parser so acquisition and
         # offline coverage interpret the same business day, not capture time.
         from .store import series_value
 

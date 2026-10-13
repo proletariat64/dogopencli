@@ -1,7 +1,6 @@
 """Issue #111 public CLI/fake CDP/real SQLite acceptance; synthetic aliases."""
 
 from dataclasses import replace
-from functools import partial
 from hashlib import sha256
 
 import pytest
@@ -24,7 +23,7 @@ def scope(aliases=ACCOUNTS):
 
 
 def query(*extra, aliases=ACCOUNTS):
-    return [*ROOT, "list", *scope(aliases), "--all", *extra]
+    return [*ROOT, "list", *scope(aliases), "--limit", "0", *extra]
 
 
 def refresh(*extra, aliases=ACCOUNTS):
@@ -112,7 +111,7 @@ def test_exact_fanout_raw_fields_complete_capture_and_disconnected_offline(
     assert offline["meta"]["source_observed_from"] is None
     assert offline["meta"]["source_observed_to"] is None
     assert len(setup.state.business_requests) == requests
-    assert "account-capacity-runtimes-v1" in offline["meta"]["scope"]
+    assert offline["meta"]["capability"] == "liquidity.risk.account-capacity.list"
 
 
 @pytest.mark.parametrize(
@@ -216,37 +215,27 @@ def test_one_failed_account_aborts_live_and_refresh_preserving_old_capture(
     assert run_cli(query("--live"))[0] == 1  # no live fallback
 
 
-def test_single_multi_exact_scope_history_and_display_isolation(setup, run_cli):
-    single = seed(setup, run_cli, aliases=["SYN-A"])
-    multi = seed(setup, run_cli)
+def test_scope_replacement_preserves_full_result_and_display_window(setup, run_cli):
+    seed(setup, run_cli, aliases=["SYN-A"])
+    seed(setup, run_cli)
     setup.state.business_handler = lambda payload, index: response(
         {**capacity(payload["aliasName"]), "valueTime": "2026-10-05 09:09:10"}
     )
-    code, out, err = run_cli(refresh("--require-complete"))
+    assert run_cli(refresh("--require-complete"))[0] == 0
+    requests = len(setup.state.business_requests)
+    code, out, err = run_cli(query(aliases=["SYN-B"]))
     assert code == 0, err
-    another = parse(out)
-    assert single["meta"]["scope"] != multi["meta"]["scope"]
-    assert multi["meta"]["snapshot_id"] != another["meta"]["snapshot_id"]
-    setup.state.reachable = False
-    for aliases, count in ((["SYN-A"], 1), (ACCOUNTS, 3)):
-        code, out, err = run_cli(query(aliases=aliases))
-        assert code == 0, err
-        result = parse(out)
-        assert len(result["data"]) == count
-        assert result["meta"]["requested_count"] == count
-        assert result["meta"]["reported_total"] is None
-    code, out, _ = run_cli(query(aliases=["SYN-B"]))
-    assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
-    code, out, err = run_cli([*ROOT, "list", *scope(), "--offset", "1", "--limit", "1"])
+    result = parse(out)
+    assert result["data"] == [{**capacity("SYN-B"), "valueTime": "2026-10-05 09:09:10"}]
+    assert result["meta"]["requested_count"] == 3
+    code, out, err = run_cli([*ROOT, "list", "--offset", "1", "--limit", "1"])
     assert code == 0, err
     result = parse(out)
     assert result["data"] == [{**capacity("SYN-B"), "valueTime": "2026-10-05 09:09:10"}]
     assert result["meta"]["requested_count"] == result["meta"]["resolved_count"] == 3
     assert result["meta"]["returned_count"] == 1
-    code, out, err = run_cli(["snapshot", *ROOT])
-    assert code == 0, err
-    assert "account-capacity" in out and "7 rows" in out
-    assert not setup.state.reachable
+    assert len(parse(run_cli([*ROOT, "list", "--limit", "0"])[1])["data"]) == 3
+    assert len(setup.state.business_requests) == requests
 
 
 def test_special_query_characters_are_native_aliases_with_exact_scope(setup, run_cli):
@@ -270,7 +259,10 @@ def test_help_describe_snapshot_are_offline_with_truthful_field_meanings(
     assert code == 0, err
     description = parse(out)
     guide = description["read_guide"]
-    assert guide["kind"] == "runtimes" and guide["offline_profile"] == "history"
+    assert (
+        guide["kind"] == "runtimes"
+        and guide["offline_profile"] == "single temporary leaf result"
+    )
     assert guide["identity"] == ["aliasName"]
     assert guide["live_verified"] == "2026-10-05"
     assert guide["request"]["encoding"] == "query"
@@ -341,37 +333,6 @@ def test_budget_expiry_after_valid_first_account_never_publishes(
     assert setup.cache_path.read_bytes() == before
 
 
-def test_retention_partial_keeps_scope_counts_and_strict_preserves_old_capture(
-    setup, run_cli, monkeypatch
-):
-    from dogopencli.plugins.liquidity import store
-
-    seed(setup, run_cli)
-    before = setup.cache_path.read_bytes()
-    monkeypatch.setattr(
-        store, "plan_capture_publish", partial(store.plan_capture_publish, cap=2)
-    )
-    code, out, _ = run_cli(refresh("--require-complete"))
-    assert code == 1 and parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
-    assert setup.cache_path.read_bytes() == before
-    code, out, err = run_cli(refresh())
-    assert code == 0 and "INCOMPLETE_RESULT" in err
-    capture = parse(out)
-    assert capture["meta"]["complete"] is False
-    assert capture["meta"]["requested_count"] == 3
-    assert capture["meta"]["resolved_count"] == 2
-    assert capture["meta"]["reported_total"] is None
-    setup.state.reachable = False
-    code, out, err = run_cli(query())
-    assert code == 0 and "INCOMPLETE_RESULT" in err
-    result = parse(out)
-    assert len(result["data"]) == result["meta"]["resolved_count"] == 2
-    assert result["meta"]["requested_count"] == 3
-    assert result["meta"]["reported_total"] is None
-    assert "RETENTION_GAP" in result["meta"]["acquisition"]["reasons"]
-    assert run_cli(query("--require-complete"))[0] == 1
-
-
 def test_other_list_and_native_detail_captures_remain_isolated(setup, run_cli):
     other = ["liquidity", "rules", "realtime"]
     rule = {"id": "SYN-RULE", "ruleName": "SYN-NAME", "runStatus": "UNKNOWN"}
@@ -384,26 +345,22 @@ def test_other_list_and_native_detail_captures_remain_isolated(setup, run_cli):
     setup.state.business_handler = lambda payload, index: response(
         {"id": 7, "decisionNo": "SYN-NO"}
     )
-    command = [
-        "refresh",
-        "liquidity",
-        "operations",
-        "decisions",
-        "detail",
-        "get",
-        "--id",
-        "7",
-    ]
-    assert run_cli(command)[0] == 0
+    before_get = setup.cache_path.read_bytes()
+    assert run_cli(detail)[0] == 0
+    assert setup.cache_path.read_bytes() == before_get
     seed(setup, run_cli)
     setup.state.reachable = False
-    code, out, err = run_cli([*other, "list", "--all"])
+    code, out, err = run_cli([*other, "list", "--limit", "0"])
     assert code == 0, err
     assert parse(out)["data"] == [rule]
     assert "requested_count" not in parse(out)["meta"]
+    setup.state.business_handler = lambda payload, index: {
+        "status": 403,
+        "body": {"success": False},
+    }
     code, out, err = run_cli(detail)
-    assert code == 0, err
-    assert parse(out)["data"] == {"id": 7, "decisionNo": "SYN-NO"}
+    assert code == 1
+    assert parse(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"
     assert run_cli(query())[0] == 0
 
 

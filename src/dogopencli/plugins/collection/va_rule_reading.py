@@ -149,34 +149,31 @@ def description(node: BizNode) -> dict[str, Any]:
             "scope": (
                 "Collection VA rules, not bank-account VA rules, VA pools or "
                 "assigned VA accounts. Isolated "
-                "collection.va.rules.list:rules:cdp cache; "
+                "temporary-query:collection.va.rules slot; "
                 "sources.collection_va kind=cdp."
             ),
             "filters": [],
-            "access_modes": {
-                "cached": (
-                    "Default reads only the local list/detail snapshot; TTL "
-                    "defaults to 72 hours. Stale remains readable unless "
-                    "--require-fresh."
-                ),
-                "live": (
-                    "Explicit read-only browser inquiries never write cache "
-                    "or fall back. Live list fetches the full unfiltered "
-                    "scope before local selection. Live get completeness "
-                    "covers the requested detail only."
-                ),
-                "refresh": (
-                    "refresh collection va collects the full list and every "
-                    "true detail, validates IDs and every shared business "
-                    "field, then atomically publishes. A detail the backend "
-                    "explicitly refuses (success=false) publishes that rule "
-                    "with a null detail and dataset_complete=false, after "
-                    "which refresh reports INCOMPLETE_RESULT; every other "
-                    "failure preserves the old snapshot. A partial refresh "
-                    "still replaces the snapshot, so details an earlier run "
-                    "held can be lost."
-                ),
-            },
+            "access_modes": (
+                {"online": "Native detail inquiry; never reads or writes query cache."}
+                if is_detail
+                else {
+                    "cached": (
+                        "Default replays this leaf's last nonempty acquisition. "
+                        "Explicit declared filters select saved rows only; no implicit "
+                        "refresh. TTL defaults to 72 hours."
+                    ),
+                    "live": (
+                        "Read-only online list inquiry; no cache writes or fallback. "
+                        "Local display filtering follows full native acquisition."
+                    ),
+                    "refresh": (
+                        "refresh collection va collects only the list, never details. "
+                        "Valid nonempty results atomically replace this slot; "
+                        "empty refresh, hard failures and strict rejection preserve it."
+                    ),
+                    "prune": "Delete this leaf's slot; idempotent offline.",
+                }
+            ),
             "quality": [
                 (
                     "One pageNo=1/pageSize=1000 complete-scope request; "
@@ -206,8 +203,7 @@ def description(node: BizNode) -> dict[str, Any]:
                 ),
                 (
                     "Null or invalid detail is INVALID_RESPONSE; backend "
-                    "not-found semantics are unverified. A confirmed absent "
-                    "ID in a complete local snapshot is NOT_FOUND."
+                    "not-found semantics stay native, independent of list cache."
                 ),
                 (
                     "Stable-ID sorting precedes display windows: ASCII "
@@ -222,7 +218,7 @@ def description(node: BizNode) -> dict[str, Any]:
                 "2026-09-26-collection-va-rule-contract-recheck.md"
             ),
             "examples": [
-                "dogopencli collection va rules list --all",
+                "dogopencli collection va rules list --limit 0",
                 (
                     "dogopencli collection va rules get --id VA_RULE_ID "
                     "--fields vaRuleId,assignInfo"

@@ -8,7 +8,7 @@ import pytest
 from dogopencli.jsonutil import parse
 
 pytest_plugins = ["test_liquidity_cli_sit"]
-QUERY = ["liquidity", "cash", "credit-usage", "list", "--all"]
+QUERY = ["liquidity", "cash", "credit-usage", "list", "--limit", "0"]
 REFRESH = ["refresh", "liquidity", "cash", "credit-usage"]
 
 
@@ -85,7 +85,7 @@ def test_public_lifecycle_raw_source_business_states_and_settings_isolation(
     assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
     assert setup.state.transports == []
     setup.state.business_handler = lambda payload, index: response([line()])
-    settings = ["liquidity", "cash", "credit-lines", "list", "--all"]
+    settings = ["liquidity", "cash", "credit-lines", "list", "--limit", "0"]
     assert run_cli(["refresh", "liquidity", "cash", "credit-lines"])[0] == 0
     settings_before = parse(run_cli(settings)[1])
     seed(setup, run_cli)
@@ -115,7 +115,7 @@ def test_public_lifecycle_raw_source_business_states_and_settings_isolation(
     assert offline["meta"]["kind"] == "runtimes"
     assert offline["meta"]["complete"] is True
     assert offline["meta"]["source_observed_from"] is None
-    assert "credit-usage-v1" in offline["meta"]["scope"]
+    assert offline["meta"]["capability"] == "liquidity.cash.credit-usage.list"
     row = offline["data"][0]
     assert (
         row["usedAmount"] == "2,999.999900"
@@ -127,7 +127,7 @@ def test_public_lifecycle_raw_source_business_states_and_settings_isolation(
     settings_after = parse(run_cli(settings)[1])
     assert settings_after["data"] == settings_before["data"]
     assert settings_after["meta"]["fetched_at"] == settings_before["meta"]["fetched_at"]
-    assert settings_after["meta"]["scope"] != offline["meta"]["scope"]
+    assert settings_after["meta"]["capability"] != offline["meta"]["capability"]
     assert "usedAmount" not in settings_after["data"][0]
 
 
@@ -264,11 +264,16 @@ def test_partial_strict_and_explicit_success_empty(setup, run_cli):
     assert len(parse(out)["data"]) == 100
     assert run_cli([*QUERY, "--require-complete"])[0] == 1
     setup.state.reachable = True
-    seed(setup, run_cli, [])
+    partial_before = setup.cache_path.read_bytes()
+    empty = seed(setup, run_cli, [])
+    assert empty["data"]["row_count"] == 0 and empty["meta"]["complete"] is True
+    assert empty["meta"]["published"] is False
+    assert setup.cache_path.read_bytes() == partial_before
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, "--require-complete"])
-    assert code == 0, err
-    assert parse(out)["data"] == [] and parse(out)["meta"]["complete"] is True
+    code, out, _ = run_cli([*QUERY, "--require-complete"])
+    assert code == 1 and parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    code, out, _ = run_cli(QUERY)
+    assert code == 0 and len(parse(out)["data"]) == 100
 
 
 def test_offline_describe_and_help_explain_source_values_and_time(setup, run_cli):

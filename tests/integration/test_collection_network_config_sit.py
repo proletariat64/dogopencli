@@ -51,7 +51,7 @@ def test_refresh_then_offline_list(run_cli, envelope, setup, slug):
     assert envelope(out)["data"]["row_count"] == 2
     assert setup.state.business_requests == [{"pageNo": 1, "pageSize": 1000}]
     setup.state.running = False
-    code, out, _ = run_cli(["collection", slug, "list", "--all"])
+    code, out, _ = run_cli(["collection", slug, "list", "--limit", "0"])
     assert code == 0, out
     assert envelope(out)["data"] == list(reversed(rows))
     assert envelope(out)["meta"]["complete"] is True
@@ -200,16 +200,18 @@ def test_full_scope_boundaries(run_cli, envelope, setup, slug, size):
     assert code == 0, out
     assert envelope(out)["data"]["row_count"] == size
     assert len(setup.state.business_requests) == 1
-    assert envelope(listing(run_cli, slug, "--all")[1])["data"] == sorted(
-        rows, key=lambda r: r["id"]
-    )
+    result = envelope(listing(run_cli, slug, "--limit", "0")[1])
+    if size:
+        assert result["data"] == sorted(rows, key=lambda r: r["id"])
+    else:
+        assert result["error"]["code"] == "CACHE_MISS"
 
 
 def test_zeroed_empty_echo_is_supported(run_cli, envelope, setup, slug):
-    seed(run_cli, slug, setup)
+    old = seed(run_cli, slug, setup)
     setup.state.business_script.append(page([], pageNo=0))
     assert refresh(run_cli, slug)[0] == 0
-    assert envelope(listing(run_cli, slug)[1])["data"] == []
+    assert listing(run_cli, slug)[1] == old
 
 
 @pytest.mark.parametrize(
@@ -279,7 +281,6 @@ def test_help_inventory_and_navigation(run_cli, envelope, slug, monkeypatch):
     expected = {
         "--limit",
         "--offset",
-        "--all",
         "--live",
         "--require-fresh",
         "--require-complete",
@@ -299,11 +300,15 @@ def test_help_inventory_and_navigation(run_cli, envelope, slug, monkeypatch):
         "options"
     ]
     assert {flag for option in refresh_options for flag in option["flags"]} == {
-        "--require-complete"
+        "--require-complete",
+        "--limit",
+        "--offset",
+        "--fields",
+        "--format",
     }
     for extra in [["--unknown"], ["--warning-state", "Y"], ["--profile", "x"]]:
         assert listing(run_cli, slug, *extra)[0] == 2
-    for extra in [["--currency", "GBP"], ["--all"], ["extra"]]:
+    for extra in [["--currency", "GBP"], ["--limit", "-1"], ["extra"]]:
         assert run_cli(["refresh", "collection", slug, *extra])[0] == 2
 
 
@@ -330,12 +335,12 @@ def test_windowing_defaults_boundaries_and_conflicts(run_cli, slug, envelope, se
     beyond = envelope(listing(run_cli, slug, "--offset", "200")[1])
     assert beyond["data"] == []
     assert beyond["meta"]["matched_total"] == 150
-    all_rows = envelope(listing(run_cli, slug, "--all")[1])
+    all_rows = envelope(listing(run_cli, slug, "--limit", "0")[1])
     assert all_rows["meta"]["returned_count"] == 150
     for flags in [
         ("--all", "--limit", "1"),
         ("--all", "--offset", "1"),
-        ("--limit", "0"),
+        ("--limit", "-1"),
         ("--limit", "-1"),
         ("--offset", "-1"),
     ]:
