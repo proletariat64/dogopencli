@@ -1,62 +1,34 @@
-"""Liquidity refresh flows: explicit list and per-object detail acquisition.
-
-Only these root refresh commands publish local captures. Validated partial
-list acquisition is usable by default; strict refresh rejects both acquisition
-and proposed retention gaps before committing. Hard failures preserve the cache.
-Retention eviction, when it occurs, is deliberate: it warns on stderr,
-keeps stdout parseable and publishes records, eviction and coverage in one
-transaction (ADR 0017). Detail refresh is independent and object-scoped
-(ADR 0016).
-"""
+"""Publish one full, validated, nonempty acquisition per Liquidity leaf."""
 
 import argparse
-import sys
-from typing import Any
-
-from dogopencli.plugins.liquidity.balance_view import (
-    latest_statement_rows,
-    update_notice,
-)
 
 from ... import config as config_mod
 from ...cache import Cache
 from ...errors import EXIT_OK
 from ...inquiry import inquiry_session
 from ...result_policy import check_complete, evidence_for, prepare_result
-from . import details as detail_store
-from . import spec
-from . import store as capture_store
+from ...temporary_query import publish_slot, slot_namespace
+from .balance_view import latest_statement_rows, update_notice
 from .cash_balances import selection
 from .collect import acquire_liquidity_list
-from .common import emit, identity_values, load_config, now, provided, scope_flags
-from .leaves import DetailLeaf, detail_leaf, list_leaf
-from .qualified_getters import detail_context_meta
+from .common import emit, load_config, now
+from .leaves import list_leaf
+from .query import resolve_online_scope, slot_leaf
 
 
 def run_refresh_list(args: argparse.Namespace) -> int:
     leaf = list_leaf(args.command_path[2:])
-    resolved = leaf.resolve(
-        provided(args, scope_flags(leaf)), select_all=getattr(args, "all", False)
-    )
+    resolved = resolve_online_scope(leaf, args)
     variant = resolved.spec
-    unit = "chunk" if variant.endpoint == "/balStatisticalQuery.json" else "page"
     capability = leaf.acquisition_capability(
         variant, getattr(args, "page_size", None), online=True
     )
-    config = load_config()
-    store = Cache(config.cache_path)
+    store = Cache(load_config().cache_path)
     with store.refresh_lock():
         with inquiry_session(
             config_file=config_mod.config_path(), startup_url=capability.page_url
         ) as session:
-            result = acquire_liquidity_list(
-                session,
-                capability,
-                resolved.request_scope,
-                progress=lambda done, total: print(
-                    f"refresh: collected {unit} {done}/{total}", file=sys.stderr
-                ),
-            )
+            result = acquire_liquidity_list(session, capability, resolved.request_scope)
         evidence = evidence_for(result)
         changed_groups = 0
         if variant.projection == "balances":
@@ -67,152 +39,53 @@ def run_refresh_list(args: argparse.Namespace) -> int:
             mode="refresh",
         )
         fetched_at = now().isoformat()
-        loaded_at = now().isoformat()
-        plan = capture_store.plan_capture_publish(
+        frozen = selection(evidence)
+        snapshot = publish_slot(
             store,
-            variant,
-            resolved.scope_key,
-            resolved.window,
+            slot_leaf(leaf),
             result.records,
-            result.total_count,
-            fetched_at,
-            loaded_at,
-            acquisition=evidence,
+            capability=variant.name,
+            scope=resolved.request_values,
+            evidence=evidence,
+            fetched_at=fetched_at,
+            variant=variant.endpoint,
+            selection=frozen,
         )
-        final_evidence = capture_store.retained_evidence(
-            plan, variant, resolved.scope_key, resolved.window
-        )
-        check_complete(
-            final_evidence,
-            require_complete=getattr(args, "require_complete", False),
-            mode="refresh",
-        )
-        capture_store.commit_plan(store, variant.name, plan, loaded_at)
-    row_count = len(plan.capture_records)
-    print(
-        f"refresh: published {row_count} rows to {plan.capture_meta.namespace}",
-        file=sys.stderr,
+    published = snapshot is not None
+    meta = prepare_result(
+        {
+            "source": "live",
+            "backend": "cdp",
+            "kind": variant.kind,
+            "capability": variant.name,
+            "variant": variant.endpoint,
+            "query": resolved.request_values,
+            "scope": resolved.request_values,
+            "fetched_at": fetched_at,
+            "snapshot_id": snapshot.snapshot_id if snapshot else None,
+            **evidence.meta(),
+            "published": published,
+            "publication_reason": "replaced"
+            if published
+            else "empty_result_preserved_prior_cache",
+            "matched_total": len(result.records),
+            "returned_count": len(result.records),
+            "has_more": False,
+        },
+        mode="refresh",
     )
-    eviction: dict[str, Any] | None = None
-    if plan.eviction is not None:
-        eviction = {
-            "dropped": plan.eviction.dropped,
-            "retained": plan.eviction.retained,
-            "retained_from": plan.eviction.retained_from,
-            "tie_break": plan.eviction.tie_break,
-            "evicted": list(plan.eviction.evicted),
-        }
-        print(
-            "refresh: retention evicted"
-            f" {plan.eviction.dropped} oldest records;"
-            f" retained {plan.eviction.retained} from"
-            f" {plan.eviction.retained_from}",
-            file=sys.stderr,
-        )
-    meta = {
-        "source": "cache",
-        "backend": "cdp",
-        "kind": variant.kind,
-        "simulated": False,
-        "capability": variant.name,
-        "scope": resolved.scope_key,
-        "requested_window": (
-            list(resolved.window) if resolved.window[0] is not None else None
-        ),
-        "snapshot_id": plan.capture_meta.snapshot_id,
-        "fetched_at": fetched_at,
-        "loaded_at": loaded_at,
-        "stale": False,
-        **final_evidence.meta(),
-        "published": True,
-        "reported_total": result.total_count,
-        "matched_total": row_count,
-        "returned_count": row_count,
-        "has_more": False,
-        "retention": eviction,
-    }
-    frozen = selection(evidence)
-    if frozen is not None:
-        meta["selection"] = frozen
-    meta = prepare_result(meta, mode="refresh")
     notice = update_notice(changed_groups)
-    if notice is not None:
+    if notice:
         meta["warnings"] = [*meta.get("warnings", []), notice]
-        print(f"warning: {notice['code']}: {notice['message']}", file=sys.stderr)
+    if frozen:
+        meta["selection"] = frozen
     emit(
         {
-            "namespace": plan.capture_meta.namespace,
-            "published": True,
-            "row_count": row_count,
+            "namespace": slot_namespace(slot_leaf(leaf)),
+            "published": published,
+            "row_count": len(result.records),
+            "publication_reason": meta["publication_reason"],
         },
         meta,
     )
     return EXIT_OK
-
-
-def run_refresh_detail(args: argparse.Namespace) -> int:
-    # refresh liquidity <resource...> detail <action>
-    path = args.command_path[2:]
-    leaf: DetailLeaf = detail_leaf((*path[:-2], path[-1]))
-    detail = leaf.spec
-    values = identity_values(args, leaf)
-    leaf.capability.detail_body(values)
-    config = load_config()
-    store = Cache(config.cache_path)
-    with store.refresh_lock():
-        with inquiry_session(
-            config_file=config_mod.config_path(), startup_url=leaf.capability.page_url
-        ) as session:
-            from .decision_history import fetch_native_detail
-
-            payload = fetch_native_detail(session, leaf, values)
-        fetched_at = now().isoformat()
-        snapshot = detail_store.upsert_detail(
-            store,
-            detail.name,
-            detail_store.contract_detail_key(detail, values),
-            payload,
-            fetched_at,
-            now().isoformat(),
-        )
-    print(
-        f"refresh: published detail to {snapshot.namespace}",
-        file=sys.stderr,
-    )
-    meta = {
-        "source": "cache",
-        "backend": "cdp",
-        "kind": detail.kind,
-        "simulated": False,
-        "capability": detail.name,
-        "published": True,
-        "identity": dict(values),
-        "snapshot_id": snapshot.snapshot_id,
-        "fetched_at": snapshot.fetched_at,
-        "loaded_at": snapshot.loaded_at,
-        "stale": False,
-        "complete": True,
-        "dataset_complete": None,
-        "matched_total": 1,
-        "returned_count": 1,
-        "has_more": False,
-    }
-    if detail.schema_version:
-        meta["request_scope"] = (
-            {"tntInstId": spec.TENANT} if detail.sends_tenant else {}
-        )
-        if isinstance(payload, dict) and "version" in payload:
-            meta["source_version"] = payload["version"]
-    meta.update(detail_context_meta(detail, values, payload))
-    emit(
-        {
-            "namespace": snapshot.namespace,
-            "published": True,
-            "row_count": 1,
-        },
-        meta,
-    )
-    return EXIT_OK
-
-
-__all__ = ["run_refresh_list", "run_refresh_detail"]

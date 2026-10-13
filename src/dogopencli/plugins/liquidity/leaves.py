@@ -14,7 +14,6 @@ from typing import Any
 
 from ...errors import EXIT_USAGE, INVALID_ARGUMENT, CliError
 from ...helpspec import (
-    ALL,
     CACHE_FLAGS,
     CACHE_SEMANTICS,
     DISPLAY_WINDOW,
@@ -186,8 +185,7 @@ CASH_WATERLEVELS = ListSpec(
     filters=(("currency", "currency"),),
     table_columns=("aliasName", "currency", "valueDate", "curAvlBal", "timeZone"),
     notes=(
-        "Latest observed buffer/water-level state per account; captures are"
-        " retained with capture time as the history axis.",
+        "Latest observed buffer/water-level state per account; one temporary result.",
         _PAGE_ECHO_NOTE,
         _NULL_NOTE,
     ),
@@ -312,7 +310,7 @@ FORECAST_CASHFLOWS = ListSpec(
         " scoped set. Record schema is live-verified on a populated"
         " previous-day scope.",
         "Value Date uses expectValueDateTime (YYYYMMDDHHmm), as in the native"
-        " UI; queries and retention compare its calendar day without a"
+        " UI; queries compare its calendar day without a"
         " timezone conversion. No native unique key is established: all row"
         " occurrences are preserved within a response; overlapping captures"
         " match identical content by occurrence count.",
@@ -460,7 +458,7 @@ INVESTMENT_HOLDINGS = ListSpec(
         "The request date scopes the complete portfolio snapshot; native"
         " row valueDate is not that snapshot date and is never used to discard"
         " its holdings. Each query date has an independent cache scope."
-        " Retained snapshot history orders by capture time, not row valueDate.",
+        " Saved result retains acquired order, not a history across refreshes.",
     ),
 )
 
@@ -677,53 +675,6 @@ RISK_METRICS = ListSpec(
         " metric series. Single-metric and open-balance routes returned"
         " envelope-only evidence and stay deferred; CURRENCY_T3_LCR was"
         " empty in every tested scope.",
-        _NULL_NOTE,
-    ),
-)
-
-LEDGER_BALANCES = ListSpec(
-    path=("ledger", "balances"),
-    kind=RUNTIMES,
-    title="ledger balances",
-    endpoint="/balanceBookquery.json",
-    method="POST",
-    envelope=ENV_SUCCESS,
-    container=("data", "data"),
-    total=("data", "totalCount"),
-    identity=("accountNo", "currency", "valueDate", "accountingDate"),
-    profile=PROFILE_DATED,
-    series_field="valueDate",
-    series_format="%Y-%m-%d",
-    template={
-        "tntInstId": TENANT,
-        "accountingStartDate": "",
-        "accountingEndDate": "",
-        "parentCustomerNo": None,
-    },
-    scope_options=(
-        ScopeOption(
-            "book_type",
-            "bookType",
-            "Ledger book type.",
-            required=True,
-            choices=("INNER", "OUTER"),
-        ),
-        _timezone(),
-        *_window("valueDateStart", "valueDateEnd"),
-    ),
-    filters=(("currency", "currency"),),
-    table_columns=(
-        "accountNo",
-        "customerName",
-        "closeBalance",
-        "currency",
-        "valueDate",
-        "accountingDate",
-    ),
-    notes=(
-        "The window filters the valueDate dimension; the accounting-date"
-        " filters stay at their verified empty strings.",
-        _PAGE_ECHO_NOTE,
         _NULL_NOTE,
     ),
 )
@@ -1469,7 +1420,6 @@ LIST_SPECS: tuple[ListSpec, ...] = (
     PRICING_STRATEGIES,
     LEDGER_CUSTOMERS,
     LEDGER_ACCOUNTS,
-    LEDGER_BALANCES,
     REFERENCE_BANKS,
     REFERENCE_BUSINESS_LINES,
     REFERENCE_CALENDARS,
@@ -2618,9 +2568,7 @@ class ListLeaf:
             )
         return LiquidityListCapability(replace(variant, page_size=page_size))
 
-    def resolve(
-        self, provided: dict[str, Any], *, select_all: bool = False
-    ) -> ResolvedScope:
+    def resolve(self, provided: dict[str, Any]) -> ResolvedScope:
         if self.path == ("cash", "balances"):
             dated = bool(provided.get("from_date") or provided.get("to_date"))
             if dated and provided.get("timezone") is not None:
@@ -2663,9 +2611,6 @@ class ListLeaf:
             request_values["entitys"] = sorted(set(request_values["entitys"]))
             if request_values.get("aliasNames"):
                 request_values["aliasNames"] = sorted(set(request_values["aliasNames"]))
-            if select_all and not provided.get("entity"):
-                request_values.pop("entitys")
-                request_values["__selection"] = "all-directory"
         if variant.projection == "funding_demands":
             validate_demand_query(request_values)
         if variant.projection == "rule_status":
@@ -2805,8 +2750,8 @@ QUERY_ERRORS = (
 
 _SCOPE_CONSTRAINTS = (
     "Scope options are source filters: they select what an explicit refresh"
-    " acquires and which retained capture a query reads; they never filter"
-    " other scopes' caches.",
+    " acquires; offline explicit options filter the saved"
+    " variant when a reliable row mapping exists.",
     "Values marked live-verified were exercised on 2026-10-01; other valid"
     " values pass through with the same verified request shape.",
 )
@@ -2918,43 +2863,9 @@ def _filter_option(entry: tuple[str, ...]) -> OptionSpec:
     return option
 
 
-def _balance_all() -> OptionSpec:
-    return replace(
-        ALL,
-        summary="Without --entity, select all maintained instIds;"
-        " with explicit entities, retain that selection. List displays all rows."
-        " Offline uses the capture's frozen selection; no discovery.",
-        argument_contract=contract(
-            "boolean",
-            modes={
-                "cache": {"available": True, "role": "scope-selection"},
-                "live": {"available": True, "role": "scope-selection"},
-                "refresh": {"available": True, "role": "acquisition-scope"},
-            },
-            constraints=(
-                {"kind": "conflicts", "arguments": ["limit", "offset"]},
-                {
-                    "kind": "conditional-selection",
-                    "unless": "entity",
-                    "selection": "all-directory",
-                },
-            ),
-        ),
-    )
-
-
-def _list_option_spec(leaf: ListLeaf, option: ScopeOption) -> OptionSpec:
+def _list_option_spec(leaf, option):
     result = _option_spec(option)
-    if leaf.path == ("cash", "balances") and option.flag == "timezone":
-        # Resolve defaults after mode selection; an explicit timezone is invalid daily.
-        result = replace(
-            result,
-            default=None,
-            help_default=option.default,
-            summary=result.summary + " Latest only; explicit --timezone"
-            " is rejected with date bounds.",
-        )
-    return result
+    return replace(result, default=None, required=False, help_default=option.default)
 
 
 def _acquisition_options(leaf: ListLeaf) -> tuple[OptionSpec, ...]:
@@ -2994,7 +2905,6 @@ def list_query_node(leaf: ListLeaf) -> BizNode:
             *_acquisition_options(leaf),
             LIMIT,
             OFFSET,
-            _balance_all() if leaf.path == ("cash", "balances") else ALL,
             LIVE,
             *CACHE_FLAGS,
             FORMAT_TABLE,
@@ -3030,9 +2940,8 @@ def detail_query_node(leaf: DetailLeaf) -> BizNode:
     )
     return BizNode(
         path,
-        f"Show the genuine native {detail.title} from the detail cache"
-        f" (default) or the backend with --live; a list row is never"
-        f" substituted. Kind: {leaf.kind}.",
+        f"Query genuine native {detail.title} online; no cache reads"
+        " or writes. Kind: {leaf.kind}.",
         options=(
             *(
                 OptionSpec(
@@ -3050,30 +2959,24 @@ def detail_query_node(leaf: DetailLeaf) -> BizNode:
                 )
                 for option in detail.identity
             ),
-            LIVE,
-            *CACHE_FLAGS,
             FORMAT_TABLE,
             FIELDS,
         ),
         constraints=(
-            CACHE_SEMANTICS,
-            "Offline get reads only the per-object detail cache; a missing"
-            " cached detail is a coverage miss with a refresh hint, never"
-            " proof that the business object does not exist.",
+            "Always online; no detail cache or detail refresh.",
             *detail.notes,
         ),
-        effects_variants=QUERY_EFFECTS_VARIANTS,
+        effects={
+            "mutates": False,
+            "network": True,
+            "browser_required": True,
+            "destructive": False,
+        },
         output=QUERY_OUTPUT,
         kind=leaf.kind,
         errors=QUERY_ERRORS,
         examples=("dogopencli " + " ".join(path) + " --help",),
-        next=(
-            *(() if parent is None else (parent,)),
-            "dogopencli help refresh liquidity "
-            + " ".join(detail.path)
-            + " detail "
-            + detail.action,
-        ),
+        next=(() if parent is None else (parent,)),
         handler="cmd_liquidity_detail",
     )
 
@@ -3084,7 +2987,8 @@ def refresh_list_node(leaf: ListLeaf) -> BizNode:
         "Validated partial acquisition publishes by default; strict or hard"
         " failures preserve the previous cache."
         if leaf.path == ("cash", "balances")
-        else "Incomplete acquisition preserves the previous cache."
+        else "Valid nonempty partial acquisition publishes; empty, strict"
+        " or hard failures preserve prior cache."
     )
     return BizNode(
         path,
@@ -3092,7 +2996,6 @@ def refresh_list_node(leaf: ListLeaf) -> BizNode:
         f" existing CDP session; kind {leaf.kind}. {policy}",
         options=(
             *(_list_option_spec(leaf, option) for option in leaf.options),
-            *((_balance_all(),) if leaf.path == ("cash", "balances") else ()),
             *_acquisition_options(leaf),
         ),
         constraints=(
@@ -3104,9 +3007,8 @@ def refresh_list_node(leaf: ListLeaf) -> BizNode:
                 if leaf.path == ("cash", "balances")
                 else ()
             ),
-            "Retention: at most 1,000,000 primary records per business leaf;"
-            " time-series overflow evicts oldest records with a stderr"
-            " warning, other overflow rejects the refresh (ADR 0017).",
+            "One temporary result per leaf; nonempty refresh replaces"
+            " it. Empty refresh preserves it.",
         ),
         effects=dict(REFRESH_CDP_EFFECTS),
         output=REFRESH_OUTPUT,
@@ -3125,62 +3027,6 @@ def refresh_list_node(leaf: ListLeaf) -> BizNode:
         examples=("dogopencli " + " ".join(path),),
         next=(f"dogopencli help liquidity {' '.join(leaf.path)} list",),
         handler="cmd_refresh_liquidity_list",
-    )
-
-
-def refresh_detail_node(leaf: DetailLeaf) -> BizNode:
-    detail = leaf.spec
-    path = ("refresh", "liquidity", *detail.path, "detail", detail.action)
-    return BizNode(
-        path,
-        f"Acquire the genuine native {detail.title} into the per-object"
-        " detail cache; independent of list refresh (ADR 0016).",
-        options=tuple(
-            OptionSpec(
-                option.flag,
-                "--" + option.flag.replace("_", "-"),
-                option.summary,
-                "str",
-                required=True,
-                choices=option.choices,
-                argument_contract=contract(
-                    "string",
-                    preferred_format="nonempty native identifier",
-                    modes=scope_modes(None),
-                ),
-            )
-            for option in detail.identity
-        ),
-        constraints=(
-            "Requires an existing authenticated CDP session for the liquidity"
-            " origin; only the local cache changes.",
-            "A failed detail refresh preserves the prior valid detail and"
-            " never invalidates a separately successful list refresh.",
-        ),
-        effects=dict(REFRESH_CDP_EFFECTS),
-        output=REFRESH_OUTPUT,
-        kind=leaf.kind,
-        errors=(
-            "INVALID_ARGUMENT",
-            "CONFIG_ERROR",
-            "INVALID_RESPONSE",
-            "AUTH_REQUIRED",
-            "BROWSER_UNAVAILABLE",
-            "LOCKED",
-            "TIMEOUT",
-            "BUSINESS_QUERY_FAILED",
-        ),
-        examples=(
-            "dogopencli "
-            + " ".join(path)
-            + " "
-            + " ".join(
-                f"--{option.flag.replace('_', '-')} <{option.flag.upper()}>"
-                for option in detail.identity
-            ),
-        ),
-        next=(f"dogopencli help liquidity {' '.join(leaf.path)}",),
-        handler="cmd_refresh_liquidity_detail",
     )
 
 
@@ -3212,7 +3058,7 @@ _GROUP_TITLES: dict[tuple[str, ...], str] = {
     ("risk",): "Risk metrics, thresholds and SLA.",
     ("rules",): "Liquidity routing, risk and notification rules.",
     ("network",): "Account network baselines and capabilities.",
-    ("ledger",): "Ledger customers, accounts and balances.",
+    ("ledger",): "Ledger customers and accounts.",
     ("pricing",): (
         "Client/cost prices, factor type definitions, factor values and"
         " pricing strategies."
@@ -3242,7 +3088,6 @@ def group_nodes() -> tuple[BizNode, ...]:
                 f"Rebuild {_GROUP_TITLES.get(path, 'liquidity')} caches.",
             )
 
-    list_paths = {list_spec.path for list_spec in LIST_SPECS}
     for list_spec in LIST_SPECS:
         # Query tree: only list/get/history words are executable, so every
         # prefix including the resource itself is a navigation group.
@@ -3253,13 +3098,7 @@ def group_nodes() -> tuple[BizNode, ...]:
             add_refresh_group(list_spec.path[:depth])
     for detail in DETAIL_SPECS:
         for depth in range(1, len(detail.path) + 1):
-            prefix = detail.path[:depth]
-            add_query_group(prefix)
-            if depth == len(detail.path) and prefix in list_paths:
-                # The executable list refresh node owns this path.
-                continue
-            add_refresh_group(prefix)
-        add_refresh_group((*detail.path, "detail"))
+            add_query_group(detail.path[:depth])
     for leaf in DEFERRED:
         # Deferred paths include their action; every shorter prefix is a
         # navigation group.

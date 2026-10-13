@@ -52,7 +52,7 @@ def binding_universe(evidence: AcquisitionEvidence) -> str:
     entities = frozen.get("entities")
     accounts = frozen.get("accounts")
     if (
-        frozen.get("mode") not in ("explicit", "all-directory")
+        frozen.get("mode") not in ("explicit", "ANY")
         or not isinstance(entities, list)
         or not isinstance(accounts, list)
     ):
@@ -107,33 +107,24 @@ def collect_balances(
     *,
     progress: Any = None,
 ) -> CollectedScope:
-    from .leaves import REFERENCE_ENTITIES
-
     values = decode_scope(scope)
     dated = capability.descriptor.profile == PROFILE_DATED
-    all_entities = values.get("__selection") == "all-directory"
-    budget = 1800 if all_entities and not dated else 900
+    frozen = values.pop("__selection", None)
+    budget = 900
     deadline = time.monotonic() + budget
     dependencies = []
     complete = True
     reasons = []
     entities = values.get("entitys", [])
-    if all_entities:
-        directory, provenance = _dependency(session, REFERENCE_ENTITIES, deadline)
-        dependencies.append(provenance)
-        entities = sorted(
-            {_text(row.get("instId"), "instId") for row in directory.records}
-        )
-        complete = directory.complete
-        reasons.extend(evidence_for(directory).reasons)
     manifest = {
         "composition": "cash-balance-selection-v1",
-        "mode": "all-directory" if all_entities else "explicit",
+        "mode": "ANY" if frozen else "explicit",
+        **(frozen or {}),
         "entities": entities,
         "accounts": [],
         "dependencies": dependencies,
         "shared_budget_seconds": budget,
-        "timezone": "unknown" if dated else values.get("timeZone"),
+        "timezone": "GMT+08" if dated else values.get("timeZone"),
     }
     if dated:
         result = _collect_daily(
@@ -283,11 +274,7 @@ def _collect_daily(
                     _validate_amounts(record, ("balance",), "daily_balances")
                     composed.append(
                         {
-                            **{
-                                key: record[key]
-                                for key in ("id", "data", "statisticalDate", "balance")
-                                if key in record
-                            },
+                            **record,
                             **selected[alias],
                         }
                     )

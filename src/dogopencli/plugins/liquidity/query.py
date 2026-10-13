@@ -12,9 +12,7 @@ import argparse
 import re
 import shlex
 import sys
-from collections import Counter
 from dataclasses import replace
-from types import SimpleNamespace
 from typing import Any
 
 from dogopencli.plugins.liquidity.balance_view import (
@@ -40,12 +38,10 @@ from ...errors import (
     CliError,
 )
 from ...inquiry import inquiry_session
-from ...jsonutil import canonical
 from ...result_policy import evidence_for, prepare_result
 from ...table import render_table
 from ...transport.cdp import CdpQueryTransport
 from ..envelope import is_business_refusal
-from . import details as detail_store
 from . import spec as spec_mod
 from . import store as capture_store
 from .capability import LiquidityListCapability
@@ -56,35 +52,10 @@ from .leaves import DEFERRED_BY_PATH, DetailLeaf, ListLeaf, detail_leaf, list_le
 from .qualified_getters import detail_context_meta
 
 
-def _display_options(args: argparse.Namespace) -> tuple[int, int, list[str] | None]:
-    if args.all and (args.limit is not None or args.offset is not None):
-        raise CliError(
-            INVALID_ARGUMENT,
-            "--all conflicts with explicit --limit/--offset",
-            exit_code=EXIT_USAGE,
-        )
-    limit = 100 if args.limit is None else args.limit
-    if limit <= 0:
-        raise CliError(
-            INVALID_ARGUMENT,
-            "--limit must be a positive integer",
-            exit_code=EXIT_USAGE,
-        )
-    offset = 0 if args.offset is None else args.offset
-    if offset < 0:
-        raise CliError(
-            INVALID_ARGUMENT, "--offset must not be negative", exit_code=EXIT_USAGE
-        )
-    fields: list[str] | None = None
-    if args.fields is not None:
-        fields = [name.strip() for name in args.fields.split(",") if name.strip()]
-        if not fields:
-            raise CliError(
-                INVALID_ARGUMENT,
-                "--fields must name at least one field",
-                exit_code=EXIT_USAGE,
-            )
-    return limit, offset, fields
+def _display_options(args):
+    from ...temporary_query import display_options
+
+    return display_options(args)
 
 
 def _project(
@@ -179,208 +150,273 @@ def _match(
     return [record for record in records if _matches(record, filters)]
 
 
-def _sort_rows(
-    variant: spec_mod.ListSpec, records: list[dict[str, Any]], fetched_at: str
-) -> list[dict[str, Any]]:
-    def key(record: dict[str, Any]) -> tuple[str, ...]:
-        identity = tuple(canonical(record.get(field)) for field in variant.identity)
-        if variant.profile == spec_mod.PROFILE_DATED:
-            series = capture_store.series_value(variant, record, fetched_at)
-            return (series, *identity)
-        return identity
-
-    return sorted(records, key=key)
+def slot_leaf(leaf):
+    return "liquidity." + ".".join(leaf.path)
 
 
-def _coverage_meta(entries: list[capture_store.CaptureEntry]) -> list[dict[str, Any]]:
-    return [
-        {
-            "namespace": entry.namespace,
-            "window_from": entry.window_from,
-            "window_to": entry.window_to,
-            "missing_days": list(entry.missing_days),
-            "fetched_at": entry.fetched_at,
-            "row_count": entry.row_count,
-            "acquisition": entry.evidence.record(),
-        }
-        for entry in entries
+def resolve_online_scope(leaf, args):
+    values = provided(args, scope_flags(leaf))
+    any_options = [
+        key
+        for key, value in values.items()
+        if value == "ANY" or isinstance(value, list) and "ANY" in value
     ]
+    frozen = None
+    if any_options:
+        if (
+            leaf.path != ("cash", "balances")
+            or any_options != ["entity"]
+            or values["entity"] != ["ANY"]
+        ):
+            raise CliError(
+                INVALID_ARGUMENT,
+                "ANY supports only cash balances --entity ANY, without"
+                " explicit entities",
+                exit_code=EXIT_USAGE,
+            )
+        from ...duckdog import resolve_selector
+
+        entities = resolve_selector(
+            "liquidity/reference/entities",
+            "instId",
+            config_file=config_mod.config_path(),
+        )
+        values["entity"] = entities
+        frozen = {
+            "mode": "ANY",
+            "selector": "liquidity/reference/entities",
+            "column": "instId",
+            "values": entities,
+        }
+    resolved = leaf.resolve(values)
+    if frozen is not None:
+        request = {**resolved.request_values, "__selection": frozen}
+        from .capability import encode_scope
+
+        resolved = replace(
+            resolved, request_values=request, request_scope=encode_scope(request)
+        )
+    return resolved
 
 
-def run_list(args: argparse.Namespace) -> int:
+def _offline_selection(args, leaf, variant, context, records):
+    from .capability import scope_values
+
+    explicit = {
+        key: value
+        for key, value in provided(args, scope_flags(leaf)).items()
+        if value is not None and value != []
+    }
+    if getattr(args, "page_size", None) is not None:
+        raise CliError(
+            INVALID_ARGUMENT,
+            "--page-size requires --live or refresh",
+            exit_code=EXIT_USAGE,
+        )
+    source = context.get("query", {})
+    selection_meta = context.get("selection")
+    if explicit.get("entity") == ["ANY"]:
+        if not selection_meta or selection_meta.get("mode") != "ANY":
+            raise CliError(
+                INVALID_ARGUMENT,
+                "cached ANY selection unavailable; omit ANY for replay or"
+                " use --live --entity ANY",
+                exit_code=EXIT_USAGE,
+            )
+        explicit["entity"] = selection_meta["values"]
+    elif any(
+        value == "ANY" or isinstance(value, list) and "ANY" in value
+        for value in explicit.values()
+    ):
+        raise CliError(
+            INVALID_ARGUMENT,
+            "unsupported offline ANY; omit ANY or use --live",
+            exit_code=EXIT_USAGE,
+        )
+    options = {option.flag: option for option in variant.scope_options}
+    if set(explicit) - set(options):
+        raise CliError(
+            INVALID_ARGUMENT,
+            "filter unavailable for saved contract variant; use --live or refresh",
+            exit_code=EXIT_USAGE,
+        )
+    if any(option.window for option in options.values()) and any(
+        options[key].window for key in explicit
+    ):
+        supplied_windows = {key for key in explicit if options[key].window}
+        required_windows = {key for key, option in options.items() if option.window}
+        if supplied_windows != required_windows:
+            raise CliError(
+                INVALID_ARGUMENT,
+                "date bounds must be provided together",
+                exit_code=EXIT_USAGE,
+            )
+    normalized, _ = scope_values(
+        tuple(
+            replace(option, required=False, default=None)
+            for option in variant.scope_options
+        ),
+        explicit,
+    )
+    mapping = {entry[0]: entry[1] for entry in variant.filters}
+    mapping.update(
+        {"entity": "entity", "account": "aliasName", "timezone": "timeZone"}
+        if leaf.path == ("cash", "balances")
+        else {}
+    )
+    coverage = True
+    rows = records
+    for key in explicit:
+        option = options[key]
+        value = normalized.get(option.field)
+        acquired = source.get(option.field)
+        if option.virtual and option.match:
+            if value != acquired:
+                raise CliError(
+                    INVALID_ARGUMENT,
+                    "filter differs from saved contract variant; use --live or refresh",
+                    exit_code=EXIT_USAGE,
+                )
+            continue
+        if option.window:
+            if not variant.series_field:
+                raise CliError(
+                    INVALID_ARGUMENT,
+                    "date filter unavailable for saved variant; use --live or refresh",
+                    exit_code=EXIT_USAGE,
+                )
+            bound = str(value).replace("-", "")[:8]
+            if acquired is None:
+                coverage = None
+            elif (
+                option.window == "from"
+                and str(value) < str(acquired)
+                or option.window == "to"
+                and str(value) > str(acquired)
+            ):
+                coverage = False
+            rows = [
+                row
+                for row in rows
+                if (
+                    capture_store.series_value(variant, row, "") >= bound
+                    if option.window == "from"
+                    else capture_store.series_value(variant, row, "") <= bound
+                    if option.window == "to"
+                    else capture_store.series_value(variant, row, "") == bound
+                )
+            ]
+            continue
+        field = mapping.get(key)
+        if field is None and option.field in variant.table_columns:
+            field = option.field
+        if field is None:
+            raise CliError(
+                INVALID_ARGUMENT,
+                f"{option.public_flag} has no reliable local row mapping; use"
+                " --live or refresh",
+                exit_code=EXIT_USAGE,
+            )
+        values = value if isinstance(value, list) else [value]
+        old = acquired if isinstance(acquired, list) else [acquired]
+        if acquired is None:
+            coverage = None if coverage is not False else False
+        elif not set(values).issubset(set(old)):
+            coverage = False
+        rows = [row for row in rows if row.get(field) in values]
+    filters = _local_filters(args, variant)
+    if filters and coverage is True:
+        coverage = None
+    return _match(rows, filters), explicit, coverage
+
+
+def run_list(args):
+    from ...result_policy import AcquisitionEvidence
+    from ...temporary_query import read_slot, slot_context, window_rows
+
     leaf = list_leaf(args.command_path[1:-1])
     limit, offset, fields = _display_options(args)
-    resolved = leaf.resolve(provided(args, scope_flags(leaf)), select_all=args.all)
-    variant = resolved.spec
-    filters = _local_filters(args, variant)
-    capability = leaf.acquisition_capability(
-        variant, getattr(args, "page_size", None), online=args.live
-    )
     config = load_config()
     if args.live:
-        return _run_list_live(
-            args, leaf, resolved, filters, limit, offset, fields, config, capability
+        resolved = resolve_online_scope(leaf, args)
+        capability = leaf.acquisition_capability(
+            resolved.spec, getattr(args, "page_size", None), online=True
         )
-    store = Cache(config.cache_path)
-    index = capture_store.read_index(store, variant.name)
-    refresh_hint = (
-        "run: dogopencli refresh liquidity "
-        + " ".join(leaf.path)
-        + _hint_options(leaf, resolved.request_values)
-    )
-    if index is None:
-        raise CliError(CACHE_MISS, f"no cached liquidity capture; {refresh_hint}")
-    selected, covered = capture_store.select_captures(
-        index, variant, resolved.scope_key, resolved.window
-    )
-    if not selected:
+        return _run_list_live(
+            args,
+            leaf,
+            resolved,
+            _local_filters(args, resolved.spec),
+            limit,
+            offset,
+            fields,
+            config,
+            capability,
+        )
+    snapshot, records = read_slot(Cache(config.cache_path), slot_leaf(leaf))
+    if snapshot is None:
         raise CliError(
             CACHE_MISS,
-            "no retained capture covers the requested scope; " + refresh_hint,
+            "no cached liquidity result; run: dogopencli refresh liquidity "
+            + " ".join(leaf.path),
         )
-
-    pairs: list[tuple[capture_store.CaptureEntry, dict[str, Any]]] = []
-    seen: set[tuple[str, ...]] = set()
-    capability = leaf.capability(variant)
-    occurrences_seen: Counter[tuple[str, ...]] = Counter()
-    authority_by_day: dict[str, capture_store.CaptureEntry | None] = {}
-    # Newest acquisition first: when retained captures overlap, a later
-    # corrected value must win over the older capture of the same identity.
-    for _, entry in sorted(
-        enumerate(selected),
-        key=lambda pair: (pair[1].fetched_at, pair[0]),
-        reverse=True,
-    ):
-        occurrences: Counter[tuple[str, ...]] = Counter()
-        missing_days = set(entry.missing_days)
-        capture_rows = capture_store.read_capture(store, entry)
-        if variant.identity:
-            capture_ids: set[tuple[str, ...]] = set()
-            for record in capture_rows:
-                identity = capability.identity_key(record)
-                if identity in capture_ids:
-                    raise CliError(
-                        INVALID_RESPONSE,
-                        "cached capture contains duplicate native identities",
-                    )
-                capture_ids.add(identity)
-        for record in capture_rows:
-            if variant.profile == spec_mod.PROFILE_DATED:
-                window_from, window_to = resolved.window
-                assert window_from is not None and window_to is not None
-                assert entry.window_from is not None and entry.window_to is not None
-                day = capture_store.series_value(variant, record, "")
-                if day not in authority_by_day:
-                    authority_by_day[day] = capture_store.authoritative_capture(
-                        selected, day
-                    )
-                # Another complete capture can restore coverage, but cannot
-                # make this capture's retained partial-day rows complete.
-                if not (
-                    window_from <= day <= window_to
-                    and entry.window_from <= day <= entry.window_to
-                    and day not in missing_days
-                    and authority_by_day[day] == entry
-                ):
-                    continue
-            identity = capability.identity_key(record)
-            if not variant.identity:
-                occurrences[identity] += 1
-                if occurrences[identity] > occurrences_seen[identity]:
-                    pairs.append((entry, record))
-                continue
-            if identity in seen:
-                continue
-            seen.add(identity)
-            pairs.append((entry, record))
-        occurrences_seen |= occurrences
-    kept_pairs = [
-        (entry, record) for entry, record in pairs if _matches(record, filters)
-    ]
-    rows = [record for _, record in kept_pairs]
-    # Every returned row needs fresh evidence, and fresh captures together
-    # must cover the whole requested window, including verified empty days.
-    # Testing individual redundancy misses overlapping expired empty captures.
-    contributing = {entry.namespace for entry, _ in kept_pairs}
-    current = now()
-    window_start, window_end = resolved.window
-    quality_entries = (
-        capture_store.active_captures(selected, window_start, window_end)
-        if window_start is not None and window_end is not None
-        else selected
+    context = slot_context(snapshot)
+    variant = next(
+        (item for item in leaf.variants if item.endpoint == context.get("variant")),
+        None,
     )
-    fresh_entries = [
-        entry
-        for entry in quality_entries
-        if not is_stale(_capture_meta_view(entry), config.ttl_hours, current)
-    ]
-    fresh_namespaces = {entry.namespace for entry in fresh_entries}
-    fresh_coverage = (
-        capture_store.covers_window(
-            fresh_entries, window_start, window_end, authority=selected
-        )
-        if window_start is not None and window_end is not None
-        else bool(fresh_entries)
-    )
-    contributors = [
-        entry
-        for entry in quality_entries
-        if entry.namespace in contributing or entry.namespace in fresh_namespaces
-    ] or list(selected)
-    latest = max(contributors, key=lambda entry: entry.fetched_at)
-    stale_entries = [
-        entry
-        for entry in quality_entries
-        if entry.namespace not in fresh_namespaces
-        and (entry.namespace in contributing or not fresh_coverage)
-    ]
-    stale = bool(stale_entries)
-    if args.require_fresh and stale:
-        oldest = min(stale_entries, key=lambda entry: entry.fetched_at)
+    if variant is None:
         raise CliError(
-            CACHE_STALE,
-            f"cached capture is older than {config.ttl_hours:g} hours"
-            f" (fetched_at {oldest.fetched_at})",
+            INVALID_RESPONSE, "cached contract variant is invalid; refresh required"
         )
+    rows, filters, coverage = _offline_selection(args, leaf, variant, context, records)
+    evidence = AcquisitionEvidence.from_record(snapshot.acquisition)
+    if coverage is not True:
+        evidence = replace(
+            evidence,
+            scope_complete=False,
+            dataset_complete=False,
+            reasons=tuple(
+                dict.fromkeys([*evidence.reasons, "REQUESTED_SCOPE_UNPROVEN"])
+            ),
+        )
+    stale = is_stale(snapshot, config.ttl_hours, now())
+    if args.require_fresh and stale:
+        raise CliError(CACHE_STALE, "cached result is stale; refresh required")
     changed_groups = 0
     if variant.projection == "balances":
         rows, changed_groups = latest_statement_rows(rows)
-    rows = _sort_rows(variant, rows, latest.fetched_at)
-    matched_total = len(rows)
-    window = rows[offset:] if args.all else rows[offset : offset + limit]
-    reported = sum(entry.reported_total or entry.row_count for entry in selected)
+    window = window_rows(rows, limit, offset)
     meta = {
         "source": "cache",
-        "backend": "cdp",
-        "kind": variant.kind,
         "simulated": False,
-        "capability": variant.name,
-        "scope": resolved.scope_key,
-        "requested_window": (
-            list(resolved.window) if resolved.window[0] is not None else None
-        ),
-        "retained_coverage": _coverage_meta(selected),
-        "snapshot_id": latest.snapshot_id,
         "dataset_id": None,
-        "fetched_at": latest.fetched_at,
-        "loaded_at": None,
-        "stale": stale,
-        "complete": covered,
-        "dataset_complete": None,
         "source_observed_from": None,
         "source_observed_to": None,
-        "reported_total": reported,
-        "matched_total": matched_total,
+        "loaded_at": snapshot.loaded_at,
+        "backend": "cdp",
+        "kind": variant.kind,
+        "capability": variant.name,
+        "variant": variant.endpoint,
+        "query": context.get("query"),
+        "scope": context.get("query"),
+        "local_filters": filters,
+        "requested_scope_covered": coverage,
+        "snapshot_id": snapshot.snapshot_id,
+        "fetched_at": snapshot.fetched_at,
+        "stale": stale,
+        **evidence.meta(),
+        "matched_total": len(rows),
         "returned_count": len(window),
-        "has_more": offset + len(window) < matched_total,
+        "has_more": offset + len(window) < len(rows),
     }
-    evidence = capture_store.query_evidence(
-        quality_entries, covered, len(pairs), window=resolved.window
-    )
-    meta.update(evidence.meta())
-    frozen = selection(latest.evidence)
-    if frozen is not None:
-        meta["selection"] = frozen
+    if not rows:
+        meta["cache_only_explanation"] = (
+            "No matching records in the saved acquisition; backend"
+            " absence is not established."
+        )
+    if context.get("selection"):
+        meta["selection"] = context["selection"]
     return _emit_window(
         args,
         variant.table_columns,
@@ -390,10 +426,6 @@ def run_list(args: argparse.Namespace) -> int:
         variant=variant,
         changed_groups=changed_groups,
     )
-
-
-def _capture_meta_view(entry: capture_store.CaptureEntry) -> Any:
-    return SimpleNamespace(fetched_at=entry.fetched_at)
 
 
 def _public_hint_value(option: spec_mod.ScopeOption, value: Any) -> str:
@@ -427,7 +459,7 @@ def _public_hint_value(option: spec_mod.ScopeOption, value: Any) -> str:
 
 
 def _hint_options(leaf: ListLeaf, values: dict[str, Any]) -> str:
-    parts = ["--all"] if values.get("__selection") == "all-directory" else []
+    parts = []
     for option in leaf.options:
         value = values.get(option.field)
         if value is None:
@@ -469,20 +501,21 @@ def _run_list_live(
     changed_groups = 0
     if variant.projection == "balances":
         rows, changed_groups = latest_statement_rows(rows)
-    rows = _sort_rows(variant, _match(rows, filters), now().isoformat())
+    rows = _match(rows, filters)
     matched_total = len(rows)
-    window = rows[offset:] if args.all else rows[offset : offset + limit]
+    window = rows[offset:] if limit == 0 else rows[offset : offset + limit]
     meta = {
         "source": "live",
         "backend": "cdp",
         "kind": variant.kind,
         "simulated": False,
         "capability": variant.name,
-        "scope": resolved.scope_key,
+        "scope": resolved.request_values,
+        "query": resolved.request_values,
+        "variant": variant.endpoint,
         "requested_window": (
             list(resolved.window) if resolved.window[0] is not None else None
         ),
-        "retained_coverage": None,
         "snapshot_id": None,
         "dataset_id": None,
         "fetched_at": now().isoformat(),
@@ -525,80 +558,22 @@ def run_detail(args: argparse.Namespace) -> int:
                 "--fields must name at least one field",
                 exit_code=EXIT_USAGE,
             )
-    config = load_config()
-    if args.live:
-        with inquiry_session(
-            config_file=config_mod.config_path(), startup_url=leaf.capability.page_url
-        ) as session:
-            from .decision_history import fetch_native_detail
+    with inquiry_session(
+        config_file=config_mod.config_path(), startup_url=leaf.capability.page_url
+    ) as session:
+        from .decision_history import fetch_native_detail
 
-            payload = fetch_native_detail(session, leaf, values)
-        meta = {
-            "source": "live",
-            "backend": "cdp",
-            "kind": detail.kind,
-            "simulated": False,
-            "capability": detail.name,
-            "identity": dict(values),
-            "fetched_at": now().isoformat(),
-            "loaded_at": None,
-            "stale": False,
-            "complete": True,
-            "dataset_complete": None,
-            "matched_total": 1,
-            "returned_count": 1,
-            "has_more": False,
-        }
-        if detail.schema_version:
-            meta["request_scope"] = (
-                {"tntInstId": spec_mod.TENANT} if detail.sends_tenant else {}
-            )
-        if detail.schema_version and isinstance(payload, dict) and "version" in payload:
-            meta["source_version"] = payload["version"]
-        meta.update(detail_context_meta(detail, values, payload))
-        return _emit_object(args, detail.table_columns, payload, meta, fields)
-    store = Cache(config.cache_path)
-    snapshot = detail_store.read_detail_snapshot(store, detail.name)
-    key = detail_store.contract_detail_key(detail, values)
-    hint = (
-        f"run: dogopencli refresh liquidity {' '.join(detail.path)} detail"
-        f" {detail.action} "
-        + " ".join(
-            f"--{flag.replace('_', '-')} {shlex.quote(str(value))}"
-            for flag, value in sorted(values.items())
-        )
-    )
-    if snapshot is None:
-        raise CliError(CACHE_MISS, f"no cached liquidity details; {hint}")
-    stored = detail_store.read_details(store, detail.name).get(key)
-    if stored is None:
-        raise CliError(
-            CACHE_MISS,
-            "no cached native detail for this identity (the object may still"
-            f" exist at the source); {hint}",
-        )
-    stale = is_stale(
-        replace(snapshot, fetched_at=stored.fetched_at), config.ttl_hours, now()
-    )
-    if args.require_fresh and stale:
-        raise CliError(
-            CACHE_STALE,
-            f"cached details are older than {config.ttl_hours:g} hours"
-            f" (fetched_at {stored.fetched_at})",
-        )
+        payload = fetch_native_detail(session, leaf, values)
     meta = {
-        "source": "cache",
+        "source": "live",
         "backend": "cdp",
         "kind": detail.kind,
         "simulated": False,
         "capability": detail.name,
         "identity": dict(values),
-        "snapshot_id": snapshot.snapshot_id,
-        "dataset_id": None,
-        "fetched_at": stored.fetched_at,
-        "detail_fetched_at": stored.fetched_at,
+        "fetched_at": now().isoformat(),
         "loaded_at": None,
-        "stale": stale,
+        "stale": False,
         "complete": True,
         "dataset_complete": None,
         "matched_total": 1,
@@ -609,14 +584,10 @@ def run_detail(args: argparse.Namespace) -> int:
         meta["request_scope"] = (
             {"tntInstId": spec_mod.TENANT} if detail.sends_tenant else {}
         )
-    if (
-        detail.schema_version
-        and isinstance(stored.detail, dict)
-        and "version" in stored.detail
-    ):
-        meta["source_version"] = stored.detail["version"]
-    meta.update(detail_context_meta(detail, values, stored.detail))
-    return _emit_object(args, detail.table_columns, stored.detail, meta, fields)
+    if detail.schema_version and isinstance(payload, dict) and "version" in payload:
+        meta["source_version"] = payload["version"]
+    meta.update(detail_context_meta(detail, values, payload))
+    return _emit_object(args, detail.table_columns, payload, meta, fields)
 
 
 def fetch_detail(

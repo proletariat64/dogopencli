@@ -41,11 +41,6 @@ TENANT = "GUAPW3SG"
 HOST = "iliquidity.alipay.com"
 PAGE_SIZE = 10  # default for leaves without a larger verified request width
 
-# Product retention cap per liquidity business leaf (ADR 0017): primary
-# business records across that leaf's retained dates, captures and filter
-# variants. A product policy, not a proven SQLite capacity limit.
-RETENTION_CAP = 1_000_000
-
 
 @dataclass(frozen=True)
 class ScopeOption:
