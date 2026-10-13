@@ -5,6 +5,10 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { checkQuota, isQuotaError, quotaDecision, runReview } from '../../scripts/qoder_review.mjs';
 
+// Tests run inside Actions too; simulated skips must not change the real summary.
+delete process.env.GITHUB_OUTPUT;
+delete process.env.GITHUB_STEP_SUMMARY;
+
 test('exhaustion overrides other buckets; paid and available org credits permit review', () => {
   assert.equal(quotaDecision({ isQuotaExceeded: true, userQuota: { remaining: 10 } }), 'exhausted');
   assert.equal(quotaDecision({ userQuota: { remaining: 1 } }), 'available');
@@ -24,16 +28,17 @@ test('absent, session-only and invalid quota data never start a paid task', () =
 
 test('only explicit credit/quota exhaustion is eligible for a skip', () => {
   for (const message of ['insufficient credits', 'quota exceeded', 'Credits are exhausted',
-    'out of credits', 'not enough credits', 'no remaining credits']) {
+    'out of credits', 'not enough credits', 'no remaining credits', 'credit_exhausted']) {
     assert.equal(isQuotaError(message), true, message);
   }
   for (const message of ['no valid model config found', 'invalid personal access token',
-    'HTTP 429 rate limit exceeded', 'network timeout', 'quota service unavailable']) {
+    'HTTP 429 rate limit exceeded', 'QUOTA_EXCEEDED', 'network timeout', 'quota service unavailable']) {
     assert.equal(isQuotaError(message), false, message);
   }
 });
 
-test('preflight keeps an empty prompt stream and always closes the SDK session', async () => {
+test('preflight keeps an empty prompt stream and always closes the SDK session', async t => {
+  t.mock.method(console, 'log', () => {});
   let closed = false;
   let initialized = false;
   await checkQuota({
@@ -62,7 +67,8 @@ test('preflight keeps an empty prompt stream and always closes the SDK session',
   assert.equal(closed, true);
 });
 
-test('runner skips quota failures, rejects config failures and detects zero-exit error results', async () => {
+test('runner skips quota failures, rejects config failures and detects zero-exit error results', async t => {
+  t.mock.method(console, 'log', () => {});
   const dir = mkdtempSync(join(tmpdir(), 'qoder-guard-test-'));
   const oldOutput = process.env.GITHUB_OUTPUT;
   const oldSummary = process.env.GITHUB_STEP_SUMMARY;

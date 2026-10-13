@@ -18,7 +18,9 @@ export function quotaDecision(usage) {
 }
 
 export function isQuotaError(text) {
-  return /\b(?:credits?|quota)\s+(?:is\s+|are\s+|has been\s+)?(?:exhausted|depleted|exceeded|insufficient)\b|\binsufficient\s+(?:credits?|quota)\b|\b(?:out of|not enough|no remaining)\s+credits?\b/i.test(text);
+  // credit_exhausted is a Qoder terminal-credit notification. QUOTA_EXCEEDED
+  // alone is ambiguous: the CLI also uses it for generic HTTP 429 responses.
+  return /\bcredit_exhausted\b|\b(?:credits?|quota)\s+(?:is\s+|are\s+|has been\s+)?(?:exhausted|depleted|exceeded|insufficient)\b|\binsufficient\s+(?:credits?|quota)\b|\b(?:out of|not enough|no remaining)\s+credits?\b/i.test(text);
 }
 
 function report(status, reason) {
