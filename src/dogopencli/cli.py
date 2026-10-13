@@ -1626,6 +1626,41 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
         # No successfully parsed output format exists yet; use the JSON default.
         return _emit_error(error)
     _emit_deprecations(alias_check)
+    if (
+        node.path[-1:] == ("list",)
+        or node.path[:1] == ("refresh",)
+        or node.path == ("fx", "trade")
+    ):
+        controls = {
+            "format",
+            "fields",
+            "limit",
+            "offset",
+            "live",
+            "require_complete",
+            "require_fresh",
+        }
+        for option in node.options:
+            if option.name in controls:
+                continue
+            value = getattr(args, option.name, None)
+            values = value if isinstance(value, list) else [value]
+            if "ANY" not in values:
+                continue
+            registered = (
+                node.path
+                in (
+                    ("liquidity", "cash", "balances", "list"),
+                    ("refresh", "liquidity", "cash", "balances"),
+                )
+                and option.name == "entity"
+            )
+            if not registered:
+                return _emit_error(
+                    _argument_error(
+                        f"{option.flag} does not support ANY; use explicit native values"
+                    )
+                )
     if node.path[0] == "describe":
         args.describe_path = node.path[1:]
     # Generic plugin handlers resolve their leaf from the command path.

@@ -1026,3 +1026,31 @@ def test_refresh_output_controls_keep_complete_candidate(run_cli, envelope, cdp_
     result = envelope(listing(run_cli, "--limit", "0")[1])
     assert len(result["data"]) == 5
     assert result["data"][0]["futureUnknownField"] == {"keep": ["as-is", 1]}
+
+
+@pytest.mark.parametrize(
+    "path, option",
+    [
+        (["payment", "channel", "list", "--live"], "--financial-inst-id"),
+        (["collection", "sla", "configs", "list", "--live"], "--entity"),
+        (["collection", "card-template", "list", "--live"], "--template-name"),
+    ],
+)
+def test_undeclared_any_is_rejected_before_browser(
+    run_cli, envelope, cdp_setup, path, option
+):
+    code, out, _ = run_cli([*path, option, "ANY"])
+    assert code == 2, out
+    assert envelope(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert cdp_setup.state.transports == []
+    assert cdp_setup.state.business_requests == []
+
+
+def test_lowercase_any_remains_an_explicit_native_identifier(
+    run_cli, envelope, cdp_setup
+):
+    cdp_setup.state.business_handler = paging_handler({1: [channel_row(1)]}, 1)
+    code, out, _ = listing(run_cli, "--live", "--financial-inst-id", "any")
+    assert code == 0, out
+    assert cdp_setup.state.business_requests[-1]["financialInstId"] == "any"
+    assert not cdp_setup.cache_path.exists()

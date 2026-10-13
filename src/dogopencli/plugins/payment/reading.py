@@ -201,7 +201,11 @@ def description(node: BizNode) -> dict[str, Any]:
             + (" --id BASELINE_ID --fields id" if detail else " --limit 20 --offset 0"),
             command
             + (" --id BASELINE_ID" if detail else "")
-            + " --require-fresh --require-complete",
+            + (
+                " --require-complete"
+                if detail
+                else " --require-fresh --require-complete"
+            ),
         ],
     }
     if not detail:
