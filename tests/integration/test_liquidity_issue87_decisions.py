@@ -122,7 +122,7 @@ def listing(rows):
 def published(rows):
     return [
         {key: value for key, value in row.items() if key in SAMPLED_FIELDS}
-        for row in sorted(rows, key=lambda row: str(row["id"]))
+        for row in rows
     ]
 
 
@@ -157,7 +157,7 @@ def test_decision_refresh_live_offline_privacy_and_description(
     assert refresh["data"]["row_count"] == 12
     assert [body["rowStart"] for body in setup.state.business_requests] == [0, 10]
     cache_before = setup.cache_path.read_bytes()
-    code, out, err = run_cli([*QUERY, *SCOPE, "--live", "--all"])
+    code, out, err = run_cli([*QUERY, *SCOPE, "--live", "--limit", "0"])
     assert code == 0, err
     live = parse(out)
     assert live["data"] == published(rows)
@@ -174,7 +174,7 @@ def test_decision_refresh_live_offline_privacy_and_description(
     assert setup.cache_path.read_bytes() == cache_before
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *SCOPE, "--all", "--require-complete"])
+    code, out, err = run_cli([*QUERY, "--limit", "0", "--require-complete"])
     assert code == 0, err
     cached = parse(out)
     assert cached["data"] == live["data"]
@@ -187,7 +187,10 @@ def test_decision_refresh_live_offline_privacy_and_description(
         if entry == "describe":
             description = parse(out)
             assert description["read_guide"]["identity"] == ["id"]
-            assert description["read_guide"]["offline_profile"] == "history"
+            assert (
+                description["read_guide"]["offline_profile"]
+                == "single temporary leaf result"
+            )
             assert description["read_guide"]["live_verified"] == "2026-10-04"
             assert (
                 description["data_schema"]["properties"]["id"]["x-observed-type"]
@@ -210,27 +213,23 @@ def test_decision_refresh_live_offline_privacy_and_description(
         assert value not in cache_before
 
 
-def test_decision_empty_live_and_published_empty_are_distinct_from_cache_miss(
+def test_decision_empty_refresh_does_not_create_slot(
     setup, run_cli, decision_candidate_catalog
 ):
     setup.state.business_handler = listing([])
-    code, out, err = run_cli([*QUERY, *SCOPE, "--live", "--all"])
-    assert code == 0, err
-    assert parse(out)["data"] == []
-    assert not setup.cache_path.exists()
-    code, out, err = run_cli([*REFRESH, *SCOPE])
-    assert code == 0, err
-    before = setup.cache_path.read_bytes()
-    code, out, err = run_cli([*QUERY, *SCOPE, "--live", "--all"])
-    assert code == 0, err
-    assert setup.cache_path.read_bytes() == before
+    for argv in ([*QUERY, *SCOPE, "--live", "--limit", "0"], [*REFRESH, *SCOPE]):
+        code, out, err = run_cli(argv)
+        assert code == 0, err
+        result = parse(out)
+        if argv[0] == "refresh":
+            assert result["meta"]["published"] is False
+        else:
+            assert result["data"] == []
+        assert not setup.cache_path.exists()
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *SCOPE, "--all"])
-    assert code == 0, err
-    result = parse(out)
-    assert result["data"] == []
-    assert result["meta"]["complete"] is True
-    assert result["meta"]["retained_coverage"][0]["row_count"] == 0
+    code, out, _ = run_cli([*QUERY, "--limit", "0"])
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
 
 
 @pytest.mark.parametrize(
@@ -310,12 +309,12 @@ def test_decision_overlap_default_partial_and_strict_preserve_capture(
     assert result["meta"]["reported_total"] == 12
     assert err
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *SCOPE, "--all"])
+    code, out, err = run_cli([*QUERY, "--limit", "0"])
     assert code == 0, err
     assert parse(out)["meta"]["complete"] is False
     assert parse(out)["data"] == published(rows[:11])
     assert err
-    code, out, _ = run_cli([*QUERY, *SCOPE, "--all", "--require-complete"])
+    code, out, _ = run_cli([*QUERY, "--limit", "0", "--require-complete"])
     assert code == 1
     assert parse(out)["data"] is None
 
@@ -348,26 +347,25 @@ def test_decision_hard_collection_failures_preserve_prior_capture(
     assert setup.cache_path.read_bytes() == before
 
 
-def test_decision_list_refresh_keeps_native_detail_cache_independent(
+def test_decisions_native_get_preserves_list_slot(
     setup, run_cli, decision_candidate_catalog
 ):
+    setup.state.business_handler = listing([decision(7)])
+    assert run_cli([*REFRESH, *SCOPE])[0] == 0
+    before = setup.cache_path.read_bytes()
+    detail = {"id": 7, "detailOnly": "actual-detail"}
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
-        "body": {"success": True, "data": {"id": 7, "detailOnly": "actual-detail"}},
+        "body": {"success": True, "data": detail},
     }
-    code, _, err = run_cli(
-        [
-            "refresh",
-            "liquidity",
-            "operations",
-            "decisions",
-            "detail",
-            "get",
-            "--id",
-            "7",
-        ]
-    )
+    argv = ["liquidity", "operations", "decisions", "get", *["--id", "7"]]
+    count = len(setup.state.business_requests)
+    code, out, err = run_cli(argv)
     assert code == 0, err
+    assert parse(out)["data"] == detail
+    assert parse(out)["meta"]["source"] == "live"
+    assert len(setup.state.business_requests) == count + 1
+    assert setup.cache_path.read_bytes() == before
     from collections import deque
 
     lineage = {
@@ -382,40 +380,22 @@ def test_decision_list_refresh_keeps_native_detail_cache_independent(
         {"status": 200, "body": {"success": True, "data": data}}
         for data in (lineage, versions)
     )
-    code, _, err = run_cli(
-        [
-            "refresh",
-            "liquidity",
-            "operations",
-            "decisions",
-            "detail",
-            "history",
-            "--id",
-            "7",
-        ]
-    )
-    assert code == 0, err
-    setup.state.business_handler = listing([decision(7)])
-    code, _, err = run_cli([*REFRESH, *SCOPE])
-    assert code == 0, err
-    count = len(setup.state.business_requests)
-    setup.state.reachable = False
-    code, out, err = run_cli(
-        ["liquidity", "operations", "decisions", "get", "--id", "7"]
-    )
-    assert code == 0, err
-    assert parse(out)["data"] == {"id": 7, "detailOnly": "actual-detail"}
-    assert len(setup.state.business_requests) == count
-
     code, out, err = run_cli(
         ["liquidity", "operations", "decisions", "history", "--id", "7"]
     )
     assert code == 0, err
     assert parse(out)["data"] == versions
-    assert len(setup.state.business_requests) == count
+    assert parse(out)["meta"]["source"] == "live"
+    assert len(setup.state.business_requests) == count + 3
+    assert setup.cache_path.read_bytes() == before
+    setup.state.running = False
+    code, out, _ = run_cli(argv)
+    assert code == 1
+    assert parse(out)["data"] is None
+    assert setup.cache_path.read_bytes() == before
 
 
-def test_decision_exact_native_scopes_retain_independent_captures(
+def test_decision_empty_later_scope_preserves_last_slot(
     setup, run_cli, decision_candidate_catalog
 ):
     setup.state.business_handler = listing([decision(1)])
@@ -436,11 +416,12 @@ def test_decision_exact_native_scopes_retain_independent_captures(
     code, _, err = run_cli([*REFRESH, *separate_scope])
     assert code == 0, err
     setup.state.reachable = False
-    for scope, expected in ((SCOPE, published([decision(1)])), (separate_scope, [])):
-        code, out, err = run_cli([*QUERY, *scope, "--all", "--require-complete"])
-        assert code == 0, err
-        assert parse(out)["data"] == expected
-        assert parse(out)["meta"]["complete"] is True
+    code, out, err = run_cli([*QUERY, "--limit", "0", "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["data"] == published([decision(1)])
+    code, out, _ = run_cli([*QUERY, *separate_scope])
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
 T_START = START.replace(" ", "T")
@@ -468,10 +449,10 @@ def test_decision_canonical_t_form_shares_the_legacy_space_scope(
     for body in setup.state.business_requests:
         assert body["startTime"] == body["createStartTime"] == START
         assert body["endTime"] == body["createEndTime"] == END
-    canonical_meta = parse(run_cli([*QUERY, *T_SCOPE, "--all"])[1])["meta"]
+    canonical_meta = parse(run_cli([*QUERY, "--limit", "0"])[1])["meta"]
     # The legacy space form reads the identical cached scope offline.
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *SCOPE, "--all"])
+    code, out, err = run_cli([*QUERY, "--limit", "0"])
     assert code == 0, err
     legacy = parse(out)
     assert legacy["data"] == published(rows)

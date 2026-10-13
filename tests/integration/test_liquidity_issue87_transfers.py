@@ -120,7 +120,14 @@ def transfer_listing(rows):
 
 
 def transfer_query(*tail):
-    return ["liquidity", "operations", "transfers", "list", *TRANSACTION_SCOPE, *tail]
+    return [
+        "liquidity",
+        "operations",
+        "transfers",
+        "list",
+        *(TRANSACTION_SCOPE if "--live" in tail else ()),
+        *tail,
+    ]
 
 
 def transfer_refresh(*tail):
@@ -151,7 +158,9 @@ def test_registered_scoped_transfers_refresh_live_and_disconnected_cache_are_exa
         for body in setup.state.business_requests
     ] == [0, 10]
     before = setup.cache_path.read_bytes()
-    code, out, err = run_cli(transfer_query("--live", "--all", "--require-complete"))
+    code, out, err = run_cli(
+        transfer_query("--live", "--limit", "0", "--require-complete")
+    )
     assert code == 0, err
     live = parse(out)
     assert live["data"] == rows
@@ -162,13 +171,13 @@ def test_registered_scoped_transfers_refresh_live_and_disconnected_cache_are_exa
     assert live["meta"]["reported_total"] == 12
     assert setup.cache_path.read_bytes() == before
     setup.state.business_handler = transfer_listing([])
-    code, out, err = run_cli(transfer_query("--live", "--all"))
+    code, out, err = run_cli(transfer_query("--live", "--limit", "0"))
     assert code == 0, err
     assert parse(out)["data"] == []
     assert setup.cache_path.read_bytes() == before
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(transfer_query("--all", "--require-complete"))
+    code, out, err = run_cli(transfer_query("--limit", "0", "--require-complete"))
     assert code == 0, err
     cached = parse(out)
     assert cached["data"] == rows
@@ -186,7 +195,9 @@ def test_registered_scoped_transfers_refresh_live_and_disconnected_cache_are_exa
         if entry == "describe":
             assert doc["read_guide"]["identity"] == ["orderNo"]
             assert "exact query scope" in " ".join(doc["read_guide"]["notes"])
-            assert doc["read_guide"]["offline_profile"] == "history"
+            assert (
+                doc["read_guide"]["offline_profile"] == "single temporary leaf result"
+            )
             assert (
                 doc["data_schema"]["properties"]["creditAmount"]["x-observed-type"]
                 == "str | null"
@@ -195,28 +206,24 @@ def test_registered_scoped_transfers_refresh_live_and_disconnected_cache_are_exa
     assert len(setup.state.business_requests) == count
 
 
-def test_scoped_transfers_complete_empty_capture_is_not_cache_miss(
+def test_scoped_transfers_empty_refresh_does_not_create_slot(
     setup, run_cli, transfer_candidate_catalog
 ):
     setup.state.business_handler = transfer_listing([])
-    code, out, err = run_cli(transfer_query("--live", "--all"))
+    code, out, err = run_cli(transfer_query("--live", "--limit", "0"))
     assert code == 0, err
     assert parse(out)["data"] == []
     assert parse(out)["meta"]["complete"] is True
     assert not setup.cache_path.exists()
     code, out, err = run_cli(transfer_refresh("--require-complete"))
     assert code == 0, err
-    assert parse(out)["meta"]["published"] is True
+    assert parse(out)["meta"]["published"] is False
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(transfer_query("--all", "--require-complete"))
-    assert code == 0, err
-    result = parse(out)
-    assert result["data"] == []
-    assert result["error"] is None
-    assert result["meta"]["complete"] is True
-    assert result["meta"]["reported_total"] == 0
-    assert result["meta"]["retained_coverage"][0]["row_count"] == 0
+    code, out, _ = run_cli(transfer_query("--limit", "0"))
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert not setup.cache_path.exists()
     assert len(setup.state.business_requests) == count
 
 
@@ -297,7 +304,7 @@ def test_scoped_transfers_overlap_warns_and_strict_mode_preserves_complete_cache
         return transfer_page(rows, 12)
 
     setup.state.business_handler = overlap
-    code, out, err = run_cli(transfer_query("--live", "--all"))
+    code, out, err = run_cli(transfer_query("--live", "--limit", "0"))
     result = parse(out)
     assert code == 0
     assert result["error"] is None
@@ -309,7 +316,7 @@ def test_scoped_transfers_overlap_warns_and_strict_mode_preserves_complete_cache
     assert result["meta"]["missing_count"] == 1
     assert setup.cache_path.read_bytes() == before
     for argv in (
-        transfer_query("--live", "--all", "--require-complete"),
+        transfer_query("--live", "--limit", "0", "--require-complete"),
         transfer_refresh("--require-complete"),
     ):
         code, out, _ = run_cli(argv)
@@ -327,7 +334,7 @@ def test_scoped_transfers_overlap_warns_and_strict_mode_preserves_complete_cache
     assert parse(out)["meta"]["complete"] is False
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(transfer_query("--all"))
+    code, out, err = run_cli(transfer_query("--limit", "0"))
     result = parse(out)
     assert code == 0
     assert "INCOMPLETE_RESULT" in err
@@ -357,7 +364,7 @@ def test_scoped_transfers_hard_pagination_failure_never_publishes_partial(
         return transfer_page([transfer(10), transfer(11)], 13)
 
     setup.state.business_handler = failure
-    for argv in (transfer_query("--live", "--all"), transfer_refresh()):
+    for argv in (transfer_query("--live", "--limit", "0"), transfer_refresh()):
         code, out, _ = run_cli(argv)
         result = parse(out)
         assert code == 1
@@ -389,7 +396,7 @@ def test_scoped_transfers_business_envelope_failure_preserves_cache(
         assert setup.cache_path.read_bytes() == before
 
 
-def test_scoped_transfers_distinct_date_scopes_keep_independent_captures(
+def test_scoped_transfers_empty_later_scope_preserves_last_slot(
     setup, run_cli, transfer_candidate_catalog
 ):
     def listing(payload, index):
@@ -412,18 +419,15 @@ def test_scoped_transfers_distinct_date_scopes_keep_independent_captures(
     assert parse(out)["meta"]["complete"] is True
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(transfer_query("--all"))
+    code, out, err = run_cli(transfer_query("--limit", "0"))
     assert code == 0, err
     populated = parse(out)
     assert populated["data"] == [transfer(0)]
     code, out, err = run_cli(
-        ["liquidity", "operations", "transfers", "list", *empty_scope, "--all"]
+        ["liquidity", "operations", "transfers", "list", *empty_scope, "--limit", "0"]
     )
-    assert code == 0, err
-    empty = parse(out)
-    assert empty["data"] == []
-    assert empty["meta"]["complete"] is True
-    assert empty["meta"]["scope"] != populated["meta"]["scope"]
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     assert len(setup.state.business_requests) == count
 
 
@@ -463,54 +467,42 @@ def test_transfer_projection_excludes_sensitive_and_additive_fields(
     setup.state.business_handler = transfer_listing([native])
     assert run_cli(transfer_refresh())[0] == 0
     setup.state.reachable = False
-    code, out, err = run_cli(transfer_query("--all"))
+    code, out, err = run_cli(transfer_query("--limit", "0"))
     assert code == 0, err
     assert parse(out)["data"] == [transfer(0)]
     assert b"private-" not in setup.cache_path.read_bytes()
 
 
-def test_transfer_list_refresh_keeps_existing_detail_cache_independent(
+def test_transfers_native_get_preserves_list_slot(
     setup, run_cli, transfer_candidate_catalog
 ):
+    setup.state.business_handler = transfer_listing([transfer(0)])
+    assert run_cli(transfer_refresh())[0] == 0
+    before = setup.cache_path.read_bytes()
     detail = {"orderNo": "synthetic-transfer-000", "nativeDetailOnly": "retained"}
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": {"baseResult": {"success": True, "data": detail}},
     }
-    detail_refresh = [
-        "refresh",
-        "liquidity",
-        "operations",
-        "transfers",
-        "detail",
-        "get",
-        "--order-no",
-        detail["orderNo"],
-    ]
-    detail_query = [
+    argv = [
         "liquidity",
         "operations",
         "transfers",
         "get",
-        "--order-no",
-        detail["orderNo"],
+        *["--order-no", "synthetic-transfer-000"],
     ]
-    code, _, err = run_cli(detail_refresh)
-    assert code == 0, err
-    code, out, err = run_cli(detail_query)
-    assert code == 0, err
-    before = parse(out)
-    setup.state.business_handler = transfer_listing([transfer(0)])
-    code, _, err = run_cli(transfer_refresh())
-    assert code == 0, err
     count = len(setup.state.business_requests)
-    setup.state.reachable = False
-    code, out, err = run_cli(detail_query)
+    code, out, err = run_cli(argv)
     assert code == 0, err
-    after = parse(out)
-    assert after["data"] == before["data"] == detail
-    assert after["meta"]["detail_fetched_at"] == before["meta"]["detail_fetched_at"]
-    assert len(setup.state.business_requests) == count
+    assert parse(out)["data"] == detail
+    assert parse(out)["meta"]["source"] == "live"
+    assert len(setup.state.business_requests) == count + 1
+    assert setup.cache_path.read_bytes() == before
+    setup.state.running = False
+    code, out, _ = run_cli(argv)
+    assert code == 1
+    assert parse(out)["data"] is None
+    assert setup.cache_path.read_bytes() == before
 
 
 @pytest.mark.parametrize("defect", ["count-disagreement", "malformed", "permission"])

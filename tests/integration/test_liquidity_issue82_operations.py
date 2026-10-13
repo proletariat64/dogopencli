@@ -99,7 +99,14 @@ def swap_listing(rows):
 
 
 def swap_query(*tail):
-    return ["liquidity", "operations", "swaps", "list", *TRADE_SCOPE, *tail]
+    return [
+        "liquidity",
+        "operations",
+        "swaps",
+        "list",
+        *(TRADE_SCOPE if "--live" in tail else ()),
+        *tail,
+    ]
 
 
 def swap_refresh(*tail):
@@ -170,8 +177,8 @@ def test_swap_unbounded_default_and_get_remain_non_executing(setup, run_cli):
     for argv, expected_code, expected_error in (
         (
             ["liquidity", "operations", "swaps", "list"],
-            2,
-            "INVALID_ARGUMENT",
+            1,
+            "CACHE_MISS",
         ),
         (
             ["refresh", "liquidity", "operations", "swaps"],
@@ -211,7 +218,7 @@ def test_registered_scoped_swaps_refresh_live_and_disconnected_cache_are_exact(
         for body in setup.state.business_requests
     ] == [0, 10]
     before = setup.cache_path.read_bytes()
-    code, out, err = run_cli(swap_query("--live", "--all", "--require-complete"))
+    code, out, err = run_cli(swap_query("--live", "--limit", "0", "--require-complete"))
     assert code == 0, err
     live = parse(out)
     assert live["data"] == rows
@@ -223,7 +230,7 @@ def test_registered_scoped_swaps_refresh_live_and_disconnected_cache_are_exact(
     assert setup.cache_path.read_bytes() == before
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(swap_query("--all", "--require-complete"))
+    code, out, err = run_cli(swap_query("--limit", "0", "--require-complete"))
     assert code == 0, err
     cached = parse(out)
     assert cached["data"] == rows
@@ -239,7 +246,9 @@ def test_registered_scoped_swaps_refresh_live_and_disconnected_cache_are_exact(
         if entry == "describe":
             assert doc["read_guide"]["identity"] == ["dealId"]
             assert doc["read_guide"]["live_verified"] == "2026-10-03"
-            assert doc["read_guide"]["offline_profile"] == "history"
+            assert (
+                doc["read_guide"]["offline_profile"] == "single temporary leaf result"
+            )
             assert (
                 doc["data_schema"]["properties"]["nearLegCreditAmount"][
                     "x-observed-type"
@@ -250,28 +259,24 @@ def test_registered_scoped_swaps_refresh_live_and_disconnected_cache_are_exact(
     assert len(setup.state.business_requests) == count
 
 
-def test_scoped_swaps_complete_empty_capture_is_not_cache_miss(
+def test_scoped_swaps_empty_refresh_does_not_create_slot(
     setup, run_cli, swap_candidate_catalog
 ):
     setup.state.business_handler = swap_listing([])
-    code, out, err = run_cli(swap_query("--live", "--all"))
+    code, out, err = run_cli(swap_query("--live", "--limit", "0"))
     assert code == 0, err
     assert parse(out)["data"] == []
     assert parse(out)["meta"]["complete"] is True
     assert not setup.cache_path.exists()
     code, out, err = run_cli(swap_refresh("--require-complete"))
     assert code == 0, err
-    assert parse(out)["meta"]["published"] is True
+    assert parse(out)["meta"]["published"] is False
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(swap_query("--all", "--require-complete"))
-    assert code == 0, err
-    result = parse(out)
-    assert result["data"] == []
-    assert result["error"] is None
-    assert result["meta"]["complete"] is True
-    assert result["meta"]["reported_total"] == 0
-    assert result["meta"]["retained_coverage"][0]["row_count"] == 0
+    code, out, _ = run_cli(swap_query("--limit", "0"))
+    assert code == 1
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert not setup.cache_path.exists()
     assert len(setup.state.business_requests) == count
 
 
@@ -355,7 +360,7 @@ def test_scoped_swaps_overlap_warns_and_strict_mode_preserves_complete_cache(
         return swap_page(rows, 12)
 
     setup.state.business_handler = overlap
-    code, out, err = run_cli(swap_query("--live", "--all"))
+    code, out, err = run_cli(swap_query("--live", "--limit", "0"))
     result = parse(out)
     assert code == 0
     assert result["error"] is None
@@ -367,7 +372,7 @@ def test_scoped_swaps_overlap_warns_and_strict_mode_preserves_complete_cache(
     assert result["meta"]["missing_count"] == 1
     assert setup.cache_path.read_bytes() == before
     for argv in (
-        swap_query("--live", "--all", "--require-complete"),
+        swap_query("--live", "--limit", "0", "--require-complete"),
         swap_refresh("--require-complete"),
     ):
         code, out, _ = run_cli(argv)
@@ -385,7 +390,7 @@ def test_scoped_swaps_overlap_warns_and_strict_mode_preserves_complete_cache(
     assert parse(out)["meta"]["complete"] is False
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(swap_query("--all"))
+    code, out, err = run_cli(swap_query("--limit", "0"))
     result = parse(out)
     assert code == 0
     assert "INCOMPLETE_RESULT" in err
@@ -413,7 +418,7 @@ def test_scoped_swaps_hard_pagination_failure_never_publishes_partial(
         return swap_page([swap(10), swap(11)], 13)
 
     setup.state.business_handler = failure
-    for argv in (swap_query("--live", "--all"), swap_refresh()):
+    for argv in (swap_query("--live", "--limit", "0"), swap_refresh()):
         code, out, _ = run_cli(argv)
         result = parse(out)
         assert code == 1
@@ -445,7 +450,7 @@ def test_scoped_swaps_business_envelope_failure_preserves_cache(
         assert setup.cache_path.read_bytes() == before
 
 
-def test_scoped_swaps_distinct_date_scopes_keep_independent_captures(
+def test_scoped_swaps_empty_later_scope_preserves_last_slot(
     setup, run_cli, swap_candidate_catalog
 ):
     def listing(payload, index):
@@ -464,16 +469,13 @@ def test_scoped_swaps_distinct_date_scopes_keep_independent_captures(
     assert parse(out)["meta"]["complete"] is True
     count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli(swap_query("--all"))
+    code, out, err = run_cli(swap_query("--limit", "0"))
     assert code == 0, err
     populated = parse(out)
     assert populated["data"] == [swap(0)]
     code, out, err = run_cli(
-        ["liquidity", "operations", "swaps", "list", *empty_scope, "--all"]
+        ["liquidity", "operations", "swaps", "list", *empty_scope, "--limit", "0"]
     )
-    assert code == 0, err
-    empty = parse(out)
-    assert empty["data"] == []
-    assert empty["meta"]["complete"] is True
-    assert empty["meta"]["scope"] != populated["meta"]["scope"]
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     assert len(setup.state.business_requests) == count

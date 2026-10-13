@@ -5,7 +5,6 @@ leaf in the production catalog or waive its independent production UAT gate.
 """
 
 from dataclasses import replace
-from functools import partial
 
 import pytest
 from fake_cdp import SSO_URL
@@ -14,7 +13,6 @@ from test_liquidity_cli_sit import LIQUIDITY_URL, route_probes
 from dogopencli import catalog, helptree, plugins, snapshot
 from dogopencli.jsonutil import parse
 from dogopencli.plugins.liquidity import leaves
-from dogopencli.plugins.liquidity import store as capture_store
 from dogopencli.plugins.liquidity.risk_batch import RISK_ANOMALIES, RISK_EVENTS
 
 pytest_plugins = ["test_liquidity_cli_sit"]
@@ -109,7 +107,14 @@ def listing(rows, mode="RISK_EVENT"):
 
 
 def query(resource="events", *tail, scope=SCOPE):
-    return ["liquidity", "risk", resource, "list", *scope, *tail]
+    return [
+        "liquidity",
+        "risk",
+        resource,
+        "list",
+        *(scope if "--live" in tail else ()),
+        *tail,
+    ]
 
 
 def refresh(resource="events", *tail, scope=SCOPE):
@@ -153,7 +158,7 @@ def test_candidate_complete_capture_roundtrips_without_browser(
     request_count = len(setup.state.business_requests)
     transport_count = len(setup.state.transports)
     setup.state.running = False
-    code, out, err = run_cli(query(resource, "--all", "--require-complete"))
+    code, out, err = run_cli(query(resource, "--limit", "0", "--require-complete"))
     assert code == 0, err
     cached = parse(out)
     assert cached["data"] == rows
@@ -164,10 +169,6 @@ def test_candidate_complete_capture_roundtrips_without_browser(
     assert cached["meta"]["snapshot_id"] == captured["meta"]["snapshot_id"]
     assert cached["meta"]["fetched_at"] == captured["meta"]["fetched_at"]
     assert cached["meta"]["acquisition"] == captured["meta"]["acquisition"]
-    assert (
-        cached["meta"]["retained_coverage"][0]["acquisition"]
-        == captured["meta"]["acquisition"]
-    )
     assert cached["meta"]["reported_total"] == 12
     assert cached["meta"]["source_observed_from"] is None
     assert cached["meta"]["source_observed_to"] is None
@@ -178,7 +179,10 @@ def test_candidate_complete_capture_roundtrips_without_browser(
         if command == "describe":
             description = parse(out)
             assert description["read_guide"]["identity"] == ["id"]
-            assert description["read_guide"]["offline_profile"] == "history"
+            assert (
+                description["read_guide"]["offline_profile"]
+                == "single temporary leaf result"
+            )
             assert (
                 description["data_schema"]["properties"]["gmtCreate"]["x-observed-type"]
                 == "str"
@@ -208,35 +212,22 @@ def test_candidate_complete_capture_roundtrips_without_browser(
 
 
 @pytest.mark.parametrize("resource,mode", RESOURCES)
-def test_live_isolation_and_complete_empty_capture(setup, run_cli, resource, mode):
-    setup.state.business_handler = listing([risk(0, mode)], mode)
-    code, out, err = run_cli(query(resource, "--live", "--all"))
+def test_live_isolation_and_empty_refresh(setup, run_cli, resource, mode):
+    for rows in ([risk(0, mode)], []):
+        setup.state.business_handler = listing(rows, mode)
+        code, out, err = run_cli(query(resource, "--live", "--limit", "0"))
+        assert code == 0, err
+        assert parse(out)["data"] == rows
+        assert parse(out)["meta"]["complete"] is True
+        assert not setup.cache_path.exists()
+    code, out, err = run_cli(refresh(resource, "--require-complete"))
     assert code == 0, err
-    assert parse(out)["data"] == [risk(0, mode)]
-    assert parse(out)["meta"]["source"] == "live"
-    assert not setup.cache_path.exists()
-    setup.state.business_handler = listing([], mode)
-    code, out, err = run_cli(query(resource, "--live", "--all"))
-    assert code == 0, err
-    assert parse(out)["data"] == []
-    assert parse(out)["meta"]["complete"] is True
-    assert not setup.cache_path.exists()
+    assert parse(out)["meta"]["published"] is False
+    setup.state.running = False
     code, out, _ = run_cli(query(resource))
     assert code == 1
     assert parse(out)["error"]["code"] == "CACHE_MISS"
-    code, out, err = run_cli(refresh(resource, "--require-complete"))
-    assert code == 0, err
-    captured = parse(out)
-    assert captured["meta"]["published"] is True
-    setup.state.running = False
-    code, out, err = run_cli(query(resource, "--all", "--require-complete"))
-    assert code == 0, err
-    cached = parse(out)
-    assert cached["data"] == []
-    assert cached["error"] is None
-    assert cached["meta"]["complete"] is True
-    assert cached["meta"]["reported_total"] == 0
-    assert cached["meta"]["retained_coverage"][0]["row_count"] == 0
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize("resource,mode", RESOURCES)
@@ -250,7 +241,9 @@ def test_complete_empty_live_does_not_fall_back_to_populated_capture(
     captured = parse(out)
     before = setup.cache_path.read_bytes()
     setup.state.business_handler = listing([], mode)
-    code, out, err = run_cli(query(resource, "--live", "--all", "--require-complete"))
+    code, out, err = run_cli(
+        query(resource, "--live", "--limit", "0", "--require-complete")
+    )
     assert code == 0, err
     live = parse(out)
     assert live["data"] == []
@@ -260,81 +253,12 @@ def test_complete_empty_live_does_not_fall_back_to_populated_capture(
     assert setup.cache_path.read_bytes() == before
     request_count = len(setup.state.business_requests)
     setup.state.running = False
-    code, out, err = run_cli(query(resource, "--all", "--require-complete"))
+    code, out, err = run_cli(query(resource, "--limit", "0", "--require-complete"))
     assert code == 0, err
     cached = parse(out)
     assert cached["data"] == rows
     assert cached["meta"]["snapshot_id"] == captured["meta"]["snapshot_id"]
     assert cached["meta"]["acquisition"] == captured["meta"]["acquisition"]
-    assert len(setup.state.business_requests) == request_count
-    assert setup.cache_path.read_bytes() == before
-
-
-@pytest.mark.parametrize("resource,mode", RESOURCES)
-def test_history_retention_caps_all_date_scopes_and_reports_old_scope_gap(
-    setup, run_cli, monkeypatch, resource, mode
-):
-    monkeypatch.setattr(
-        capture_store,
-        "plan_capture_publish",
-        partial(capture_store.plan_capture_publish, cap=3),
-    )
-    old_rows = [
-        risk(i, mode, gmtCreate="2026-10-04 08:00:00（GMT+08）") for i in range(2)
-    ]
-    new_rows = [
-        risk(i, mode, gmtCreate="2026-01-01 08:00:00（GMT+08）") for i in (10, 11)
-    ]
-    newer_scope = ["--from-date", "20260926", "--to-date", "20260927"]
-
-    def answer(payload, index):
-        assert payload["riskMode"] == mode
-        rows = old_rows if payload["startTime"] == "2026-09-25" else new_rows
-        return page(rows, len(rows))
-
-    setup.state.business_handler = answer
-    code, out, err = run_cli(refresh(resource, "--require-complete"))
-    assert code == 0, err
-    old_capture = parse(out)
-    code, out, err = run_cli(refresh(resource, "--require-complete", scope=newer_scope))
-    assert code == 0, err
-    new_capture = parse(out)
-    assert new_capture["meta"]["complete"] is True
-    assert new_capture["meta"]["retention"]["dropped"] == 1
-    assert new_capture["meta"]["retention"]["retained"] == 3
-    assert "retention evicted 1" in err
-    assert new_capture["meta"]["fetched_at"] > old_capture["meta"]["fetched_at"]
-    before = setup.cache_path.read_bytes()
-    request_count = len(setup.state.business_requests)
-    setup.state.running = False
-    code, out, err = run_cli(
-        query(resource, "--all", "--require-complete", scope=newer_scope)
-    )
-    assert code == 0, err
-    current = parse(out)
-    assert current["data"] == new_rows
-    assert current["meta"]["complete"] is True
-    assert current["meta"]["snapshot_id"] == new_capture["meta"]["snapshot_id"]
-    assert current["meta"]["acquisition"] == new_capture["meta"]["acquisition"]
-    code, out, err = run_cli(query(resource, "--all"))
-    assert code == 0
-    retained = parse(out)
-    assert retained["data"] == old_rows[1:]
-    assert retained["error"] is None
-    assert retained["meta"]["complete"] is False
-    assert retained["meta"]["reported_total"] == 2
-    assert retained["meta"]["collected_total"] == 1
-    assert retained["meta"]["missing_count"] == 1
-    assert "RETENTION_GAP" in retained["meta"]["acquisition"]["reasons"]
-    assert "INCOMPLETE_RESULT" in err
-    assert retained["meta"]["retained_coverage"][0]["row_count"] == 1
-    assert retained["meta"]["scope"] != current["meta"]["scope"]
-    code, out, _ = run_cli(query(resource, "--all", "--require-complete"))
-    assert code == 1
-    strict = parse(out)
-    assert strict["data"] is None
-    assert strict["error"]["code"] == "INCOMPLETE_RESULT"
-    assert "RETENTION_GAP" in strict["meta"]["acquisition"]["reasons"]
     assert len(setup.state.business_requests) == request_count
     assert setup.cache_path.read_bytes() == before
 
@@ -353,7 +277,7 @@ def test_partial_overlap_warns_publishes_by_default_and_strict_refuses(setup, ru
         return page(rows, 12)
 
     setup.state.business_handler = overlap
-    code, out, err = run_cli(query("events", "--live", "--all"))
+    code, out, err = run_cli(query("events", "--live", "--limit", "0"))
     result = parse(out)
     assert code == 0
     assert "INCOMPLETE_RESULT" in err
@@ -362,7 +286,7 @@ def test_partial_overlap_warns_publishes_by_default_and_strict_refuses(setup, ru
     assert result["meta"]["missing_count"] == 1
     assert setup.cache_path.read_bytes() == before
     for argv in (
-        query("events", "--live", "--all", "--require-complete"),
+        query("events", "--live", "--limit", "0", "--require-complete"),
         refresh("events", "--require-complete"),
     ):
         code, out, _ = run_cli(argv)
@@ -377,12 +301,12 @@ def test_partial_overlap_warns_publishes_by_default_and_strict_refuses(setup, ru
     assert parse(out)["meta"]["published"] is True
     assert parse(out)["meta"]["complete"] is False
     setup.state.running = False
-    code, out, err = run_cli(query("events", "--all"))
+    code, out, err = run_cli(query("events", "--limit", "0"))
     assert code == 0
     assert "INCOMPLETE_RESULT" in err
     assert len(parse(out)["data"]) == 11
     assert parse(out)["meta"]["complete"] is False
-    code, out, _ = run_cli(query("events", "--all", "--require-complete"))
+    code, out, _ = run_cli(query("events", "--limit", "0", "--require-complete"))
     assert code == 1
     assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
 
@@ -401,7 +325,7 @@ def test_hard_pagination_failure_preserves_capture(setup, run_cli, defect):
         return page([risk(10), risk(11)], 13)
 
     setup.state.business_handler = failure
-    for argv in (query("events", "--live", "--all"), refresh()):
+    for argv in (query("events", "--live", "--limit", "0"), refresh()):
         code, out, _ = run_cli(argv)
         assert code == 1
         assert parse(out)["data"] is None
@@ -507,16 +431,16 @@ def test_date_scopes_and_native_modes_do_not_share_captures(setup, run_cli):
         ("anomalies", SCOPE),
         ("events", empty_scope),
     ):
-        code, out, err = run_cli(query(resource, "--all", scope=scope))
+        code, out, err = run_cli(query(resource, "--limit", "0", scope=scope))
         assert code == 0, err
         results.append(parse(out))
     assert results[0]["data"] == [risk(0)]
     assert results[1]["data"] == [risk(0, "RISK_ALERT")]
-    assert results[2]["data"] == []
-    assert results[0]["meta"]["scope"] != results[2]["meta"]["scope"]
-    code, out, _ = run_cli(query("anomalies", scope=empty_scope))
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert results[2]["data"] == [risk(0)]
+    assert results[0]["meta"]["scope"] == results[2]["meta"]["scope"]
+    code, out, _ = run_cli(["liquidity", "risk", "anomalies", "list", *empty_scope])
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
 @pytest.mark.parametrize("resource,mode", RESOURCES)
@@ -531,13 +455,13 @@ def test_iso_dates_normalize_to_the_same_adjacent_scope_and_cache(
     assert code == 0, err
     captured = parse(out)
     count = len(setup.state.business_requests)
-    code, out, err = run_cli(query(resource, "--live", "--all", scope=iso))
+    code, out, err = run_cli(query(resource, "--live", "--limit", "0", scope=iso))
     assert code == 0, err
     live = parse(out)
     assert live["meta"]["scope"] == captured["meta"]["scope"]
     assert setup.state.business_requests[-1] == setup.state.business_requests[0]
     setup.state.running = False
-    code, out, err = run_cli(query(resource, "--all", scope=iso))
+    code, out, err = run_cli(query(resource, "--limit", "0", scope=iso))
     assert code == 0, err
     cached = parse(out)
     assert cached["data"] == rows
