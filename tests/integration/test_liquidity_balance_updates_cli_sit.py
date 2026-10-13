@@ -144,3 +144,81 @@ def test_thousands_formatted_equal_amounts_are_silent(setup, run_cli):
     assert result["data"][0]["current_balance"] == "1,000.00"
     assert result["meta"].get("warnings", []) == []
     assert "warning:" not in err
+
+
+@pytest.mark.parametrize("field", ["aliasName", "currency"])
+@pytest.mark.parametrize("bad", [None, "", "  ", [], {"invalid": "value"}, 1, "absent"])
+def test_malformed_account_attributes_never_merge_or_publish(
+    setup, run_cli, field, bad
+):
+    install(setup, [balance()])
+    assert run_cli(REFRESH)[0] == 0
+    before = setup.cache_path.read_bytes()
+    old = balance()
+    new = balance("B2", "10:00:00")
+    if bad == "absent":
+        old.pop(field)
+        new.pop(field)
+    else:
+        old[field] = bad
+        new[field] = bad
+    install(setup, [old, new])
+    for command in ([*QUERY, "--live"], REFRESH):
+        code, out, err = run_cli(command)
+        assert code == 1, err
+        result = parse(out)
+        assert result["error"]["code"] == "INVALID_RESPONSE"
+        assert result["data"] is None
+        assert setup.cache_path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "reverse_entities,reverse_aliases", [(True, False), (False, True), (True, True)]
+)
+def test_old_unsorted_latest_capture_remains_readable_offline(
+    setup, run_cli, reverse_entities, reverse_aliases
+):
+    from dogopencli.cache import Cache
+    from dogopencli.plugins.liquidity import store as capture_store
+    from dogopencli.plugins.liquidity.capability import decode_scope, encode_scope
+    from dogopencli.plugins.liquidity.common import now
+    from dogopencli.plugins.liquidity.leaves import list_leaf
+
+    leaf = list_leaf(("cash", "balances"))
+    resolved = leaf.resolve({"entity": ["E1", "E2"], "account": ["A1", "A2"]})
+    old_values = decode_scope(resolved.scope_key)
+    if reverse_entities:
+        old_values["entitys"] = ["E2", "E1", "E2"]
+    if reverse_aliases:
+        old_values["aliasNames"] = ["A2", "A1", "A2"]
+    old_scope = encode_scope(old_values)
+    store = Cache(setup.cache_path)
+    at = now().isoformat()
+    plan = capture_store.plan_capture_publish(
+        store, resolved.spec, old_scope, (None, None), [balance()], 1, at, at
+    )
+    capture_store.commit_plan(store, resolved.spec.name, plan, at)
+    before = setup.cache_path.read_bytes()
+    setup.state.reachable = False
+    code, out, err = run_cli(
+        [
+            "liquidity",
+            "cash",
+            "balances",
+            "list",
+            "--entity",
+            "E2",
+            "--entity",
+            "E1",
+            "--account-alias",
+            "A2",
+            "--account-alias",
+            "A1",
+            "--require-complete",
+        ]
+    )
+    assert code == 0, err
+    assert parse(out)["data"][0]["balance_record_id"] == "B1"
+    assert parse(out)["meta"]["complete"] is True
+    assert setup.state.business_requests == []
+    assert setup.cache_path.read_bytes() == before

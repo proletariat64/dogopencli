@@ -108,6 +108,13 @@ def latest_statement_rows(records: list[dict]) -> tuple[list[dict], int]:
     """
     groups: dict[tuple, list[dict]] = {}
     for index, record in enumerate(records):
+        for field in ("entity", "aliasName", "currency"):
+            value = record.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise CliError(
+                    INVALID_RESPONSE,
+                    f"Balance account attribute {field} must be a nonempty string.",
+                )
         day = _business_day(record)
         key = (
             (record.get("entity"), record.get("aliasName"), record.get("currency"), day)

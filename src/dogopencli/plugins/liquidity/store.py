@@ -785,6 +785,26 @@ def commit_plan(
     store.publish_many(writes, deletes=plan.dropped_namespaces)
 
 
+def _latest_balance_scope_key(scope: str) -> str:
+    """Match legacy selector ordering without rewriting captures or broadening scope."""
+    from .capability import decode_scope, encode_scope
+
+    try:
+        values = decode_scope(scope)
+    except CliError:
+        return scope  # Opaque or malformed scope strings remain exact-match only.
+    for field_name in ("entitys", "aliasNames"):
+        if field_name not in values:
+            continue
+        selection = values[field_name]
+        if not isinstance(selection, list) or any(
+            not isinstance(value, str) or not value.strip() for value in selection
+        ):
+            return scope
+        values[field_name] = sorted(set(selection))
+    return encode_scope(values)
+
+
 def select_captures(
     data: IndexData,
     list_spec: spec.ListSpec,
@@ -796,7 +816,14 @@ def select_captures(
     A window outside retained coverage is missing coverage, never an empty
     result: coverage_ok=False drives the existing incomplete-result behavior.
     """
-    scoped = [entry for entry in data.captures if entry.scope == scope]
+    latest_balances = list_spec.endpoint == "/latestBalanceQuery.json"
+    lookup = _latest_balance_scope_key(scope) if latest_balances else scope
+    scoped = [
+        entry
+        for entry in data.captures
+        if (_latest_balance_scope_key(entry.scope) if latest_balances else entry.scope)
+        == lookup
+    ]
     if list_spec.profile in (spec.PROFILE_SNAPSHOT, spec.PROFILE_HISTORY):
         latest = max(
             enumerate(scoped),
