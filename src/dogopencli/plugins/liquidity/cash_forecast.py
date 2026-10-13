@@ -91,7 +91,7 @@ CASH_BALANCES = ListSpec(
             "entitys",
             "Entity scope; native JSON array.",
             repeat=True,
-            default="Z21",
+            default="ALIPAYGM",
             verified="Z21",
         ),
         ScopeOption(
@@ -139,7 +139,7 @@ CASH_DAILY_BALANCES = ListSpec(
             "entitys",
             "Native instId selection.",
             repeat=True,
-            default="Z21",
+            default="ALIPAYGM",
             virtual=True,
         ),
         ScopeOption(
@@ -168,8 +168,8 @@ CASH_DAILY_BALANCES = ListSpec(
     schema_version="cash-daily-balances-v1",
     notes=(
         "Paired --from-date/--to-date select inclusive source daily observations;"
-        " no dates retain latest snapshots. Daily timezone and balance subtype"
-        " are unknown.",
+        " no dates retain latest snapshots. Daily dates use GMT+08"
+        " and balance means closing book balance.",
         "Daily labels use the frozen current account roster, not proven"
         " historical ownership."
         " No zero filling or historical current/available/opening balances.",

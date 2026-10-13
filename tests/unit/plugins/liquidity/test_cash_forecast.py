@@ -138,14 +138,14 @@ def test_balances_post_body_with_entity_and_account_arrays():
     )
     assert window == (None, None)
     assert fields == {
-        "entitys": ["Z21"],  # verified default, native JSON array
+        "entitys": ["ALIPAYGM"],  # verified default, native JSON array
         "aliasNames": ["A1", "A2"],
         "timeZone": "GMT+08",
     }
     body = capability.page_body(encode_scope(fields), 100)
     assert body == {
         "tntInstId": "GUAPW3SG",
-        "entitys": ["Z21"],
+        "entitys": ["ALIPAYGM"],
         "aliasNames": ["A1", "A2"],
         "timeZone": "GMT+08",
         "rowStart": 100,

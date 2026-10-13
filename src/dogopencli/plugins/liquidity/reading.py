@@ -567,7 +567,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     if item.series_field
                     else None
                 ),
-                "offline_profile": item.profile,
+                "offline_profile": "single temporary leaf result",
                 "notes": list(item.notes),
                 "scope_defaults": {
                     option.flag: option.default
@@ -619,7 +619,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             "schema_version": variant.schema_version or None,
             "variants": variants,
             "kind": variant.kind,
-            "offline_profile": variant.profile,
+            "offline_profile": "single temporary leaf result",
             "identity": [
                 _public_balance_field(variant, field) for field in variant.identity
             ],
@@ -841,11 +841,10 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
             "schema_version": detail.schema_version or None,
             "identity": [option.field for option in detail.identity],
             "kind": detail.kind,
-            "offline_profile": "per-object detail cache (ADR 0016)",
+            "offline_profile": "online only; no cache",
             "notes": list(detail.notes),
             "freshness": (
-                "each cached detail carries its own fetched_at; it is never"
-                " implied to belong to a newer list capture"
+                "Native detail acquired online on each invocation; never stored."
             ),
         },
     }
