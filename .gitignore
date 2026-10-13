@@ -8,3 +8,10 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+
+# Private configured query/dataset inputs; never publish business data.
+/data/
+/duckdog-data/
+*.duckdb
+*.duckdb.wal
+*.parquet
