@@ -13,6 +13,11 @@ import argparse
 import sys
 from typing import Any
 
+from dogopencli.plugins.liquidity.balance_view import (
+    latest_statement_rows,
+    update_notice,
+)
+
 from ... import config as config_mod
 from ...cache import Cache
 from ...errors import EXIT_OK
@@ -21,6 +26,7 @@ from ...result_policy import check_complete, evidence_for, prepare_result
 from . import details as detail_store
 from . import spec
 from . import store as capture_store
+from .cash_balances import selection
 from .collect import acquire_liquidity_list
 from .common import emit, identity_values, load_config, now, provided, scope_flags
 from .leaves import DetailLeaf, detail_leaf, list_leaf
@@ -29,9 +35,14 @@ from .qualified_getters import detail_context_meta
 
 def run_refresh_list(args: argparse.Namespace) -> int:
     leaf = list_leaf(args.command_path[2:])
-    resolved = leaf.resolve(provided(args, scope_flags(leaf)))
+    resolved = leaf.resolve(
+        provided(args, scope_flags(leaf)), select_all=getattr(args, "all", False)
+    )
     variant = resolved.spec
-    capability = leaf.capability(variant)
+    unit = "chunk" if variant.endpoint == "/balStatisticalQuery.json" else "page"
+    capability = leaf.acquisition_capability(
+        variant, getattr(args, "page_size", None), online=True
+    )
     config = load_config()
     store = Cache(config.cache_path)
     with store.refresh_lock():
@@ -43,10 +54,13 @@ def run_refresh_list(args: argparse.Namespace) -> int:
                 capability,
                 resolved.request_scope,
                 progress=lambda done, total: print(
-                    f"refresh: collected page {done}/{total}", file=sys.stderr
+                    f"refresh: collected {unit} {done}/{total}", file=sys.stderr
                 ),
             )
         evidence = evidence_for(result)
+        changed_groups = 0
+        if variant.projection == "balances":
+            _, changed_groups = latest_statement_rows(result.records)
         check_complete(
             evidence,
             require_complete=getattr(args, "require_complete", False),
@@ -117,7 +131,14 @@ def run_refresh_list(args: argparse.Namespace) -> int:
         "has_more": False,
         "retention": eviction,
     }
+    frozen = selection(evidence)
+    if frozen is not None:
+        meta["selection"] = frozen
     meta = prepare_result(meta, mode="refresh")
+    notice = update_notice(changed_groups)
+    if notice is not None:
+        meta["warnings"] = [*meta.get("warnings", []), notice]
+        print(f"warning: {notice['code']}: {notice['message']}", file=sys.stderr)
     emit(
         {
             "namespace": plan.capture_meta.namespace,

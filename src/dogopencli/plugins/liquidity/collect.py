@@ -32,13 +32,14 @@ def collect_liquidity_scope(
     scope: str,
     *,
     budget_seconds: float | None = None,
+    deadline: float | None = None,
     progress: Callable[[int, int], None] | None = None,
 ) -> CollectedScope:
     """Collect one liquidity scope with its declared pagination style."""
     budget = (
         collect_mod.REFRESH_BUDGET_SECONDS if budget_seconds is None else budget_seconds
     )
-    deadline = time.monotonic() + budget
+    deadline = time.monotonic() + budget if deadline is None else deadline
     if capability.descriptor.projection == "account_capacity":
         from .account_capacity import collect_capacity
 
@@ -209,6 +210,10 @@ def acquire_liquidity_list(
     progress: Callable[[int, int], None] | None = None,
 ) -> CollectedScope:
     """Acquire one list, including its leaf-specific native composition."""
+    if capability.descriptor.path == ("cash", "balances"):
+        from .cash_balances import collect_balances
+
+        return collect_balances(session, capability, scope, progress=progress)
     if capability.descriptor.projection == "forecast_accuracy":
         from .forecast_accuracy import collect_accuracy
 

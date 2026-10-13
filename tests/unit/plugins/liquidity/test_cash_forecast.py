@@ -105,7 +105,9 @@ def test_release_distinguishes_complete_and_backend_compatible_uat():
     assert RELEASED == UAT_PASSED == UAT_COMPLETE_PASSED | UAT_COMPATIBILITY_PASSED
     for list_spec in ACCEPTED_LIST_SPECS:
         assert list_spec.schema_version == (
-            "pool-balances-v1"
+            "cash-daily-balances-v1"
+            if list_spec.endpoint == "/balStatisticalQuery.json"
+            else "pool-balances-v1"
             if list_spec.path == ("cash", "pool-balances")
             else "credit-usage-v1"
             if list_spec.path == ("cash", "credit-usage")
@@ -130,7 +132,7 @@ def test_balances_post_body_with_entity_and_account_arrays():
     contract = capability.contract
     assert contract.method == "POST"
     assert contract.path == "/latestBalanceQuery.json"
-    assert contract.page_size == 30
+    assert contract.page_size == 100
     fields, window = scope_values(
         CASH_BALANCES.scope_options, {"account": ["A1", "A2"]}
     )
@@ -140,14 +142,14 @@ def test_balances_post_body_with_entity_and_account_arrays():
         "aliasNames": ["A1", "A2"],
         "timeZone": "GMT+08",
     }
-    body = capability.page_body(encode_scope(fields), 30)
+    body = capability.page_body(encode_scope(fields), 100)
     assert body == {
         "tntInstId": "GUAPW3SG",
         "entitys": ["Z21"],
         "aliasNames": ["A1", "A2"],
         "timeZone": "GMT+08",
-        "rowStart": 30,
-        "pageSize": 30,
+        "rowStart": 100,
+        "pageSize": 100,
     }
     assert set(body) <= contract.allowed_body_keys
     assert contract.fixed_body_values == (("tntInstId", "GUAPW3SG"),)
@@ -395,6 +397,7 @@ def test_inner_success_marker_is_strictly_boolean_true():
 def test_balances_parse_preserves_amount_precision_and_drops_extras():
     capability = LiquidityListCapability(CASH_BALANCES)
     row = {
+        "balId": "B1",
         "entity": "Z21",
         "aliasName": "A1",
         "currency": "USD",
@@ -407,6 +410,7 @@ def test_balances_parse_preserves_amount_precision_and_drops_extras():
     rows, total = capability.parse_rows(json.dumps(success_page([row], 1)).encode())
     assert total == 1
     projected = rows[0]
+    assert projected["balId"] == "B1"
     assert projected["curBalance"] == "1234.56"
     assert projected["avlBalance"] is None
     assert projected["openBalance"] == ""

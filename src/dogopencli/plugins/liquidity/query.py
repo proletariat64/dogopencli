@@ -17,6 +17,13 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
+from dogopencli.plugins.liquidity.balance_view import (
+    export_balance_record,
+    export_field_name,
+    latest_statement_rows,
+    update_notice,
+)
+
 from ... import config as config_mod
 from ...cache import Cache
 from ...cached_query import is_stale
@@ -41,6 +48,8 @@ from ..envelope import is_business_refusal
 from . import details as detail_store
 from . import spec as spec_mod
 from . import store as capture_store
+from .capability import LiquidityListCapability
+from .cash_balances import selection
 from .collect import acquire_liquidity_list
 from .common import emit, identity_values, load_config, now, provided, scope_flags
 from .leaves import DEFERRED_BY_PATH, DetailLeaf, ListLeaf, detail_leaf, list_leaf
@@ -95,12 +104,25 @@ def _emit_window(
     meta: dict[str, Any],
     fields: list[str] | None,
     error: dict[str, Any] | None = None,
+    *,
+    variant: spec_mod.ListSpec | None = None,
+    changed_groups: int = 0,
 ) -> int:
     meta = prepare_result(
         meta,
         require_complete=args.require_complete,
         mode="live" if args.live else "cache",
     )
+    if variant is not None and variant.path == ("cash", "balances"):
+        daily = variant.endpoint == "/balStatisticalQuery.json"
+        window = [export_balance_record(record, daily=daily) for record in window]
+        columns = tuple(export_field_name(name, daily=daily) for name in columns)
+        if fields is not None:
+            fields = [export_field_name(name, daily=daily) for name in fields]
+        notice = update_notice(changed_groups)
+        if notice is not None:
+            meta["warnings"] = [*meta.get("warnings", []), notice]
+            print(f"warning: {notice['code']}: {notice['message']}", file=sys.stderr)
     window = _project(window, fields)
     if args.format == "table":
         selected = tuple(fields) if fields is not None else columns
@@ -188,13 +210,16 @@ def _coverage_meta(entries: list[capture_store.CaptureEntry]) -> list[dict[str, 
 def run_list(args: argparse.Namespace) -> int:
     leaf = list_leaf(args.command_path[1:-1])
     limit, offset, fields = _display_options(args)
-    resolved = leaf.resolve(provided(args, scope_flags(leaf)))
+    resolved = leaf.resolve(provided(args, scope_flags(leaf)), select_all=args.all)
     variant = resolved.spec
     filters = _local_filters(args, variant)
+    capability = leaf.acquisition_capability(
+        variant, getattr(args, "page_size", None), online=args.live
+    )
     config = load_config()
     if args.live:
         return _run_list_live(
-            args, leaf, resolved, filters, limit, offset, fields, config
+            args, leaf, resolved, filters, limit, offset, fields, config, capability
         )
     store = Cache(config.cache_path)
     index = capture_store.read_index(store, variant.name)
@@ -317,6 +342,9 @@ def run_list(args: argparse.Namespace) -> int:
             f"cached capture is older than {config.ttl_hours:g} hours"
             f" (fetched_at {oldest.fetched_at})",
         )
+    changed_groups = 0
+    if variant.projection == "balances":
+        rows, changed_groups = latest_statement_rows(rows)
     rows = _sort_rows(variant, rows, latest.fetched_at)
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
@@ -350,7 +378,18 @@ def run_list(args: argparse.Namespace) -> int:
         quality_entries, covered, len(pairs), window=resolved.window
     )
     meta.update(evidence.meta())
-    return _emit_window(args, variant.table_columns, window, meta, fields)
+    frozen = selection(latest.evidence)
+    if frozen is not None:
+        meta["selection"] = frozen
+    return _emit_window(
+        args,
+        variant.table_columns,
+        window,
+        meta,
+        fields,
+        variant=variant,
+        changed_groups=changed_groups,
+    )
 
 
 def _capture_meta_view(entry: capture_store.CaptureEntry) -> Any:
@@ -388,7 +427,7 @@ def _public_hint_value(option: spec_mod.ScopeOption, value: Any) -> str:
 
 
 def _hint_options(leaf: ListLeaf, values: dict[str, Any]) -> str:
-    parts = []
+    parts = ["--all"] if values.get("__selection") == "all-directory" else []
     for option in leaf.options:
         value = values.get(option.field)
         if value is None:
@@ -410,9 +449,10 @@ def _run_list_live(
     offset: int,
     fields: list[str] | None,
     config: config_mod.Config,
+    capability: LiquidityListCapability,
 ) -> int:
     variant = resolved.spec
-    capability = leaf.capability(variant)
+    unit = "chunk" if variant.endpoint == "/balStatisticalQuery.json" else "page"
     with inquiry_session(
         config_file=config_mod.config_path(), startup_url=capability.page_url
     ) as session:
@@ -421,11 +461,15 @@ def _run_list_live(
             capability,
             resolved.request_scope,
             progress=lambda done, total: print(
-                f"live: collected page {done}/{total}", file=sys.stderr
+                f"live: collected {unit} {done}/{total}", file=sys.stderr
             ),
         )
     evidence = evidence_for(result)
-    rows = _sort_rows(variant, _match(result.records, filters), now().isoformat())
+    rows = result.records
+    changed_groups = 0
+    if variant.projection == "balances":
+        rows, changed_groups = latest_statement_rows(rows)
+    rows = _sort_rows(variant, _match(rows, filters), now().isoformat())
     matched_total = len(rows)
     window = rows[offset:] if args.all else rows[offset : offset + limit]
     meta = {
@@ -452,7 +496,18 @@ def _run_list_live(
         "returned_count": len(window),
         "has_more": offset + len(window) < matched_total,
     }
-    return _emit_window(args, variant.table_columns, window, meta, fields)
+    frozen = selection(evidence)
+    if frozen is not None:
+        meta["selection"] = frozen
+    return _emit_window(
+        args,
+        variant.table_columns,
+        window,
+        meta,
+        fields,
+        variant=variant,
+        changed_groups=changed_groups,
+    )
 
 
 def run_detail(args: argparse.Namespace) -> int:
