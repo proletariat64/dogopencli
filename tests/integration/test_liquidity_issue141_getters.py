@@ -9,6 +9,17 @@ from dogopencli.jsonutil import parse
 pytest_plugins = ["test_liquidity_cli_sit"]
 
 
+@pytest.fixture(autouse=True)
+def native_details_do_not_create_cache(setup, request):
+    yield
+    if request.node.originalname not in {
+        "test_populated_parent_list_does_not_substitute_native_get",
+        "test_native_get_does_not_touch_parent_list_cache",
+        "test_asset_list_cache_cannot_satisfy_or_be_changed_by_native_get",
+    }:
+        assert not setup.cache_path.exists()
+
+
 def asset(identity="SYN-ORDER"):
     return {
         "success": True,
@@ -35,23 +46,17 @@ def asset(identity="SYN-ORDER"):
     }
 
 
-def asset_command(refresh=False, identity="SYN-ORDER"):
-    path = ["liquidity", "operations", "asset-trades"]
-    return [
-        *(["refresh", *path, "detail"] if refresh else path),
-        "get",
-        "--order-no",
-        identity,
-    ]
+def asset_command(identity="SYN-ORDER"):
+    return ["liquidity", "operations", "asset-trades", "get", "--order-no", identity]
 
 
-def test_asset_form_root_product_and_disconnected_capture(setup, run_cli):
+def test_asset_native_form_root_product_and_precision(setup, run_cli):
     native = asset()
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": native,
     }
-    code, out, err = run_cli(asset_command(True))
+    code, out, err = run_cli(asset_command())
     assert code == 0, (out, err)
     assert setup.state.business_requests == [{"orderNo": "SYN-ORDER"}]
     expressions = [
@@ -63,7 +68,6 @@ def test_asset_form_root_product_and_disconnected_capture(setup, run_cli):
         and "application/x-www-form-urlencoded" in e
         for e in expressions
     )
-    setup.state.running = False
     code, out, err = run_cli(asset_command())
     assert code == 0, (out, err)
     data = parse(out)["data"]
@@ -112,40 +116,27 @@ def group(identity="SYN-ROW-3", version=3):
     return {"success": True, "data": data}
 
 
-def group_command(refresh=False, identity="SYN-ROW-3"):
-    path = ["liquidity", "investment", "quote-groups"]
+def group_command(identity="SYN-ROW-3"):
     return [
-        *(["refresh", *path, "detail"] if refresh else path),
+        "liquidity",
+        "investment",
+        "quote-groups",
         "get",
         "--quotation-group-row-id",
         identity,
     ]
 
 
-def test_group_physical_versions_independent_and_history_curated(setup, run_cli):
+def test_group_native_physical_versions_and_history_curated(setup, run_cli):
     for identity, version in (("SYN-ROW-3", 3), ("SYN-ROW-1", 1)):
         native = group(identity, version)
         setup.state.business_handler = lambda payload, index, native=native: {
             "status": 200,
             "body": native,
         }
-        code, out, err = run_cli(group_command(True, identity))
+        code, out, err = run_cli(group_command(identity))
         assert code == 0, (out, err)
         assert setup.state.business_requests[-1] == {"quotationGroupId": identity}
-        assert parse(out)["meta"]["source_version"] == version
-    expressions = [
-        e for t in setup.state.transports for e in t.expressions if "fetch(" in e
-    ]
-    assert any(
-        "https://iliquidity.alipay.com/queryQuotationDetail.json" in e
-        and 'method: "POST"' in e
-        and "application/x-www-form-urlencoded" in e
-        for e in expressions
-    )
-    setup.state.running = False
-    for identity, version in (("SYN-ROW-3", 3), ("SYN-ROW-1", 1)):
-        code, out, err = run_cli(group_command(False, identity))
-        assert code == 0, (out, err)
         result = parse(out)
         assert result["data"]["id"] == identity
         assert result["data"]["version"] == version
@@ -157,46 +148,45 @@ def test_group_physical_versions_independent_and_history_curated(setup, run_cli)
         ]
         assert result["data"]["contactInfoList"] == group_row()["contactInfoList"]
         assert "PRIVATE" not in out
+    expressions = [
+        e for t in setup.state.transports for e in t.expressions if "fetch(" in e
+    ]
+    assert any(
+        "https://iliquidity.alipay.com/queryQuotationDetail.json" in e
+        and 'method: "POST"' in e
+        and "application/x-www-form-urlencoded" in e
+        for e in expressions
+    )
+    assert not setup.cache_path.exists()
 
 
 LEAVES = ((asset_command, asset), (group_command, group))
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
-def test_offline_miss_live_no_write_no_fallback_and_hard_failure_preservation(
-    setup, run_cli, leaf
-):
+def test_native_get_no_write_auth_failure_and_no_browser_fallback(setup, run_cli, leaf):
     invoke, factory = leaf
-    code, out, _ = run_cli(invoke())
-    assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
-    assert "detail get" in out
-    assert setup.state.transports == []
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": factory(),
     }
-    assert run_cli(invoke(True))[0] == 0
-    prior = setup.cache_path.read_bytes()
-    code, out, err = run_cli([*invoke(), "--live", "--require-complete"])
+    code, out, err = run_cli([*invoke()])
     assert code == 0, (out, err)
-    assert parse(out)["meta"]["source"] == "live"
-    assert setup.cache_path.read_bytes() == prior
-    assert parse(out)["meta"]["scope_tenant"] == "GUAPW3SG"
-    if invoke is asset_command:
-        assert parse(out)["meta"]["native_context_echo"] == {"tntInstId": "absent"}
-    else:
-        assert parse(out)["meta"]["native_context_echo"] == {"tntInstId": "present"}
+    result = parse(out)
+    assert result["meta"]["source"] == "live"
+    assert result["meta"]["scope_tenant"] == "GUAPW3SG"
+    assert result["meta"]["native_context_echo"] == {
+        "tntInstId": "absent" if invoke is asset_command else "present"
+    }
+    assert not setup.cache_path.exists()
     setup.state.business_handler = lambda payload, index: {"status": 401, "body": {}}
-    for args in (invoke(True), [*invoke(), "--live"]):
-        code, out, _ = run_cli(args)
-        assert code == 1 and parse(out)["error"]["code"] == "AUTH_REQUIRED"
-        assert setup.cache_path.read_bytes() == prior
+    code, out, _ = run_cli(invoke())
+    assert code == 1 and parse(out)["error"]["code"] == "AUTH_REQUIRED"
     setup.state.running = False
-    code, out, _ = run_cli([*invoke(), "--live"])
+    code, out, _ = run_cli(invoke())
     assert code == 1 and parse(out)["error"]["code"] == "BROWSER_UNAVAILABLE"
     assert parse(out)["data"] is None
-    assert setup.cache_path.read_bytes() == prior
-    assert run_cli(invoke())[0] == 0
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize(
@@ -211,7 +201,7 @@ def test_offline_miss_live_no_write_no_fallback_and_hard_failure_preservation(
         ("tntInstId", "OTHER"),
     ],
 )
-def test_asset_identity_and_product_failures_preserve_prior(
+def test_asset_identity_and_product_failures_refuse_invalid_response(
     setup, run_cli, field, value
 ):
     native = asset()
@@ -219,12 +209,12 @@ def test_asset_identity_and_product_failures_preserve_prior(
         "status": 200,
         "body": native,
     }
-    assert run_cli(asset_command(True))[0] == 0
-    prior = setup.cache_path.read_bytes()
+    assert run_cli(asset_command())[0] == 0
+    assert not setup.cache_path.exists()
     native["data"][field] = value
-    code, out, _ = run_cli(asset_command(True))
+    code, out, _ = run_cli(asset_command())
     assert code == 1 and parse(out)["error"]["code"] == "INVALID_RESPONSE"
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize(
@@ -246,7 +236,7 @@ def test_asset_identity_and_product_failures_preserve_prior(
         ("operationHistoryList", [None]),
     ],
 )
-def test_group_root_structure_identity_and_scope_failures_preserve_cache(
+def test_group_root_structure_identity_and_scope_failures_refuse_invalid_response(
     setup, run_cli, field, value
 ):
     native = group()
@@ -254,12 +244,12 @@ def test_group_root_structure_identity_and_scope_failures_preserve_cache(
         "status": 200,
         "body": native,
     }
-    assert run_cli(group_command(True))[0] == 0
-    prior = setup.cache_path.read_bytes()
+    assert run_cli(group_command())[0] == 0
+    assert not setup.cache_path.exists()
     native["data"][field] = value
-    code, out, _ = run_cli(group_command(True))
+    code, out, _ = run_cli(group_command())
     assert code == 1 and parse(out)["error"]["code"] == "INVALID_RESPONSE"
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize(
@@ -283,12 +273,12 @@ def test_group_history_identity_composition_and_recursion_failures(
         "status": 200,
         "body": native,
     }
-    assert run_cli(group_command(True))[0] == 0
-    prior = setup.cache_path.read_bytes()
+    assert run_cli(group_command())[0] == 0
+    assert not setup.cache_path.exists()
     native["data"]["operationHistoryList"][0][field] = value
-    code, out, _ = run_cli(group_command(True))
+    code, out, _ = run_cli(group_command())
     assert code == 1 and parse(out)["error"]["code"] == "INVALID_RESPONSE"
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
@@ -312,8 +302,8 @@ def test_business_and_malformed_success_never_become_not_found(
         "status": 200,
         "body": native,
     }
-    assert run_cli(invoke(True))[0] == 0
-    prior = setup.cache_path.read_bytes()
+    assert run_cli(invoke())[0] == 0
+    assert not setup.cache_path.exists()
     if mutation == "false":
         native["success"] = False
     elif mutation == "missing-success":
@@ -326,14 +316,14 @@ def test_business_and_malformed_success_never_become_not_found(
         native["data"] = []
     else:
         del native["data"]["orderNo" if invoke is asset_command else "id"]
-    code, out, _ = run_cli(invoke(True))
+    code, out, _ = run_cli(invoke())
     assert code == 1
     assert parse(out)["error"]["code"] == (
         "BUSINESS_QUERY_FAILED"
         if mutation in ("false", "missing-success", "numeric-success")
         else "INVALID_RESPONSE"
     )
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
@@ -341,6 +331,9 @@ def test_business_and_malformed_success_never_become_not_found(
     "extra",
     [
         ["--id", "x"],
+        ["--live"],
+        ["--require-fresh"],
+        ["--require-complete"],
         ["--version", "1"],
         ["--all"],
         ["--limit", "1"],
@@ -361,9 +354,8 @@ def test_unsupported_parameters_rejected_before_browser(setup, run_cli, leaf, ex
 @pytest.mark.parametrize("identity", ["", "   "])
 def test_blank_request_identity_rejected_before_browser(setup, run_cli, leaf, identity):
     invoke, _ = leaf
-    for refresh in (True, False):
-        code, out, _ = run_cli(invoke(refresh, identity))
-        assert code == 2 and parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    code, out, _ = run_cli(invoke(identity))
+    assert code == 2 and parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     assert setup.state.transports == []
 
 
@@ -374,7 +366,7 @@ def test_blank_request_identity_rejected_before_browser(setup, run_cli, leaf, id
         (LEAVES[1], ("investment", "quote-groups")),
     ],
 )
-def test_getter_help_describe_and_output_policies(setup, run_cli, leaf, path):
+def test_getter_help_describe_and_output_fields(setup, run_cli, leaf, path):
     invoke, factory = leaf
     for prefix in ("help", "describe"):
         code, out, err = run_cli([prefix, "liquidity", *path, "get"])
@@ -394,17 +386,15 @@ def test_getter_help_describe_and_output_policies(setup, run_cli, leaf, path):
         "status": 200,
         "body": factory(),
     }
-    assert run_cli(invoke(True))[0] == 0
+    assert run_cli(invoke())[0] == 0
     field = "orderNo" if invoke is asset_command else "id"
-    code, out, err = run_cli(
-        [*invoke(), "--require-fresh", "--require-complete", "--fields", field]
-    )
+    code, out, err = run_cli([*invoke(), "--fields", field])
     assert code == 0, (out, err)
     assert list(parse(out)["data"]) == [field]
     assert run_cli([*invoke(), "--format", "table"])[0] == 0
 
 
-def test_complete_native_contacts_survive_root_history_and_offline(setup, run_cli):
+def test_complete_native_contacts_survive_root_history_projection(setup, run_cli):
     native = group()
     native["data"]["contactInfoList"][0]["futureNativeChannel"] = {
         "code": "SYN-CHANNEL",
@@ -417,8 +407,7 @@ def test_complete_native_contacts_survive_root_history_and_offline(setup, run_cl
         "status": 200,
         "body": native,
     }
-    assert run_cli(group_command(True))[0] == 0
-    setup.state.running = False
+    assert run_cli(group_command())[0] == 0
     code, out, err = run_cli(group_command())
     assert code == 0, (out, err)
     data = parse(out)["data"]
@@ -435,9 +424,7 @@ def test_complete_native_contacts_survive_root_history_and_offline(setup, run_cl
     assert contacts["additionalProperties"] is True
 
 
-def test_asset_list_cannot_satisfy_detail_and_generations_are_independent(
-    setup, run_cli
-):
+def test_asset_list_cache_cannot_satisfy_or_be_changed_by_native_get(setup, run_cli):
     root = ["liquidity", "operations", "asset-trades"]
     bounds = ["--from-date", "2026-10-07", "--to-date", "2026-10-07"]
     row = {
@@ -451,69 +438,17 @@ def test_asset_list_cannot_satisfy_detail_and_generations_are_independent(
     }
     code, out, err = run_cli(["refresh", *root, *bounds])
     assert code == 0, (out, err)
-    code, out, err = run_cli([*root, "list", *bounds, "--all"])
-    assert code == 0, (out, err)
-    parent = parse(out)
-    requests = len(setup.state.business_requests)
-    code, out, _ = run_cli(asset_command())
-    assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
-    assert len(setup.state.business_requests) == requests
+    prior = setup.cache_path.read_bytes()
+    count = len(setup.state.business_requests)
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": asset(),
     }
-    assert run_cli(asset_command(True))[0] == 0
-    after = parse(run_cli([*root, "list", *bounds, "--all"])[1])
-    assert after["data"] == parent["data"]
-    assert after["meta"]["snapshot_id"] == parent["meta"]["snapshot_id"]
-    detail = parse(run_cli(asset_command())[1])
-    setup.state.business_handler = lambda payload, index: {
-        "status": 200,
-        "body": {"success": True, "data": {"data": [], "totalCount": 0}},
-    }
-    assert run_cli(["refresh", *root, *bounds])[0] == 0
-    setup.state.running = False
-    assert parse(run_cli([*root, "list", *bounds, "--all"])[1])["data"] == []
-    after = parse(run_cli(asset_command())[1])
-    assert after["data"] == detail["data"]
-    assert after["meta"]["detail_fetched_at"] == detail["meta"]["detail_fetched_at"]
-
-
-@pytest.mark.parametrize(
-    "leaf,path",
-    [
-        (LEAVES[0], ("operations", "asset-trades", "get")),
-        (LEAVES[1], ("investment", "quote-groups", "get")),
-    ],
-)
-def test_schema_isolation_and_cross_object_cache_miss(
-    setup, run_cli, leaf, path, monkeypatch
-):
-    from dataclasses import replace
-
-    from dogopencli.plugins.liquidity.leaves import DETAIL_LEAVES, DetailLeaf
-
-    invoke, factory = leaf
-    setup.state.business_handler = lambda payload, index: {
-        "status": 200,
-        "body": factory(),
-    }
-    assert run_cli(invoke(True))[0] == 0
-    prior = setup.cache_path.read_bytes()
-    requests = len(setup.state.business_requests)
-    setup.state.running = False
-    code, out, _ = run_cli(invoke(False, "SYN-OTHER"))
-    assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
-    original = DETAIL_LEAVES[path]
-    monkeypatch.setitem(
-        DETAIL_LEAVES,
-        path,
-        DetailLeaf(replace(original.spec, schema_version="synthetic-next")),
-    )
-    code, out, _ = run_cli(invoke())
-    assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
+    code, out, err = run_cli(asset_command())
+    assert code == 0, (out, err)
+    assert parse(out)["meta"]["source"] == "live"
+    assert len(setup.state.business_requests) == count + 1
     assert setup.cache_path.read_bytes() == prior
-    assert len(setup.state.business_requests) == requests
 
 
 @pytest.mark.parametrize("value", [None, "absent"])
@@ -533,7 +468,7 @@ def test_optional_product_and_contact_history_absence_null_preserved(
             "status": 200,
             "body": native,
         }
-        code, out, err = run_cli([*invoke(), "--live"])
+        code, out, err = run_cli([*invoke()])
         assert code == 0, (out, err)
         data = parse(out)["data"]
         for field in fields:
@@ -551,7 +486,7 @@ def test_quote_group_list_remains_unsupported_and_metadata_keeps_physical_bindin
         "status": 200,
         "body": group("SYN-ROW-1", 1),
     }
-    code, out, err = run_cli([*group_command(False, "SYN-ROW-1"), "--live"])
+    code, out, err = run_cli([*group_command("SYN-ROW-1")])
     assert code == 0, (out, err)
     assert parse(out)["meta"]["request_scope"] == {"quotationGroupId": "SYN-ROW-1"}
     assert parse(out)["data"]["quotationGroupId"] == "SYN-BUSINESS-GROUP"
@@ -564,5 +499,5 @@ def test_selected_physical_history_row_cannot_echo_different_version(setup, run_
         "status": 200,
         "body": native,
     }
-    code, out, _ = run_cli([*group_command(), "--live"])
+    code, out, _ = run_cli([*group_command()])
     assert code == 1 and parse(out)["error"]["code"] == "INVALID_RESPONSE"

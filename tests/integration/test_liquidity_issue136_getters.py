@@ -7,6 +7,17 @@ from dogopencli.jsonutil import parse
 pytest_plugins = ["test_liquidity_cli_sit"]
 
 
+@pytest.fixture(autouse=True)
+def native_details_do_not_create_cache(setup, request):
+    yield
+    if request.node.originalname not in {
+        "test_populated_parent_list_does_not_substitute_native_get",
+        "test_native_get_does_not_touch_parent_list_cache",
+        "test_asset_list_cache_cannot_satisfy_or_be_changed_by_native_get",
+    }:
+        assert not setup.cache_path.exists()
+
+
 def demand(identity="SYN-TASK"):
     return {
         "resultFlag": True,
@@ -29,24 +40,20 @@ def demand(identity="SYN-TASK"):
     }
 
 
-def command(*, refresh=False, identity="SYN-TASK"):
-    path = ["liquidity", "operations", "demands"]
-    if refresh:
-        path = ["refresh", *path, "detail"]
-    return [*path, "get", "--task-id", identity]
+def command(identity="SYN-TASK"):
+    return ["liquidity", "operations", "demands", "get", "--task-id", identity]
 
 
-def test_demand_native_refresh_and_disconnected_get(setup, run_cli):
+def test_demand_native_get_preserves_projected_record(setup, run_cli):
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": demand(),
     }
-    code, out, err = run_cli(command(refresh=True))
+    code, out, err = run_cli(command())
     assert code == 0, (out, err)
     assert setup.state.business_requests == [
         {"tntInstId": "GUAPW3SG", "taskId": "SYN-TASK"}
     ]
-    setup.state.reachable = False
     code, out, err = run_cli(command())
     assert code == 0, (out, err)
     result = parse(out)
@@ -54,7 +61,7 @@ def test_demand_native_refresh_and_disconnected_get(setup, run_cli):
     del expected["accountNo"]
     del expected["decisionReports"]
     assert result["data"] == expected
-    assert result["meta"]["source"] == "cache"
+    assert result["meta"]["source"] == "live"
     assert "PRIVATE" not in out
 
 
@@ -74,12 +81,9 @@ def test_network_get_is_native_unpinned_settings(setup, run_cli):
         "body": {"success": True, "data": native},
     }
     path = ["liquidity", "network", "realtime"]
-    code, out, err = run_cli(
-        ["refresh", *path, "detail", "get", "--network-id", "SYN-NET"]
-    )
+    code, out, err = run_cli([*path, "get", "--network-id", "SYN-NET"])
     assert code == 0, (out, err)
     assert setup.state.business_requests == [{"id": "SYN-NET"}]
-    setup.state.reachable = False
     code, out, err = run_cli([*path, "get", "--network-id", "SYN-NET"])
     assert code == 0, (out, err)
     result = parse(out)
@@ -125,9 +129,7 @@ def test_quotation_form_nested_native_identity_and_projection(setup, run_cli):
         "body": quotation(),
     }
     path = ["liquidity", "investment", "quotes"]
-    code, out, err = run_cli(
-        ["refresh", *path, "detail", "get", "--quotation-order-id", "SYN-QUOTE"]
-    )
+    code, out, err = run_cli([*path, "get", "--quotation-order-id", "SYN-QUOTE"])
     assert code == 0, (out, err)
     assert setup.state.business_requests == [{"quotationOrderId": "SYN-QUOTE"}]
     expressions = [
@@ -140,7 +142,6 @@ def test_quotation_form_nested_native_identity_and_projection(setup, run_cli):
         "/queryQuotationOrder.json" in e and "application/x-www-form-urlencoded" in e
         for e in expressions
     )
-    setup.state.reachable = False
     code, out, err = run_cli([*path, "get", "--quotation-order-id", "SYN-QUOTE"])
     assert code == 0, (out, err)
     data = parse(out)["data"]
@@ -167,65 +168,53 @@ LEAVES = (
 )
 
 
-def invocation(leaf, *, refresh=False, identity=None):
+def invocation(leaf, *, identity=None):
     path, flag, default, _ = leaf
-    root = ["liquidity", *path]
-    if refresh:
-        root = ["refresh", *root, "detail"]
-    return [*root, "get", "--" + flag, default if identity is None else identity]
+    return [
+        "liquidity",
+        *path,
+        "get",
+        "--" + flag,
+        default if identity is None else identity,
+    ]
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
-def test_miss_refresh_second_identity_live_isolation_and_failed_refresh(
+def test_native_get_validates_each_requested_identity_without_publication(
     setup, run_cli, leaf
 ):
     _, _, identity, factory = leaf
-    code, out, _ = run_cli(invocation(leaf))
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
-    assert "refresh liquidity" in out
-    assert setup.state.transports == []
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": factory(identity),
     }
-    assert run_cli(invocation(leaf, refresh=True))[0] == 0
-    prior = setup.cache_path.read_bytes()
-    code, out, err = run_cli([*invocation(leaf), "--live", "--require-complete"])
+    code, out, err = run_cli([*invocation(leaf)])
     assert code == 0, (out, err)
     assert parse(out)["meta"]["source"] == "live"
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": factory("wrong"),
     }
-    code, out, _ = run_cli(invocation(leaf, refresh=True))
-    assert code == 1
-    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
-    assert setup.cache_path.read_bytes() == prior
-    code, out, _ = run_cli([*invocation(leaf), "--live"])
-    assert code == 1
+    code, out, _ = run_cli(invocation(leaf))
+    assert code == 1 and parse(out)["error"]["code"] == "INVALID_RESPONSE"
     assert parse(out)["data"] is None
-    assert setup.cache_path.read_bytes() == prior
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": factory("SECOND"),
     }
-    assert run_cli(invocation(leaf, refresh=True, identity="SECOND"))[0] == 0
-    setup.state.running = False
-    for requested in (identity, "SECOND"):
-        code, out, err = run_cli(invocation(leaf, identity=requested))
-        assert code == 0, (out, err)
-        assert parse(out)["meta"]["identity"]
+    code, out, err = run_cli(invocation(leaf, identity="SECOND"))
+    assert code == 0, (out, err)
+    assert parse(out)["meta"]["identity"]
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
 @pytest.mark.parametrize("bad", ["", "   "])
 def test_empty_identity_rejected_without_network(setup, run_cli, leaf, bad):
-    for refresh in (False, True):
-        code, out, _ = run_cli(invocation(leaf, refresh=refresh, identity=bad))
-        assert code == 2
-        assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    code, out, _ = run_cli(invocation(leaf, identity=bad))
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     assert setup.state.business_requests == []
     assert setup.state.transports == []
 
@@ -233,7 +222,16 @@ def test_empty_identity_rejected_without_network(setup, run_cli, leaf, bad):
 @pytest.mark.parametrize("leaf", LEAVES)
 @pytest.mark.parametrize(
     "extra",
-    [["--id", "x"], ["--version", "1"], ["--all"], ["--limit", "1"], ["--offset", "0"]],
+    [
+        ["--id", "x"],
+        ["--live"],
+        ["--require-fresh"],
+        ["--require-complete"],
+        ["--version", "1"],
+        ["--all"],
+        ["--limit", "1"],
+        ["--offset", "0"],
+    ],
 )
 def test_unknown_parameters_rejected_without_network(setup, run_cli, leaf, extra):
     code, out, _ = run_cli([*invocation(leaf), *extra])
@@ -248,7 +246,7 @@ def test_missing_identity_and_auth_browser_failures(setup, run_cli, leaf):
     assert code == 2
     assert setup.state.transports == []
     setup.state.running = False
-    code, out, _ = run_cli([*invocation(leaf), "--live"])
+    code, out, _ = run_cli([*invocation(leaf)])
     assert code == 1
     assert parse(out)["error"]["code"] == "BROWSER_UNAVAILABLE"
     assert setup.state.business_requests == []
@@ -263,7 +261,7 @@ def test_missing_identity_and_auth_browser_failures(setup, run_cli, leaf):
         ("tntInstId", "OTHER"),
     ],
 )
-def test_demand_identity_source_tenant_conflicts_preserve_cache(
+def test_demand_identity_source_tenant_conflicts_refuse_invalid_response(
     setup, run_cli, field, value
 ):
     native = demand()
@@ -271,13 +269,13 @@ def test_demand_identity_source_tenant_conflicts_preserve_cache(
         "status": 200,
         "body": native,
     }
-    assert run_cli(command(refresh=True))[0] == 0
-    prior = setup.cache_path.read_bytes()
+    assert run_cli(command())[0] == 0
+    assert not setup.cache_path.exists()
     native["result"]["riskActionVO"][field] = value
-    code, out, _ = run_cli(command(refresh=True))
+    code, out, _ = run_cli(command())
     assert code == 1
     assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize(
@@ -304,7 +302,7 @@ def test_demand_requires_inner_boolean_success_and_object(setup, run_cli, docume
         "status": 200,
         "body": document,
     }
-    code, out, _ = run_cli(command(refresh=True))
+    code, out, _ = run_cli(command())
     assert code == 1
     assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
 
@@ -323,7 +321,7 @@ def test_quote_optional_product_section_preserves_absence_and_null(
         "status": 200,
         "body": native,
     }
-    code, out, err = run_cli([*invocation(LEAVES[2]), "--live"])
+    code, out, err = run_cli([*invocation(LEAVES[2])])
     assert code == 0, (out, err)
     result = parse(out)["data"]
     assert ("productDetail" in result) == (product is None)
@@ -340,8 +338,8 @@ def test_hard_failures_preserve_valid_object(setup, run_cli, leaf, failure):
         "status": 200,
         "body": native,
     }
-    assert run_cli(invocation(leaf, refresh=True))[0] == 0
-    prior = setup.cache_path.read_bytes()
+    assert run_cli(invocation(leaf))[0] == 0
+    assert not setup.cache_path.exists()
     wrapper = (
         native["result"]
         if path[0] == "operations"
@@ -368,7 +366,7 @@ def test_hard_failures_preserve_valid_object(setup, run_cli, leaf, failure):
             "status": 401,
             "body": {},
         }
-    code, out, _ = run_cli(invocation(leaf, refresh=True))
+    code, out, _ = run_cli(invocation(leaf))
     assert code == 1
     expected = (
         "AUTH_REQUIRED"
@@ -380,7 +378,7 @@ def test_hard_failures_preserve_valid_object(setup, run_cli, leaf, failure):
         )
     )
     assert parse(out)["error"]["code"] == expected
-    assert setup.cache_path.read_bytes() == prior
+    assert not setup.cache_path.exists()
 
 
 @pytest.mark.parametrize("section", ["missing", None, [], {"quotationId": None}])
@@ -395,7 +393,7 @@ def test_quote_requires_native_nested_identity_section(setup, run_cli, section):
         "status": 200,
         "body": native,
     }
-    code, out, _ = run_cli([*invocation(LEAVES[2]), "--live"])
+    code, out, _ = run_cli([*invocation(LEAVES[2])])
     assert code == 1
     assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
 
@@ -409,12 +407,11 @@ def test_fractional_json_precision_and_request_tenant_metadata(setup, run_cli):
         "status": 200,
         "body": native,
     }
-    code, out, err = run_cli(command(refresh=True))
+    code, out, err = run_cli(command())
     assert code == 0, (out, err)
     refreshed = parse(out)
     assert refreshed["meta"]["source_version"] == 0
     assert refreshed["meta"]["request_scope"] == {"tntInstId": "GUAPW3SG"}
-    setup.state.running = False
     code, out, err = run_cli(command())
     assert code == 0, (out, err)
     assert "0.123456789012345678901" in out
@@ -423,7 +420,7 @@ def test_fractional_json_precision_and_request_tenant_metadata(setup, run_cli):
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
-def test_getter_help_describe_and_policy_display_options(setup, run_cli, leaf):
+def test_getter_help_describe_and_display_options(setup, run_cli, leaf):
     path, flag, identity, factory = leaf
     for prefix in ("help", "describe"):
         code, out, err = run_cli([prefix, "liquidity", *path, "get"])
@@ -433,12 +430,10 @@ def test_getter_help_describe_and_policy_display_options(setup, run_cli, leaf):
         "status": 200,
         "body": factory(identity),
     }
-    assert run_cli(invocation(leaf, refresh=True))[0] == 0
+    assert run_cli(invocation(leaf))[0] == 0
     code, out, err = run_cli(
         [
             *invocation(leaf),
-            "--require-fresh",
-            "--require-complete",
             "--format",
             "table",
         ]
@@ -455,129 +450,40 @@ def test_getter_help_describe_and_policy_display_options(setup, run_cli, leaf):
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
-def test_populated_parent_list_never_substitutes_detail_and_refreshes_are_independent(
-    setup, run_cli, leaf
-):
+def test_populated_parent_list_does_not_substitute_native_get(setup, run_cli, leaf):
     path, _, identity, detail_factory = leaf
     if path[0] == "operations":
         from test_liquidity_funding_demands import SCOPE, listing
         from test_liquidity_funding_demands import demand as list_row
 
         options = SCOPE
-        first_row = list_row(taskId=identity)
-        second_row = list_row(taskId=identity, amount="777.000")
-
-        def handler(row):
-            return listing([row])
+        setup.state.business_handler = listing([list_row(taskId=identity)])
     elif path[0] == "network":
         from test_liquidity_realtime_network_cli_sit import network, response
 
         options = []
-        first_row = network(identity)
-        second_row = {**first_row, "version": 999}
-
-        def handler(row):
-            return lambda payload, index: response([row])
+        setup.state.business_handler = lambda payload, index: response(
+            [network(identity)]
+        )
     else:
         from test_liquidity_quotes_cli_sit import BOUNDS, quote, response
 
         options = BOUNDS
-        first_row = quote(identity)
-        second_row = {**first_row, "quote": "777.000"}
-
-        def handler(row):
-            return lambda payload, index: response([row])
-
-    list_refresh = ["refresh", "liquidity", *path, *options]
-    list_query = ["liquidity", *path, "list", *options, "--all"]
-    setup.state.business_handler = handler(first_row)
-    assert run_cli(list_refresh)[0] == 0
-    code, out, err = run_cli(list_query)
-    assert code == 0, (out, err)
-    parent_before = parse(out)
-    assert len(parent_before["data"]) == 1
-    requests_before = len(setup.state.business_requests)
-    transports_before = len(setup.state.transports)
-    code, out, _ = run_cli(invocation(leaf))
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
-    assert "detail get" in out
-    assert len(setup.state.business_requests) == requests_before
-    assert len(setup.state.transports) == transports_before
+        setup.state.business_handler = lambda payload, index: response(
+            [quote(identity)]
+        )
+    assert run_cli(["refresh", "liquidity", *path, *options])[0] == 0
+    prior = setup.cache_path.read_bytes()
+    count = len(setup.state.business_requests)
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": detail_factory(identity),
     }
-    assert run_cli(invocation(leaf, refresh=True))[0] == 0
-    code, out, err = run_cli(list_query)
-    assert code == 0, (out, err)
-    parent_after = parse(out)
-    assert parent_after["data"] == parent_before["data"]
-    assert parent_after["meta"]["snapshot_id"] == parent_before["meta"]["snapshot_id"]
     code, out, err = run_cli(invocation(leaf))
     assert code == 0, (out, err)
-    detail_before = parse(out)
-    setup.state.business_handler = handler(second_row)
-    assert run_cli(list_refresh)[0] == 0
-    setup.state.running = False
-    code, out, err = run_cli(list_query)
-    assert code == 0, (out, err)
-    assert parse(out)["data"] != parent_before["data"]
-    requests_before = len(setup.state.business_requests)
-    code, out, err = run_cli(invocation(leaf))
-    assert code == 0, (out, err)
-    detail_after = parse(out)
-    assert detail_after["data"] == detail_before["data"]
-    assert detail_after["meta"]["snapshot_id"] == detail_before["meta"]["snapshot_id"]
-    assert (
-        detail_after["meta"]["detail_fetched_at"]
-        == detail_before["meta"]["detail_fetched_at"]
-    )
-    assert len(setup.state.business_requests) == requests_before
-
-
-@pytest.mark.parametrize("leaf", LEAVES)
-def test_schema_change_requires_explicit_detail_refresh_without_cache_fallback(
-    setup, run_cli, leaf, monkeypatch
-):
-    from dataclasses import replace
-
-    from dogopencli.plugins.liquidity.leaves import DETAIL_LEAVES, DetailLeaf
-
-    path, _, identity, factory = leaf
-    setup.state.business_handler = lambda payload, index: {
-        "status": 200,
-        "body": factory(identity),
-    }
-    assert run_cli(invocation(leaf, refresh=True))[0] == 0
-    code, out, err = run_cli(invocation(leaf))
-    assert code == 0, (out, err)
-    original = parse(out)
-    registered = DETAIL_LEAVES[(*path, "get")]
-    changed = DetailLeaf(
-        replace(registered.spec, schema_version="synthetic-next-schema")
-    )
-    monkeypatch.setitem(DETAIL_LEAVES, (*path, "get"), changed)
-    requests_before = len(setup.state.business_requests)
-    transports_before = len(setup.state.transports)
-    prior_bytes = setup.cache_path.read_bytes()
-    code, out, _ = run_cli(invocation(leaf))
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
-    assert "detail get" in out
-    assert len(setup.state.business_requests) == requests_before
-    assert len(setup.state.transports) == transports_before
-    assert setup.cache_path.read_bytes() == prior_bytes
-    assert run_cli(invocation(leaf, refresh=True))[0] == 0
-    setup.state.running = False
-    assert run_cli(invocation(leaf))[0] == 0
-    monkeypatch.setitem(DETAIL_LEAVES, (*path, "get"), registered)
-    code, out, err = run_cli(invocation(leaf))
-    assert code == 0, (out, err)
-    assert parse(out)["data"] == original["data"]
-    assert (
-        parse(out)["meta"]["detail_fetched_at"] == original["meta"]["detail_fetched_at"]
-    )
+    assert parse(out)["meta"]["source"] == "live"
+    assert len(setup.state.business_requests) == count + 1
+    assert setup.cache_path.read_bytes() == prior
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
@@ -609,3 +515,15 @@ def test_native_getter_description_exposes_only_projected_schema(setup, run_cli,
         assert product_schema["type"] == ["object", "null"]
         assert "quotationOrderId" not in properties
     assert setup.state.transports == []
+
+
+@pytest.mark.parametrize("leaf", LEAVES)
+def test_removed_detail_refresh_is_nonexecuting(setup, run_cli, leaf):
+    path, flag, identity, _ = leaf
+    code, out, _ = run_cli(
+        ["refresh", "liquidity", *path, "detail", "get", "--" + flag, identity]
+    )
+    assert code != 0
+    assert parse(out)["error"] is not None
+    assert not setup.state.business_requests
+    assert not setup.state.transports
