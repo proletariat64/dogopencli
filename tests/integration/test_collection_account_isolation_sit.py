@@ -52,7 +52,7 @@ def test_refresh_and_offline_list_preserve_raw_rows(run_cli, envelope, setup):
     assert envelope(out)["data"]["row_count"] == 2
     assert setup.state.business_requests == [{"pageNo": 0, "pageSize": 1000}]
     setup.state.running = False
-    code, out, _ = run_cli(["collection", "account-isolation", "list", "--all"])
+    code, out, _ = run_cli(["collection", "account-isolation", "list", "--limit", "0"])
     assert code == 0, out
     assert envelope(out)["data"] == list(reversed(rows))
     assert envelope(out)["meta"]["complete"] is True
@@ -173,9 +173,11 @@ def test_scope_boundaries_and_no_next_page(run_cli, envelope, setup, size):
     assert code == 0, out
     assert envelope(out)["data"]["row_count"] == size
     assert len(setup.state.business_requests) == 1
-    assert envelope(listing(run_cli, "--all")[1])["data"] == sorted(
-        rows, key=lambda r: r["id"]
-    )
+    result = envelope(listing(run_cli, "--limit", "0")[1])
+    if size:
+        assert result["data"] == sorted(rows, key=lambda r: r["id"])
+    else:
+        assert result["error"]["code"] == "CACHE_MISS"
 
 
 @pytest.mark.parametrize("live", [False, True])
@@ -297,7 +299,7 @@ def test_common_options_and_help_inventory(run_cli, envelope, setup):
         == 5
     )
     assert envelope(listing(run_cli, "--offset", "200")[1])["data"] == []
-    assert len(envelope(listing(run_cli, "--all")[1])["data"]) == 150
+    assert len(envelope(listing(run_cli, "--limit", "0")[1])["data"]) == 150
     assert envelope(listing(run_cli, "--fields", "id,unknown", "--limit", "1")[1])[
         "data"
     ] == [{"id": "1000"}]
@@ -305,7 +307,7 @@ def test_common_options_and_help_inventory(run_cli, envelope, setup):
     for flags in [
         ("--all", "--limit", "1"),
         ("--all", "--offset", "1"),
-        ("--limit", "0"),
+        ("--limit", "-1"),
         ("--offset", "-1"),
         ("--fields", ""),
         ("--format", "xml"),
@@ -331,7 +333,6 @@ def test_common_options_and_help_inventory(run_cli, envelope, setup):
     assert {f for o in doc["options"] for f in o["flags"]} == set(FILTERS) | {
         "--limit",
         "--offset",
-        "--all",
         "--live",
         "--require-fresh",
         "--require-complete",
@@ -344,7 +345,7 @@ def test_common_options_and_help_inventory(run_cli, envelope, setup):
         )[0]
         == 0
     )
-    for extra in [["--currency", "GBP"], ["--all"], ["extra"]]:
+    for extra in [["--currency", "GBP"], ["--limit", "0"], ["extra"]]:
         assert run_cli(["refresh", "collection", "account-isolation", *extra])[0] == 2
     assert run_cli(["collection", "account-isolation", "get", "--id", "001"])[0] == 2
     assert run_cli(["collection", "bank-va", "rules", "list"])[0] == 2

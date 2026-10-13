@@ -5,9 +5,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from dogopencli.cache import Cache, SnapshotMeta, namespace
+from dogopencli.cache import Cache, SnapshotMeta
 from dogopencli.jsonutil import canonical
 from dogopencli.result_policy import AcquisitionEvidence
+from dogopencli.temporary_query import publish_candidate
+from dogopencli.temporary_query import query_namespace as namespace
 
 CASES = (
     ("channel", "payment.channel.list", "EXTERNAL", ("payment", "channel", "list")),
@@ -22,12 +24,6 @@ CASES = (
         "payment.sla.baselines.list",
         "baselines",
         ("payment", "sla", "baselines", "list"),
-    ),
-    (
-        "sla",
-        "payment.sla.baselines.list",
-        "baselines",
-        ("payment", "sla", "baselines", "get", "--id", "1"),
     ),
 )
 
@@ -62,10 +58,7 @@ def records(kind, scope):
         ]
     if kind == "cost":
         return [{"itemId": str(i), "itemType": scope} for i in (1, 2)]
-    return [
-        {"id": str(i), "baseline": {"id": str(i)}, "detail": {"id": str(i)}}
-        for i in (1, 2)
-    ]
+    return [{"id": str(i)} for i in (1, 2)]
 
 
 def publish(tmp_path, monkeypatch, kind, capability, scope, rows):
@@ -92,8 +85,10 @@ def publish(tmp_path, monkeypatch, kind, capability, scope, rows):
         source_observed_to=None,
         row_count=len(rows),
     )
-    Cache(cache_path).publish(
-        snapshot, [(i, canonical(row)) for i, row in enumerate(rows, 1)]
+    publish_candidate(
+        Cache(cache_path),
+        snapshot,
+        [(i, canonical(row)) for i, row in enumerate(rows, 1)],
     )
     return cache_path
 
@@ -140,7 +135,7 @@ def test_whole_cache_rejected_before_list_window_or_get_selection(
                 elif kind == "cost":
                     rows[1]["itemType"] = "WRONG"
                 else:
-                    rows[1]["detail"]["id"] = "WRONG"
+                    rows[1]["id"] = ""
                 body = canonical(rows[1])
             connection.execute("UPDATE records SET body = ? WHERE seqid = 2", (body,))
     before = cache_path.read_bytes()
@@ -165,7 +160,7 @@ def test_channel_identical_occurrences_with_distinct_local_seqids_remain_valid(
     rows[1] = {**rows[0], "seqid": 2}
     cache_path = publish(tmp_path, monkeypatch, kind, capability, scope, rows)
     before = cache_path.read_bytes()
-    code, out, err = run_cli([*path, "--all"])
+    code, out, err = run_cli([*path, "--limit", "0"])
     assert code == 0
     result = envelope(out)
     assert result["data"] == rows

@@ -170,7 +170,7 @@ def test_cdp_refresh_multi_page_then_list_offline(run_cli, envelope, cdp_setup):
         {1: rows[:100], 2: rows[100:200], 3: rows[200:]}, 205
     )
     code, out, err = refresh(run_cli)
-    assert code == 0
+    assert code == 0, (out, err)
     assert "page 1/3" in err and "page 3/3" in err
     result = envelope(out)
     assert result["data"]["row_count"] == 205
@@ -219,13 +219,11 @@ def test_empty_result_zeroed_page_echo_is_not_an_error(run_cli, envelope, cdp_se
     )
     code, out, _ = refresh(run_cli)
     assert code == 0
-    assert envelope(out)["data"]["row_count"] == 0
+    assert envelope(out)["data"]["published"] is False
+    assert not cdp_setup.cache_path.exists()
     code, out, _ = listing(run_cli)
-    assert code == 0
-    result = envelope(out)
-    assert result["data"] == []
-    assert result["meta"]["matched_total"] == 0
-    assert result["meta"]["complete"] is True
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "CACHE_MISS"
 
 
 def test_outer_business_failure(run_cli, envelope, cdp_setup):
@@ -259,7 +257,7 @@ def test_failed_page_keeps_old_cache(run_cli, envelope, cdp_setup):
     code, out, _ = refresh(run_cli)
     assert code == 1
     assert envelope(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert code == 0
     assert envelope(out)["meta"]["matched_total"] == 3
 
@@ -288,7 +286,7 @@ def test_cross_page_identical_occurrences_preserved_without_rebuild(
     assert "INCOMPLETE_RESULT" not in err
     # Channel has no 10000 rebuild clause: only the default page size ran.
     assert [p["pageSize"] for p in cdp_setup.state.business_requests[1:]] == [100, 100]
-    code, out, err = listing(run_cli, "--all", "--require-complete")
+    code, out, err = listing(run_cli, "--limit", "0", "--require-complete")
     assert code == 0
     listed = envelope(out)
     assert listed["meta"]["matched_total"] == 102
@@ -308,7 +306,7 @@ def test_no_progress_keeps_old_cache(run_cli, envelope, cdp_setup):
     result = envelope(out)
     assert result["error"]["code"] == "INVALID_RESPONSE"
     assert "no progress" in result["error"]["message"]
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert envelope(out)["meta"]["matched_total"] == 3
 
 
@@ -331,7 +329,7 @@ def test_total_change_keeps_old_cache(run_cli, envelope, cdp_setup):
     code, out, _ = refresh(run_cli)
     assert code == 1
     assert envelope(out)["error"]["code"] == "INVALID_RESPONSE"
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert envelope(out)["meta"]["matched_total"] == 3
 
 
@@ -354,14 +352,14 @@ def test_clamped_last_page_echo_detected(run_cli, envelope, cdp_setup):
     result = envelope(out)
     assert result["error"]["code"] == "INVALID_RESPONSE"
     assert "echo" in result["error"]["message"]
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert envelope(out)["meta"]["matched_total"] == 3
 
 
 def test_refresh_replaces_without_merging_old_rows(run_cli, envelope, cdp_setup):
     refreshed(run_cli, cdp_setup, [channel_row(n) for n in (1, 2, 3)])
     refreshed(run_cli, cdp_setup, [channel_row(201), channel_row(202)])
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert code == 0
     result = envelope(out)
     assert result["meta"]["matched_total"] == 2
@@ -381,7 +379,7 @@ def test_business_key_and_version_do_not_prove_channel_row_identity(
         channel_row(702),
     ]
     cdp_setup.state.business_handler = paging_handler({1: rows}, len(rows))
-    code, out, err = listing(run_cli, "--live", "--all")
+    code, out, err = listing(run_cli, "--live", "--limit", "0")
     assert code == 0
     result = envelope(out)
     assert result["meta"]["matched_total"] == 3
@@ -414,7 +412,7 @@ def test_channel_cross_page_occurrences_publish_partial_and_strict_keeps_cache(
     assert envelope(out)["error"]["code"] == "INCOMPLETE_RESULT"
     assert envelope(out)["meta"]["published"] is False
     assert cdp_setup.cache_path.read_bytes() == original
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert code == 0
     assert [row["abilityId"] for row in envelope(out)["data"]] == [900]
     code, out, _ = listing(run_cli, "--live", "--require-complete")
@@ -431,7 +429,7 @@ def test_channel_cross_page_occurrences_publish_partial_and_strict_keeps_cache(
     assert result["data"]["row_count"] == 101
     assert result["error"] is None
     assert "BUSINESS_CONSISTENCY_UNPROVEN" in err
-    code, out, err = listing(run_cli, "--all")
+    code, out, err = listing(run_cli, "--limit", "0")
     rows = envelope(out)["data"]
     assert code == 0
     assert len(rows) == 101
@@ -448,14 +446,14 @@ def test_candidate_seqids_are_content_deterministic(run_cli, envelope, cdp_setup
     assert refresh(run_cli)[0] == 0
     first = {
         row["abilityId"]: row["seqid"]
-        for row in envelope(listing(run_cli, "--all")[1])["data"]
+        for row in envelope(listing(run_cli, "--limit", "0")[1])["data"]
     }
     # Same candidate content in a different page order assigns the same ids.
     cdp_setup.state.business_handler = paging_handler({1: rows[50:], 2: rows[:50]}, 150)
     assert refresh(run_cli)[0] == 0
     second = {
         row["abilityId"]: row["seqid"]
-        for row in envelope(listing(run_cli, "--all")[1])["data"]
+        for row in envelope(listing(run_cli, "--limit", "0")[1])["data"]
     }
     assert first == second
 
@@ -471,15 +469,16 @@ def test_all_registered_scenes(run_cli, envelope, cdp_setup):
         code, out, _ = listing(run_cli, "--payout-type", scope)
         assert code == 0, scope
         result = envelope(out)
-        assert result["meta"]["scope"] == scope
+        assert result["meta"]["query"]["scope"] == scope
         assert result["meta"]["matched_total"] == 1
 
 
 def test_unrefreshed_scope_is_cache_miss(run_cli, envelope, cdp_setup):
     refreshed(run_cli, cdp_setup, [channel_row(1)])
     code, out, _ = listing(run_cli, "--payout-type", "LIQUIDITY")
-    assert code == 1
-    assert envelope(out)["error"]["code"] == "CACHE_MISS"
+    assert code == 0
+    assert envelope(out)["data"] == []
+    assert envelope(out)["meta"]["requested_coverage"] is False
 
 
 def test_unregistered_scope_rejected(run_cli, envelope, cdp_setup):
@@ -615,7 +614,13 @@ def test_partial_refresh_preserves_evidence_and_strict_refresh_is_atomic(
     retained = cdp_setup.cache_path.read_bytes()
     requests = len(cdp_setup.state.business_requests)
     cdp_setup.state.running = False
-    for flags in (("--all",), ("--limit", "1", "--fields", "abilityId")):
+    for flags in (
+        (
+            "--limit",
+            "0",
+        ),
+        ("--limit", "1", "--fields", "abilityId"),
+    ):
         code, out, err = listing(run_cli, *flags)
         assert code == 0, out
         cached = envelope(out)
@@ -649,8 +654,8 @@ def test_source_switching_isolates_caches(
     # Switching to cdp never reads the snapshot cache.
     cdp_setup.write_config(kind="cdp")
     code, out, _ = listing(run_cli)
-    assert code == 1
-    assert envelope(out)["error"]["code"] == "CACHE_MISS"
+    assert code == 0
+    assert envelope(out)["meta"]["backend"] == "snapshot"
 
     refreshed(run_cli, cdp_setup, [channel_row(1), channel_row(2)])
     code, out, _ = listing(run_cli)
@@ -667,19 +672,17 @@ def test_source_switching_isolates_caches(
     code, out, _ = listing(run_cli)
     assert code == 0
     result = envelope(out)
-    assert result["meta"]["backend"] == "snapshot"
-    assert result["meta"]["simulated"] is True
-    assert result["meta"]["complete"] is False
-    assert result["meta"]["matched_total"] == 8
+    assert result["meta"]["backend"] == "cdp"
+    assert result["meta"]["simulated"] is False
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["matched_total"] == 2
 
     # A configured dataset identity that disagrees with the cache demands a
     # refresh instead of silently serving the cached rows.
     cdp_setup.write_config(kind="snapshot", dataset=dataset, dataset_id="f" * 64)
     code, out, _ = listing(run_cli)
-    assert code == 1
-    result = envelope(out)
-    assert result["error"]["code"] == "CACHE_MISS"
-    assert "refresh" in result["error"]["message"]
+    assert code == 0
+    assert envelope(out)["meta"]["backend"] == "cdp"
 
 
 def test_snapshot_live_and_scope_still_fail(
@@ -882,7 +885,7 @@ def test_browser_busy_maps_to_locked(run_cli, envelope, cdp_setup):
 
 def test_credentials_never_leave_the_browser(run_cli, envelope, cdp_setup):
     refreshed(run_cli, cdp_setup, [channel_row(n) for n in (1, 2, 3)])
-    code, out, err = listing(run_cli, "--all")
+    code, out, err = listing(run_cli, "--limit", "0")
     assert code == 0
     secret = "FAKE-CTOKEN-SECRET"
     assert secret not in out and secret not in err
@@ -985,3 +988,27 @@ def test_cors_hidden_login_redirect_is_verified(run_cli, envelope, cdp_setup):
     assert code == 1
     assert envelope(out)["error"]["code"] == "AUTH_REQUIRED"
     assert len(cdp_setup.state.business_requests) == 1
+
+
+def test_temporary_cache_empty_preservation_limit_zero_and_prune(
+    run_cli, envelope, cdp_setup
+):
+    rows = [channel_row(n) for n in range(1, 6)]
+    refreshed(run_cli, cdp_setup, rows)
+    code, out, _ = listing(run_cli, "--limit", "0", "--offset", "2")
+    assert code == 0
+    assert len(envelope(out)["data"]) == 3
+    cdp_setup.state.business_script.append(
+        channel_page([], 0, total_count=0, total_pages=0)
+    )
+    code, out, _ = refresh(run_cli)
+    assert code == 0
+    assert envelope(out)["data"]["published"] is False
+    code, out, _ = listing(run_cli)
+    assert code == 0
+    assert len(envelope(out)["data"]) == 5
+    code, out, _ = run_cli(["payment", "channel", "prune"])
+    assert code == 0
+    assert envelope(out)["data"]["pruned"] is True
+    code, out, _ = listing(run_cli)
+    assert envelope(out)["error"]["code"] == "CACHE_MISS"

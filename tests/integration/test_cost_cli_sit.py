@@ -567,7 +567,7 @@ def test_partial_refresh_builds_usable_cache_with_persistent_warning(
     assert result["meta"]["missing_count"] == 1
     assert "INCOMPLETE_RESULT" in err
     requests = len(cost_setup.state.business_requests)
-    code, out, err = listing(run_cli, "--all")
+    code, out, err = listing(run_cli, "--limit", "0")
     assert code == 0 and len(envelope(out)["data"]) == 2
     assert envelope(out)["meta"]["acquisition"]["reported_total"] == 3
     assert "INCOMPLETE_RESULT" in err
@@ -739,7 +739,7 @@ def test_rebuild_on_empty_last_page_coverage_gap(
     payloads = cost_setup.state.business_requests
     assert [p["pageSize"] for p in payloads] == [5000, 5000, 10000]
     assert [p["pageNo"] for p in payloads] == [0, 1, 0]
-    cached = envelope(listing(run_cli, "--all")[1])
+    cached = envelope(listing(run_cli, "--limit", "0")[1])
     assert cached["data"] == rebuilt_rows
     assert [
         attempt["page_size"] for attempt in cached["meta"]["acquisition"]["attempts"]
@@ -895,7 +895,7 @@ def test_browser_busy_maps_to_locked(run_cli, envelope, cost_setup):
 def test_id_ordering_numeric_ascending(run_cli, envelope, cost_setup):
     rows = [cost_row(100), cost_row(9), cost_row(10), cost_row(2)]
     refreshed(run_cli, cost_setup, rows)
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert code == 0
     assert [row["itemId"] for row in envelope(out)["data"]] == [
         "2",
@@ -915,7 +915,7 @@ def test_display_params(run_cli, envelope, cost_setup, sample_cost_rows):
     assert result["meta"]["matched_total"] == 8
     assert result["meta"]["has_more"] is True
 
-    code, out, _ = listing(run_cli, "--all", "--fields", "itemId,status")
+    code, out, _ = listing(run_cli, "--limit", "0", "--fields", "itemId,status")
     assert code == 0
     result = envelope(out)
     assert result["meta"]["returned_count"] == 8
@@ -923,7 +923,7 @@ def test_display_params(run_cli, envelope, cost_setup, sample_cost_rows):
 
     for extra in (
         ["--all", "--limit", "5"],
-        ["--limit", "0"],
+        ["--limit", "-1"],
         ["--offset", "-1"],
         ["--fields", " , "],
     ):
@@ -986,12 +986,10 @@ def test_empty_scope_publishes_empty_snapshot(run_cli, envelope, cost_setup):
     code, out, _ = refresh(run_cli)
     assert code == 0
     assert envelope(out)["data"]["row_count"] == 0
+    assert envelope(out)["data"]["published"] is False
     code, out, _ = listing(run_cli)
-    assert code == 0
-    result = envelope(out)
-    assert result["data"] == []
-    assert result["meta"]["matched_total"] == 0
-    assert result["meta"]["complete"] is True
+    assert code == 1
+    assert envelope(out)["error"]["code"] == "CACHE_MISS"
 
 
 def test_refresh_replaces_without_merging_old_rows(
@@ -1001,7 +999,7 @@ def test_refresh_replaces_without_merging_old_rows(
     script_full(cost_setup.state, [cost_row(201), cost_row(202)])
     code, _, _ = refresh(run_cli)
     assert code == 0
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     result = envelope(out)
     assert result["meta"]["matched_total"] == 2
     assert [row["itemId"] for row in result["data"]] == ["201", "202"]
@@ -1011,7 +1009,7 @@ def test_credentials_never_leave_the_browser(
     run_cli, envelope, cost_setup, sample_cost_rows
 ):
     refreshed(run_cli, cost_setup, sample_cost_rows)
-    code, out, err = listing(run_cli, "--all")
+    code, out, err = listing(run_cli, "--limit", "0")
     assert code == 0
     secret = "FAKE-CTOKEN-SECRET"
     assert secret not in out and secret not in err

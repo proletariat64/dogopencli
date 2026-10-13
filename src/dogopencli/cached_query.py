@@ -68,6 +68,8 @@ def snapshot_meta(
             result["query"] = context
     else:
         result["query"] = {"scope": snapshot.scope}
+    if isinstance(result.get("query"), dict) and "scope" in result["query"]:
+        result["scope"] = result["query"]["scope"]
     return result
 
 

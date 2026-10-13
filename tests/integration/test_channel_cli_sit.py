@@ -172,10 +172,8 @@ def test_configured_dataset_id_mismatch(
     assert refresh(run_cli)[0] == 0
     config_factory(dataset, dataset_id="e" * 64)
     code, out, _ = listing(run_cli)
-    assert code == 1
-    result = envelope(out)
-    assert result["error"]["code"] == "CACHE_MISS"
-    assert "refresh" in result["error"]["message"]
+    assert code == 0
+    assert envelope(out)["meta"]["source"] == "cache"
 
 
 def test_quality_markers_stale_and_incomplete(
@@ -301,7 +299,7 @@ def test_display_pagination_and_fields(
     assert [row["seqid"] for row in result["data"]] == [6, 7, 8, 9, 10]
     assert result["meta"]["has_more"] is True
 
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert code == 0
     result = envelope(out)
     assert result["meta"]["returned_count"] == 205
@@ -322,7 +320,7 @@ def test_argument_errors_exit_2(run_cli, envelope, small_setup):
     for extra in (
         ["--all", "--limit", "5"],
         ["--all", "--offset", "1"],
-        ["--limit", "0"],
+        ["--limit", "-1"],
         ["--limit", "-3"],
         ["--offset", "-1"],
         ["--fields", " , "],
@@ -340,7 +338,7 @@ def test_unknown_scope_is_usage_error(run_cli, envelope, small_setup):
 
 def test_decimal_precision_preserved(run_cli, small_setup):
     assert refresh(run_cli)[0] == 0
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert code == 0
     assert PRECISE_AMOUNT in out
     rows = json_decimal(out)["data"]
@@ -372,8 +370,8 @@ def test_switch_dataset_path_requires_refresh(
     assert run_cli(["refresh", "payment", "channel"])[0] == 0
     config_factory(second)
     code, out, _ = run_cli(["payment", "channel", "list"])
-    assert code == 1
-    assert envelope(out)["error"]["code"] == "CACHE_MISS"
+    assert code == 0
+    assert envelope(out)["meta"]["source"] == "cache"
     assert run_cli(["refresh", "payment", "channel"])[0] == 0
     code, out, _ = run_cli(["payment", "channel", "list"])
     assert code == 0

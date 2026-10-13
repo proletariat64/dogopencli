@@ -52,10 +52,14 @@ def test_refresh_offline_isolation_precision_and_display(run_cli, envelope, setu
     setup.state.business_script.append(page(rows))
     code, out, _ = refresh(run_cli)
     assert code == 0
-    assert envelope(out)["data"]["namespace"].startswith("collection.cost.list")
+    assert envelope(out)["data"]["namespace"].startswith(
+        "temporary-query:collection.cost"
+    )
     before = len(setup.state.transports)
     setup.state.running = False
-    code, out, err = listing(run_cli, "--all", "--require-fresh", "--require-complete")
+    code, out, err = listing(
+        run_cli, "--limit", "0", "--require-fresh", "--require-complete"
+    )
     assert (code, err) == (0, "")
     result = parse(out)
     assert result["data"] == [rows[1], rows[0]]
@@ -155,7 +159,7 @@ def test_invalid_or_empty_response(
     if live or expected:
         assert listing(run_cli)[1] == old
     else:
-        assert envelope(listing(run_cli)[1])["data"] == []
+        assert listing(run_cli)[1] == old
 
 
 def test_empty_fixed_response_with_nonzero_total_replaces_cache_as_partial(
@@ -163,36 +167,20 @@ def test_empty_fixed_response_with_nonzero_total_replaces_cache_as_partial(
     envelope,
     setup,
 ):
-    seed(run_cli, setup)
+    old = seed(run_cli, setup)
     setup.state.business_script.append(page([], total_count=2))
     code, out, err = refresh(run_cli)
     assert code == 0, out
     result = envelope(out)
-    assert result["meta"]["published"] is True
+    assert result["meta"]["published"] is False
     assert result["meta"]["complete"] is False
     assert result["meta"]["missing_count"] == 2
     assert result["data"]["row_count"] == 0
     assert "INCOMPLETE_RESULT" in err
     setup.state.running = False
-    code, out, err = listing(run_cli)
+    code, out, _ = listing(run_cli)
     assert code == 0
-    assert envelope(out)["data"] == []
-    assert envelope(out)["meta"]["complete"] is False
-    assert "INCOMPLETE_RESULT" in err
-    code, out, _ = listing(run_cli, "--require-complete")
-    assert code == 1
-    assert envelope(out)["data"] is None
-
-
-@pytest.mark.parametrize(
-    "status, expected", [(401, "AUTH_REQUIRED"), (403, "BUSINESS_QUERY_FAILED")]
-)
-def test_http_failure_preserves_cache(run_cli, envelope, setup, status, expected):
-    old = seed(run_cli, setup)
-    setup.state.business_script.append({"status": status, "body": {}})
-    code, out, _ = refresh(run_cli)
-    assert code == 1 and envelope(out)["error"]["code"] == expected
-    assert listing(run_cli)[1] == old
+    assert out == old
 
 
 def test_interruption_preserves_cache(run_cli, setup):

@@ -4,10 +4,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from dogopencli.cache import Cache, SnapshotMeta, namespace
+from dogopencli.cache import Cache, SnapshotMeta
 from dogopencli.cached_query import read_cached_query
 from dogopencli.config import Config, SourceConfig
 from dogopencli.errors import CliError
+from dogopencli.temporary_query import publish_candidate
+from dogopencli.temporary_query import query_namespace as namespace
 
 
 @pytest.fixture
@@ -32,7 +34,9 @@ def cached_scope(tmp_path):
         row_count=2,
         source_path=str(source.path),
     )
-    Cache(config.cache_path).publish(snapshot, [(1, '{"id":1}'), (2, '{"id":2}')])
+    publish_candidate(
+        Cache(config.cache_path), snapshot, [(1, '{"id":1}'), (2, '{"id":2}')]
+    )
     return config, source, now
 
 
@@ -74,14 +78,10 @@ def test_quality_requirements_and_error_precedence(cached_scope, fresh, complete
     assert caught.value.code == code
 
 
-def test_identity_mismatch_precedes_quality(cached_scope):
+def test_configured_source_change_does_not_hide_saved_slot(cached_scope):
     config, source, now = cached_scope
     foreign = SourceConfig(source.kind, source.path, "other-dataset")
-    with pytest.raises(CliError) as caught:
-        read((config, foreign, now), require_fresh=True, require_complete=True)
-    assert caught.value.code == "CACHE_MISS"
-    assert "source identity" in caught.value.message
-    assert "run: dogopencli refresh fixture" in caught.value.message
+    assert len(read((config, foreign, now)).stored) == 2
 
 
 def test_exact_ttl_boundary_is_fresh(cached_scope):

@@ -271,6 +271,9 @@ def build_catalog(declarations: Iterable[BizNode]) -> dict[tuple[str, ...], BizN
         if node.path[-1:] == ("get",) and node.handler != "cmd_liquidity_unsupported":
             node = replace(
                 node,
+                options=tuple(
+                    option for option in node.options if option.name != "require_fresh"
+                ),
                 effects={
                     "mutates": False,
                     "network": True,
@@ -278,7 +281,9 @@ def build_catalog(declarations: Iterable[BizNode]) -> dict[tuple[str, ...], BizN
                     "destructive": False,
                 },
                 effects_variants=(),
-                summary="Online native detail inquiry; never reads or writes query cache.",
+                summary=(
+                    "Online native detail inquiry; never reads or writes query cache."
+                ),
             )
         if node.path[:1] == ("refresh",) and node.handler is not None:
             if not any(option.name == "require_complete" for option in node.options):
