@@ -8,10 +8,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from dogopencli.cache import Cache, SnapshotMeta, namespace
+from dogopencli.cache import Cache
 from dogopencli.config import Config
-from dogopencli.plugins.liquidity import details, leaves, spec, store
+from dogopencli.result_policy import AcquisitionEvidence
 from dogopencli.snapshot import bindings, build_report
+from dogopencli.temporary_query import publish_slot
 
 
 @pytest.fixture
@@ -24,22 +25,28 @@ def configured(tmp_path, monkeypatch):
 
 
 def publish_list(path):
-    leaf = next(
-        leaf
-        for leaf in leaves.LIST_LEAVES.values()
-        if leaf.variants[0].profile == spec.PROFILE_SNAPSHOT and len(leaf.variants) == 1
-    )
-    declared = leaf.variants[0]
     at = datetime.now(timezone.utc).isoformat()
-    plan = store.plan_capture_publish(
-        Cache(path), declared, "private-scope", (None, None), [], 0, at, at
+    evidence = AcquisitionEvidence(
+        scope_complete=True,
+        dataset_complete=True,
+        collected_total=1,
+        reported_total=1,
+        arrivals=1,
     )
-    store.commit_plan(Cache(path), declared.name, plan, at)
-    return ("liquidity", *leaf.path, "list"), declared, plan
+    meta = publish_slot(
+        Cache(path),
+        "payment.cost",
+        [{"id": "private-row"}],
+        capability="payment.cost.list",
+        scope={"scope": "private-scope"},
+        evidence=evidence,
+        fetched_at=at,
+    )
+    return ("payment", "cost", "list"), meta
 
 
-def test_unpublished_corrupt_capture_is_not_an_inspection_error(configured):
-    command, declared, _ = publish_list(configured)
+def test_unpublished_corrupt_slot_is_not_an_inspection_error(configured):
+    command, meta = publish_list(configured)
     with sqlite3.connect(configured) as connection:
         connection.execute(
             "INSERT INTO snapshots SELECT namespace || '-orphan', capability, scope,"
@@ -47,27 +54,22 @@ def test_unpublished_corrupt_capture_is_not_an_inspection_error(configured):
             " dataset_complete, fetched_at, loaded_at, source_observed_from,"
             " source_observed_to, row_count, source_path, 'invalid json'"
             " FROM snapshots WHERE namespace = ?",
-            (store.index_namespace(declared.name),),
+            (meta.namespace,),
         )
     result = build_report(command)
     assert result["inspection_complete"] is True
-    assert result["tree"]["rows"] == 0
+    assert result["tree"]["rows"] == 1
 
 
-def test_capture_identifier_changes_with_published_generation(configured):
-    command, _, plan = publish_list(configured)
-    before = build_report(command)["tree"]["cache"]["captures"][0]["capture_id"]
+def test_acquisition_identifier_changes_with_published_generation(configured):
+    command, meta = publish_list(configured)
+    before = build_report(command)["tree"]["cache"]["slots"][0]["acquisition_id"]
     with sqlite3.connect(configured) as connection:
-        # Change both publication records to keep their generation consistent.
         connection.execute(
             "UPDATE snapshots SET snapshot_id = 'new-generation' WHERE namespace = ?",
-            (plan.capture_meta.namespace,),
+            (meta.namespace,),
         )
-        connection.execute(
-            "UPDATE records SET body = json_set(body, '$.snapshot_id',"
-            " 'new-generation') WHERE json_extract(body, '$.type') = 'capture'"
-        )
-    after = build_report(command)["tree"]["cache"]["captures"][0]["capture_id"]
+    after = build_report(command)["tree"]["cache"]["slots"][0]["acquisition_id"]
     assert before != after
 
 
@@ -84,60 +86,8 @@ def test_invalid_ttl_keeps_error_report(configured, monkeypatch, ttl):
     assert result["tree"]["cache"]["status"] == "read_error"
 
 
-@pytest.mark.parametrize("payload", ["null", None])
-def test_detail_envelope_requires_native_payload(configured, payload):
-    leaf = next(iter(leaves.DETAIL_LEAVES.values()))
-    at = datetime.now(timezone.utc).isoformat()
-    name = details.details_namespace(leaf.spec.name)
-    meta = SnapshotMeta(
-        name,
-        leaf.spec.name,
-        "detail",
-        "cdp",
-        "id",
-        None,
-        False,
-        True,
-        True,
-        at,
-        at,
-        None,
-        None,
-        1,
-    )
-    body = (
-        '{"key":"private-account", "fetched_at":"'
-        + at
-        + '"'
-        + (', "detail": null' if payload is not None else "")
-        + "}"
-    )
-    Cache(configured).publish(meta, [(1, body)])
-    result = build_report(("liquidity", *leaf.path))
-    assert result["inspection_complete"] is False
-    assert result["tree"]["cache"]["status"] == "read_error"
-
-
-def test_absent_policy_preserves_capture_quality(configured, monkeypatch, run_cli):
-    at = datetime.now(timezone.utc).isoformat()
-    name = namespace("payment.cost.list", "scope", "cdp")
-    meta = SnapshotMeta(
-        name,
-        "payment.cost.list",
-        "scope",
-        "cdp",
-        "id",
-        None,
-        False,
-        True,
-        True,
-        at,
-        at,
-        None,
-        None,
-        0,
-    )
-    Cache(configured).publish(meta, [])
+def test_absent_policy_preserves_slot_quality(configured, monkeypatch, run_cli):
+    publish_list(configured)
     monkeypatch.setattr(
         "dogopencli.snapshot.config.load", lambda _: Config(configured, None, {})
     )
@@ -149,7 +99,7 @@ def test_absent_policy_preserves_capture_quality(configured, monkeypatch, run_cl
     assert report["inspection_complete"] is True
     assert report["tree"]["cache"]["freshness"] is None
     assert report["tree"]["cache"]["complete"] is True
-    assert report["tree"]["rows"] == 0
+    assert report["tree"]["rows"] == 1
 
 
 @pytest.mark.parametrize("route", ["public", "catalog", "handler"])
