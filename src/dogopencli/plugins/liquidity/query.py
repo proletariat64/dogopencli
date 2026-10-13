@@ -408,7 +408,7 @@ def run_list(args):
         for key, value in provided(args, scope_flags(leaf)).items()
         if value is not None and value != []
     }
-    scope_values(
+    normalized, _ = scope_values(
         tuple(replace(option, required=False, default=None) for option in leaf.options),
         explicit,
     )
@@ -417,7 +417,8 @@ def run_list(args):
         raise CliError(
             CACHE_MISS,
             "no cached liquidity result; run: dogopencli refresh liquidity "
-            + " ".join(leaf.path),
+            + " ".join(leaf.path)
+            + _hint_options(leaf, normalized),
         )
     context = slot_context(snapshot)
     variant = next(

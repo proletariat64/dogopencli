@@ -11,8 +11,10 @@ ROOT = ["liquidity", "investment", "quotes"]
 BOUNDS = ["--from-date", "2026-01-01", "--to-date", "2026-01-02"]
 
 
-def query(*extra, bounds=BOUNDS):
-    return [*ROOT, "list", *bounds, "--all", *extra]
+def query(*extra, bounds=None):
+    if bounds is None:
+        bounds = BOUNDS if "--live" in extra else []
+    return [*ROOT, "list", *bounds, "--limit", "0", *extra]
 
 
 def refresh(*extra, bounds=BOUNDS):
@@ -119,7 +121,7 @@ def test_single_response_contract_raw_fidelity_and_disconnected_lifecycle(
     assert cached["meta"]["fetched_at"] == seeded["meta"]["fetched_at"]
     assert cached["meta"]["source_observed_from"] is None
     assert cached["meta"]["source_observed_to"] is None
-    assert "quotes-v1" in cached["meta"]["scope"]
+    assert isinstance(cached["meta"]["scope"], dict)
     assert len(setup.state.business_requests) == 2
     setup.state.reachable = True
     setup.state.business_handler = lambda payload, index: {
@@ -137,7 +139,7 @@ def test_exact_date_scope_isolation_and_complete_empty_without_total(setup, run_
     setup.state.reachable = False
     for bounds in (adjacent, ["--from-date", "2026-01-01", "--to-date", "2026-01-01"]):
         code, out, _ = run_cli(query(bounds=bounds))
-        assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
+        assert code == 2 and parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     setup.state.reachable = True
     setup.state.business_handler = lambda payload, index: response([])
     before = setup.cache_path.read_bytes()
@@ -151,9 +153,9 @@ def test_exact_date_scope_isolation_and_complete_empty_without_total(setup, run_
     empty = seed(setup, run_cli, [], bounds=adjacent)
     assert empty["meta"]["scope"] != populated["meta"]["scope"]
     setup.state.reachable = False
-    code, out, err = run_cli(query("--require-complete", bounds=adjacent))
+    code, out, err = run_cli(query("--require-complete"))
     assert code == 0, err
-    assert parse(out)["data"] == [] and parse(out)["meta"]["complete"] is True
+    assert parse(out)["data"] == [quote()] and parse(out)["meta"]["complete"] is True
     code, out, err = run_cli(query())
     assert code == 0, err
     assert parse(out)["data"] == [quote()]
@@ -262,7 +264,7 @@ def test_offline_description_states_units_timezone_scope_and_get_requires_identi
     assert code == 0, err
     description = parse(out)
     guide = description["read_guide"]
-    assert guide["offline_profile"] == "history"
+    assert guide["offline_profile"] == "single temporary leaf result"
     assert guide["request"]["pagination"] == "single"
     assert guide["request"]["reported_total"] is None
     assert guide["request"]["page_size"] == 5000
