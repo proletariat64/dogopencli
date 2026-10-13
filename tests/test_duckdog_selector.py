@@ -131,3 +131,21 @@ def test_missing_native_column_does_not_use_display_id(tmp_path):
     )
     with pytest.raises(CliError, match="native column"):
         resolve_selector("liquidity/reference/entities", "instId", config_file=config)
+
+
+def test_selector_order_is_stable_under_case_insensitive_source_collation(tmp_path):
+    duckdb = pytest.importorskip("duckdb")
+    database = tmp_path / "native.duckdb"
+    with duckdb.connect(str(database)) as connection:
+        connection.execute('CREATE TABLE entities ("instId" VARCHAR COLLATE NOCASE)')
+        connection.execute(
+            "INSERT INTO entities VALUES ('alpha'), ('Alpha'), ('alpha')"
+        )
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[duckdog]\npath = "native.duckdb"\n[duckdog.selectors]\n'
+        '"liquidity/reference/entities" = "entities"\n'
+    )
+    assert resolve_selector(
+        "liquidity/reference/entities", "instId", config_file=config
+    ) == ["Alpha", "alpha"]

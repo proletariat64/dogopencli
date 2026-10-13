@@ -56,4 +56,6 @@ def resolve_selector(
             seen.add(value)
     if not values:
         raise _error("duckdog selector is empty; prepare native identifiers before ANY")
-    return values
+    # Source collations can consider differently cased IDs equal. Order native
+    # strings explicitly so ties never depend on relation scan order.
+    return sorted(values)

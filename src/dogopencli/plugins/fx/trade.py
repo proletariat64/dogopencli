@@ -63,13 +63,27 @@ def _bound(value: str, *, end: bool) -> int:
 
 def query_request(args: Any) -> dict[str, Any]:
     query: dict[str, Any] = {}
+    if not args.trade_id and args.transact_from is None and args.transact_to is None:
+        yesterday = (datetime.now(UTC8) - timedelta(days=1)).date().isoformat()
+        query["transactTimeRange"] = {
+            "start": _bound(yesterday, end=False),
+            "end": _bound(yesterday, end=True),
+        }
     for flag, field in ARRAY_FILTERS:
         values = getattr(args, flag)
+        if "ANY" in values:
+            raise argument_error(
+                "FX ANY enumeration is not registered; use explicit values"
+            )
         if any(not value.strip() for value in values):
             raise argument_error(f"--{flag.replace('_', '-')} must be nonempty")
         if values:
             query[field] = list(dict.fromkeys(values))
     if args.scene is not None:
+        if args.scene == "ANY":
+            raise argument_error(
+                "FX ANY enumeration is not registered; use explicit values"
+            )
         if not args.scene.strip():
             raise argument_error("--scene must be nonempty")
         query["quoteOperationScene"] = args.scene
@@ -99,7 +113,7 @@ def query_request(args: Any) -> dict[str, Any]:
 @dataclass(frozen=True)
 class TradeCapability:
     name: str = "fx.trade"
-    cache_enabled: bool = False
+    cache_enabled: bool = True
     page_url: str = FX_STARTUP_URL
     contract: EndpointContract = EndpointContract(
         method="POST",
@@ -162,12 +176,12 @@ FX_TRADE = TradeCapability()
 LIVE_MODE = {
     "cache": {"available": False},
     "live": {"available": True, "role": "native-request"},
-    "refresh": {"available": False},
+    "refresh": {"available": True, "role": "native-request"},
 }
 DISPLAY_MODE = {
-    "cache": {"available": False},
+    "cache": {"available": True, "role": "display"},
     "live": {"available": True, "role": "display"},
-    "refresh": {"available": False},
+    "refresh": {"available": True, "role": "display"},
 }
 
 
@@ -195,9 +209,10 @@ def display_option(name: str, summary: str, kind: str = "str", **kwargs: Any):
 GROUP_NODE = BizNode(("fx",), "Read-only foreign-exchange inquiries.")
 TRADE_NODE = BizNode(
     ("fx", "trade"),
-    "Query FX Shield individual trades through the existing authenticated browser.",
+    "Replay temporary FX trades; --live queries the authenticated browser.",
     kind="runtimes",
     options=(
+        opt("live", "Query online without publishing cache.", "bool"),
         *(
             native_option(flag, f"Native {field} filter (repeatable).", "append")
             for flag, field in ARRAY_FILTERS
@@ -219,7 +234,20 @@ TRADE_NODE = BizNode(
                         "YYYY-MM-DDTHH:mm:ssZ",
                         "YYYY-MM-DDTHH:mm:ss±HH:MM",
                     ),
-                    modes=LIVE_MODE,
+                    modes={
+                        **LIVE_MODE,
+                        **{
+                            mode: {
+                                **LIVE_MODE[mode],
+                                "default": {
+                                    "kind": "previous_complete_calendar_day",
+                                    "timezone": "GMT+08",
+                                    "when": "trade_id and date bounds omitted",
+                                },
+                            }
+                            for mode in ("live", "refresh")
+                        },
+                    },
                     timezone="UTC+08:00 for calendar dates",
                 ),
             )
@@ -227,14 +255,11 @@ TRADE_NODE = BizNode(
         ),
         display_option(
             "limit",
-            "Display at most this many rows (default 100).",
+            "Display limit (default 100); zero displays all remaining rows.",
             "int",
             help_default=100,
         ),
         display_option("offset", "Display offset (default 0).", "int", help_default=0),
-        display_option(
-            "all", "Display all acquired rows; conflicts with limit/offset.", "bool"
-        ),
         display_option("fields", "Comma-separated top-level record projection."),
         opt(
             "require_complete",
@@ -243,9 +268,9 @@ TRADE_NODE = BizNode(
             argument_contract=contract(
                 "boolean",
                 modes={
-                    "cache": {"available": False},
+                    "cache": {"available": True, "role": "cache-policy"},
                     "live": {"available": True, "role": "cache-policy"},
-                    "refresh": {"available": False},
+                    "refresh": {"available": True, "role": "cache-policy"},
                 },
             ),
         ),
@@ -254,12 +279,15 @@ TRADE_NODE = BizNode(
         ),
     ),
     constraints=(
-        "Live-only first release; no cache writes or implicit login.",
+        "Default offline replay; --live never writes; "
+        "refresh replaces one temporary slot.",
         "This queries RiskStandardTrade individual records, not TradeBatch aggregates.",
-        "Provide a trade ID or paired inclusive trade time bounds. "
+        "Online omitted ID/dates uses the previous complete GMT+08 day. "
+        "Explicit dates must be paired. "
         "Bcode/customer ID/scene requires trade time bounds.",
         "Acquisition is bounded to 100 pages and 120 seconds; "
         "display pagination is separate.",
+        "Offline business filters lack verified row mappings; use --live or refresh.",
         "Record identity and native total counting semantics remain "
         "unverified; complete stays false.",
     ),
@@ -286,7 +314,7 @@ TRADE_NODE = BizNode(
         "INCOMPLETE_RESULT",
     ),
     examples=(
-        "dogopencli fx trade --transact-from 2026-10-03 "
+        "dogopencli fx trade --live --transact-from 2026-10-03 "
         "--transact-to 2026-10-03 --bcode BCODE --scene 'A+前报价' "
         "--transaction-type SALE --fulfilled 1 --symbol USD/PHP",
     ),
