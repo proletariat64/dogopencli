@@ -358,13 +358,20 @@ def test_auth_check_delayed_entry_redirect_is_auth_required(
     assert auth_setup.state.launches == []
 
 
-def test_auth_check_unreachable_browser_is_browser_unavailable(run_cli, auth_setup):
+@pytest.mark.parametrize("domain", ["payment", "liquidity", "fx"])
+def test_auth_check_unreachable_browser_is_browser_unavailable(
+    run_cli, auth_setup, domain
+):
     auth_setup.state.running = False
-    code, value, _ = invoke(run_cli, [*auth_setup.argv, "auth", "check"])
+    code, value, _ = invoke(
+        run_cli, [*auth_setup.argv, "auth", "check", "--domain", domain]
+    )
     assert code == 1
     error = value["error"]
     assert error["code"] == "browser_unavailable"
     assert error["retryable"] is True
+    selector = f" --domain {domain}" if domain != "payment" else ""
+    assert error["details"]["launch_command"] == [f"dogopencli login{selector}"]
     assert auth_setup.state.launches == []  # check never starts Chrome
 
 
@@ -559,46 +566,50 @@ def test_auth_uses_custom_config_filename(run_cli, auth_setup, monkeypatch):
     assert value["result"]["profile"] == str(auth_setup.profile)
 
 
-def test_liquidity_login_reuses_authenticated_target_domain(run_cli, auth_setup):
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+@pytest.mark.parametrize("domain", ["liquidity", "fx"])
+@pytest.mark.parametrize("command", [["login"], ["auth", "check"]])
+def test_peer_auth_reuses_authenticated_target_domain(
+    run_cli, auth_setup, domain, command
+):
+    from dogopencli.browser.environment import STARTUP_URLS
 
-    auth_setup.state.href = LIQUIDITY_STARTUP_URL
-    code, value, _ = invoke(
-        run_cli, [*auth_setup.argv, "login", "--domain", "liquidity"]
-    )
+    entry_url = STARTUP_URLS[domain]
+    auth_setup.state.href = entry_url
+    code, value, _ = invoke(run_cli, [*auth_setup.argv, *command, "--domain", domain])
     assert code == 0
-    assert value["result"]["domain"] == "liquidity"
-    assert value["result"]["probe"]["startup_url"] == LIQUIDITY_STARTUP_URL
+    assert value["result"]["domain"] == domain
+    assert value["result"]["probe"]["startup_url"] == entry_url
     assert auth_setup.state.launches == []
     assert all(
-        url == LIQUIDITY_STARTUP_URL
-        for t in auth_setup.state.transports
-        for url in t.created
+        url == entry_url for t in auth_setup.state.transports for url in t.created
     )
 
 
-def test_liquidity_auth_failure_keeps_domain_recovery_commands(run_cli, auth_setup):
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+@pytest.mark.parametrize("domain", ["liquidity", "fx"])
+def test_peer_auth_failure_keeps_domain_recovery_commands(run_cli, auth_setup, domain):
+    from dogopencli.browser.environment import STARTUP_URLS
 
     auth_setup.state.href = SSO_URL
     code, value, _ = invoke(
-        run_cli, [*auth_setup.argv, "auth", "check", "--domain", "liquidity"]
+        run_cli, [*auth_setup.argv, "auth", "check", "--domain", domain]
     )
     assert code == 1
-    assert value["error"]["details"]["domain"] == "liquidity"
-    assert value["error"]["details"]["startup_url"] == LIQUIDITY_STARTUP_URL
+    assert value["error"]["details"]["domain"] == domain
+    assert value["error"]["details"]["startup_url"] == STARTUP_URLS[domain]
     assert any(
-        "login --domain liquidity" in step and "auth check --domain liquidity" in step
+        f"login --domain {domain}" in step and f"auth check --domain {domain}" in step
         for step in value["error"]["next"]
     )
 
 
-def install_domain_browser(auth_setup):
+def install_domain_browser(auth_setup, domain="liquidity"):
     from urllib.parse import urlparse
 
     from fake_cdp import FakeTransport
 
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.browser.environment import STARTUP_URLS
+
+    entry_url = STARTUP_URLS[domain]
 
     state = auth_setup.state
     state.entries = []
@@ -622,7 +633,7 @@ def install_domain_browser(auth_setup):
             return [
                 {
                     "type": "page",
-                    "url": LIQUIDITY_STARTUP_URL,
+                    "url": entry_url,
                     "webSocketDebuggerUrl": "ws://cdp/liquidity-human",
                 }
             ]
@@ -637,7 +648,7 @@ def install_domain_browser(auth_setup):
                 complete = state.human_observations >= state.complete_after
                 if complete:
                     state.liquidity_authenticated = True
-                parsed = urlparse(LIQUIDITY_STARTUP_URL if complete else SSO_URL)
+                parsed = urlparse(entry_url if complete else SSO_URL)
                 return {
                     "origin": f"{parsed.scheme}://{parsed.netloc}",
                     "path": parsed.path,
@@ -652,7 +663,7 @@ def install_domain_browser(auth_setup):
         if browser.liquidity_authenticated and not (
             browser.headless_expired and browser.mode == "headless"
         ):
-            return LIQUIDITY_STARTUP_URL
+            return entry_url
         return SSO_URL
 
     state.href = href
@@ -672,27 +683,27 @@ def install_domain_browser(auth_setup):
     return state, launch
 
 
-def test_liquidity_login_payment_valid_requires_liquidity_human_sso(
-    run_cli, auth_setup, fast_clock, monkeypatch
+@pytest.mark.parametrize("domain", ["liquidity", "fx"])
+def test_peer_login_payment_valid_requires_domain_human_sso(
+    run_cli, auth_setup, fast_clock, monkeypatch, domain
 ):
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.browser.environment import STARTUP_URLS
 
-    state, launch = install_domain_browser(auth_setup)
+    entry_url = STARTUP_URLS[domain]
+    state, launch = install_domain_browser(auth_setup, domain)
     monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
     code, value, _ = invoke(run_cli, [*auth_setup.argv, "login"])
     assert code == 0
     assert value["result"]["domain"] == "payment"
     assert state.launches == []
     state.entries.clear()
-    code, value, _ = invoke(
-        run_cli, [*auth_setup.argv, "login", "--domain", "liquidity"]
-    )
+    code, value, _ = invoke(run_cli, [*auth_setup.argv, "login", "--domain", domain])
     assert code == 0
     assert state.launches == ["headed", "headless"]
-    assert state.entries == [LIQUIDITY_STARTUP_URL] * 3
+    assert state.entries == [entry_url] * 3
     assert state.human_observations >= 3
     assert all(
-        env.startup_url == LIQUIDITY_STARTUP_URL and env.profile == auth_setup.profile
+        env.startup_url == entry_url and env.profile == auth_setup.profile
         for env in state.launch_environments
     )
     assert all(
@@ -700,22 +711,21 @@ def test_liquidity_login_payment_valid_requires_liquidity_human_sso(
         for t in state.transports
         for expr in t.expressions
     )
-    assert value["result"]["domain"] == "liquidity"
+    assert value["result"]["domain"] == domain
     assert value["result"]["mode"] == "headless"
     assert list(auth_setup.tmp_path.rglob("*.sqlite3")) == []
 
 
-def test_liquidity_headless_handoff_failure_restores_headed(
-    run_cli, auth_setup, fast_clock, monkeypatch
+@pytest.mark.parametrize("domain", ["liquidity", "fx"])
+def test_peer_headless_handoff_failure_restores_headed(
+    run_cli, auth_setup, fast_clock, monkeypatch, domain
 ):
-    state, launch = install_domain_browser(auth_setup)
+    state, launch = install_domain_browser(auth_setup, domain)
     state.complete_after = 1
     state.headless_expired = True
     monkeypatch.setattr("dogopencli.browser.launcher.launch", launch)
     monkeypatch.setattr(login_mod, "MAX_HANDOFF_ATTEMPTS", 2)
-    code, value, _ = invoke(
-        run_cli, [*auth_setup.argv, "login", "--domain", "liquidity"]
-    )
+    code, value, _ = invoke(run_cli, [*auth_setup.argv, "login", "--domain", domain])
     assert code == 1
     assert value["error"]["code"] == "auth_required"
     assert value["error"]["details"]["handoff_attempts"] == 2
@@ -841,7 +851,7 @@ def test_liquidity_text_and_help_report_domain(run_cli, auth_setup):
     code, out, _ = run_cli(["login", "--help"])
     assert code == 0
     domain = next(o for o in json.loads(out)["options"] if o["name"] == "domain")
-    assert domain["choices"] == ["payment", "liquidity"]
+    assert domain["choices"] == ["payment", "liquidity", "fx"]
     assert domain["default"] == "payment"
     code, out, _ = run_cli(["login", "--help", "--format", "text"])
     assert code == 0

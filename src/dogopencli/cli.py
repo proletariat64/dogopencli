@@ -1566,6 +1566,12 @@ def cmd_refresh_payment_rules_bank_switch(args: argparse.Namespace) -> int:
     )
 
 
+def cmd_fx_trade(args: argparse.Namespace) -> int:
+    from .plugins.fx.query import run_trade
+
+    return run_trade(args)
+
+
 def cmd_liquidity_list(args: argparse.Namespace) -> int:
     from .plugins.liquidity.query import run_list
 

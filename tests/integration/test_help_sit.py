@@ -19,6 +19,7 @@ ROOT_CHILDREN = [
     "refresh",
     "collection",
     "liquidity",
+    "fx",
     "describe",
     "auth",
     "login",

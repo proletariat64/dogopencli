@@ -82,9 +82,9 @@ def dispatch(spec: CommandSpec, args: argparse.Namespace) -> Result:
     except AuthError as exc:
         if spec.handler in {"login", "auth.check"}:
             exc.details = {**exc.details, "domain": domain, "startup_url": startup_url}
-            if domain == "liquidity":
+            if domain != "payment":
                 exc.message = exc.message.replace(
-                    "dogopencli login", "dogopencli login --domain liquidity"
+                    "dogopencli login", f"dogopencli login --domain {domain}"
                 )
         raise
     if spec.handler == "logout":
@@ -94,7 +94,7 @@ def dispatch(spec: CommandSpec, args: argparse.Namespace) -> Result:
 
 def _next_steps(exc: AuthError, command: str) -> list[str]:
     domain = exc.details.get("domain", "payment")
-    selector = " --domain liquidity" if domain == "liquidity" else ""
+    selector = f" --domain {domain}" if domain != "payment" else ""
     steps = list(exc.next)
     if steps:
         return steps
