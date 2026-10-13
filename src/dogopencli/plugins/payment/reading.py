@@ -192,7 +192,7 @@ def description(node: BizNode) -> dict[str, Any]:
             ),
         ],
         "examples": [
-            command + (" --id BASELINE_ID" if detail else " --all"),
+            command + (" --id BASELINE_ID" if detail else " --limit 0"),
             command
             + (" --id BASELINE_ID --fields id" if detail else " --limit 20 --offset 0"),
             command
@@ -202,7 +202,7 @@ def description(node: BizNode) -> dict[str, Any]:
     }
     if not detail:
         identity = {"channel": "abilityId", "cost": "itemId", "sla": "id"}[domain]
-        guide["examples"].append(command + " --all --fields " + identity)
+        guide["examples"].append(command + " --limit 0 --fields " + identity)
     if domain == "channel":
         guide["filter_notes"] = (
             "--financial-inst-id submits the bank suggest value exposed "
@@ -228,7 +228,7 @@ def description(node: BizNode) -> dict[str, Any]:
         )
         guide["list_to_detail"] = {
             "steps": [
-                "dogopencli payment sla baselines list --all",
+                "dogopencli payment sla baselines list --limit 0",
                 "dogopencli payment sla baselines get --id BASELINE_ID",
             ],
             "meaning": (

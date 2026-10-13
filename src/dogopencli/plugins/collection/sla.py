@@ -271,7 +271,7 @@ COLLECTION_SLA_LIST_NODE = BizNode(
     errors=_ERRORS,
     examples=(
         "dogopencli collection sla configs list",
-        "dogopencli collection sla configs list --currency USD --currency EUR --all",
+        "dogopencli collection sla configs list --currency USD --currency EUR --limit 0",
         "dogopencli collection sla configs list --currency USD --region US --live",
     ),
     next=(

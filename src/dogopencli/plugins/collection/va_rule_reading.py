@@ -222,7 +222,7 @@ def description(node: BizNode) -> dict[str, Any]:
                 "2026-09-26-collection-va-rule-contract-recheck.md"
             ),
             "examples": [
-                "dogopencli collection va rules list --all",
+                "dogopencli collection va rules list --limit 0",
                 (
                     "dogopencli collection va rules get --id VA_RULE_ID "
                     "--fields vaRuleId,assignInfo"
