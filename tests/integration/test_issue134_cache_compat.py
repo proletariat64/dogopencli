@@ -1,8 +1,8 @@
 """Canonical/legacy cache-compatibility matrix (Issue #127/#134, T07/T08/T13).
 
 Equivalent canonical and legacy invocations must produce identical native
-requests, identical cache identity, and identical reads. Legacy-seeded
-caches answer canonical queries with no unexpected writes. Invalid
+requests, equivalent acquisition contexts and unfiltered slot replay. Legacy-seeded
+slots answer offline replay with no unexpected writes. Invalid
 arguments and failed acquisition never overwrite a valid cache. All
 offline: public CLI + fake CDP transport + real temporary SQLite.
 """
@@ -59,15 +59,15 @@ TRANSFER_CANONICAL = ["--from-date", "2026-09-01", "--to-date", "2026-10-01"]
 TRANSFER_LEGACY = ["--transaction-from", "20260901", "--transaction-to", "20261001"]
 
 
-def test_legacy_seeded_eod_cache_answers_canonical_query(setup, run_cli):
-    """T07: cache written through legacy flags reads back via canonical flags."""
+def test_legacy_seeded_eod_slot_replays_offline(setup, run_cli):
+    """T07/#157: legacy acquisition flags publish an offline replayable slot."""
     setup.state.business_handler = eod_listing([EOD_ROW])
     code, out, err = run_cli([*EOD_REFRESH, *EOD_BASE, *EOD_LEGACY])
     assert code == 0, err
     assert "deprecated" in err  # legacy spellings warn on stderr
     seeded = setup.cache_path.read_bytes()
     setup.state.running = False
-    code, out, err = run_cli([*EOD_QUERY, *EOD_BASE, *EOD_CANONICAL, "--all"])
+    code, out, err = run_cli([*EOD_QUERY, "--limit", "0"])
     assert code == 0, err
     assert err == ""  # canonical path: no deprecation noise
     result = parse(out)
@@ -77,16 +77,16 @@ def test_legacy_seeded_eod_cache_answers_canonical_query(setup, run_cli):
     assert setup.cache_path.read_bytes() == seeded
 
 
-def test_canonical_seeded_eod_cache_answers_legacy_query(setup, run_cli):
-    """T07 symmetric: canonical acquisition, legacy reads hit the same scope."""
+def test_canonical_seeded_eod_slot_replays_offline(setup, run_cli):
+    """Canonical acquisition publishes the same offline replayable slot."""
     setup.state.business_handler = eod_listing([EOD_ROW])
     code, out, err = run_cli([*EOD_REFRESH, *EOD_BASE, *EOD_CANONICAL])
     assert code == 0, err
     assert "deprecated" not in err
     setup.state.running = False
-    code, out, err = run_cli([*EOD_QUERY, *EOD_BASE, *EOD_LEGACY, "--all"])
+    code, out, err = run_cli([*EOD_QUERY, "--limit", "0"])
     assert code == 0
-    assert "deprecated" in err
+    assert "deprecated" not in err
     result = parse(out)
     assert result["data"][0]["bankTransNo"] == "T1"
     assert result["meta"]["complete"] is True
@@ -104,7 +104,7 @@ def test_iso_and_compact_date_values_reach_identical_request(setup, run_cli):
     assert first == second
 
 
-def test_transfer_legacy_and_canonical_scopes_share_cache(setup, run_cli):
+def test_transfer_legacy_acquisition_replays_single_slot(setup, run_cli):
     """T08: transfer day expansion is identical across spellings (T12 pair)."""
     rows = [transfer(0)]
     setup.state.business_handler = lambda payload, index: transfer_page(rows, 1)
@@ -113,7 +113,7 @@ def test_transfer_legacy_and_canonical_scopes_share_cache(setup, run_cli):
     assert "deprecated" in err
     assert setup.state.business_requests[0]
     setup.state.running = False
-    code, out, err = run_cli([*TRANSFER_QUERY, *TRANSFER_CANONICAL, "--all"])
+    code, out, err = run_cli([*TRANSFER_QUERY, "--limit", "0"])
     assert code == 0, err
     assert err == ""
     assert parse(out)["data"][0]["orderNo"] == "synthetic-transfer-000"
@@ -122,7 +122,9 @@ def test_transfer_legacy_and_canonical_scopes_share_cache(setup, run_cli):
 def test_live_never_writes_cache_and_refresh_stays_explicit(setup, run_cli):
     """T08: --live reads the backend without touching the cache."""
     setup.state.business_handler = eod_listing([EOD_ROW])
-    code, out, err = run_cli([*EOD_QUERY, *EOD_BASE, *EOD_CANONICAL, "--live", "--all"])
+    code, out, err = run_cli(
+        [*EOD_QUERY, *EOD_BASE, *EOD_CANONICAL, "--live", "--limit", "0"]
+    )
     assert code == 0, err
     assert parse(out)["meta"]["source"] == "live"
     assert not setup.cache_path.exists()
@@ -149,7 +151,7 @@ def test_invalid_arguments_never_overwrite_a_valid_cache(setup, run_cli):
             assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     assert setup.cache_path.read_bytes() == seeded
     setup.state.running = False
-    code, out, err = run_cli([*EOD_QUERY, *EOD_BASE, *EOD_CANONICAL, "--all"])
+    code, out, err = run_cli([*EOD_QUERY, "--limit", "0"])
     assert code == 0, err
     assert parse(out)["data"][0]["bankTransNo"] == "T1"
 
@@ -171,13 +173,13 @@ def test_failed_acquisition_preserves_the_prior_cache(setup, run_cli):
     assert code != 0
     assert setup.cache_path.read_bytes() == seeded
     setup.state.running = False
-    code, out, err = run_cli([*EOD_QUERY, *EOD_BASE, *EOD_CANONICAL, "--all"])
+    code, out, err = run_cli([*EOD_QUERY, "--limit", "0"])
     assert code == 0, err
     assert parse(out)["data"][0]["bankTransNo"] == "T1"
 
 
-def test_forecast_accuracy_virtual_variant_reads_across_spellings(setup, run_cli):
-    """T07: the virtual record-date variant shares identity across spellings."""
+def test_forecast_accuracy_virtual_variant_replays_offline(setup, run_cli):
+    """Virtual record-date acquisition replays without source-only filters."""
     from test_liquidity_forecast_accuracy import ROW, handler
 
     setup.state.business_handler = handler([ROW])
@@ -203,11 +205,8 @@ def test_forecast_accuracy_virtual_variant_reads_across_spellings(setup, run_cli
             "forecast",
             "accuracy",
             "list",
-            "--account-alias",
-            "TEST-ACCOUNT",
-            "--record-date",
-            "2026-10-05",
-            "--all",
+            "--limit",
+            "0",
         ]
     )
     assert code == 0, err
@@ -215,8 +214,8 @@ def test_forecast_accuracy_virtual_variant_reads_across_spellings(setup, run_cli
     assert parse(out)["data"][0]["id"] == ROW["id"]
 
 
-def test_holdings_snapshot_scope_reads_across_date_spellings(setup, run_cli):
-    """T07: an exact snapshot scope is shared by ISO and compact spellings."""
+def test_holdings_date_acquisition_replays_offline(setup, run_cli):
+    """A dated holdings acquisition replays without repeating source filters."""
     from test_liquidity_cli_sit import holding, holdings_listing
 
     setup.state.business_handler = holdings_listing(
@@ -229,7 +228,7 @@ def test_holdings_snapshot_scope_reads_across_date_spellings(setup, run_cli):
     seeded = setup.cache_path.read_bytes()
     setup.state.running = False
     code, out, err = run_cli(
-        ["liquidity", "investment", "holdings", "list", "--date", "2026-10-01", "--all"]
+        ["liquidity", "investment", "holdings", "list", "--limit", "0"]
     )
     assert code == 0, err
     assert parse(out)["data"][0]["investmentNo"] == "H0001"

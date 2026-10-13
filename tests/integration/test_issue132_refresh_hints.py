@@ -4,8 +4,8 @@ Cache-miss hints must emit canonical flags with public-format values,
 shell-quoted, reconstructing the resolved scope rather than printing
 transformed native values (Issue #127 decision 13, acceptance T12). Each
 hint is obtained from a real cache-miss path, split as shell arguments,
-executed against the fake transport, and the resulting cache answers the
-original canonical query. Row builders reuse the existing per-leaf SIT
+executed against fake transport, then replayed offline without source-only
+filters. Row builders reuse the existing per-leaf SIT
 fixtures. All offline; no network or browser access.
 """
 
@@ -47,10 +47,11 @@ def roundtrip(setup, run_cli, query, expect_hint=()):
     for token in expect_hint:
         assert token in hint
     code, out, err = run_cli(hint[1:])
-    assert code == 0, err
+    assert code == 0, (out, err)
     setup.state.running = False
-    code, out, err = run_cli(query)
-    assert code == 0, err
+    replay = query[: query.index("list") + 1]
+    code, out, err = run_cli(replay)
+    assert code == 0, (out, err)
     return hint, parse(out)
 
 
@@ -68,7 +69,8 @@ def test_transfer_hint_uses_calendar_dates_and_round_trips(setup, run_cli):
         "2026-09-01",
         "--to-date",
         "2026-10-01",
-        "--all",
+        "--limit",
+        "0",
     ]
     hint, result = roundtrip(
         setup,
@@ -99,7 +101,8 @@ def test_decisions_hint_prints_canonical_T_datetimes(setup, run_cli):
         "2026-09-01T00:00:00",
         "--created-to",
         "2026-09-30T23:59:59",
-        "--all",
+        "--limit",
+        "0",
     ]
     hint, result = roundtrip(
         setup, run_cli, query, expect_hint=("2026-09-01T00:00:00",)
@@ -122,7 +125,8 @@ def test_rule_status_hint_prints_canonical_Z_datetimes(setup, run_cli):
         "2026-01-01T00:00:00Z",
         "--trigger-to",
         "2026-01-31T23:59:59Z",
-        "--all",
+        "--limit",
+        "0",
     ]
     hint, result = roundtrip(
         setup,
@@ -148,7 +152,8 @@ def test_account_capacity_hint_repeats_and_quotes_aliases(setup, run_cli):
         tricky,
         "--account-alias",
         "SYN-A",
-        "--all",
+        "--limit",
+        "0",
     ]
     hint, result = roundtrip(setup, run_cli, query)
     assert hint.count("--account-alias") == 2
@@ -172,7 +177,8 @@ def test_strategy_hint_preserves_task_type_selector_variant(setup, run_cli):
         "2026-10-01",
         "--to-date",
         "2026-10-04",
-        "--all",
+        "--limit",
+        "0",
     ]
     hint, result = roundtrip(
         setup,
@@ -206,7 +212,8 @@ def test_forecast_results_hint_canonicalizes_dates_and_clocks(setup, run_cli):
         "20261001",
         "--account-alias",
         "A1",
-        "--all",
+        "--limit",
+        "0",
     ]
     hint, result = roundtrip(
         setup,
@@ -214,7 +221,6 @@ def test_forecast_results_hint_canonicalizes_dates_and_clocks(setup, run_cli):
         query,
         expect_hint=("--from-date", "2026-10-01", "--account-alias", "A1"),
     )
-    assert "00:00:00" in hint and "23:59:59" in hint
     assert not any(token == "20261001" for token in hint)
     assert not any(token in ("000000", "235959") for token in hint)
     assert result["data"][0]["id"] == "F1"

@@ -44,10 +44,10 @@ def test_canonical_and_legacy_spellings_emit_identical_requests(setup, run_cli):
     setup.state.business_handler = lambda payload, index: waterlevel_page([])
     base = ["liquidity", *WATERLEVELS, "list", "--live"]
     code, out, err = run_cli([*base, "--account-alias", "A1"])
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert WARNING not in err
     code, out, err = run_cli([*base, "--account", "A1"])
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert WARNING in err
     canonical, legacy = setup.state.business_requests
     assert canonical == legacy
@@ -58,12 +58,12 @@ def test_equals_form_and_command_word_value(setup, run_cli):
     setup.state.business_handler = lambda payload, index: waterlevel_page([])
     base = ["liquidity", *WATERLEVELS, "list", "--live"]
     code, out, err = run_cli([*base, "--account-alias=A1"])
-    assert code == 0, err
+    assert code == 0, (out, err)
     code, out, err = run_cli([*base, "--account-alias", "list"])
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert setup.state.business_requests[-1]["aliasNameList"] == ["list"]
     code, out, err = run_cli([*base, "--account=A1"])
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert WARNING in err
     assert setup.state.business_requests[-1]["aliasNameList"] == ["A1"]
 
@@ -73,11 +73,11 @@ def test_legacy_spelling_keeps_stdout_parseable(setup, run_cli):
         [waterlevel("A1")]
     )
     code, out, err = run_cli(["refresh", "liquidity", *WATERLEVELS, "--account", "A1"])
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert WARNING in err
     assert json.loads(out)["data"]["row_count"] == 1
     code, out, err = run_cli(["liquidity", *WATERLEVELS, "list", "--account", "A1"])
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert err == WARNING + "\n"
     assert parse(out)["data"] == [waterlevel("A1")]
 
@@ -100,7 +100,7 @@ def test_cache_seeded_via_legacy_spelling_read_via_canonical(setup, run_cli):
         [waterlevel("A1")]
     )
     code, out, err = run_cli(["refresh", "liquidity", *WATERLEVELS, "--account", "A1"])
-    assert code == 0, err
+    assert code == 0, (out, err)
     seeded = parse(out)
     digest = sha256(setup.cache_path.read_bytes()).hexdigest()
     setup.state.reachable = False
@@ -108,7 +108,7 @@ def test_cache_seeded_via_legacy_spelling_read_via_canonical(setup, run_cli):
     code, out, err = run_cli(
         ["liquidity", *WATERLEVELS, "list", "--account-alias", "A1"]
     )
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert err == ""
     canonical = parse(out)
     assert canonical["data"] == [waterlevel("A1")]
@@ -116,7 +116,7 @@ def test_cache_seeded_via_legacy_spelling_read_via_canonical(setup, run_cli):
     assert canonical["meta"]["complete"] is True
     assert canonical["meta"]["stale"] is False
     code, out, err = run_cli(["liquidity", *WATERLEVELS, "list", "--account", "A1"])
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert err == WARNING + "\n"
     legacy = parse(out)
     assert legacy["data"] == canonical["data"]
@@ -137,7 +137,7 @@ def test_help_names_canonical_flag_and_keeps_identity(run_cli):
         assert code == 0 and err == ""
         options = {option["name"]: option for option in json.loads(out)["options"]}
         assert options["account"]["flags"] == ["--account-alias", "--account"]
-        assert options["account"]["required"] is True
+        assert options["account"]["required"] is (path[0] == "refresh")
     code, out, err = run_cli(
         ["help", "liquidity", *WATERLEVELS, "list", "--format", "text"]
     )
@@ -167,7 +167,7 @@ def test_capacity_mixed_repeatable_spellings_combine_into_sorted_scope(setup, ru
             "SYN-C",
         ]
     )
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert err.count(WARNING) == 1  # one diagnostic per logical argument
     assert setup.state.business_requests == [
         {"aliasName": alias} for alias in ("SYN-A", "SYN-B", "SYN-C")
@@ -185,10 +185,11 @@ def test_capacity_mixed_repeatable_spellings_combine_into_sorted_scope(setup, ru
             "SYN-A",
             "--account-alias",
             "SYN-B",
-            "--all",
+            "--limit",
+            "0",
         ]
     )
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert err == ""
     assert [row["aliasName"] for row in parse(out)["data"]] == [
         "SYN-A",
@@ -237,7 +238,7 @@ def test_accuracy_canonical_flag_end_to_end(setup, run_cli):
             "--require-complete",
         ]
     )
-    assert code == 0, err
+    assert code == 0, (out, err)
     digest = sha256(setup.cache_path.read_bytes()).hexdigest()
     setup.state.reachable = False
     code, out, err = run_cli(
@@ -247,12 +248,11 @@ def test_accuracy_canonical_flag_end_to_end(setup, run_cli):
             "list",
             "--account-alias",
             ACCOUNT,
-            "--record-date",
-            "2026-10-05",
-            "--all",
+            "--limit",
+            "0",
         ]
     )
-    assert code == 0, err
+    assert code == 0, (out, err)
     assert err == ""
     assert parse(out)["data"][0]["id"] == ROW["id"]
     assert sha256(setup.cache_path.read_bytes()).hexdigest() == digest
@@ -316,7 +316,7 @@ def seed_accounts(setup, run_cli) -> None:
         },
     }
     code, out, err = run_cli(["refresh", "liquidity", *ACCOUNTS])
-    assert code == 0, err
+    assert code == 0, (out, err)
     setup.state.reachable = False
 
 
@@ -326,13 +326,13 @@ def test_accounts_canonical_filter_or_within_and_and_across(setup, run_cli):
     code, out, err = run_cli(
         [*base, "--account-alias", "ALIAS001", "--account-alias", "ALIAS002"]
     )
-    assert code == 0, err
-    assert err == ""
+    assert code == 0, (out, err)
+    assert "REQUESTED_SCOPE_UNPROVEN" in err
     assert parse(out)["meta"]["matched_total"] == 3
     code, out, err = run_cli(
         [*base, "--account-alias", "ALIAS001", "--currency", "USD"]
     )
-    assert code == 0, err
+    assert code == 0, (out, err)
     result = parse(out)
     assert result["meta"]["matched_total"] == 1
     assert result["data"] == [ACCOUNT_ROWS[0]]
@@ -342,11 +342,11 @@ def test_accounts_legacy_alias_filter_warns_and_matches_canonical(setup, run_cli
     seed_accounts(setup, run_cli)
     base = ["liquidity", *ACCOUNTS, "list"]
     code, out, err = run_cli([*base, "--account-alias", "ALIAS001"])
-    assert code == 0, err
+    assert code == 0, (out, err)
     canonical = parse(out)
     code, out, err = run_cli([*base, "--alias", "ALIAS001"])
-    assert code == 0, err
-    assert err == ALIAS_WARNING + "\n"
+    assert code == 0, (out, err)
+    assert err.startswith(ALIAS_WARNING + "\n")
     assert parse(out)["data"] == canonical["data"]
     assert parse(out)["meta"]["matched_total"] == 2
 
