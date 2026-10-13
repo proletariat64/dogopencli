@@ -198,60 +198,33 @@ def business_expressions(state: FakeBrowser) -> list[str]:
     ]
 
 
-def test_refresh_then_list_and_get_offline(
+def test_refresh_list_offline_and_get_online(
     run_cli, envelope, sla_setup, sample_sla_rows
 ):
     refreshed(run_cli, sla_setup, sample_sla_rows)
-    assert sla_setup.cache_path.is_file()
-    assert sla_setup.cache_path.stat().st_mode & 0o777 == 0o600
-
-    requests_before = list(sla_setup.state.business_requests)
-    code, out, err = listing(run_cli)
+    before = sla_setup.cache_path.read_bytes()
+    requests = list(sla_setup.state.business_requests)
+    result = envelope(listing(run_cli)[1])
+    assert [row["id"] for row in result["data"]] == ["101", "102", "103", "104"]
+    assert all("riskRuleCode" not in row for row in result["data"])
+    assert result["meta"]["source"] == "cache" and result["meta"]["complete"]
+    assert sla_setup.state.business_requests == requests
+    sla_setup.state.business_script.append(detail_outcome("103"))
+    code, out, _ = getting(run_cli, "--id", "103")
     assert code == 0
-    assert err == ""
-    result = envelope(out)
-    rows = result["data"]
-    assert [row["id"] for row in rows] == ["101", "102", "103", "104"]
-    assert all("riskRuleCode" not in row for row in rows)
-    meta = result["meta"]
-    assert meta["source"] == "cache"
-    assert meta["backend"] == "cdp"
-    assert meta["simulated"] is False
-    assert meta["complete"] is True
-    assert meta["stale"] is False
-    assert meta["matched_total"] == 4
-    assert meta["returned_count"] == 4
-    assert meta["has_more"] is False
-
-    code, out, err = getting(run_cli, "--id", "103")
-    assert code == 0
-    result = envelope(out)
-    detail = result["data"]
-    assert detail["id"] == "103"
-    # The offline detail comes from the collected detail, not the list row.
-    assert detail["riskRuleCode"] == "RISK-103"
-    assert result["meta"]["source"] == "cache"
-    assert result["meta"]["matched_total"] == 1
-    # Offline list and get issued zero business requests.
-    assert sla_setup.state.business_requests == requests_before
+    assert envelope(out)["data"]["riskRuleCode"] == "RISK-103"
+    assert envelope(out)["meta"]["source"] == "live"
+    assert sla_setup.state.business_requests[-1] == {"slaBaselineId": "103"}
+    assert sla_setup.cache_path.read_bytes() == before
 
 
-def test_refresh_collects_list_then_serial_details_in_id_order(run_cli, sla_setup):
-    rows = [sla_row(100), sla_row(9), sla_row(10), sla_row(2)]
-    refreshed(run_cli, sla_setup, rows)
-    payloads = sla_setup.state.business_requests
-    assert payloads[0] == {"pageNo": 0, "pageSize": 5000}
-    assert payloads[1:] == [
-        {"slaBaselineId": baseline_id} for baseline_id in ("2", "9", "10", "100")
-    ]
+def test_refresh_collects_only_list(run_cli, sla_setup):
+    refreshed(run_cli, sla_setup, [sla_row(100), sla_row(2)])
+    assert sla_setup.state.business_requests == [{"pageNo": 0, "pageSize": 5000}]
     expressions = business_expressions(sla_setup.state)
+    assert len(expressions) == 1
     assert f'fetch("https://iglobalfundcontrol.alipay.com{LIST_PATH}' in expressions[0]
     assert 'method: "POST"' in expressions[0]
-    for expression in expressions[1:]:
-        assert (
-            f'fetch("https://iglobalfundcontrol.alipay.com{DETAIL_PATH}' in expression
-        )
-        assert 'method: "GET"' in expression
 
 
 def test_allowlist_rejects_unregistered_requests(sla_setup):
@@ -313,17 +286,20 @@ def test_allowlist_rejects_unregistered_requests(sla_setup):
     assert sla_setup.state.business_requests == []
 
 
-def test_zero_total_omitted_list_key_publishes_empty(run_cli, envelope, sla_setup):
+def test_zero_total_omitted_list_preserves_or_leaves_cache_absent(
+    run_cli, envelope, sla_setup
+):
     sla_setup.state.business_script.append(list_page([], omit_list=True))
     code, out, _ = refresh(run_cli)
     assert code == 0
     assert envelope(out)["data"]["row_count"] == 0
-    code, out, _ = listing(run_cli)
-    assert code == 0
-    result = envelope(out)
-    assert result["data"] == []
-    assert result["meta"]["matched_total"] == 0
-    assert result["meta"]["complete"] is True
+    assert envelope(out)["meta"]["published"] is False
+    assert envelope(listing(run_cli)[1])["error"]["code"] == "CACHE_MISS"
+    refreshed(run_cli, sla_setup, [sla_row(1)])
+    saved = listing(run_cli)[1]
+    sla_setup.state.business_script.append(list_page([], omit_list=True))
+    assert envelope(refresh(run_cli)[1])["meta"]["published"] is False
+    assert listing(run_cli)[1] == saved
 
 
 def test_explicit_null_list_is_not_swallowed_as_empty(run_cli, envelope, sla_setup):
@@ -361,51 +337,38 @@ def test_business_failure_is_not_swallowed_as_empty(run_cli, envelope, sla_setup
     assert envelope(out)["error"]["code"] == "CACHE_MISS"
 
 
-def test_detail_failure_keeps_old_snapshot(
+def test_detail_failure_leaves_list_slot_unchanged(
     run_cli, envelope, sla_setup, sample_sla_rows
 ):
     refreshed(run_cli, sla_setup, sample_sla_rows)
-    sla_setup.state.business_handler = refresh_handler(
-        sample_sla_rows, fail_details=("103",)
-    )
-    code, out, _ = refresh(run_cli)
+    before = sla_setup.cache_path.read_bytes()
+    sla_setup.state.business_script.append(detail_outcome("103", success=False))
+    code, out, _ = getting(run_cli, "--id", "103")
     assert code == 1
     assert envelope(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"
-    sla_setup.state.business_handler = None
-    code, out, _ = listing(run_cli)
-    assert code == 0
-    assert envelope(out)["meta"]["matched_total"] == 4
-    code, out, _ = getting(run_cli, "--id", "103")
-    assert code == 0
-    assert envelope(out)["data"]["riskRuleCode"] == "RISK-103"
+    assert sla_setup.cache_path.read_bytes() == before
+    assert envelope(listing(run_cli)[1])["meta"]["matched_total"] == 4
 
 
-def test_missing_detail_keeps_old_snapshot(
+def test_null_detail_is_native_not_found_without_cache_write(
     run_cli, envelope, sla_setup, sample_sla_rows
 ):
     refreshed(run_cli, sla_setup, sample_sla_rows)
-    sla_setup.state.business_handler = refresh_handler(
-        sample_sla_rows, null_details=("102",)
-    )
-    code, out, _ = refresh(run_cli)
-    assert code == 1
-    result = envelope(out)
-    assert result["error"]["code"] == "NOT_FOUND"
-    assert "102" in result["error"]["message"]
-    sla_setup.state.business_handler = None
-    code, out, _ = listing(run_cli)
-    assert code == 0
-    assert envelope(out)["meta"]["matched_total"] == 4
+    before = sla_setup.cache_path.read_bytes()
+    sla_setup.state.business_script.append(detail_outcome("102", found=False))
+    code, out, _ = getting(run_cli, "--id", "102")
+    assert code == 1 and envelope(out)["error"]["code"] == "NOT_FOUND"
+    assert sla_setup.cache_path.read_bytes() == before
 
 
-def test_get_not_found_offline(run_cli, envelope, sla_setup, sample_sla_rows):
+def test_get_does_not_use_list_to_determine_absence(
+    run_cli, envelope, sla_setup, sample_sla_rows
+):
     refreshed(run_cli, sla_setup, sample_sla_rows)
+    sla_setup.state.business_script.append(detail_outcome("999"))
     code, out, _ = getting(run_cli, "--id", "999")
-    assert code == 1
-    result = envelope(out)
-    assert result["data"] is None
-    assert result["error"]["code"] == "NOT_FOUND"
-    assert "999" in result["error"]["message"]
+    assert code == 0 and envelope(out)["data"]["id"] == "999"
+    assert sla_setup.state.business_requests[-1] == {"slaBaselineId": "999"}
 
 
 def test_get_live_detail_and_not_found_vs_failure(run_cli, envelope, sla_setup):
@@ -500,7 +463,7 @@ def test_live_rejects_multi_value_filter(run_cli, envelope, sla_setup):
 def test_id_ordering_numeric_ascending(run_cli, envelope, sla_setup):
     rows = [sla_row(100), sla_row(9), sla_row(10), sla_row(2)]
     refreshed(run_cli, sla_setup, rows)
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     assert code == 0
     assert [row["id"] for row in envelope(out)["data"]] == ["2", "9", "10", "100"]
 
@@ -515,19 +478,20 @@ def test_display_params(run_cli, envelope, sla_setup, sample_sla_rows):
     assert result["meta"]["matched_total"] == 4
     assert result["meta"]["has_more"] is True
 
-    code, out, _ = listing(run_cli, "--all", "--fields", "id,status")
+    code, out, _ = listing(run_cli, "--limit", "0", "--fields", "id,status")
     assert code == 0
     result = envelope(out)
     assert result["meta"]["returned_count"] == 4
     assert all(set(row) == {"id", "status"} for row in result["data"])
 
+    sla_setup.state.business_script.append(detail_outcome("101"))
     code, out, _ = getting(run_cli, "--id", "101", "--fields", "id,riskRuleCode")
     assert code == 0
     assert set(envelope(out)["data"]) == {"id", "riskRuleCode"}
 
     for extra in (
         ["--all", "--limit", "5"],
-        ["--limit", "0"],
+        ["--limit", "-1"],
         ["--offset", "-1"],
         ["--fields", " , "],
     ):
@@ -547,9 +511,10 @@ def test_table_format_marks_quality(run_cli, sla_setup, sample_sla_rows):
     assert "stale: false" in out
     assert "bizCategory" in out
 
+    sla_setup.state.business_script.append(detail_outcome("101"))
     code, out, _ = getting(run_cli, "--id", "101", "--format", "table")
     assert code == 0
-    assert "source: cache" in out
+    assert "source: live" in out
     assert "riskRuleCode" not in out  # default columns only
 
 
@@ -562,9 +527,10 @@ def test_stale_and_require_fresh(run_cli, envelope, sla_setup, sample_sla_rows):
     code, out, _ = listing(run_cli, "--require-fresh")
     assert code == 1
     assert envelope(out)["error"]["code"] == "CACHE_STALE"
+    sla_setup.state.business_script.append(detail_outcome("101"))
     code, out, _ = getting(run_cli, "--id", "101", "--require-fresh")
-    assert code == 1
-    assert envelope(out)["error"]["code"] == "CACHE_STALE"
+    assert code == 0
+    assert envelope(out)["meta"]["stale"] is False
     code, out, _ = listing(run_cli, "--require-complete")
     assert code == 0
 
@@ -577,9 +543,11 @@ def test_cache_miss_is_explicit(run_cli, envelope, sla_setup):
     assert result["error"]["code"] == "CACHE_MISS"
     assert "refresh payment sla" in result["error"]["message"]
 
+    sla_setup.state.business_script.append(detail_outcome("101"))
+    sla_setup.state.business_script.append(detail_outcome("101"))
     code, out, _ = getting(run_cli, "--id", "101")
-    assert code == 1
-    assert envelope(out)["error"]["code"] == "CACHE_MISS"
+    assert code == 0
+    assert not sla_setup.cache_path.exists()
 
 
 def test_live_list_never_writes_cache_or_falls_back(
@@ -644,6 +612,7 @@ def test_seconds_strings_decimals_and_unknown_fields_preserved(
     assert row["futureUnknownField"] == {"keep": ["as-is", 1]}
     assert row["serviceLevelLimit"] == []
 
+    sla_setup.state.business_script.append(detail_outcome("101"))
     code, out, _ = getting(run_cli, "--id", "101")
     assert code == 0
     detail = envelope(out)["data"]
@@ -714,10 +683,11 @@ def test_refresh_replaces_without_merging_old_rows(
 ):
     refreshed(run_cli, sla_setup, sample_sla_rows)
     refreshed(run_cli, sla_setup, [sla_row(201), sla_row(202)])
-    code, out, _ = listing(run_cli, "--all")
+    code, out, _ = listing(run_cli, "--limit", "0")
     result = envelope(out)
     assert result["meta"]["matched_total"] == 2
     assert [row["id"] for row in result["data"]] == ["201", "202"]
+    sla_setup.state.business_script.append(detail_outcome("101", found=False))
     code, out, _ = getting(run_cli, "--id", "101")
     assert code == 1
     assert envelope(out)["error"]["code"] == "NOT_FOUND"
@@ -725,8 +695,9 @@ def test_refresh_replaces_without_merging_old_rows(
 
 def test_credentials_never_leave_the_browser(run_cli, sla_setup, sample_sla_rows):
     refreshed(run_cli, sla_setup, sample_sla_rows)
-    code, out, err = listing(run_cli, "--all")
+    code, out, err = listing(run_cli, "--limit", "0")
     assert code == 0
+    sla_setup.state.business_script.append(detail_outcome("101"))
     code, get_out, get_err = getting(run_cli, "--id", "101")
     assert code == 0
     secret = "FAKE-CTOKEN-SECRET"
@@ -783,27 +754,23 @@ def test_machine_output_envelope(run_cli, envelope, sla_setup, sample_sla_rows):
     assert "CACHE_STALE" in err
 
 
-def test_last_sla_detail_after_deadline_preserves_cache(
+def test_native_detail_deadline_preserves_list_slot(
     run_cli, envelope, sla_setup, sample_sla_rows, monkeypatch
 ):
     refreshed(run_cli, sla_setup, sample_sla_rows)
+    before = sla_setup.cache_path.read_bytes()
     clock = [0.0]
     monkeypatch.setattr(collect_mod, "_monotonic", lambda: clock[0])
     monkeypatch.setattr(collect_mod, "REFRESH_BUDGET_SECONDS", 1.0)
-    handler = refresh_handler([sla_row(999)])
 
     def delayed(payload, index):
-        if "slaBaselineId" in payload:
-            clock[0] += 60.0
-        return handler(payload, index)
+        clock[0] += 60.0
+        return detail_outcome("999")
 
     sla_setup.state.business_handler = delayed
-    code, out, _ = refresh(run_cli)
-    assert code == 1
-    assert envelope(out)["error"]["code"] == "TIMEOUT"
-    code, out, _ = listing(run_cli)
-    assert code == 0
-    assert len(envelope(out)["data"]) == len(sample_sla_rows)
+    code, out, _ = getting(run_cli, "--id", "999")
+    assert code == 1 and envelope(out)["error"]["code"] == "TIMEOUT"
+    assert sla_setup.cache_path.read_bytes() == before
 
 
 def test_live_detail_quality_flags_describe_single_id(run_cli, envelope, sla_setup):

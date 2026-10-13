@@ -1,5 +1,7 @@
 # 文档索引
 
+- [临时查询缓存与 duckdog 规格 #157](design/temporary-query-cache-duckdog-v0.1.0.md)：所有启用 list 单槽重放、非空刷新替换、空刷新保留、在线 get、leaf prune、现金 ANY 原生 selector；[ADR 0020](adr/0020-temporary-query-cache-and-duckdog.md) 明确取代旧历史缓存与详情缓存决策。以下报告及旧规格中的缓存/retention/UAT 为历史记录，不证明本次新行为。
+
 - [现金余额日期、全主体与大页规格 #147](design/liquidity-cash-balances-v0.1.0.md)：live/cache 同义业务日期范围、instId 全主体发现、latest 默认页宽 100；[生产只读研究](research/general/2026-10-12-cash-balances-date-entities-pagination.md)记录 50/100 成功、500/1000/5000 拒绝及分页/主体回显和目录完整性门槛。
 
 - [资产交易与报价组原生 getter](research/general/2026-10-07-liquidity-asset-quote-group-getters.md)：#141 单交易根、报价组物理版本行、独立缓存与逐叶验收；[规格副本](design/liquidity-native-asset-quote-group-getters-v0.1.0.md)。
