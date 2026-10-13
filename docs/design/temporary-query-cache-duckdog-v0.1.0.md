@@ -1,5 +1,9 @@
 # Temporary query cache and duckdog v0.1.0
 
+Authority: [GitHub Issue #157](https://github.com/proletariat64/dogopencli/issues/157).
+
+Date: 2026-10-13.
+
 ## Problem Statement
 
 dogopencli 原本用于执行只读查询，现在却承担了历史 dataset 的职责。Liquidity 将缓存按查询主体、契约及时间范围分割，再保留和合并多次 capture；同一 list 查询可能读到过时的特定主体缓存，也可能无法筛选已经采集的其他范围。FX 又采用不同的 live-only 行为。用户很难判断默认 list 到底会读取什么，以及缓存、显示分页和后台采集范围之间的关系。
