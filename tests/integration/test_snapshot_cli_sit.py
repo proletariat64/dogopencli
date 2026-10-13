@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from dogopencli.cache import Cache, SnapshotMeta, namespace
+from dogopencli.cache import Cache, SnapshotMeta
 from dogopencli.jsonutil import canonical
 
 
@@ -33,11 +33,13 @@ def publish(
 ):
     acquired = datetime.now(timezone.utc) - timedelta(hours=age)
     timestamp = acquired.isoformat()
-    name = namespace(capability, scope, source)
+    name = "temporary-query:" + capability.removesuffix(".list")
     meta = SnapshotMeta(
         namespace=name,
         capability=capability,
-        scope=scope,
+        scope=canonical(
+            {"query": {"scope": scope}, "variant": source, "selection": None}
+        ),
         source_kind=source,
         snapshot_id="PRIVATE-SNAPSHOT-ID",
         dataset_id=None,
@@ -77,7 +79,7 @@ def test_full_tree_missing_cache_is_success_and_never_creates_files(
     before = {p.name for p in cache.parent.iterdir()}
     code, result, err = report(run_cli)
     assert code == 0, err
-    assert result["snapshot_version"] == 1
+    assert result["snapshot_version"] == 2
     assert result["application_version"]
     assert datetime.fromisoformat(result["generated_at"].replace("Z", "+00:00"))
     assert result["inspection_complete"] is True
@@ -183,9 +185,9 @@ def test_empty_complete_stale_and_partial_storage(
     assert "PRIVATE-" not in canonical(result) + err
 
 
-def test_mixed_scopes_preserve_old_quality_and_opaque_ids(run_cli, snapshot_setup):
+def test_latest_slot_replaces_scope_and_quality(run_cli, snapshot_setup):
     path, _ = snapshot_setup
-    _, older = publish(
+    publish(
         path,
         "payment.cost.list",
         "PRIVATE-ACCOUNT-OLDER",
@@ -197,15 +199,11 @@ def test_mixed_scopes_preserve_old_quality_and_opaque_ids(run_cli, snapshot_setu
     code, result, err = report(run_cli, "payment", "cost", "list")
     assert code == 0, err
     leaf = result["tree"]
-    assert leaf["rows"] == 5
+    assert leaf["rows"] == 3
     assert leaf["updated"] == newer
-    assert leaf["cache"]["oldest_updated"] == older
-    assert leaf["cache"]["status"] == "mixed"
-    captures = leaf["cache"]["captures"]
-    assert len(captures) == 2
-    assert {capture["complete"] for capture in captures} == {True, False}
-    assert {capture["freshness"] for capture in captures} == {"fresh", "stale"}
-    assert len({capture["capture_id"] for capture in captures}) == 2
+    assert leaf["cache"]["status"] == "present"
+    assert len(leaf["cache"]["slots"]) == 1
+    assert leaf["cache"]["complete"] is True
     assert "PRIVATE-" not in canonical(result) + err
 
 
@@ -291,7 +289,7 @@ def test_snapshot_source_preserves_dataset_and_source_quality(run_cli, snapshot_
     assert code == 0, err
     leaf = result["tree"]
     assert leaf["updated"] == acquired
-    capture = leaf["cache"]["captures"][0]
+    capture = leaf["cache"]["slots"][0]
     assert capture["variant"] == "snapshot"
     assert capture["source_complete"] is False
     assert capture["dataset_complete"] is True
@@ -299,34 +297,10 @@ def test_snapshot_source_preserves_dataset_and_source_quality(run_cli, snapshot_
     assert capture["freshness"] == "stale"
 
 
-def test_liquidity_return_routes_are_distinct_cache_variants(run_cli, snapshot_setup):
-    from dogopencli.plugins.liquidity import leaves as declared
-    from dogopencli.plugins.liquidity import store
-    from dogopencli.plugins.liquidity.capability import encode_scope
-
-    path, _ = snapshot_setup
-    now = datetime.now(timezone.utc).isoformat()
-    for basis, specification in (
-        ("accrual", declared.INVESTMENT_RETURNS_ACCRUAL),
-        ("cash", declared.INVESTMENT_RETURNS_CASH),
-    ):
-        plan = store.plan_capture_publish(
-            Cache(path),
-            specification,
-            encode_scope({"basis": basis}),
-            ("20261001", "20261001"),
-            [],
-            0,
-            now,
-            now,
-        )
-        store.commit_plan(Cache(path), specification.name, plan, now)
-    code, result, err = report(run_cli, "liquidity", "investment", "returns", "list")
+def test_native_get_has_no_cache_inventory(run_cli, snapshot_setup):
+    code, result, err = report(run_cli, "liquidity", "investment", "quotes", "get")
     assert code == 0, err
-    assert result["tree"]["rows"] == 0
-    captures = result["tree"]["cache"]["captures"]
-    assert len(captures) == 2
-    assert {c["contract_variant"] for c in captures} == {"accrual", "cash"}
+    assert result["tree"]["cache"]["status"] == "not_applicable"
 
 
 def test_retired_product_baselines_disappear_without_affecting_bank_or_sla(

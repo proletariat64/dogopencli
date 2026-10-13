@@ -123,3 +123,40 @@ def load(source_keys: list[str]) -> Config:
         sources[key] = _source(section, key)
     cache_path = Path(raw_cache) if raw_cache else DEFAULT_CACHE
     return Config(cache_path=cache_path, ttl_hours=float(ttl), sources=sources)
+
+
+@dataclass(frozen=True)
+class DuckdogConfig:
+    path: Path
+    selectors: dict[str, str]
+
+
+def load_duckdog(config_file: Path | None = None) -> DuckdogConfig:
+    """Load optional selector configuration only when enumeration is requested."""
+    location = config_file if config_file is not None else config_path()
+    try:
+        document = tomllib.loads(location.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, OSError) as error:
+        raise _config_error(
+            "duckdog requires a readable valid configuration"
+        ) from error
+    section = document.get("duckdog")
+    if not isinstance(section, dict) or set(section) - {"path", "selectors"}:
+        raise _config_error("configure [duckdog] path and [duckdog.selectors]")
+    raw_path = section.get("path")
+    selectors = section.get("selectors")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise _config_error("duckdog.path must be a nonempty database path")
+    if not isinstance(selectors, dict) or any(
+        not isinstance(name, str)
+        or not name.strip()
+        or not isinstance(relation, str)
+        or not relation.strip()
+        or "\x00" in relation
+        for name, relation in selectors.items()
+    ):
+        raise _config_error("duckdog.selectors must map logical names to relations")
+    database = Path(raw_path).expanduser()
+    if not database.is_absolute():
+        database = location.resolve().parent / database
+    return DuckdogConfig(database, selectors)

@@ -56,8 +56,8 @@ METADATA = {
         "not imply complete backend coverage."
     ),
     "query": (
-        "Live SLA detail only: capability and requested id. Cached "
-        "detail lacks this extra metadata."
+        "Original effective source arguments for the acquisition; get identifies "
+        "the requested native object. Local filters are separate."
     ),
 }
 
@@ -112,32 +112,36 @@ def description(node: BizNode) -> dict[str, Any]:
             ),
         ],
         "metadata": dict(METADATA),
-        "access_modes": {
-            "cached": (
-                "Default: read the local snapshot, never implicitly refresh. "
-                "Query first use can initialize/migrate cache; describe never"
-                " does."
-            ),
-            "refresh": "Explicit dogopencli refresh payment "
-            + domain
-            + (
-                " publishes a replacement local snapshot. SLA refresh "
-                "collects the full list and every detail before publication."
-            ),
-            "live": (
-                "--live reads through an existing authenticated CDP session, "
-                "without launching a browser or updating cache. No fallback "
-                "from unsupported snapshot sources."
-            ),
-        },
+        "access_modes": (
+            {"online": "Native detail inquiry; never reads or writes query cache."}
+            if detail
+            else {
+                "cached": (
+                    "Replay the last nonempty acquisition with explicit "
+                    "declared local filters. No implicit refresh. Legacy "
+                    "caches are invalidated once; describe never accesses storage."
+                ),
+                "refresh": (
+                    "Explicit refresh payment " + domain + " acquires only the list. "
+                    "Validated nonempty results replace the sole temporary slot; empty "
+                    "refresh, hard failures and strict rejection preserve it."
+                ),
+                "live": (
+                    "--live reads through an existing authenticated CDP session, "
+                    "without launching a browser or updating cache. No fallback "
+                    "from unsupported snapshot sources."
+                ),
+                "prune": "Delete this leaf's slot; idempotent offline.",
+            }
+        ),
         "quality": [
             (
                 "--require-fresh rejects stale cached data with CACHE_STALE; "
                 "live does not use cached TTL."
             ),
             (
-                "--require-complete checks backend complete, not "
-                "dataset_complete or has_more; failure is INCOMPLETE_RESULT."
+                "--require-complete checks acquisition and requested coverage before "
+                "display truncation; has_more is not completeness evidence."
             ),
             (
                 "An empty matching list is successful data, not an error; "
@@ -234,9 +238,8 @@ def description(node: BizNode) -> dict[str, Any]:
             "meaning": (
                 "Replace synthetic BASELINE_ID with an id returned by the "
                 "list. Detail is an object, never a substitute list row; "
-                "cached absence is NOT_FOUND. Cached detail belongs to the "
-                "shared SLA refresh snapshot. --live detail is an independent"
-                " query and does not establish list-wide completeness or "
+                "get always uses the native online detail endpoint, independent "
+                "of list storage. It does not establish list-wide completeness or "
                 "synchronized timing."
             ),
         }

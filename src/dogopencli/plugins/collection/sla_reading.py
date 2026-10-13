@@ -89,7 +89,7 @@ def description(node: BizNode) -> dict[str, Any]:
             "scope": (
                 "Collection SLA configuration targets, not payment "
                 "baselines or actual order performance. Isolated "
-                "collection.sla.configs.list:configs:cdp cache; "
+                "temporary-query:collection.sla.configs slot; "
                 "sources.collection_sla kind=cdp."
             ),
             "filters": (
@@ -110,26 +110,27 @@ def description(node: BizNode) -> dict[str, Any]:
                 if node.path[-1] == "list"
                 else []
             ),
-            "access_modes": {
-                "cached": (
-                    "Default reads only the local list/detail snapshot; TTL "
-                    "defaults to 72 hours. Stale remains readable unless "
-                    "--require-fresh."
-                ),
-                "live": (
-                    "Explicit read-only browser inquiries never write cache "
-                    "or fall back. Live list fetches the full unfiltered scope "
-                    "before local selection. Live get completeness covers the requested"
-                    " detail only."
-                ),
-                "refresh": (
-                    "refresh collection sla collects the full list and every "
-                    "true detail, validates IDs and every list field except "
-                    "viewProcessInstanceRequired, then "
-                    "atomically publishes. Any failure preserves the old "
-                    "snapshot."
-                ),
-            },
+            "access_modes": (
+                {"online": "Native detail inquiry; never reads or writes query cache."}
+                if is_detail
+                else {
+                    "cached": (
+                        "Default replays this leaf's last nonempty acquisition. "
+                        "Explicit declared filters select saved rows only; no implicit "
+                        "refresh. TTL defaults to 72 hours."
+                    ),
+                    "live": (
+                        "Read-only online list inquiry; no cache writes or fallback. "
+                        "Local display filtering follows full native acquisition."
+                    ),
+                    "refresh": (
+                        "refresh collection sla collects only the list, never details. "
+                        "Valid nonempty results atomically replace this slot; "
+                        "empty refresh, hard failures and strict rejection preserve it."
+                    ),
+                    "prune": "Delete this leaf's slot; idempotent offline.",
+                }
+            ),
             "quality": [
                 (
                     "One pageNo=0/pageSize=1000 complete-scope request; "
@@ -145,7 +146,7 @@ def description(node: BizNode) -> dict[str, Any]:
                 (
                     "List and detail remain distinct raw objects; list-only "
                     "viewProcessInstanceRequired was absent from observed "
-                    "details. Missing or mismatched list fields reject refresh; "
+                    "details. Each online detail validates its genuine native payload; "
                     "this is not a backend transactional snapshot."
                 ),
                 (
