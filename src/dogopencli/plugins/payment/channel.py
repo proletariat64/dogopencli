@@ -221,7 +221,7 @@ CHANNEL_LIST_NODE = BizNode(
             "Payout scope.",
             "str",
             value_type="enum",
-            default="EXTERNAL",
+            help_default="EXTERNAL (online only)",
             choices=SCOPES,
         ),
         filter_opt(

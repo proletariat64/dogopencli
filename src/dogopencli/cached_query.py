@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from .cache import Cache, SnapshotMeta, namespace
+from .cache import Cache, SnapshotMeta
 from .config import SOURCE_SNAPSHOT, Config, SourceConfig
 from .errors import (
     CACHE_MISS,
@@ -20,6 +20,8 @@ from .errors import (
 )
 from .jsonutil import parse
 from .result_policy import AcquisitionEvidence, check_complete
+from .temporary_query import query_namespace as namespace
+from .temporary_query import slot_context
 
 
 def snapshot_meta(
@@ -58,6 +60,10 @@ def snapshot_meta(
         )
     )
     result.update(evidence.meta())
+    try:
+        result.update(slot_context(snapshot))
+    except ValueError:
+        result["query"] = {"scope": snapshot.scope}
     return result
 
 
@@ -144,9 +150,9 @@ def read_cached_query(
     available after its source files have been removed.
     """
     try:
-        snapshot, stored = Cache(config.cache_path).read(
-            namespace(capability, scope, source.kind)
-        )
+        store = Cache(config.cache_path)
+        store.ensure_temporary_format()
+        snapshot, stored = store.read(namespace(capability, scope, source.kind))
     except CliError as error:
         if error.code != INVALID_RESPONSE:
             raise

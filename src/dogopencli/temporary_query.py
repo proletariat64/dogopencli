@@ -2,8 +2,9 @@
 
 import hashlib
 from typing import Any
+
 from .cache import Cache, SnapshotMeta
-from .errors import CliError, INVALID_RESPONSE
+from .errors import INVALID_RESPONSE, CliError
 from .jsonutil import canonical, parse
 from .result_policy import AcquisitionEvidence
 
@@ -97,3 +98,26 @@ def display_options(args: Any) -> tuple[int, int, list[str] | None]:
 
 def window_rows(rows: list[dict], limit: int, offset: int) -> list[dict]:
     return rows[offset:] if limit == 0 else rows[offset : offset + limit]
+
+
+def capability_leaf(capability: str) -> str:
+    from .plugins import cache_bindings
+
+    for path, cap in cache_bindings().items():
+        if cap.name == capability and path[-1] == "list":
+            return ".".join(path[:-1])
+    return capability.removesuffix(".list")
+
+
+def query_namespace(capability: str, scope: str, source_kind: str) -> str:
+    return slot_namespace(capability_leaf(capability))
+
+
+def publish_candidate(store: Cache, snapshot: SnapshotMeta, records) -> None:
+    from dataclasses import replace
+
+    store.ensure_temporary_format()
+    if not snapshot.row_count:
+        return
+    context = {"query": {"scope": snapshot.scope}, "variant": None, "selection": None}
+    store.publish(replace(snapshot, scope=canonical(context)), records)
