@@ -437,7 +437,7 @@ def _load_builtins() -> None:
         register(
             leaf.capability,
             commands=(liquidity_leaves.detail_query_node(leaf),),
-            refresh_commands=(liquidity_leaves.refresh_detail_node(leaf),),
+            refresh_commands=(),
             groups=(),
             description=liquidity_reading.description,
         )
@@ -449,7 +449,17 @@ def _load_builtins() -> None:
             groups=(),
             description=liquidity_reading.description,
         )
-    _GROUPS["liquidity"] = liquidity_leaves.group_nodes()
+    refresh_paths = [
+        node.path
+        for node in refresh_nodes()
+        if node.path[:2] == ("refresh", "liquidity")
+    ]
+    _GROUPS["liquidity"] = tuple(
+        node
+        for node in liquidity_leaves.group_nodes()
+        if node.path[:1] != ("refresh",)
+        or any(path[: len(node.path)] == node.path for path in refresh_paths)
+    )
 
     from .fx.trade import FX_TRADE, TRADE_NODE
     from .fx.trade import description as fx_description
