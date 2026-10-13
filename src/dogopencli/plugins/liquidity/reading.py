@@ -112,8 +112,10 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
             )
         )
         schema["additionalProperties"] = False
-        schema["x-source-timezone"] = "unknown"
-        schema["x-balance-subtype"] = "unknown; raw source balance"
+        schema["x-source-timezone"] = "GMT+08"
+        schema["x-balance-subtype"] = (
+            "closing book balance; confirmed business convention"
+        )
         schema["properties"]["id"]["description"] = (
             "Native chart attribute; repeats across dates, not the daily identity."
         )

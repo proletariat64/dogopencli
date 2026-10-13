@@ -312,8 +312,7 @@ FORECAST_CASHFLOWS = ListSpec(
         "Value Date uses expectValueDateTime (YYYYMMDDHHmm), as in the native"
         " UI; queries compare its calendar day without a"
         " timezone conversion. No native unique key is established: all row"
-        " occurrences are preserved within a response; overlapping captures"
-        " match identical content by occurrence count.",
+        " occurrences are preserved within the acquired response.",
         _NULL_NOTE,
     ),
 )
@@ -1695,7 +1694,7 @@ DETAIL_SPECS: tuple[DetailSpec, ...] = (
         ),
         list_leaf=("risk", "sla"),
         notes=(
-            "SLA summaries and these explicit rule details use independent caches.",
+            "SLA summaries keep one temporary list result; rule details query online.",
         ),
     ),
     DetailSpec(
@@ -2865,6 +2864,13 @@ def _filter_option(entry: tuple[str, ...]) -> OptionSpec:
 
 def _list_option_spec(leaf, option):
     result = _option_spec(option)
+    if leaf.path == ("cash", "balances") and option.flag == "entity":
+        result = replace(
+            result,
+            summary=result.summary
+            + " ANY freezes native instId values from duckdog selector"
+            " liquidity/reference/entities.",
+        )
     return replace(result, default=None, required=False, help_default=option.default)
 
 

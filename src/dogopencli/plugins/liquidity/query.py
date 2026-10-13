@@ -1,12 +1,4 @@
-"""Liquidity query flows: offline cache reads and explicit live inquiries.
-
-Default queries read local captures only — never the browser. ``--live``
-performs the bounded inquiry through the existing CDP session and never
-writes the cache; live partial results keep explicit incompleteness
-metadata and ``--require-complete`` fails on them. Queries demanding
-missing or evicted coverage use the existing incomplete-result behavior,
-never a misleading empty result or NOT_FOUND.
-"""
+"""Offline replay of one temporary leaf result; bounded explicit live inquiries."""
 
 import argparse
 import re
@@ -251,7 +243,7 @@ def _offline_selection(args, leaf, variant, context, records):
                 "date bounds must be provided together",
                 exit_code=EXIT_USAGE,
             )
-    normalized, _ = scope_values(
+    normalized, requested_window = scope_values(
         tuple(
             replace(option, required=False, default=None)
             for option in variant.scope_options
@@ -260,7 +252,7 @@ def _offline_selection(args, leaf, variant, context, records):
     )
     mapping = {entry[0]: entry[1] for entry in variant.filters}
     mapping.update(
-        {"entity": "entity", "account": "aliasName", "timezone": "timeZone"}
+        {"entity": "entity", "account": "aliasName"}
         if leaf.path == ("cash", "balances")
         else {}
     )
@@ -268,6 +260,12 @@ def _offline_selection(args, leaf, variant, context, records):
     rows = records
     for key in explicit:
         option = options[key]
+        if key == "timezone":
+            raise CliError(
+                INVALID_ARGUMENT,
+                "--timezone is source-only; use --live or refresh",
+                exit_code=EXIT_USAGE,
+            )
         value = normalized.get(option.field)
         acquired = source.get(option.field)
         if option.virtual and option.match:
@@ -279,7 +277,7 @@ def _offline_selection(args, leaf, variant, context, records):
                 )
             continue
         if option.window:
-            if not variant.series_field:
+            if not variant.series_field or variant.profile != spec_mod.PROFILE_DATED:
                 raise CliError(
                     INVALID_ARGUMENT,
                     "date filter unavailable for saved variant; use --live or refresh",
@@ -327,7 +325,45 @@ def _offline_selection(args, leaf, variant, context, records):
     filters = _local_filters(args, variant)
     if filters and coverage is True:
         coverage = None
-    return _match(rows, filters), explicit, coverage
+    explicit.update(
+        {
+            entry[0]: getattr(args, entry[0], [])
+            for entry in variant.filters
+            if getattr(args, entry[0], [])
+        }
+    )
+    return _match(rows, filters), explicit, coverage, requested_window
+
+
+def _validate_cached_rows(leaf, variant, context, records):
+    from .capability import encode_scope
+    from .projection import _validate_amounts, project_record
+
+    capability = leaf.capability(variant)
+    scope = context.get("query")
+    if not isinstance(scope, dict):
+        raise CliError(INVALID_RESPONSE, "cached acquisition scope is invalid")
+    seen = set()
+    for record in records:
+        identity = capability.identity_key(record)
+        if variant.identity and identity in seen:
+            raise CliError(
+                INVALID_RESPONSE, "cached result has duplicate native identities"
+            )
+        seen.add(identity)
+        if variant.projection:
+            project_record(variant.projection, record)
+        if variant.endpoint == "/balStatisticalQuery.json":
+            if "balance" not in record:
+                raise CliError(
+                    INVALID_RESPONSE, "cached daily balance is missing source balance"
+                )
+            _validate_amounts(record, ("balance",), "daily_balances")
+        if variant.profile == spec_mod.PROFILE_DATED:
+            capture_store.series_value(variant, record, "")
+    capability.validate_rows_scope(records, encode_scope(scope))
+    if variant.projection == "balances":
+        latest_statement_rows(records)
 
 
 def run_list(args):
@@ -353,6 +389,17 @@ def run_list(args):
             config,
             capability,
         )
+    from .capability import scope_values
+
+    explicit = {
+        key: value
+        for key, value in provided(args, scope_flags(leaf)).items()
+        if value is not None and value != []
+    }
+    scope_values(
+        tuple(replace(option, required=False, default=None) for option in leaf.options),
+        explicit,
+    )
     snapshot, records = read_slot(Cache(config.cache_path), slot_leaf(leaf))
     if snapshot is None:
         raise CliError(
@@ -369,8 +416,12 @@ def run_list(args):
         raise CliError(
             INVALID_RESPONSE, "cached contract variant is invalid; refresh required"
         )
-    rows, filters, coverage = _offline_selection(args, leaf, variant, context, records)
+    _validate_cached_rows(leaf, variant, context, records)
+    rows, filters, coverage, requested_window = _offline_selection(
+        args, leaf, variant, context, records
+    )
     evidence = AcquisitionEvidence.from_record(snapshot.acquisition)
+    source_acquisition = evidence.record()
     if coverage is not True:
         evidence = replace(
             evidence,
@@ -401,7 +452,11 @@ def run_list(args):
         "query": context.get("query"),
         "scope": context.get("query"),
         "local_filters": filters,
+        "requested_window": list(requested_window)
+        if requested_window[0] is not None
+        else None,
         "requested_scope_covered": coverage,
+        "source_acquisition": source_acquisition,
         "snapshot_id": snapshot.snapshot_id,
         "fetched_at": snapshot.fetched_at,
         "stale": stale,

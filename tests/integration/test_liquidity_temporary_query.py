@@ -160,7 +160,8 @@ def test_any_freezes_duckdog_native_ids_then_replays_offline(setup, run_cli):
     config = setup.tmp_path / "config.toml"
     with config.open("a") as target:
         target.write(
-            f'\n[duckdog]\npath = "{database}"\n[duckdog.selectors]\n"liquidity/reference/entities" = "entities"\n'
+            f'\n[duckdog]\npath = "{database}"\n[duckdog.selectors]\n'
+            '"liquidity/reference/entities" = "entities"\n'
         )
     rows = [
         {
@@ -261,3 +262,48 @@ def test_native_get_is_online_without_cache_or_live_flag(setup, run_cli):
     assert parse(out)["data"] == native
     assert setup.state.business_requests == [{"inquiryTaskId": "SYN-CHILD"}]
     assert not setup.cache_path.exists()
+
+
+def test_cached_native_corruption_rejected_before_filter_or_display(setup, run_cli):
+    from dogopencli.cache import Cache
+    from dogopencli.result_policy import AcquisitionEvidence
+    from dogopencli.temporary_query import publish_slot
+
+    store = Cache(setup.cache_path)
+    rows = [
+        {
+            "balId": "B",
+            "entity": "E1",
+            "aliasName": "A",
+            "currency": "USD",
+            "curBalance": "NaN",
+        }
+    ]
+    with store.refresh_lock():
+        publish_slot(
+            store,
+            "liquidity.cash.balances",
+            rows,
+            capability="liquidity.cash.balances.list",
+            scope={"entitys": ["E1"], "timeZone": "GMT+08"},
+            variant="/latestBalanceQuery.json",
+            evidence=AcquisitionEvidence.for_collection(
+                complete=True, reported_total=1, collected_total=1
+            ),
+            fetched_at="2026-10-13T00:00:00+00:00",
+        )
+    code, out, err = run_cli(
+        [
+            "liquidity",
+            "cash",
+            "balances",
+            "list",
+            "--entity",
+            "OTHER",
+            "--offset",
+            "100",
+        ]
+    )
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert setup.state.transports == []
