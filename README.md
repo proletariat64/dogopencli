@@ -18,7 +18,7 @@ WSL 用户应使用 Linux 磁盘目录。
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install ./dogopencli-0.2.4-py3-none-any.whl
+python -m pip install ./dogopencli-0.4.0-py3-none-any.whl
 dogopencli --version
 ```
 
@@ -112,11 +112,14 @@ CLI 不推导未验证的多值组合语义。
 必须同时检查内层业务结果；业务、认证、网络或无效响应失败时不输出已取得的候选数据。
 后端失败信息可能含 SQL 和业务标识，CLI 仅输出安全的机器错误码。
 
-handoff 证明指定范围的 `2026-10-03` 查询报告 166 条、返回首 5 条；
-它不证明 CLI 全量采集。首版尚无已验证的记录身份和 totalCount 计数单位，
+v0.4.0 正式支持 FX domain。独立 Chrome/profile、CDP 19256 的生产 UAT 已验证
+人工 SSO、自动 headed → headless 切换、FX 认证检查、逐笔范围查询及交易单号查询。
+指定筛选范围的 `2026-10-03` 查询采集 166 条、4 页；2026 年 9 月按 5 天拆成
+6 批，累计采集 6,301 条，每批采集量均与各自后端报告总数一致。
+整月单次查询触及 100 页上限；仅 bcode 的整月查询返回业务错误，不能推广为任意筛选组合均已通过。
+首版尚无已验证的记录身份和 totalCount 计数单位，
 因此 `meta.complete=false`，提供 `reported_total`、`collected_total` 及原因告警，
-不宣称去重或全量覆盖；`--require-complete` 会拒绝返回数据。新命令及 FX 登录流程的
-生产 UAT 待完成，尤其是新查询页面中的请求认证与框架上下文。
+不宣称去重或全量覆盖；`--require-complete` 会拒绝返回数据。
 本仓库禁止 CDP 9330–9340；handoff 的 9335 会话不能用于此仓库验证。
 
 ### 离线命令与缓存概览
