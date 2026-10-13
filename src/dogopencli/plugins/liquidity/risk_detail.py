@@ -45,7 +45,7 @@ def _spec(resource: str, mode: str) -> DetailSpec:
             f"Genuine form POST detail; response id must equal --risk-event-id "
             f"and riskMode must equal {mode}.",
             "Only riskEventId is sent; tenant GUAPW3SG and mode isolate the "
-            "detail cache without invented request fields.",
+            "native inquiry without invented request fields.",
             "groupNo is the native grouping reference, riskType the source "
             "type code; neither replaces id.",
             "notificationFrequency is the native notification frequency string "

@@ -120,8 +120,7 @@ TRANSFER_RULES = ListSpec(
         "ruleCount; no offset fallback.",
         "ruleId is the native string identity; ruleNo and version remain "
         "separate source fields.",
-        "Configuration summary only; genuine get and its detail cache "
-        "remain independent.",
+        "Configuration summary only; genuine get queries online independently.",
         "Unknown states, units, timezone, native precision, null, blank and "
         "zero remain raw.",
         "Effective and modification times describe configuration, never "

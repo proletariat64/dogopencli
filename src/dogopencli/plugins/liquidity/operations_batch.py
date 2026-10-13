@@ -103,7 +103,7 @@ RELEASED: frozenset[str] = frozenset({SWAP_ORDERS.name})
 
 
 def validate_swap_query(values: dict[str, Any]) -> None:
-    """Trade dates belong to an exact history scope, not dated retention."""
+    """Validate native trade dates within one bounded source scope."""
     start = values.get("tradeStartDate")
     end = values.get("tradeEndDate")
     if start is None or end is None:

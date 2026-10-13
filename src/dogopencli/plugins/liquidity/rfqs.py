@@ -92,8 +92,8 @@ RFQS = ListSpec(
         "timezone. "
         "Unknown time interpretation is never used to filter or manufacture coverage.",
         "inquirer, memo, processId, personnel, free text and unknown fields are "
-        "excluded from public and cache records. Existing quote and native "
-        "detail caches stay separate.",
+        "excluded from public and cache records. Native detail queries remain "
+        "online and independent.",
     ),
 )
 SAMPLED_FIELDS = {

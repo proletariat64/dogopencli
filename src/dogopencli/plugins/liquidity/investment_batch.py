@@ -79,8 +79,8 @@ BENCHMARK_VALUES = ListSpec(
         "characters left literal. Value, capture time and query window are "
         "excluded; native id is preserved and the four-field identity is unchanged.",
         "Only the six observed benchmark business fields and local primaryId "
-        "enter public/cache records. The v2 cache contract requires refresh; "
-        "existing v1 captures are retained. Strategy definitions and investment "
+        "enter public/cache records. One temporary result requires refresh; "
+        "legacy cache data is discarded. Strategy definitions and investment "
         "execution are separate.",
     ),
 )
@@ -262,8 +262,8 @@ QUOTES = ListSpec(
         " No repeated offset requests or invented totals. This does not promise"
         " absence of a server capacity limit for arbitrary larger datasets.",
         "Both public YYYY-MM-DD value-date bounds map to native YYYYMMDD."
-        " Exact requested-range history captures are independent; no merging"
-        " across ranges or local source-date filtering establishes coverage.",
+        " One temporary result stores the acquired range; local filtering never"
+        " broadens proven source coverage.",
         "Native request timeZone remains null. The operator confirms UTC+08:00"
         " for interpreting source times; source strings are never converted."
         " Capture time and query bounds are not source observation timestamps.",

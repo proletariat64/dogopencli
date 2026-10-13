@@ -108,7 +108,7 @@ RULE_STATUS = ListSpec(
         "debitAmount units are unestablished; amounts, account aliases,"
         " rule-name/business-type free text, operators and environment"
         " metadata are excluded.",
-        "Exact trigger scopes retain separate history captures; failures"
+        "One temporary result records the original trigger scope; failures"
         " never replace caches with empty data.",
     ),
 )

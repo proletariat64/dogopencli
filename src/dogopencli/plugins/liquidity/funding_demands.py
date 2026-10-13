@@ -95,7 +95,7 @@ DEMANDS = ListSpec(
         "No offset loop; observed small-page overlaps are not used.",
         "taskId identifies tasks; sourceId identifies a separate associated source.",
         "Amounts preserve decimal strings; unknown statuses remain raw.",
-        "Exact timestamp scopes retain separate history captures.",
+        "One temporary result stores the original timestamp scope.",
         "Wide scopes can fail with 099; failures never replace caches with empty data.",
         "Account numbers, aliases, nested details and paging fields are excluded.",
     ),

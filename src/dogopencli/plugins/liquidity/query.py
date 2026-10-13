@@ -252,6 +252,18 @@ def _offline_selection(args, leaf, variant, context, records):
     )
     mapping = {entry[0]: entry[1] for entry in variant.filters}
     mapping.update(
+        {
+            ("cash", "waterlevels"): {"account": "aliasName"},
+            ("forecast", "cashflows"): {
+                "account": "bankAccountAliasName",
+                "currency": "currency",
+            },
+            ("forecast", "results"): {"account": "bankAccountAliasName"},
+            ("forecast", "accuracy"): {"account": "bankAccountAliasName"},
+            ("operations", "prefunds"): {"status": "status"},
+        }.get(leaf.path, {})
+    )
+    mapping.update(
         {"entity": "entity", "account": "aliasName"}
         if leaf.path == ("cash", "balances")
         else {}

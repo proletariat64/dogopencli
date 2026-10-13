@@ -3,7 +3,7 @@
 Every shipped business leaf declares exactly one kind (runtimes | settings |
 reference), its verified origin/method/path/encoding, exact request template,
 native record container and reported-total paths, typed identity, offline
-profile and retention series. Deferred leaves stay discoverable through
+business-date profile and native series. Deferred leaves stay discoverable through
 ``DeferredLeaf`` with their evidence status and reason; they never become
 placeholder commands. Evidence:
 docs/research/general/2026-10-01-liquidity-live-probes.md.

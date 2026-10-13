@@ -1711,7 +1711,7 @@ DETAIL_SPECS: tuple[DetailSpec, ...] = (
         ),
         list_leaf=("rules", "transfer"),
         notes=(
-            "List and genuine detail inquiries use independent caches; "
+            "List uses a temporary result; genuine detail queries online; "
             "acquire details by ruleId.",
         ),
     ),

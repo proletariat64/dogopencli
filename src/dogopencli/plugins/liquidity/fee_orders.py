@@ -108,7 +108,7 @@ FEE_ORDERS = ListSpec(
         "valuation.",
         "serviceTime/gmtCreate/gmtModified are naive source YYYY-MM-DD "
         "HH:mm:ss strings, without inferred UTC offset; serviceDate is "
-        "the query/retention business day and fetched_at is capture "
+        "the query business day and fetched_at is acquisition "
         "time.",
         "Raw status is preserved when present; it is absent from the "
         "observed source sample. Unknown fields are excluded.",
