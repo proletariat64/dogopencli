@@ -324,16 +324,36 @@ def test_accounts_canonical_filter_or_within_and_and_across(setup, run_cli):
     seed_accounts(setup, run_cli)
     base = ["liquidity", *ACCOUNTS, "list"]
     code, out, err = run_cli(
-        [*base, "--account-alias", "ALIAS001", "--account-alias", "ALIAS002"]
+        [
+            *base,
+            "--account-alias",
+            "ALIAS001",
+            "--account-alias",
+            "ALIAS002",
+            "--require-complete",
+        ]
     )
     assert code == 0, (out, err)
-    assert "REQUESTED_SCOPE_UNPROVEN" in err
-    assert parse(out)["meta"]["matched_total"] == 3
-    code, out, err = run_cli(
-        [*base, "--account-alias", "ALIAS001", "--currency", "USD"]
-    )
-    assert code == 0, (out, err)
+    assert err == ""
     result = parse(out)
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["requested_scope_covered"] is True
+    assert result["meta"]["matched_total"] == 3
+    code, out, err = run_cli(
+        [
+            *base,
+            "--account-alias",
+            "ALIAS001",
+            "--currency",
+            "USD",
+            "--require-complete",
+        ]
+    )
+    assert code == 0, (out, err)
+    assert err == ""
+    result = parse(out)
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["requested_scope_covered"] is True
     assert result["meta"]["matched_total"] == 1
     assert result["data"] == [ACCOUNT_ROWS[0]]
 
