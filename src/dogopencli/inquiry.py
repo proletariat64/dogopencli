@@ -7,7 +7,7 @@ from pathlib import Path
 from .browser import errors as auth_errors
 from .browser.cdp import CdpTransport, make_transport, url_origin
 from .browser.coordination import acquire_browser_control
-from .browser.environment import LIQUIDITY_STARTUP_URL, resolve_environment
+from .browser.environment import STARTUP_URLS, resolve_environment
 from .browser.errors import AuthError
 from .browser.probe import check_authentication, probe_entry
 from .errors import AUTH_REQUIRED, BROWSER_UNAVAILABLE, LOCKED, CliError
@@ -60,6 +60,11 @@ def inquiry_session(
     fails. Browser errors cross into the business error protocol at this seam.
     """
     with ExitStack() as resources:
+        domain = next(
+            (name for name, url in STARTUP_URLS.items() if url == startup_url),
+            "payment",
+        )
+        selector = f" --domain {domain}" if domain != "payment" else ""
         try:
             environment = resolve_environment(config_file=config_file)
             control = acquire_browser_control(environment.profile, shared=True)
@@ -68,26 +73,27 @@ def inquiry_session(
             cdp = make_transport(environment.cdp_url)
         except AuthError as error:
             mapped = _map_auth_error(error)
-            if startup_url == LIQUIDITY_STARTUP_URL and mapped.code in {
+            if selector and mapped.code in {
                 AUTH_REQUIRED,
                 BROWSER_UNAVAILABLE,
             }:
                 mapped.message += (
-                    "; run dogopencli login --domain liquidity; "
-                    "then dogopencli auth check --domain liquidity"
+                    f"; run dogopencli login{selector}; "
+                    f"then dogopencli auth check{selector}"
                 )
             raise mapped from error
         try:
             yield InquirySession(cdp, startup_url or environment.startup_url, resources)
         except CliError as error:
-            if startup_url == LIQUIDITY_STARTUP_URL and error.code in {
+            if selector and error.code in {
                 AUTH_REQUIRED,
                 BROWSER_UNAVAILABLE,
             }:
-                error.message = error.message.replace(
-                    "dogopencli login", "dogopencli login --domain liquidity"
-                )
-                if "dogopencli login --domain liquidity" not in error.message:
-                    error.message += "; run dogopencli login --domain liquidity"
-                error.message += "; then dogopencli auth check --domain liquidity"
+                if f"dogopencli login{selector}" not in error.message:
+                    error.message = error.message.replace(
+                        "dogopencli login", f"dogopencli login{selector}"
+                    )
+                if f"dogopencli login{selector}" not in error.message:
+                    error.message += f"; run dogopencli login{selector}"
+                error.message += f"; then dogopencli auth check{selector}"
             raise

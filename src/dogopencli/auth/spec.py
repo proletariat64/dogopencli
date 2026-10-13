@@ -127,7 +127,7 @@ COMMANDS = (
             _option(
                 "domain",
                 "Application domain to probe; the verdict applies to this domain only.",
-                choices=("payment", "liquidity"),
+                choices=("payment", "liquidity", "fx"),
                 default="payment",
             ),
         ),
@@ -155,7 +155,7 @@ COMMANDS = (
             _option(
                 "domain",
                 "Application domain to restore in the dedicated profile.",
-                choices=("payment", "liquidity"),
+                choices=("payment", "liquidity", "fx"),
                 default="payment",
             ),
             TIMEOUT_SECONDS,

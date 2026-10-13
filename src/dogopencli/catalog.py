@@ -24,6 +24,7 @@ from .helpspec import (
 )
 from .helpspec import REFRESH_OUTPUT as _REFRESH_OUTPUT
 from .plugins import command_nodes, group_nodes, refresh_nodes
+from .plugins.fx.trade import GROUP_NODE as FX_GROUP
 from .plugins.payment.channel import CHANNEL_CAPABILITY
 from .plugins.payment.cost import COST_CAPABILITY
 from .plugins.payment.sla import SLA_CAPABILITY
@@ -127,8 +128,9 @@ _REFRESH_SLA_NODE = BizNode(
 _GROUPS: dict[tuple[str, ...], BizNode] = {
     (): BizNode(
         (),
-        "Inquiry-only, read-only payment, collection and liquidity operations"
-        " queries; the default reads the local cache.",
+        "Inquiry-only, read-only payment, collection, liquidity and FX queries;"
+        " payment, collection and liquidity default to local cache reads; FX trades"
+        " query live.",
         constraints=(
             "Business queries never modify production business configuration.",
         ),
@@ -249,6 +251,7 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
         " independent.",
         next=("dogopencli help refresh liquidity investment",),
     ),
+    ("fx",): FX_GROUP,
 }
 
 

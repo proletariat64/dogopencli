@@ -39,6 +39,7 @@ from .cdp import (
     url_origin,
 )
 from .environment import (
+    FX_STARTUP_URL,
     LIQUIDITY_STARTUP_URL,
     PAYMENT_STARTUP_URL,
     STARTUP_URLS,
@@ -260,7 +261,7 @@ _LIQUIDITY_SIGNAL = """
 LIQUIDITY_CANDIDATE_STABILITY_SECONDS = 0.25
 
 
-def _liquidity_completion(
+def _entry_completion(
     environment: BrowserEnvironment,
     *,
     timeout: float,
@@ -292,12 +293,12 @@ def _liquidity_completion(
         if any(is_login_landing(t["url"]) for t in pages):
             raise AuthError(
                 SERVICE_FAILURE,
-                "waiting for existing SSO/login tabs to return to Liquidity",
+                "waiting for existing SSO/login tabs to return to the application",
             )
         eligible = [
             t
             for t in pages
-            if url_origin(t["url"]) == url_origin(LIQUIDITY_STARTUP_URL)
+            if url_origin(t["url"]) == url_origin(environment.startup_url)
             and isinstance(t.get("webSocketDebuggerUrl"), str)
         ]
         for target in eligible:
@@ -317,9 +318,9 @@ def _liquidity_completion(
                     if not (
                         isinstance(observation, dict)
                         and observation.get("origin")
-                        == url_origin(LIQUIDITY_STARTUP_URL)
+                        == url_origin(environment.startup_url)
                         and observation.get("path")
-                        == urlparse(LIQUIDITY_STARTUP_URL).path
+                        == urlparse(environment.startup_url).path
                         and observation.get("ready_state")
                         in {"interactive", "complete"}
                         and type(observation.get("document_id")) in {int, float}
@@ -346,7 +347,7 @@ def _liquidity_completion(
                 session.close()
                 session = None
         raise AuthError(
-            SERVICE_FAILURE, "waiting for a stable existing Liquidity entry document"
+            SERVICE_FAILURE, "waiting for a stable existing application entry document"
         )
     except CdpError as exc:
         remaining = deadline - monotonic()
@@ -358,7 +359,7 @@ def _liquidity_completion(
                     BROWSER_UNAVAILABLE, "the headed Chrome became unreachable"
                 ) from exc
         raise AuthError(
-            SERVICE_FAILURE, "quiet Liquidity observation is temporarily unavailable"
+            SERVICE_FAILURE, "quiet application observation is temporarily unavailable"
         ) from exc
     finally:
         if session is not None:
@@ -377,8 +378,8 @@ def probe_login_completion(
     closed target is retryable while Chrome remains reachable. Never fall
     back to navigations during human input, even on CORS/network failure.
     """
-    if environment.startup_url == LIQUIDITY_STARTUP_URL:
-        return _liquidity_completion(
+    if environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}:
+        return _entry_completion(
             environment, timeout=timeout, rejected_candidates=rejected_candidates
         )
     if environment.startup_url != PAYMENT_STARTUP_URL:

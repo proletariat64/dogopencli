@@ -45,6 +45,9 @@ class EndpointContract:
     # into the URL query. GET always uses ``query`` regardless of this
     # declaration; the default ``json`` preserves existing POST contracts.
     encoding: str = "json"
+    # RPC inquiries wrap the validated object in a one-element JSON array.
+    # Nested inquiry fields remain default-deny at the shared boundary.
+    nested_body_keys: tuple[tuple[str, frozenset[str]], ...] = ()
     # Only one response is verified for fixed-page inquiries. A reported
     # total beyond its capacity becomes a coverage gap, never a new request.
     single_page: bool = False
@@ -262,6 +265,7 @@ def cache_bindings() -> dict[tuple[str, ...], NamedCapability]:
         for declarations in (_COMMANDS, _REFRESH_COMMANDS)
         for name, nodes in declarations.items()
         for node in nodes
+        if getattr(_REGISTRY[name], "cache_enabled", True)
     }
 
 
@@ -446,6 +450,15 @@ def _load_builtins() -> None:
             description=liquidity_reading.description,
         )
     _GROUPS["liquidity"] = liquidity_leaves.group_nodes()
+
+    from .fx.trade import FX_TRADE, TRADE_NODE
+    from .fx.trade import description as fx_description
+
+    register(
+        FX_TRADE,
+        commands=(TRADE_NODE,),
+        description=fx_description,
+    )
 
 
 _load_builtins()

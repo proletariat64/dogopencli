@@ -1,6 +1,6 @@
 # Dogopencli
 
-把产品运营平台的付款、收款与流动性查询带到终端。Dogopencli 面向单人、单机使用，
+把产品运营平台的付款、收款、流动性与外汇查询带到终端。Dogopencli 面向单人、单机使用，
 提供离线缓存查询、显式实时查询，以及适合脚本和 Agent 读取的 JSON 帮助与数据描述。
 所有生产业务操作仅查询；登录管理专用本地浏览器，刷新写入本地快照。
 
@@ -49,8 +49,9 @@ dogopencli refresh collection account-isolation
 dogopencli collection account-isolation list --require-fresh --require-complete
 ```
 
-`login` 默认检查 Payment；`login --domain liquidity` 检查并恢复 Liquidity。
-两者使用同一套已配置的专用 Chrome profile，普通浏览器登录不能恢复此 profile。
+`login` 默认检查 Payment；`login --domain liquidity` 检查并恢复 Liquidity；
+`login --domain fx` 检查并恢复 FX。`auth check` 支持同样的三个域。
+各域使用同一套已配置的专用 Chrome profile，普通浏览器登录不能恢复此 profile。
 目标域已有有效的无头会话时直接成功；需要登录时打开可见 Chrome，等待人工
 完成 SSO，随后切回无头模式并复验目标域会话。结果明确标识实际检查的 `domain`。
 每次新启动 Chrome 都复用并整理初始页面，只保留一个入口页，不再额外追加
@@ -61,8 +62,8 @@ Payment 人工等待期间仅在现有页面里 fetch 已核实的只读用户�
 成功：用户初始化响应仅作为完成信号，仍需原有域入口导航验证及无头复验；
 网络/CORS/响应解析失败会继续
 等待并在超时后报不确定状态，不退回会打扰输入的导航轮询。
-Liquidity 人工等待只观察现有入口页面的稳定回归和就绪状态，不调用 Payment
-用户信息接口；此观察仅是完成候选，成功仍需 Liquidity 入口验证和无头复验。
+Liquidity、FX 人工等待只观察各自现有入口页面的稳定回归和就绪状态，不调用 Payment
+用户信息接口；此观察仅是完成候选，成功仍需目标域入口验证和无头复验。
 默认等待 600 秒，可用 `--timeout-seconds` 调整。`auth check` 只检查现有会话，
 不会启动或修复浏览器。
 
@@ -82,6 +83,41 @@ dogopencli collection account-isolation list --live --all
 行为变化与缓存回滚要求见[变更记录](CHANGELOG.md)。
 
 ## 可以查询什么
+
+### FX 逐笔交易
+
+首版 `dogopencli fx trade` 查询 FX Shield 的 `RiskStandardTrade` 逐笔明细，
+属于运行态；`TradeBatch` 聚合查询不在此命令范围。该命令直接查询现有认证浏览器，
+无需配置 `[sources]`，不写缓存。普通查询不会启动 Chrome 或自动登录。
+
+```bash
+dogopencli login --domain fx
+dogopencli auth check --domain fx
+dogopencli fx trade --transact-from 2026-10-03 --transact-to 2026-10-03 \
+  --bcode YOUR_BCODE --scene 'A+前报价' --transaction-type SALE \
+  --fulfilled 1 --symbol USD/PHP
+dogopencli fx trade --trade-id YOUR_TRADE_ID
+dogopencli help fx trade --format text
+dogopencli describe fx trade
+```
+
+示例标识须替换为实际值，不设置默认商户或 bcode。日期按 UTC+08:00 解释，
+起止日期均包含全天；也接受带秒和显式时区的 ISO 8601 时间。起止时间必须成对，
+bcode、平台商户 ID 或场景筛选要求客户下单时间。各筛选参数直接发送到后端，
+CLI 不推导未验证的多值组合语义。
+
+后端分页从 0 开始，每页 50 条，采集最多 100 页、120 秒；采集后再应用
+`--limit`（默认 100）、`--offset`、`--all`、`--fields` 或 `--format table`。
+金额数值精度、未知字段和业务时间原样保留。HTTP 200 与外层成功均不足以判定成功，
+必须同时检查内层业务结果；业务、认证、网络或无效响应失败时不输出已取得的候选数据。
+后端失败信息可能含 SQL 和业务标识，CLI 仅输出安全的机器错误码。
+
+handoff 证明指定范围的 `2026-10-03` 查询报告 166 条、返回首 5 条；
+它不证明 CLI 全量采集。首版尚无已验证的记录身份和 totalCount 计数单位，
+因此 `meta.complete=false`，提供 `reported_total`、`collected_total` 及原因告警，
+不宣称去重或全量覆盖；`--require-complete` 会拒绝返回数据。新命令及 FX 登录流程的
+生产 UAT 待完成，尤其是新查询页面中的请求认证与框架上下文。
+本仓库禁止 CDP 9330–9340；handoff 的 9335 会话不能用于此仓库验证。
 
 ### 离线命令与缓存概览
 

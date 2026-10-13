@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dogopencli"
 version = "0.3.1"
-description = "Inquiry-only CLI for payment, collection and liquidity operations"
+description = "Inquiry-only CLI for payment, collection, liquidity and FX operations"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

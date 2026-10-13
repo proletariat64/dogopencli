@@ -78,10 +78,11 @@ def _fetch_expression(
     else:
         prepare = ""
         target = f'"{url}?ctoken=" + encodeURIComponent(ctoken)'
+        json_body = "[payload]" if encoding == "json-array" else "payload"
         options = (
             f'method: "{request.method}", credentials: "include", '
             'headers: {"Content-Type": "application/json"}, '
-            "body: JSON.stringify(payload), signal: controller.signal"
+            f"body: JSON.stringify({json_body}), signal: controller.signal"
         )
     return (
         "(async (payload) => {"

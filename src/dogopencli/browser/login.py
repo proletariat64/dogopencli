@@ -32,7 +32,12 @@ from typing import Any
 
 from . import launcher
 from .coordination import acquire_browser_control, acquire_login_lock
-from .environment import LIQUIDITY_STARTUP_URL, BrowserEnvironment
+from .environment import (
+    FX_STARTUP_URL,
+    LIQUIDITY_STARTUP_URL,
+    STARTUP_URLS,
+    BrowserEnvironment,
+)
 from .errors import AUTH_REQUIRED, BROWSER_UNAVAILABLE, SERVICE_FAILURE, AuthError
 from .probe import check_authentication, probe_login_completion
 
@@ -107,10 +112,12 @@ def _human_login(
 ) -> dict[str, Any]:
     """Headed human SSO verified by probes, then a verified headless handoff."""
     deadline = monotonic() + timeout_seconds
+    domain = next(
+        (name for name, url in STARTUP_URLS.items() if url == environment.startup_url),
+        "payment",
+    )
     recovery_command = "dogopencli login" + (
-        " --domain liquidity"
-        if environment.startup_url == LIQUIDITY_STARTUP_URL
-        else ""
+        f" --domain {domain}" if domain != "payment" else ""
     )
     print(
         "login: resuming the existing headed Chrome for human company SSO"
@@ -135,7 +142,7 @@ def _human_login(
                 last_failure=candidate_failure,
                 candidate_retry_after=candidate_retry_after,
             )
-            if environment.startup_url == LIQUIDITY_STARTUP_URL:
+            if environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}:
                 sleep(min(HANDOFF_SETTLE_SECONDS, max(0.0, deadline - monotonic())))
                 if monotonic() >= deadline:
                     raise AuthError(
@@ -157,7 +164,7 @@ def _human_login(
             )
             raise
         try:
-            if environment.startup_url == LIQUIDITY_STARTUP_URL:
+            if environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}:
                 check_authentication(
                     environment, timeout=min(15.0, max(0.001, deadline - monotonic()))
                 )
@@ -186,7 +193,7 @@ def _human_login(
         )
         _launch(environment, mode="headless")
         try:
-            if environment.startup_url == LIQUIDITY_STARTUP_URL:
+            if environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}:
                 remaining = deadline - monotonic()
                 if remaining <= 0:
                     raise AuthError(
@@ -201,7 +208,7 @@ def _human_login(
                 raise
             attempts += 1
             if attempts >= MAX_HANDOFF_ATTEMPTS or monotonic() >= deadline:
-                if environment.startup_url == LIQUIDITY_STARTUP_URL:
+                if environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}:
                     _launch(environment, mode="headed")
                 raise AuthError(
                     AUTH_REQUIRED,
@@ -304,7 +311,7 @@ def _ensure_headless(environment: BrowserEnvironment) -> bool:
     user_agent = (version or {}).get("User-Agent") or ""
     headless = "HeadlessChrome/" in user_agent
     resume_headed = (
-        environment.startup_url == LIQUIDITY_STARTUP_URL
+        environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}
         and bool(user_agent)
         and not headless
     )

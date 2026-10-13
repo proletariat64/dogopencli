@@ -32,7 +32,12 @@ LIQUIDITY_STARTUP_URL = "https://iliquidity.alipay.com/GUAPW3SG/menu/PortfolioMg
 LIQUIDITY_ORIGIN = "https://iliquidity.alipay.com"
 
 #: Selectable auth-check domains; each verdict names the domain checked.
-STARTUP_URLS = {"payment": PAYMENT_STARTUP_URL, "liquidity": LIQUIDITY_STARTUP_URL}
+FX_STARTUP_URL = "https://app-ipay-qk.alipay.com/ifxriskweb/RiskStandardTrade"
+STARTUP_URLS = {
+    "payment": PAYMENT_STARTUP_URL,
+    "liquidity": LIQUIDITY_STARTUP_URL,
+    "fx": FX_STARTUP_URL,
+}
 
 DEFAULT_CDP_URL = "http://127.0.0.1:9222"
 DEFAULT_CHROME_BIN = "google-chrome"

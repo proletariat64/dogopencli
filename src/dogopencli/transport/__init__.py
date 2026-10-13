@@ -75,3 +75,11 @@ def validate_request(request: QueryRequest, contract: EndpointContract) -> None:
                 REQUEST_NOT_ALLOWED,
                 f"request field {key} must match its registered fixed value",
             )
+
+    for key, allowed in contract.nested_body_keys:
+        value = request.body.get(key)
+        if not isinstance(value, dict) or set(value) - allowed:
+            raise CliError(
+                REQUEST_NOT_ALLOWED,
+                f"request field {key} has an unregistered shape",
+            )
