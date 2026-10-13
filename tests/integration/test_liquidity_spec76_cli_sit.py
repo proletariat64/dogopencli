@@ -1,5 +1,6 @@
 """Spec #76 candidates: public CLI, fake CDP and independent SQLite caches."""
 
+import json
 from dataclasses import replace
 
 import pytest
@@ -29,8 +30,12 @@ def candidate_catalog(monkeypatch):
     declarations = {
         path: replace(node, children=()) for path, node in catalog.NODES.items()
     }
+    grouped = {}
     for item in ACCEPTED_LIST_SPECS:
-        leaf = leaves.ListLeaf((item,))
+        grouped.setdefault(item.path, []).append(item)
+    for variants in grouped.values():
+        item = variants[0]
+        leaf = leaves.ListLeaf(tuple(variants))
         monkeypatch.setitem(leaves.LIST_LEAVES, item.path, leaf)
         monkeypatch.delitem(
             leaves.DEFERRED_BY_PATH, (*item.path, "list"), raising=False
@@ -55,7 +60,29 @@ def candidate_catalog(monkeypatch):
     monkeypatch.setattr(helptree, "NODES", nodes)
 
 
+def synthetic_balance_id(row):
+    account = [row.get(field) for field in ("entity", "aliasName", "currency")]
+    return f"synthetic:{json.dumps(account, separators=(',', ':'), ensure_ascii=True)}"
+
+
+def expected_balance_record(entity, alias, currency, balance):
+    return {
+        "balance_record_id": synthetic_balance_id(
+            {"entity": entity, "aliasName": alias, "currency": currency}
+        ),
+        "account_holder_entity_id": entity,
+        "account_alias": alias,
+        "currency": currency,
+        "current_balance": balance,
+    }
+
+
 def response(item, rows, total=None):
+    if item is CASH_BALANCES:
+        rows = [
+            row if "balId" in row else {**row, "balId": synthetic_balance_id(row)}
+            for row in rows
+        ]
     total = len(rows) if total is None else total
     if item.envelope == "success":
         body = {"success": True, "data": {"data": rows, "totalCount": total}}
@@ -210,6 +237,353 @@ def test_candidate_refresh_live_and_browser_disconnected_offline(
     if item is FORECAST_RESULTS:
         assert offline["data"][0]["forecastBalance"] == "123.4500"
         assert offline["meta"]["source_observed_from"] is None
+
+
+def test_latest_balances_default_width_100_collects_short_final_page(setup, run_cli):
+    rows = [
+        {
+            "entity": "Z21",
+            "aliasName": f"A{i:03d}",
+            "currency": "USD",
+            "curBalance": "1.00",
+        }
+        for i in range(101)
+    ]
+    setup.state.business_handler = lambda payload, index: response(
+        CASH_BALANCES,
+        rows[payload["rowStart"] : payload["rowStart"] + payload["pageSize"]],
+        101,
+    )
+    code, out, err = run_cli(
+        ["liquidity", "cash", "balances", "list", "--entity", "Z21", "--live", "--all"]
+    )
+    assert code == 0, err
+    assert parse(out)["data"] == [
+        expected_balance_record(
+            row["entity"], row["aliasName"], row["currency"], row["curBalance"]
+        )
+        for row in rows
+    ]
+    assert [p["rowStart"] for p in setup.state.business_requests] == [0, 100]
+    assert all(p["pageSize"] == 100 for p in setup.state.business_requests)
+    assert "page 2/2" in err
+    assert not setup.cache_path.exists()
+
+
+@pytest.mark.parametrize("width", [1, 50, 100])
+def test_latest_width_override_refresh_and_offline_share_scope(setup, run_cli, width):
+    rows = [
+        {
+            "entity": "E1",
+            "aliasName": f"A{i:03d}",
+            "currency": "USD",
+            "curBalance": "1.00",
+        }
+        for i in range(51)
+    ]
+    setup.state.business_handler = lambda payload, index: response(
+        CASH_BALANCES,
+        rows[payload["rowStart"] : payload["rowStart"] + payload["pageSize"]],
+        51,
+    )
+    query = ["liquidity", "cash", "balances", "list", "--entity", "E1", "--all"]
+    code, out, err = run_cli([*query, "--live", "--page-size", str(width)])
+    assert code == 0, err
+    live = parse(out)
+    assert live["data"] == [
+        expected_balance_record(
+            row["entity"], row["aliasName"], row["currency"], row["curBalance"]
+        )
+        for row in rows
+    ]
+    assert [p["rowStart"] for p in setup.state.business_requests] == list(
+        range(0, 51, width)
+    )
+    setup.state.business_requests.clear()
+    code, out, err = run_cli(
+        [
+            "refresh",
+            "liquidity",
+            "cash",
+            "balances",
+            "--entity",
+            "E1",
+            "--page-size",
+            str(width),
+        ]
+    )
+    assert code == 0, err
+    assert parse(out)["meta"]["scope"] == live["meta"]["scope"]
+    assert [p["rowStart"] for p in setup.state.business_requests] == list(
+        range(0, 51, width)
+    )
+    assert all(p["pageSize"] == width for p in setup.state.business_requests)
+    setup.state.reachable = False
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    assert parse(out)["data"] == live["data"]
+
+
+def test_latest_entity_ids_are_deduplicated_sorted_and_stable_offline(setup, run_cli):
+    row = {"entity": "E1", "aliasName": "A1", "currency": "USD", "curBalance": "1"}
+    setup.state.business_handler = lambda payload, index: response(CASH_BALANCES, [row])
+    code, _, err = run_cli(
+        [
+            "refresh",
+            "liquidity",
+            "cash",
+            "balances",
+            "--entity",
+            "E2",
+            "--entity",
+            "E1",
+            "--entity",
+            "E2",
+        ]
+    )
+    assert code == 0, err
+    assert setup.state.business_requests[-1]["entitys"] == ["E1", "E2"]
+    setup.state.reachable = False
+    code, out, err = run_cli(
+        [
+            "liquidity",
+            "cash",
+            "balances",
+            "list",
+            "--entity",
+            "E1",
+            "--entity",
+            "E2",
+        ]
+    )
+    assert code == 0, err
+    assert parse(out)["data"] == [expected_balance_record("E1", "A1", "USD", "1")]
+
+
+@pytest.mark.parametrize("bad_entity", ["E2", "", None, ["E1"]])
+def test_latest_scope_mismatch_is_hard_failure_and_preserves_cache(
+    setup, run_cli, bad_entity
+):
+    row = {"entity": "E1", "aliasName": "A1", "currency": "USD", "curBalance": "1"}
+    setup.state.business_handler = lambda payload, index: response(CASH_BALANCES, [row])
+    refresh = ["refresh", "liquidity", "cash", "balances", "--entity", "E1"]
+    query = ["liquidity", "cash", "balances", "list", "--entity", "E1"]
+    assert run_cli(refresh)[0] == 0
+    before = setup.cache_path.read_bytes()
+    setup.state.business_handler = lambda payload, index: response(
+        CASH_BALANCES, [{**row, "entity": bad_entity}]
+    )
+    for command in (
+        [*query, "--live"],
+        [*query, "--live", "--require-complete"],
+        refresh,
+    ):
+        code, out, _ = run_cli(command)
+        assert code == 1
+        assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+        assert parse(out)["data"] is None
+        assert setup.cache_path.read_bytes() == before
+    setup.state.reachable = False
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    assert parse(out)["data"] == [expected_balance_record("E1", "A1", "USD", "1")]
+
+
+@pytest.mark.parametrize("mode", ["live", "refresh"])
+@pytest.mark.parametrize("bad_alias", ["A2", "a1", "A1 "])
+def test_latest_explicit_alias_scope_failure_preserves_prior_capture(
+    setup, run_cli, mode, bad_alias
+):
+    row = {"entity": "E1", "aliasName": "A1", "currency": "USD", "curBalance": "1"}
+    options = ["--entity", "E1", "--account-alias", "A1"]
+    refresh = ["refresh", "liquidity", "cash", "balances", *options]
+    query = ["liquidity", "cash", "balances", "list", *options]
+    setup.state.business_handler = lambda payload, index: response(CASH_BALANCES, [row])
+    assert run_cli(refresh)[0] == 0
+    before = setup.cache_path.read_bytes()
+    setup.state.business_handler = lambda payload, index: response(
+        CASH_BALANCES, [{**row, "aliasName": bad_alias}]
+    )
+    command = [*query, "--live"] if mode == "live" else refresh
+    code, out, _ = run_cli(command)
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert parse(out)["data"] is None
+    assert setup.cache_path.read_bytes() == before
+    setup.state.reachable = False
+    count = len(setup.state.business_requests)
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    assert parse(out)["data"] == [expected_balance_record("E1", "A1", "USD", "1")]
+    assert len(setup.state.business_requests) == count
+
+
+@pytest.mark.parametrize("filtered", [True, False], ids=["multi-alias", "unfiltered"])
+def test_latest_allowed_aliases_survive_live_refresh_and_offline(
+    setup, run_cli, filtered
+):
+    rows = [
+        {"entity": "E1", "aliasName": alias, "currency": "USD", "curBalance": "1"}
+        for alias in ("A1", "a2:/opaque")
+    ]
+    options = ["--entity", "E1"]
+    if filtered:
+        options += ["--account-alias", "A1", "--account-alias", "a2:/opaque"]
+    query = ["liquidity", "cash", "balances", "list", *options, "--all"]
+    setup.state.business_handler = lambda payload, index: response(CASH_BALANCES, rows)
+    code, out, err = run_cli([*query, "--live"])
+    assert code == 0, err
+    assert parse(out)["data"] == [
+        expected_balance_record("E1", alias, "USD", "1")
+        for alias in ("A1", "a2:/opaque")
+    ]
+    assert not setup.cache_path.exists()
+    code, _, err = run_cli(["refresh", "liquidity", "cash", "balances", *options])
+    assert code == 0, err
+    setup.state.reachable = False
+    count = len(setup.state.business_requests)
+    code, out, err = run_cli(query)
+    assert code == 0, err
+    assert parse(out)["data"] == [
+        expected_balance_record("E1", alias, "USD", "1")
+        for alias in ("A1", "a2:/opaque")
+    ]
+    assert len(setup.state.business_requests) == count
+
+
+@pytest.mark.parametrize("width", ["0", "-1", "101", "500", "1.5", "many"])
+def test_latest_invalid_width_rejected_before_any_source(setup, run_cli, width):
+    for command in (
+        ["liquidity", "cash", "balances", "list", "--live"],
+        ["refresh", "liquidity", "cash", "balances"],
+    ):
+        code, out, _ = run_cli([*command, "--page-size", width])
+        assert code == 2
+        assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert not setup.state.transports
+    assert not setup.cache_path.exists()
+
+
+def test_latest_cached_width_rejected_even_without_config(setup, run_cli, monkeypatch):
+    monkeypatch.setenv("DOGOPENCLI_CONFIG", str(setup.tmp_path / "absent.toml"))
+    code, out, _ = run_cli(
+        [
+            "liquidity",
+            "cash",
+            "balances",
+            "list",
+            "--page-size",
+            "50",
+        ]
+    )
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert "requires --live or refresh" in parse(out)["error"]["message"]
+    assert not setup.state.transports
+    assert not setup.cache_path.exists()
+
+
+def test_latest_399_arrivals_396_identities_remain_incomplete(setup, run_cli):
+    rows = [
+        {"entity": "E1", "aliasName": f"A{i:03d}", "currency": "USD", "curBalance": "1"}
+        for i in range(396)
+    ]
+    query = ["liquidity", "cash", "balances", "list", "--entity", "E1", "--all"]
+    refresh = ["refresh", "liquidity", "cash", "balances", "--entity", "E1"]
+    arrivals = [*rows, *rows[:3]]
+    setup.state.business_handler = lambda payload, index: response(
+        CASH_BALANCES,
+        arrivals[payload["rowStart"] : payload["rowStart"] + payload["pageSize"]],
+        399,
+    )
+    code, out, err = run_cli([*query, "--live"])
+    assert code == 0, err
+    envelope = parse(out)
+    assert envelope["data"] == [
+        expected_balance_record("E1", f"A{i:03d}", "USD", "1") for i in range(396)
+    ]
+    assert envelope["meta"]["complete"] is False
+    assert envelope["meta"]["reported_total"] == 399
+    assert envelope["meta"]["collected_total"] == 396
+    assert "INCOMPLETE_RESULT" in err
+    code, out, _ = run_cli([*query, "--live", "--require-complete"])
+    assert code == 1
+    assert parse(out)["data"] is None
+    assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    # Usable partial refresh persists its evidence; strict refresh cannot replace it.
+    assert run_cli(refresh)[0] == 0
+    before = setup.cache_path.read_bytes()
+    code, out, _ = run_cli([*refresh, "--require-complete"])
+    assert code == 1
+    assert parse(out)["meta"]["published"] is False
+    assert setup.cache_path.read_bytes() == before
+    setup.state.reachable = False
+    code, out, _ = run_cli(query)
+    assert code == 0
+    assert parse(out)["data"] == [
+        expected_balance_record("E1", f"A{i:03d}", "USD", "1") for i in range(396)
+    ]
+    assert parse(out)["meta"]["complete"] is False
+    assert run_cli([*query, "--require-complete"])[0] == 1
+
+
+@pytest.mark.parametrize(
+    "fault", ["changed_total", "empty", "oversize", "conflict", "budget"]
+)
+def test_latest_effective_width_guards_preserve_cache(setup, run_cli, fault):
+    row = {"entity": "E1", "aliasName": "A1", "currency": "USD", "curBalance": "1"}
+    refresh = [
+        "refresh",
+        "liquidity",
+        "cash",
+        "balances",
+        "--entity",
+        "E1",
+        "--page-size",
+        "1",
+    ]
+    setup.state.business_handler = lambda payload, index: response(CASH_BALANCES, [row])
+    assert run_cli(refresh)[0] == 0
+    before = setup.cache_path.read_bytes()
+
+    def faulty(payload, index):
+        if fault == "budget":
+            return response(CASH_BALANCES, [row], 1001)
+        if fault == "oversize":
+            return response(CASH_BALANCES, [row, {**row, "aliasName": "A2"}], 2)
+        if payload["rowStart"] == 0:
+            return response(CASH_BALANCES, [row], 2)
+        if fault == "changed_total":
+            return response(CASH_BALANCES, [{**row, "aliasName": "A2"}], 3)
+        if fault == "empty":
+            return response(CASH_BALANCES, [], 2)
+        return response(CASH_BALANCES, [{**row, "curBalance": "2"}], 2)
+
+    setup.state.business_handler = faulty
+    code, out, _ = run_cli(refresh)
+    assert code == 1
+    assert parse(out)["error"]["code"] == (
+        "TIMEOUT" if fault == "budget" else "INVALID_RESPONSE"
+    )
+    assert setup.cache_path.read_bytes() == before
+
+
+def test_latest_page_size_help_is_leaf_only(run_cli):
+    for command in (
+        ["help", "liquidity", "cash", "balances", "list"],
+        ["help", "refresh", "liquidity", "cash", "balances"],
+    ):
+        code, out, _ = run_cli(command)
+        assert code == 0
+        width = next(o for o in parse(out)["options"] if o["name"] == "page_size")
+        assert width["default"] == 100
+    for command in (
+        ["liquidity", "cash", "accounts", "list", "--live"],
+        ["refresh", "liquidity", "cash", "accounts"],
+    ):
+        code, out, _ = run_cli([*command, "--page-size", "50"])
+        assert code == 2
+        assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
 def test_settings_runtime_same_endpoint_have_independent_scope_caches(setup, run_cli):

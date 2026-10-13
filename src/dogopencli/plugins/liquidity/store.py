@@ -135,7 +135,10 @@ class CaptureEntry:
             raise _invalid("cached capture missing days are invalid")
         for day in missing_days:
             try:
-                if datetime.strptime(day, "%Y%m%d").strftime("%Y%m%d") != day:
+                if (
+                    _format_series_time(datetime.strptime(day, "%Y%m%d"), "%Y%m%d")
+                    != day
+                ):
                     raise ValueError
             except ValueError as error:
                 raise _invalid("cached capture missing days are invalid") from error
@@ -145,7 +148,9 @@ class CaptureEntry:
                 try:
                     if (
                         not isinstance(value, str)
-                        or datetime.strptime(value, "%Y%m%d").strftime("%Y%m%d")
+                        or _format_series_time(
+                            datetime.strptime(value, "%Y%m%d"), "%Y%m%d"
+                        )
                         != value
                     ):
                         raise ValueError
@@ -348,6 +353,11 @@ def _index_snapshot(
     return meta, [(index, canonical(record)) for index, record in enumerate(records, 1)]
 
 
+def _format_series_time(value: datetime, format_string: str) -> str:
+    """Keep the declared format while padding years on every platform."""
+    return value.strftime(format_string.replace("%Y", f"{value.year:04d}"))
+
+
 def series_value(
     list_spec: spec.ListSpec, record: dict[str, Any], fetched_at: str
 ) -> str:
@@ -363,13 +373,13 @@ def series_value(
         if list_spec.series_format is not None:
             try:
                 parsed = datetime.strptime(value, list_spec.series_format)
-                if parsed.strftime(list_spec.series_format) != value:
+                if _format_series_time(parsed, list_spec.series_format) != value:
                     raise ValueError
             except ValueError as error:
                 raise _invalid(
                     f"record has invalid series time {field_name}"
                 ) from error
-            return parsed.strftime("%Y%m%d")
+            return _format_series_time(parsed, "%Y%m%d")
         return value
     # Capture-history records order by capture time explicitly (ADR 0017);
     # capture time is never relabelled as source observation time.
@@ -385,6 +395,15 @@ def _owning_variant(list_spec: spec.ListSpec, entry: CaptureEntry) -> spec.ListS
     if leaf is None or len(leaf.variants) == 1:
         return list_spec
     scope = decode_scope(entry.scope)
+    if list_spec.path == ("cash", "balances"):
+        # Latest's legacy scope has no variant selector. Profile plus the
+        # persisted contract distinguishes it from new daily captures.
+        candidates = [
+            variant for variant in leaf.variants if variant.profile == entry.profile
+        ]
+        if len(candidates) != 1:
+            raise _invalid("retained cash balance variant is unknown")
+        return candidates[0]
     candidates = [
         variant
         for variant in leaf.variants
@@ -450,7 +469,11 @@ def _retained_window_from(
     missing = set(entry.missing_days) | {item.series for item in lost}
     start = entry.window_from
     while start in missing:
-        start = _next_day_like(start)
+        try:
+            start = _next_day_like(start)
+        except OverflowError:
+            # The final calendar day has no successor or retained coverage.
+            return None
     return start
 
 
@@ -586,7 +609,7 @@ def plan_capture_publish(
         plan.index = IndexData(captures=entries)
         return plan
     for entry in entries:
-        if profile == spec.PROFILE_DATED and not entry.window_to:
+        if entry.profile == spec.PROFILE_DATED and not entry.window_to:
             raise _invalid(
                 "retention ordering is unavailable; refresh rejected and the"
                 " previous cache is retained"
@@ -618,7 +641,12 @@ def plan_capture_publish(
     # evict before the newer correction of it, whatever their namespaces.
     ranked.sort(
         key=lambda item: (
-            item.series,
+            # Cash daily days are compact; latest capture timestamps are ISO.
+            # Compare calendar prefixes without inventing a daily timezone or
+            # relabelling the capture axis. Report each original series value.
+            item.series.replace("-", "", 2)
+            if list_spec.path == ("cash", "balances")
+            else item.series,
             item.identity,
             item.fetched_at,
             item.namespace,
@@ -642,9 +670,9 @@ def plan_capture_publish(
         if not lost:
             survivors.append(entry)
             continue
-        retained_from = _retained_window_from(profile, entry, lost)
+        retained_from = _retained_window_from(entry.profile, entry, lost)
         if not remaining and (
-            profile != spec.PROFILE_DATED
+            entry.profile != spec.PROFILE_DATED
             or retained_from is None
             or entry.window_to is None
             or retained_from > entry.window_to
@@ -701,7 +729,7 @@ def plan_capture_publish(
             plan.trimmed[entry.namespace] = (trimmed_meta, trimmed_records)
         survivors.append(trimmed_entry)
         evicted.append(_eviction_record(entry, len(lost), partial=True))
-    if profile == spec.PROFILE_DATED:
+    if any(entry.profile == spec.PROFILE_DATED for entry in entries):
         # Older captures cannot repair a newer capture's lost day, but a newer
         # complete acquisition can. Publication order breaks fetched_at ties.
         generations = {
@@ -757,6 +785,26 @@ def commit_plan(
     store.publish_many(writes, deletes=plan.dropped_namespaces)
 
 
+def _latest_balance_scope_key(scope: str) -> str:
+    """Match legacy selector ordering without rewriting captures or broadening scope."""
+    from .capability import decode_scope, encode_scope
+
+    try:
+        values = decode_scope(scope)
+    except CliError:
+        return scope  # Opaque or malformed scope strings remain exact-match only.
+    for field_name in ("entitys", "aliasNames"):
+        if field_name not in values:
+            continue
+        selection = values[field_name]
+        if not isinstance(selection, list) or any(
+            not isinstance(value, str) or not value.strip() for value in selection
+        ):
+            return scope
+        values[field_name] = sorted(set(selection))
+    return encode_scope(values)
+
+
 def select_captures(
     data: IndexData,
     list_spec: spec.ListSpec,
@@ -768,7 +816,14 @@ def select_captures(
     A window outside retained coverage is missing coverage, never an empty
     result: coverage_ok=False drives the existing incomplete-result behavior.
     """
-    scoped = [entry for entry in data.captures if entry.scope == scope]
+    latest_balances = list_spec.endpoint == "/latestBalanceQuery.json"
+    lookup = _latest_balance_scope_key(scope) if latest_balances else scope
+    scoped = [
+        entry
+        for entry in data.captures
+        if (_latest_balance_scope_key(entry.scope) if latest_balances else entry.scope)
+        == lookup
+    ]
     if list_spec.profile in (spec.PROFILE_SNAPSHOT, spec.PROFILE_HISTORY):
         latest = max(
             enumerate(scoped),
@@ -797,6 +852,18 @@ def select_captures(
         and (entry.requested_from or entry.window_from) <= window_to
         and (entry.requested_to or entry.window_to) >= window_from
     ]
+    if list_spec.path == ("cash", "balances") and covering:
+        from .cash_balances import binding_universe
+
+        # Resolve the universe BEFORE authority, rows or coverage are combined.
+        # A newer roster does not silently extend an older ALL capture.
+        newest = max(
+            enumerate(covering), key=lambda pair: (pair[1].fetched_at, pair[0])
+        )[1]
+        universe = binding_universe(newest.evidence)
+        covering = [
+            entry for entry in covering if binding_universe(entry.evidence) == universe
+        ]
     return covering, covers_window(covering, window_from, window_to)
 
 
@@ -805,10 +872,9 @@ def authoritative_capture(entries: list[CaptureEntry], day: str) -> CaptureEntry
     candidates = [
         (index, entry)
         for index, entry in enumerate(entries)
-        if (entry.requested_from or entry.window_from) is not None
-        and (entry.requested_to or entry.window_to) is not None
-        and (entry.requested_from or entry.window_from) <= day
-        and day <= (entry.requested_to or entry.window_to)
+        if (first := entry.requested_from or entry.window_from) is not None
+        and (last := entry.requested_to or entry.window_to) is not None
+        and first <= day <= last
     ]
     return max(
         candidates, key=lambda pair: (pair[1].fetched_at, pair[0]), default=(0, None)
@@ -819,8 +885,7 @@ def coverage_segments(
     entries: list[CaptureEntry], start: str, end: str
 ) -> list[tuple[str, CaptureEntry | None]]:
     """Only request, trim and hole boundaries can change day-level authority."""
-    stop = _next_day_like(end)
-    boundaries = {start, stop}
+    boundaries = {start}
     for entry in entries:
         for first, last in (
             (
@@ -829,21 +894,16 @@ def coverage_segments(
             ),
             (entry.window_from, entry.window_to),
         ):
-            if first is not None and start < first < stop:
+            if first is not None and start < first <= end:
                 boundaries.add(first)
-            if last is not None:
-                after = _next_day_like(last)
-                if start < after < stop:
-                    boundaries.add(after)
+            if last is not None and start <= last < end:
+                boundaries.add(_next_day_like(last))
         for day in entry.missing_days:
             if start <= day <= end:
                 boundaries.add(day)
-                boundaries.add(_next_day_like(day))
-    return [
-        (day, authoritative_capture(entries, day))
-        for day in sorted(boundaries)
-        if day < stop
-    ]
+                if day < end:
+                    boundaries.add(_next_day_like(day))
+    return [(day, authoritative_capture(entries, day)) for day in sorted(boundaries)]
 
 
 def active_captures(
@@ -925,11 +985,13 @@ def query_evidence(
         dataset_complete=covered,
         collected_total=collected_total,
         reported_total=evidence.reported_total if evidence and exact_window else None,
-        arrivals=evidence.arrivals if same_collection else None,
+        arrivals=evidence.arrivals if evidence and same_collection else None,
         unique_count=collected_total
         if evidence and evidence.unique_count is not None
         else None,
-        duplicate_count=evidence.duplicate_count if same_collection else None,
+        duplicate_count=evidence.duplicate_count
+        if evidence and same_collection
+        else None,
         total_semantics=evidence.total_semantics if evidence else "unknown",
         reasons=tuple(dict.fromkeys(reasons)),
         attempts=evidence.attempts if evidence else (),
@@ -957,4 +1019,4 @@ def _next_day_like(value: str) -> str:
         parsed = datetime.strptime(value, "%Y%m%d")
     except ValueError:
         return value + " "
-    return (parsed + timedelta(days=1)).strftime("%Y%m%d")
+    return _format_series_time(parsed + timedelta(days=1), "%Y%m%d")

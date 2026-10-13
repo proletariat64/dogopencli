@@ -79,6 +79,13 @@ def test_shared_options_are_identical_across_lists():
                 option.kind,
                 json.dumps(option.argument_contract, sort_keys=True),
             )
+            if path == ("liquidity", "cash", "balances", "list") and name == "all":
+                # #147 deliberately broadens only this leaf's unscoped ALL.
+                # The public spelling/type stay shared; its selection role does not.
+                assert shape[:3] == ("--all", (), "bool")
+                assert option.argument_contract is not None
+                assert option.argument_contract["modes"]["refresh"]["available"]
+                continue
             if name in baseline:
                 assert shape == baseline[name], (path, name)
             else:

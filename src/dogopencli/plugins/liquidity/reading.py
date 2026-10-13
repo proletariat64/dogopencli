@@ -7,7 +7,8 @@ assertions: unknown units stay unknown, and null/empty/zero remain distinct
 source states.
 """
 
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, TypeVar
 
 from ...annotations import schema_annotations
 from ...helpspec import BizNode
@@ -26,8 +27,10 @@ from .investment_batch import VERSION as INVESTMENT_VERSION
 from .leaves import DEFERRED_BY_PATH, DETAIL_LEAVES
 from .operations_batch import SWAP_ORDERS
 
+_FieldName = TypeVar("_FieldName", bound=str)
 
-def _field_schema(fields: dict[str, str]) -> dict[str, Any]:
+
+def _field_schema(fields: Mapping[_FieldName, str]) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     for name, observed in sorted(fields.items()):
         properties[name] = {
@@ -60,8 +63,71 @@ def _source_guide(
     }
 
 
+def _balance_schema(item: spec.ListSpec, schema: dict[str, Any]) -> dict[str, Any]:
+    from dogopencli.plugins.liquidity.balance_view import export_field_name
+
+    daily = item.endpoint == "/balStatisticalQuery.json"
+    properties = {}
+    for native, definition in schema["properties"].items():
+        if daily and native == "data":
+            continue
+        properties[export_field_name(native, daily=daily)] = {
+            **definition,
+            "x-native-field": native,
+        }
+    schema["properties"] = properties
+    schema["x-output-naming"] = "readable snake_case; native cache values unchanged"
+    if not daily:
+        schema["x-statement-selection"] = (
+            "One latest statement per account/currency/business day; statement"
+            " creation time, then update time. Amount changes are normal bank"
+            " updates and informational only; acquisition completeness is unchanged."
+        )
+    return schema
+
+
+def _public_balance_field(item: spec.ListSpec, field: str) -> str:
+    if item.path != ("cash", "balances"):
+        return field
+    from dogopencli.plugins.liquidity.balance_view import export_field_name
+
+    return export_field_name(field, daily=item.endpoint == "/balStatisticalQuery.json")
+
+
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.endpoint == "/balStatisticalQuery.json":
+        schema = _field_schema(
+            dict.fromkeys(
+                (
+                    "id",
+                    "data",
+                    "statisticalDate",
+                    "balance",
+                    "aliasName",
+                    "entity",
+                    "currency",
+                ),
+                "str",
+            )
+        )
+        schema["additionalProperties"] = False
+        schema["x-source-timezone"] = "unknown"
+        schema["x-balance-subtype"] = "unknown; raw source balance"
+        schema["properties"]["id"]["description"] = (
+            "Native chart attribute; repeats across dates, not the daily identity."
+        )
+        schema["properties"]["statisticalDate"]["description"] = (
+            "Source business day, YYYY-MM-DD; inclusive query axis, not capture time."
+        )
+        for key in ("entity", "aliasName", "currency"):
+            schema["properties"][key]["description"] = (
+                "Frozen current-roster request binding;"
+                " historical ownership is unproven."
+            )
+        return _balance_schema(item, schema)
+    if item.projection == "balances":
+        return _balance_schema(item, schema)
     if item.projection == "risk_sla":
         schema["additionalProperties"] = False
         schema["x-business-validation"] = "none; source values preserved"
@@ -475,13 +541,34 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                         item.endpoint, sampled_fields.get(item.name, {})
                     ),
                 ),
-                "selectors": {
-                    option.flag: option.match
-                    for option in item.scope_options
-                    if option.match
-                },
-                "identity": list(item.identity),
-                "series_time": item.series_field,
+                "selectors": (
+                    {
+                        "date_bounds": "paired"
+                        if item.profile == spec.PROFILE_DATED
+                        else "absent"
+                    }
+                    if item.path == ("cash", "balances")
+                    else {
+                        option.flag: option.match
+                        for option in item.scope_options
+                        if option.match
+                    }
+                ),
+                "identity": [
+                    _public_balance_field(item, field) for field in item.identity
+                ],
+                **(
+                    {"native_identity": list(item.identity)}
+                    if item.path == ("cash", "balances")
+                    else {}
+                ),
+                "series_time": (
+                    _public_balance_field(item, item.series_field)
+                    if item.series_field
+                    else None
+                ),
+                "offline_profile": item.profile,
+                "notes": list(item.notes),
                 "scope_defaults": {
                     option.flag: option.default
                     for option in item.scope_options
@@ -533,8 +620,19 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             "variants": variants,
             "kind": variant.kind,
             "offline_profile": variant.profile,
-            "identity": list(variant.identity),
-            "series_time": variant.series_field,
+            "identity": [
+                _public_balance_field(variant, field) for field in variant.identity
+            ],
+            **(
+                {"native_identity": list(variant.identity)}
+                if variant.path == ("cash", "balances")
+                else {}
+            ),
+            "series_time": (
+                _public_balance_field(variant, variant.series_field)
+                if variant.series_field
+                else None
+            ),
             "notes": list(variant.notes),
             "freshness": (
                 "stale measures capture age (fetched_at plus the configured"

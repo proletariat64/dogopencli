@@ -325,6 +325,31 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `rules transfer` | `list`, `get` |
 | `rules waterlevel` | `list`, `get` |
 
+### 现金余额：日期、全主体和页宽（#147，未发布）
+
+- 无日期读取最新快照；成对 `--from-date` / `--to-date` 读取包含两端的每日原生余额。
+  支持 YYYY-MM-DD / YYYYMMDD；每日不是历史 current/available/opening，不推定时区或补零。
+- 默认读取缓存，`--live` 在线但不发布；显式 refresh 发布。
+- `--entity` 使用可重复的原生 `instId`。仅此叶子，无显式主体的 `--all` 扩大为全部目录主体；
+  有显式主体时仍只显示该范围全部行。离线使用冻结选择，不重新发现目录。
+- 最新在线/refresh 的 `--page-size` 默认 100，接受 1–100，与显示 limit/offset 和缓存键无关。
+  离线拒绝显式 page-size；每日拒绝 page-size/timezone，按最多 30 个别名 × 七日分块。
+- 安全 partial 保留告警和 `complete=false`；`--require-complete` 拒绝部分结果及发布。
+  硬失败保留旧缓存。目录当前 3710/3711 不完整，当前账户绑定不证明历史归属。
+
+```bash
+dogopencli liquidity cash balances list --all --live --page-size 100
+dogopencli refresh liquidity cash balances --entity INST_ID_A --from-date 2026-10-01 --to-date 2026-10-07
+dogopencli liquidity cash balances list --entity INST_ID_A --from-date 2026-10-01 --to-date 2026-10-07 --all
+```
+
+`INST_ID_A` 须替换为实际 instId。余额输出使用易读字段，例如 `balance_record_id`、
+`account_alias`、`current_balance`、`intraday_balance` 和 `end_of_day_balance`。
+同账户、币种及余额日只展示最后一份账单：金额相同静默，金额变化仅提示正常银行账单更新，
+均正常退出；原生记录仍完整保存在缓存，采集完整性不因展示合并改变。
+此前 #155 是 CLI 身份误判，不是已证实的后端冲突；完整 latest ALL 尚待重新验证。
+规格见[现金余额读取契约](docs/design/liquidity-cash-balances-v0.1.0.md)。
+
 ### Swap 订单列表
 
 `operations swaps list` 与对应 refresh 必须同时提供 `--trade-from` 和
@@ -615,7 +640,7 @@ unsupported 入口；撤除不计为实现。整合 #97/#98 后目录共 131 项
 | 选项 | 用途 |
 | --- | --- |
 | `--limit N --offset N` | 显示窗口；limit 必须为正整数，offset 为非负整数 |
-| `--all` | 显示全部匹配行；与显式 `--limit` / `--offset` 冲突 |
+| `--all` | 显示全部匹配行；与显式 `--limit` / `--offset` 冲突；仅 `liquidity cash balances` 未指定主体时还选择全部目录主体 |
 | `--fields id,currency` | 仅保留指定顶层字段，保留选中的完整嵌套值和质量 metadata |
 | `--format table` | 以表格阅读；默认 `--format json` |
 | `--live` | 显式实时查询，不写缓存 |

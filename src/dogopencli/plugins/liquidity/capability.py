@@ -371,7 +371,23 @@ class LiquidityListCapability:
         return list(rows), total
 
     def validate_rows_scope(self, rows: list[dict[str, Any]], scope: str) -> None:
-        """Reject unverified dates before live output or complete publication."""
+        """Reject out-of-scope rows before live output or publication."""
+        if self._spec.endpoint == "/latestBalanceQuery.json":
+            values = decode_scope(scope)
+            entities = values.get("entitys")
+            aliases = values.get("aliasNames")
+            if not isinstance(entities, list) or not entities:
+                raise _invalid("latest inquiry is missing its requested entity set")
+            for record in rows:
+                entity = record.get("entity")
+                if (
+                    not isinstance(entity, str)
+                    or not entity.strip()
+                    or entity not in entities
+                ):
+                    raise _invalid("latest balance entity is outside the requested set")
+                if aliases and record.get("aliasName") not in aliases:
+                    raise _invalid("latest balance alias is outside the requested set")
         if self._spec.projection == "funding_demands":
             from .funding_demands import validate_demand_rows_scope
 

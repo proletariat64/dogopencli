@@ -9,6 +9,7 @@ on:
 jobs:
   qoder-review:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -20,13 +21,61 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Qoder Code Review
-        uses: QoderAI/qoder-action@v0
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          qoder_personal_access_token: >-
-            ${{ secrets.QODER_PERSONAL_ACCESS_TOKEN }}
-          prompt: |
+          node-version: '22'
+
+      - name: Test Qoder review guard
+        run: node --test tests/unit/test_qoder_review.mjs
+
+      - name: Install Qoder quota client and CLI
+        run: |
+          npm install --prefix "$RUNNER_TEMP/qoder-sdk" @qoder-ai/qoder-agent-sdk@1.0.52
+          npm install -g @qoder-ai/qodercli@1.1.69
+
+      - name: Check Qoder credits before review
+        id: quota
+        timeout-minutes: 2
+        env:
+          QODER_PERSONAL_ACCESS_TOKEN: ${{ secrets.QODER_PERSONAL_ACCESS_TOKEN }}
+          QODER_SDK_PATH: ${{ runner.temp }}/qoder-sdk/node_modules/@qoder-ai/qoder-agent-sdk/dist/index.js
+        run: node scripts/qoder_review.mjs check
+
+      # Reuse the official authentication, MCP setup and review resources.
+      - name: Checkout Qoder integration
+        if: steps.quota.outputs.run_review == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: QoderAI/qoder-action
+          ref: 0881d27d15a7a93778ebc5c942d11da313ee8b7e
+          path: .qoder-action
+
+      - name: Configure Qoder GitHub authentication
+        if: steps.quota.outputs.run_review == 'true'
+        id: auth
+        env:
+          QODER_PERSONAL_ACCESS_TOKEN: ${{ secrets.QODER_PERSONAL_ACCESS_TOKEN }}
+        run: bash .qoder-action/scripts/configure-qoder-auth.sh
+
+      - name: Set up Qoder GitHub MCP and review resources
+        if: steps.quota.outputs.run_review == 'true'
+        env:
+          GITHUB_TOKEN: ${{ steps.auth.outputs.github_token }}
+        run: |
+          bash .qoder-action/scripts/setup-qoder-github-mcp.sh
+          mkdir -p "$HOME/.qoder"
+          cp -R .qoder-action/.qoder/. "$HOME/.qoder/"
+
+      - name: Run Qoder Code Review
+        if: steps.quota.outputs.run_review == 'true'
+        timeout-minutes: 20
+        env:
+          QODER_PERSONAL_ACCESS_TOKEN: ${{ secrets.QODER_PERSONAL_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.auth.outputs.github_token }}
+          INPUT_PROMPT: |
             /review-pr
             REPO:${{ github.repository }}
             PR_NUMBER:${{ github.event.pull_request.number }}
             OUTPUT_LANGUAGE:English
+        run: node scripts/qoder_review.mjs review
