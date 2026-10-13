@@ -10,7 +10,7 @@ from dogopencli.jsonutil import parse
 from dogopencli.plugins.liquidity.transfer_rules import project_transfer_rule
 
 pytest_plugins = ["test_liquidity_cli_sit"]
-QUERY = ["liquidity", "rules", "transfer", "list", "--all"]
+QUERY = ["liquidity", "rules", "transfer", "list", "--limit", "0"]
 REFRESH = ["refresh", "liquidity", "rules", "transfer"]
 
 
@@ -101,23 +101,9 @@ def test_request_projection_refresh_offline_live_and_detail_isolation(setup, run
         "body": detail,
     }
     get = ["liquidity", "rules", "transfer", "get", "--rule-id", "SYN-RULE"]
-    code, out, err = run_cli([*get, "--live"])
+    code, out, err = run_cli(get)
     assert code == 0, (out, err)
-    assert (
-        run_cli(
-            [
-                "refresh",
-                "liquidity",
-                "rules",
-                "transfer",
-                "detail",
-                "get",
-                "--rule-id",
-                "SYN-RULE",
-            ]
-        )[0]
-        == 0
-    )
+    assert not setup.cache_path.exists()
     detail_before = parse(run_cli(get)[1])
     start = len(setup.state.business_requests)
     refreshed = seed(setup, run_cli)
@@ -161,7 +147,13 @@ def test_request_projection_refresh_offline_live_and_detail_isolation(setup, run
     assert "webhookUrl" not in json.dumps(got)
     assert "example.invalid" not in json.dumps(got)
     assert "nextTriggerTime" not in got and "ruleActionVOS" not in got
-    assert parse(run_cli(get)[1]) == detail_before
+    setup.state.reachable = True
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": detail,
+    }
+    assert parse(run_cli(get)[1])["data"] == detail_before["data"]
+    assert setup.cache_path.read_bytes() == before
 
 
 @pytest.mark.parametrize(
@@ -262,10 +254,10 @@ def test_complete_empty_and_catalog_are_offline(setup, run_cli):
     seed(setup, run_cli, [])
     setup.state.reachable = False
     code, out, err = run_cli([*QUERY, "--require-complete"])
-    assert code == 0, err
-    assert parse(out)["data"] == [] and parse(out)["meta"]["complete"] is True
+    assert code == 1, err
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
     count = len(setup.state.business_requests)
-    description = parse(run_cli(["describe", *QUERY[:-1]])[1])
+    description = parse(run_cli(["describe", *QUERY[:-2]])[1])
     assert description["read_guide"]["kind"] == "settings"
     assert description["read_guide"]["identity"] == ["ruleId"]
     assert description["read_guide"]["request"]["pagination"] == "single"

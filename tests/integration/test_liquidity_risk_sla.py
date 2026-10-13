@@ -10,7 +10,7 @@ from dogopencli.jsonutil import parse
 from dogopencli.plugins.liquidity.risk_sla import FIELDS
 
 pytest_plugins = ["test_liquidity_cli_sit"]
-QUERY = ["liquidity", "risk", "sla", "list", "--all"]
+QUERY = ["liquidity", "risk", "sla", "list", "--limit", "0"]
 REFRESH = ["refresh", "liquidity", "risk", "sla"]
 
 
@@ -58,8 +58,8 @@ def test_fixed_request_same_capture_offline_live_and_detail_isolation(setup, run
         "status": 200,
         "body": {"success": True, "data": row()},
     }
-    detail_refresh = [*REFRESH, "detail", "get", "--sla-config-id", "SYN-SLA"]
-    assert run_cli(detail_refresh)[0] == 0
+    assert run_cli(get)[0] == 0
+    assert not setup.cache_path.exists()
     detail_before = parse(run_cli(get)[1])
     start = len(setup.state.business_requests)
     refreshed = seed(setup, run_cli, [row("SYN-A"), row("SYN-B")])
@@ -87,13 +87,19 @@ def test_fixed_request_same_capture_offline_live_and_detail_isolation(setup, run
         offline["meta"]["reported_total"] == 2 and offline["meta"]["complete"] is True
     )
     assert offline["meta"]["kind"] == "settings"
-    assert '"schema_version":"risk-sla-list-v1"' in offline["meta"]["scope"]
+    assert offline["meta"]["scope"] == {}
     assert offline["data"] == [
         {key: source[key] for key in FIELDS} for source in [row("SYN-A"), row("SYN-B")]
     ]
     assert "SYN-PRIVATE" not in json.dumps(offline["data"])
-    assert parse(run_cli(get)[1]) == detail_before
-    assert len(setup.state.business_requests) == count
+    setup.state.reachable = True
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {"success": True, "data": row()},
+    }
+    assert parse(run_cli(get)[1])["data"] == detail_before["data"]
+    assert hashlib.sha256(setup.cache_path.read_bytes()).hexdigest() == before
+    assert len(setup.state.business_requests) == count + 1
     setup.state.business_handler = lambda payload, index: {"status": 401, "body": {}}
     code, out, _ = run_cli([*QUERY, "--live"])
     assert code == 1 and parse(out)["error"]["code"] == "AUTH_REQUIRED"
@@ -195,16 +201,16 @@ def test_single_response_partial_and_strict_keep_quality(setup, run_cli, rows, t
 def test_empty_and_catalog_do_not_connect(setup, run_cli):
     for command in (
         ["help", "liquidity", "risk", "sla"],
-        ["describe", *QUERY[:-1]],
+        ["describe", *QUERY[:-2]],
         ["snapshot", "liquidity", "risk", "sla", "list"],
     ):
         assert run_cli(command)[0] == 0
     assert setup.state.transports == []
-    description = parse(run_cli(["describe", *QUERY[:-1]])[1])
+    description = parse(run_cli(["describe", *QUERY[:-2]])[1])
     guide = description["read_guide"]
     assert guide["kind"] == "settings" and guide["identity"] == ["slaConfigId"]
     assert guide["schema_version"] == "risk-sla-list-v1"
-    assert guide["offline_profile"] == "snapshot"
+    assert guide["offline_profile"] == "single temporary leaf result"
     assert guide["request"]["pagination"] == "single"
     assert guide["request"]["page_size"] == 5000
     schema = description["data_schema"]
@@ -221,8 +227,8 @@ def test_empty_and_catalog_do_not_connect(setup, run_cli):
     seed(setup, run_cli, [])
     setup.state.reachable = False
     code, out, err = run_cli([*QUERY, "--require-complete"])
-    assert code == 0, err
-    assert parse(out)["data"] == [] and parse(out)["meta"]["complete"] is True
+    assert code == 1, err
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
     assert run_cli(["liquidity", "rules", "monitoring", "list"])[0] != 0
 
 

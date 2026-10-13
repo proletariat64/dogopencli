@@ -1,7 +1,6 @@
 """Holdings query dates scope snapshots without filtering native row dates."""
 
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 
 import pytest
@@ -11,7 +10,6 @@ from dogopencli.browser import cdp
 from dogopencli.cache import Cache
 from dogopencli.jsonutil import parse
 from dogopencli.plugins.liquidity import spec
-from dogopencli.plugins.liquidity import store as capture_store
 from dogopencli.plugins.liquidity.leaves import INVESTMENT_HOLDINGS
 
 
@@ -42,8 +40,16 @@ def mixed_rows():
     ]
 
 
-def query(day="20261001"):
-    return ["liquidity", "investment", "holdings", "list", "--date", day, "--all"]
+def query(day=None):
+    return [
+        "liquidity",
+        "investment",
+        "holdings",
+        "list",
+        *(["--date", day] if day else []),
+        "--limit",
+        "0",
+    ]
 
 
 def refresh(day="20261001"):
@@ -66,7 +72,7 @@ def test_holdings_mixed_native_dates_survive_live_refresh_and_offline(source, ru
     browser, cache = source
     rows = mixed_rows()
     install(browser, rows)
-    code, out, err = run_cli([*query(), "--live", "--require-complete"])
+    code, out, err = run_cli([*query("20261001"), "--live", "--require-complete"])
     assert code == 0, err
     live = parse(out)
     assert live["data"] == rows
@@ -88,7 +94,7 @@ def test_holdings_mixed_native_dates_survive_live_refresh_and_offline(source, ru
     assert offline["meta"]["complete"] is True
     assert offline["meta"]["reported_total"] == 3
     assert offline["meta"]["snapshot_id"] == published["meta"]["snapshot_id"]
-    assert 'date="20261001"' in offline["meta"]["scope"]
+    assert offline["meta"]["scope"]["date"] == "20261001"
     assert offline["meta"]["requested_window"] is None
     assert cache.read_bytes() == before
 
@@ -100,48 +106,16 @@ def test_holdings_query_dates_have_independent_cache_scopes(source, run_cli):
     code, _, err = run_cli(refresh())
     assert code == 0, err
     code, out, _ = run_cli(query("20260930"))
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     second = [{"investmentNo": "H4", "valueDate": "20220101", "amount": "40.00"}]
     install(browser, second)
     code, _, err = run_cli(refresh("20260930"))
     assert code == 0, err
     code, out, _ = run_cli(query())
-    assert code == 0 and parse(out)["data"] == first
-    code, out, _ = run_cli(query("20260930"))
     assert code == 0 and parse(out)["data"] == second
-
-
-def test_holdings_retention_uses_capture_history_and_warns_for_trimmed_scope(
-    source, run_cli, monkeypatch
-):
-    browser, cache = source
-    rows = mixed_rows()
-    install(browser, rows)
-    monkeypatch.setattr(
-        capture_store,
-        "plan_capture_publish",
-        partial(capture_store.plan_capture_publish, cap=2),
-    )
-    code, out, err = run_cli(refresh())
-    assert code == 0, err
-    assert parse(out)["data"]["row_count"] == 2
-    assert "retention evicted" in err
-    before = cache.read_bytes()
-    code, out, err = run_cli(query())
-    result = parse(out)
-    assert code == 0
-    assert result["data"] == rows[1:]
-    assert result["meta"]["complete"] is False
-    assert result["meta"]["reported_total"] == 3
-    assert result["meta"]["collected_total"] == 2
-    assert result["error"] is None
-    assert "warning: INCOMPLETE_RESULT" in err
-    code, out, _ = run_cli([*query(), "--require-complete"])
-    assert code == 1
-    assert parse(out)["data"] is None
-    assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
-    assert cache.read_bytes() == before
+    code, out, _ = run_cli(query())
+    assert code == 0 and parse(out)["data"] == second
 
 
 def test_holdings_does_not_reuse_legacy_cache_without_native_query_date(
@@ -153,12 +127,28 @@ def test_holdings_does_not_reuse_legacy_cache_without_native_query_date(
         INVESTMENT_HOLDINGS, profile=spec.PROFILE_DATED, series_field="valueDate"
     )
     at = "2026-10-03T00:00:00+00:00"
-    plan = capture_store.plan_capture_publish(
-        cache, legacy, "", ("20261001", "20261001"), mixed_rows(), 3, at, at
+    from dogopencli.cache import SnapshotMeta
+    from dogopencli.jsonutil import canonical
+
+    meta = SnapshotMeta(
+        namespace="legacy-liquidity",
+        capability=legacy.name,
+        scope="{}",
+        source_kind="cdp",
+        snapshot_id="old",
+        dataset_id=None,
+        simulated=False,
+        backend_complete=True,
+        dataset_complete=True,
+        fetched_at=at,
+        loaded_at=at,
+        source_observed_from=None,
+        source_observed_to=None,
+        row_count=1,
     )
-    capture_store.commit_plan(cache, legacy.name, plan, at)
+    cache.publish(meta, [(1, canonical(mixed_rows()[0]))])
     before = path.read_bytes()
     code, out, _ = run_cli(query())
     assert code == 1
     assert parse(out)["error"]["code"] == "CACHE_MISS"
-    assert path.read_bytes() == before
+    assert path.read_bytes() != before

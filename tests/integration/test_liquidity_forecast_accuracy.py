@@ -38,13 +38,19 @@ METRICS.update(
 )
 
 
-def args(*extra, refresh=False, account=ACCOUNT, day="2026-10-05"):
+def args(*extra, refresh=False, account=None, day=None):
     command = (
         ["refresh", "liquidity", "forecast", "accuracy"]
         if refresh
         else ["liquidity", "forecast", "accuracy", "list"]
     )
-    return command + ["--account-alias", account, "--record-date", day, *extra]
+    online = refresh or "--live" in extra
+    flags = []
+    if online or account is not None:
+        flags.extend(["--account-alias", ACCOUNT if account is None else account])
+    if online or day is not None:
+        flags.extend(["--record-date", "2026-10-05" if day is None else day])
+    return command + flags + list(extra)
 
 
 def base_page(rows, total=None):
@@ -170,7 +176,7 @@ def test_composition_request_projection_offline_live_snapshot(setup, run_cli):
     )
     before = digest(setup)
     assert b"TEST-PRIVATE" not in setup.cache_path.read_bytes()
-    code, out, err = run_cli(args("--live", "--all"))
+    code, out, err = run_cli(args("--live", "--limit", "0"))
     assert code == 0, err
     live = parse(out)
     assert len(live["data"]) == 2
@@ -181,7 +187,7 @@ def test_composition_request_projection_offline_live_snapshot(setup, run_cli):
     assert set(live["data"][0]) == {*BASE_FIELDS, "accuracy"}
     assert digest(setup) == before
     setup.state.reachable = False
-    code, out, err = run_cli(args("--all"))
+    code, out, err = run_cli(args("--limit", "0"))
     assert code == 0, err
     offline = parse(out)
     assert offline["data"] == live["data"]
@@ -189,7 +195,7 @@ def test_composition_request_projection_offline_live_snapshot(setup, run_cli):
         assert offline["meta"][field] == refresh["meta"][field]
     for account, day in (("OTHER", "2026-10-05"), (ACCOUNT, "2026-10-04")):
         code, out, _ = run_cli(args(account=account, day=day))
-        assert code == 1 and parse(out)["error"]["code"] == "CACHE_MISS"
+        assert code == 2 and parse(out)["error"]["code"] == "INVALID_ARGUMENT"
     code, out, err = run_cli(
         ["snapshot", "liquidity", "forecast", "accuracy", "list", "--format", "json"]
     )
@@ -219,12 +225,12 @@ def test_numeric_forecast_balance_precision_in_metric_request_and_cache(
     assert isinstance(sent_balance, Decimal)
     assert sent_balance.as_tuple() == balance.as_tuple()
     before = digest(setup)
-    code, out, err = run_cli(args("--live", "--all", "--require-complete"))
+    code, out, err = run_cli(args("--live", "--limit", "0", "--require-complete"))
     assert code == 0, err
     assert parse(out)["data"][0]["forecastBalance"].as_tuple() == balance.as_tuple()
     assert digest(setup) == before
     setup.state.reachable = False
-    code, out, err = run_cli(args("--all", "--require-complete"))
+    code, out, err = run_cli(args("--limit", "0", "--require-complete"))
     assert code == 0, err
     assert parse(out)["data"][0]["forecastBalance"].as_tuple() == balance.as_tuple()
 
@@ -357,7 +363,7 @@ def test_empty_scope_no_metrics(setup, run_cli):
     assert parse(out)["meta"]["complete"] is True
     assert len(setup.state.business_requests) == 1
     setup.state.reachable = False
-    assert parse(run_cli(args())[1])["data"] == []
+    assert parse(run_cli(args())[1])["error"]["code"] == "CACHE_MISS"
 
 
 def test_shared_deadline_after_metric_preserves_capture(setup, run_cli, monkeypatch):
@@ -391,7 +397,9 @@ def test_discovery_without_browser_and_no_accuracy_get(setup, run_cli):
     assert code == 0, err
     description = parse(out)
     assert description["read_guide"]["kind"] == "runtimes"
-    assert description["read_guide"]["offline_profile"] == "history"
+    assert (
+        description["read_guide"]["offline_profile"] == "single temporary leaf result"
+    )
     assert description["read_guide"]["series_time"] is None
     assert (
         description["read_guide"]["schema_version"]
@@ -459,39 +467,36 @@ def test_bound_shared_transport_default_deny(setup, kind):
 
 def test_forecast_results_and_native_details_remain_independent(setup, run_cli):
     from dogopencli.cache import Cache
-    from dogopencli.plugins.liquidity import details, store
-    from dogopencli.plugins.liquidity.cash_forecast import FORECAST_RESULTS
+    from dogopencli.result_policy import AcquisitionEvidence
+    from dogopencli.temporary_query import publish_slot, read_slot
 
     cache = Cache(setup.cache_path)
-    detail = details.upsert_detail(
+    rows = [{"id": "TEST-BASE", "valueDate": "20261005"}]
+    publish_slot(
         cache,
-        "liquidity.cash.pools.get",
-        "TEST-KEY",
-        {"id": "TEST-POOL"},
-        "2026-10-05T00:00:00+00:00",
-        "2026-10-05T00:00:00+00:00",
+        "liquidity.forecast.results",
+        rows,
+        capability="liquidity.forecast.results.list",
+        scope={"test": "source"},
+        fetched_at="2026-10-05T00:00:00+00:00",
+        variant="native-results",
+        evidence=AcquisitionEvidence.for_collection(
+            complete=True, reported_total=1, collected_total=1
+        ),
     )
-    plan = store.plan_capture_publish(
-        cache,
-        FORECAST_RESULTS,
-        "TEST-FORECAST-SCOPE",
-        ("20261005", "20261005"),
-        [{"id": "TEST-BASE", "valueDate": "20261005"}],
-        1,
-        "2026-10-05T00:00:00+00:00",
-        "2026-10-05T00:00:00+00:00",
-    )
-    store.commit_plan(cache, FORECAST_RESULTS.name, plan, "2026-10-05T00:00:00+00:00")
     seed(setup, run_cli)
-    assert details.read_detail_snapshot(cache, "liquidity.cash.pools.get") == detail
-    assert details.read_details(cache, "liquidity.cash.pools.get")[
-        "TEST-KEY"
-    ].detail == {"id": "TEST-POOL"}
-    entry = store.read_index(cache, FORECAST_RESULTS.name).captures[0]
-    assert store.read_capture(cache, entry)[0] == {
-        "id": "TEST-BASE",
-        "valueDate": "20261005",
+    assert read_slot(cache, "liquidity.forecast.results")[1] == rows
+    before = setup.cache_path.read_bytes()
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {"success": True, "data": {"slaConfigId": "SYN-SLA"}},
     }
+    code, out, err = run_cli(
+        ["liquidity", "risk", "sla", "get", "--sla-config-id", "SYN-SLA"]
+    )
+    assert code == 0, (out, err)
+    assert parse(out)["data"]["slaConfigId"] == "SYN-SLA"
+    assert setup.cache_path.read_bytes() == before
 
 
 def test_missing_optional_fields_are_unknown_and_blank_native_values_preserved(

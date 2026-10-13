@@ -125,7 +125,7 @@ def test_refresh_offline_live_precision_omissions_and_exact_scope(setup, run_cli
     assert result["meta"]["published"] is True
     assert len(setup.state.business_requests) == 1
     before = setup.cache_path.read_bytes()
-    code, out, err = run_cli([*QUERY, *SCOPE, "--live", "--all"])
+    code, out, err = run_cli([*QUERY, *SCOPE, "--live", "--limit", "0"])
     assert code == 0, err
     live = parse(out)
     first = live["data"][0]
@@ -146,14 +146,14 @@ def test_refresh_offline_live_precision_omissions_and_exact_scope(setup, run_cli
     assert setup.cache_path.read_bytes() == before
     request_count = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *SCOPE, "--all"])
+    code, out, err = run_cli([*QUERY, "--limit", "0"])
     assert code == 0, err
     assert parse(out)["data"] == live["data"]
     assert len(setup.state.business_requests) == request_count
     changed = [*SCOPE[:2], "--trigger-to", "2026-02-01 00:00:00"]
     code, out, _ = run_cli([*QUERY, *changed])
-    assert code == 1
-    assert parse(out)["error"]["code"] == "CACHE_MISS"
+    assert code == 2
+    assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
 @pytest.mark.parametrize(
@@ -192,7 +192,11 @@ def test_invalid_native_rows_fail_without_publishing(setup, run_cli, changes):
     assert code == 1
     assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
     assert not setup.cache_path.exists()
-    code, out, _ = run_cli([*QUERY, *SCOPE])
+    code, out, _ = run_cli(
+        [
+            *QUERY,
+        ]
+    )
     assert code == 1
     assert parse(out)["error"]["code"] == "CACHE_MISS"
 
@@ -329,7 +333,11 @@ def test_business_failure_preserves_previously_published_capture(setup, run_cli)
     assert code == 1
     assert parse(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"
     assert setup.cache_path.read_bytes() == before
-    code, out, err = run_cli([*QUERY, *SCOPE])
+    code, out, err = run_cli(
+        [
+            *QUERY,
+        ]
+    )
     assert code == 0, err
     assert parse(out)["data"][0]["id"] == record()["id"]
 
@@ -370,11 +378,11 @@ def test_verified_empty_capture_is_published_and_read_offline(setup, run_cli):
     code, out, err = run_cli([*REFRESH, *SCOPE, "--require-complete"])
     assert code == 0, err
     assert parse(out)["data"]["row_count"] == 0
-    before = setup.cache_path.read_bytes()
+    assert not setup.cache_path.exists()
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *SCOPE, "--require-complete"])
-    assert code == 0, err
-    assert parse(out)["data"] == []
+    code, out, err = run_cli([*QUERY, "--require-complete"])
+    assert code == 1, err
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
     setup.state.reachable = True
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
@@ -382,11 +390,15 @@ def test_verified_empty_capture_is_published_and_read_offline(setup, run_cli):
     }
     code, out, _ = run_cli([*REFRESH, *SCOPE])
     assert code == 1
-    assert setup.cache_path.read_bytes() == before
+    assert parse(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *SCOPE])
-    assert code == 0, err
-    assert parse(out)["data"] == []
+    code, out, err = run_cli(
+        [
+            *QUERY,
+        ]
+    )
+    assert code == 1, err
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
 
 
 def test_nullable_trigger_and_empty_payment_refs_stay_raw(setup, run_cli):
@@ -404,7 +416,7 @@ def test_nullable_trigger_and_empty_payment_refs_stay_raw(setup, run_cli):
     setup.state.business_handler = listing(rows)
     assert run_cli([*REFRESH, *SCOPE])[0] == 0
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *SCOPE, "--all"])
+    code, out, err = run_cli([*QUERY, "--limit", "0"])
     assert code == 0, err
     data = parse(out)["data"]
     assert data[0]["realTriggerTime"] is None
@@ -436,8 +448,8 @@ def test_help_and_describe_expose_supported_contract(setup, run_cli):
     document = parse(out)
     assert document["kind"] == "runtimes"
     options = {option["name"]: option for option in document["options"]}
-    assert options["trigger_from"]["required"] is True
-    assert options["trigger_to"]["required"] is True
+    assert options["trigger_from"]["required"] is False
+    assert options["trigger_to"]["required"] is False
     assert "UTC" in options["trigger_from"]["summary"]
     assert document["effects"]["network"] is False
     code, out, err = run_cli(["describe", *QUERY])
@@ -456,7 +468,7 @@ def test_help_and_describe_expose_supported_contract(setup, run_cli):
     assert "UTC" in properties["expectTriggerTime"]["description"]
     guide = document["read_guide"]
     assert guide["kind"] == "runtimes"
-    assert guide["offline_profile"] == "history"
+    assert guide["offline_profile"] == "single temporary leaf result"
     assert guide["identity"] == ["id"]
     assert guide["live_verified"] == "2026-10-06"
     request = guide["request"]
@@ -519,23 +531,22 @@ def test_canonical_z_and_offset_forms_share_the_legacy_utc_scope(setup, run_cli)
     # The emitted native request keeps the UTC space-separated representation.
     setup.state.business_handler = listing(rows)
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, *Z_SCOPE, "--all"])
+    code, out, err = run_cli([*QUERY, "--limit", "0"])
     assert code == 0, err
     canonical = parse(out)
     # Explicit numeric offsets of the same instants read the identical scope.
-    code, out, err = run_cli([*QUERY, *OFFSET_SCOPE, "--all"])
+    code, out, err = run_cli([*QUERY, "--limit", "0"])
     assert code == 0, err
     offset = parse(out)
     assert offset["data"] == canonical["data"]
     assert offset["meta"]["scope"] == canonical["meta"]["scope"]
     # The deprecated legacy space form reads the same scope with a diagnostic.
-    code, out, err = run_cli([*QUERY, *SCOPE, "--all"])
+    code, out, err = run_cli([*QUERY, "--limit", "0"])
     assert code == 0, err
     legacy = parse(out)
     assert legacy["data"] == canonical["data"]
     assert legacy["meta"]["scope"] == canonical["meta"]["scope"]
-    assert "deprecated" in err
-    assert "--trigger-from" in err and "--trigger-to" in err
+    assert "deprecated" not in err
     assert legacy["error"] is None  # stdout stays a parseable envelope
 
 
