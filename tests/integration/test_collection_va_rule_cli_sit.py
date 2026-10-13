@@ -106,57 +106,37 @@ def refresh(run_cli, *flags):
 
 
 def seed(run_cli, setup):
-    setup.state.business_script.extend([page(), detail()])
+    setup.state.business_script.append(page())
     assert refresh(run_cli)[0] == 0
-    return listing(run_cli)[1], getting(run_cli, "--id", "1")[1]
+    return listing(run_cli)[1], None
 
 
-def test_refresh_publishes_pairs_and_offline_reads(run_cli, envelope, setup):
+def test_refresh_list_only_and_online_native_get(run_cli, envelope, setup):
     rows = [row("20"), row("2")]
-    setup.state.business_script.extend([page(rows), detail("2"), detail("20")])
+    setup.state.business_script.append(page(rows))
     code, out, _ = refresh(run_cli)
-    assert code == 0, out
-    result = envelope(out)
-    assert result["data"]["namespace"] == "collection.va.rules.list:rules:cdp"
-    assert result["data"]["row_count"] == 2
-    assert setup.state.business_requests == [
-        {"pageNo": 1, "pageSize": 1000},
-        {"vaRuleId": "2"},
-        {"vaRuleId": "20"},
-    ]
+    assert code == 0
+    assert envelope(out)["data"]["namespace"] == "temporary-query:collection.va.rules"
+    assert setup.state.business_requests == [{"pageNo": 1, "pageSize": 1000}]
+    before = setup.cache_path.read_bytes()
+    setup.state.running = False
+    listed = envelope(listing(run_cli, "--limit", "0", "--require-complete")[1])
+    assert listed["data"] == list(reversed(rows))
+    setup.state.running = True
+    setup.state.business_script.append(detail("20"))
+    code, out, _ = getting(run_cli, "--id", "20")
+    assert code == 0
+    assert envelope(out)["meta"]["source"] == "live"
+    assert envelope(out)["data"] == detail("20")["body"]["resultObj"]
+    assert setup.cache_path.read_bytes() == before
     expressions = [
-        expression
-        for transport in setup.state.transports
-        for expression in transport.expressions
-        if "fetch(" in expression
+        e for t in setup.state.transports for e in t.expressions if "fetch(" in e
     ]
-    assert len(expressions) == 3
+    assert len(expressions) == 2
     assert "virtualAccountRule/list.json" in expressions[0]
     assert 'method: "POST"' in expressions[0]
-    for expression in expressions[1:]:
-        assert "virtualAccountRule/detail.json" in expression
-        assert 'method: "GET"' in expression
-        # vaRuleId rides the URL query, never a JSON body.
-        assert "URLSearchParams" in expression
-    before = len(setup.state.transports)
-    setup.state.running = False
-    listed = envelope(
-        listing(run_cli, "--all", "--require-fresh", "--require-complete")[1]
-    )
-    assert listed["data"] == list(reversed(rows))
-    assert listed["meta"]["complete"] and not listed["meta"]["has_more"]
-    for identity in ["2", "20"]:
-        code, out, _ = getting(
-            run_cli, "--id", identity, "--require-fresh", "--require-complete"
-        )
-        assert code == 0
-        detail_data = envelope(out)["data"]
-        assert detail_data == detail(identity)["body"]["resultObj"]
-        # List-only fields never leak into the true detail.
-        assert "countries" not in detail_data
-        assert "bankAccountNo" not in detail_data
-    assert len(setup.state.transports) == before
-    assert b"FAKE-CTOKEN-SECRET" not in setup.cache_path.read_bytes()
+    assert "virtualAccountRule/detail.json" in expressions[1]
+    assert 'method: "GET"' in expressions[1] and "URLSearchParams" in expressions[1]
 
 
 def test_cache_miss_directs_refresh_and_live_never_writes_cache(
@@ -166,8 +146,9 @@ def test_cache_miss_directs_refresh_and_live_never_writes_cache(
     assert code == 1
     assert envelope(out)["error"]["code"] == "CACHE_MISS"
     assert "refresh collection va" in envelope(out)["error"]["message"]
-    assert envelope(getting(run_cli, "--id", "1")[1])["error"]["code"] == "CACHE_MISS"
-    assert setup.state.transports == []
+    setup.state.business_script.append(detail())
+    assert getting(run_cli, "--id", "1")[0] == 0
+    assert not setup.cache_path.exists()
 
     old = seed(run_cli, setup)
     digest = setup.cache_path.read_bytes()
@@ -195,27 +176,26 @@ def test_cache_miss_directs_refresh_and_live_never_writes_cache(
         == "INVALID_RESPONSE"
     )
     assert setup.cache_path.read_bytes() == digest
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
-    assert envelope(getting(run_cli, "--id", "absent")[1])["error"]["code"] == (
-        "NOT_FOUND"
-    )
+    assert (listing(run_cli)[1], None) == old
+    setup.state.business_script.append(detail("absent"))
+    assert getting(run_cli, "--id", "absent")[0] == 0
 
 
-def test_overflow_and_detail_mismatch_preserve_snapshot(run_cli, envelope, setup):
+def test_overflow_rejects_publication_and_native_detail_can_differ(
+    run_cli, envelope, setup
+):
     old = seed(run_cli, setup)
-    setup.state.business_script.append(page([row()], totalCount=1001))
+    setup.state.business_script.append(page(totalCount=1001))
     result = refresh(run_cli, "--require-complete")
-    assert result[0] == 1
-    assert envelope(result[1])["error"]["code"] == "INCOMPLETE_RESULT"
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
-
-    mismatched = detail()
-    mismatched["body"]["resultObj"]["ruleStatus"] = "DRIFTED"
-    setup.state.business_script.extend([page(), mismatched])
-    result = refresh(run_cli, "--require-complete")
-    assert result[0] == 1
-    assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (
+        result[0] == 1 and envelope(result[1])["error"]["code"] == "INCOMPLETE_RESULT"
+    )
+    assert listing(run_cli)[1] == old[0]
+    setup.state.business_script.append(detail(ruleStatus="DRIFTED"))
+    result = getting(run_cli, "--id", "1")
+    assert result[0] == 0
+    assert envelope(result[1])["data"]["ruleStatus"] == "DRIFTED"
+    assert listing(run_cli)[1] == old[0]
 
 
 def test_offline_help_describe_and_bare_navigation(run_cli, envelope, monkeypatch):
@@ -266,25 +246,15 @@ def test_offline_help_describe_and_bare_navigation(run_cli, envelope, monkeypatc
     assert "vaWarningInfo" not in detail_schema["required"]
 
 
-def test_describe_guidance_matches_refusal_semantics(run_cli, envelope):
-    """Review finding: describe must not promise atomicity ADR 0010 removed."""
-    guides = [
-        envelope(run_cli(["describe", "collection", "va", "rules", action])[1])[
-            "read_guide"
-        ]
-        for action in ("list", "get")
-    ]
-    for guide in guides:
-        refresh = guide["access_modes"]["refresh"]
-        assert "Any failure preserves" not in refresh
-        assert "null detail" in refresh
-        assert "INCOMPLETE_RESULT" in refresh
-    detail_schema = envelope(
-        run_cli(["describe", "collection", "va", "rules", "get"])[1]
-    )["data_schema"]
+def test_describe_list_refresh_and_online_get_are_distinct(run_cli, envelope):
+    listed = envelope(run_cli(["describe", "collection", "va", "rules", "list"])[1])
+    detail_doc = envelope(run_cli(["describe", "collection", "va", "rules", "get"])[1])
+    assert "never details" in listed["read_guide"]["access_modes"]["refresh"]
+    assert "refresh" not in detail_doc["read_guide"]["access_modes"]
+    assert "online" in detail_doc["read_guide"]["access_modes"]
     assert (
         "does not prove assignment history is empty"
-        in detail_schema["properties"]["assignInfo"]["description"]
+        in detail_doc["data_schema"]["properties"]["assignInfo"]["description"]
     )
 
 
@@ -372,7 +342,7 @@ def test_list_rejects_incomplete_or_bad_data(
     )
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == code
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
 
 
 @pytest.mark.parametrize(
@@ -389,96 +359,54 @@ def test_list_rejects_incomplete_or_bad_data(
 )
 def test_detail_failure_preserves_snapshot(run_cli, envelope, setup, body, expected):
     old = seed(run_cli, setup)
-    setup.state.business_script.extend([page(), {"status": 200, "body": body}])
-    result = refresh(run_cli)
+    setup.state.business_script.append({"status": 200, "body": body})
+    result = getting(run_cli, "--id", "1")
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == expected
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
 
 
 @pytest.mark.parametrize("status", [401, 403])
 def test_detail_refusal_boundary_preserves_snapshot(run_cli, envelope, setup, status):
     """Only an explicit success=false refusal is tolerated (ADR 0010)."""
     old = seed(run_cli, setup)
-    setup.state.business_script.extend(
-        [page([row("1"), row("2")]), detail("1"), {"status": status, "body": {}}]
-    )
-    result = refresh(run_cli)
+    setup.state.business_script.append({"status": status, "body": {}})
+    result = getting(run_cli, "--id", "1")
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == (
         "AUTH_REQUIRED" if status == 401 else "BUSINESS_QUERY_FAILED"
     )
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
 
 
-def test_refused_detail_publishes_partial_snapshot(run_cli, envelope, setup):
-    rows = [row("2"), row("20")]
-    setup.state.business_script.extend([page(rows), detail("2"), refusal()])
-    code, out, err = refresh(run_cli)
-    assert code == 0
-    result = envelope(out)
-    assert result["error"] is None
-    assert result["data"]["published"] is True
-    assert result["meta"]["published"] is True
-    assert result["meta"]["acquisition"]["reasons"] == ["DETAIL_REFUSED"]
-    assert "INCOMPLETE_RESULT" in err
-    assert "SYNTHETIC-REFUSAL" not in out
-    listed = envelope(listing(run_cli, "--all")[1])
-    assert [record["vaRuleId"] for record in listed["data"]] == ["2", "20"]
-    # The list scope is still complete; only the detail dataset is not.
-    assert listed["meta"]["complete"] is True
-    assert listed["meta"]["dataset_complete"] is False
-
-
-def test_partial_snapshot_reads_report_the_missing_detail(run_cli, envelope, setup):
-    rows = [row("2"), row("20")]
-    setup.state.business_script.extend([page(rows), detail("2"), refusal()])
-    assert refresh(run_cli)[0] == 0
-    missing = getting(run_cli, "--id", "20")
-    assert missing[0] == 1
-    assert envelope(missing[1])["error"]["code"] == "INCOMPLETE_RESULT"
-    # A refusal never answers with the list row.
-    assert envelope(missing[1])["data"] is None
-    healthy = envelope(getting(run_cli, "--id", "2")[1])
-    assert healthy["data"] == detail("2")["body"]["resultObj"]
-    assert envelope(getting(run_cli, "--id", "999")[1])["error"]["code"] == "NOT_FOUND"
-    for result in [
-        listing(run_cli, "--require-complete"),
-        getting(run_cli, "--id", "2", "--require-complete"),
-    ]:
-        assert result[0] == 1
-        assert envelope(result[1])["error"]["code"] == "INCOMPLETE_RESULT"
-
-
-def test_strict_detail_refusal_never_publishes(run_cli, envelope, setup):
-    old = seed(run_cli, setup)
-    cache_bytes = setup.cache_path.read_bytes()
-    setup.state.business_script.extend([page(), refusal()])
-    code, out, _ = refresh(run_cli, "--require-complete")
-    assert code == 1
-    result = envelope(out)
-    assert result["data"] is None
-    assert result["error"]["code"] == "INCOMPLETE_RESULT"
-    assert result["meta"]["published"] is False
-    assert result["meta"]["acquisition"]["reasons"] == ["DETAIL_REFUSED"]
-    assert setup.cache_path.read_bytes() == cache_bytes
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
-
-
-def test_partial_list_detail_absence_is_unknown_and_found_detail_is_real(
-    run_cli,
-    envelope,
-    setup,
-):
-    setup.state.business_script.extend([page(totalCount=2), detail()])
+def test_list_refresh_does_not_request_refused_detail(run_cli, envelope, setup):
+    setup.state.business_script.extend([page([row("2"), row("20")]), refusal()])
     code, out, _ = refresh(run_cli)
-    assert code == 0, out
-    assert envelope(out)["meta"]["complete"] is False
-    found = envelope(getting(run_cli, "--id", "1")[1])
-    assert found["data"] == detail()["body"]["resultObj"]
-    missing = envelope(getting(run_cli, "--id", "absent")[1])
-    assert missing["data"] is None
-    assert missing["error"]["code"] == "INCOMPLETE_RESULT"
+    assert code == 0 and envelope(out)["meta"]["complete"]
+    assert setup.state.business_requests == [{"pageNo": 1, "pageSize": 1000}]
+    before = setup.cache_path.read_bytes()
+    code, out, _ = getting(run_cli, "--id", "20")
+    assert code == 1 and envelope(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"
+    assert setup.cache_path.read_bytes() == before
+
+
+def test_native_detail_refusal_is_hard_even_in_strict_mode(run_cli, envelope, setup):
+    old = seed(run_cli, setup)
+    before = setup.cache_path.read_bytes()
+    setup.state.business_script.append(refusal())
+    code, out, _ = getting(run_cli, "--id", "1", "--require-complete")
+    assert code == 1 and envelope(out)["error"]["code"] == "BUSINESS_QUERY_FAILED"
+    assert setup.cache_path.read_bytes() == before
+    assert listing(run_cli)[1] == old[0]
+
+
+def test_partial_list_does_not_limit_online_detail_identity(run_cli, envelope, setup):
+    setup.state.business_script.append(page(totalCount=2))
+    code, out, _ = refresh(run_cli)
+    assert code == 0 and envelope(out)["meta"]["complete"] is False
+    setup.state.business_script.append(detail("absent"))
+    code, out, _ = getting(run_cli, "--id", "absent")
+    assert code == 0 and envelope(out)["data"]["vaRuleId"] == "absent"
 
 
 DETAIL_REQUIRED_FIELDS = [
@@ -504,13 +432,11 @@ def test_incomplete_detail_rejected_without_replacing_cache(
     old = seed(run_cli, setup)
     response = detail()
     del response["body"]["resultObj"][field]
-    if not live:
-        setup.state.business_script.append(page())
     setup.state.business_script.append(response)
-    result = getting(run_cli, "--id", "1", "--live") if live else refresh(run_cli)
+    result = getting(run_cli, "--id", "1", *(["--live"] if live else []))
     assert result[0] == 1
     assert envelope(result[1])["error"]["code"] == "INVALID_RESPONSE"
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
 
 
 def test_interrupted_detail_preserves_snapshot(run_cli, setup):
@@ -522,9 +448,9 @@ def test_interrupted_detail_preserves_snapshot(run_cli, setup):
         return page([row("99")])
 
     setup.state.business_handler = interrupted
-    assert refresh(run_cli)[0] == 130
+    assert getting(run_cli, "--id", "1")[0] == 130
     setup.state.business_handler = None
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
 
 
 def test_refresh_lock_contention_maps_to_locked(run_cli, envelope, setup):
@@ -540,122 +466,93 @@ def test_refresh_lock_contention_maps_to_locked(run_cli, envelope, setup):
         assert error["retryable"] is True
         # The lock is taken before any browser session or business request.
         assert len(setup.state.business_requests) == count
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
     setup.state.business_script.extend([page(), detail()])
     assert refresh(run_cli)[0] == 0
 
 
 @pytest.mark.parametrize("omit", [False, True])
-def test_empty_scope_publishes_empty_snapshot(run_cli, envelope, setup, omit):
+def test_empty_refresh_leaves_absent_slot_or_preserves_prior(
+    run_cli, envelope, setup, omit
+):
     response = page([])
     if omit:
         del response["body"]["resultDataList"]
     setup.state.business_script.append(response)
     code, out, _ = refresh(run_cli)
-    assert code == 0
+    assert code == 0 and envelope(out)["meta"]["published"] is False
     assert envelope(out)["data"]["row_count"] == 0
-    setup.state.running = False
-    listed = envelope(listing(run_cli, "--require-complete")[1])
-    assert listed["data"] == []
-    assert listed["meta"]["complete"] is True
-    for identity in ["1", "absent"]:
-        code, out, _ = getting(run_cli, "--id", identity)
-        assert code == 1
-        assert envelope(out)["error"]["code"] == "NOT_FOUND"
+    assert envelope(listing(run_cli)[1])["error"]["code"] == "CACHE_MISS"
+    old = seed(run_cli, setup)
+    setup.state.business_script.append(response)
+    assert envelope(refresh(run_cli)[1])["meta"]["published"] is False
+    assert listing(run_cli)[1] == old[0]
 
 
-def test_freshness_and_completeness_requirements(run_cli, envelope, setup):
+def test_list_freshness_and_quality_independent_of_online_detail(
+    run_cli, envelope, setup
+):
     import sqlite3
 
     seed(run_cli, setup)
     config = setup.tmp_path / "config.toml"
     config.write_text(config.read_text().replace("ttl_hours = 72", "ttl_hours = 0"))
-    assert envelope(listing(run_cli)[1])["meta"]["stale"] is True
-    assert envelope(getting(run_cli, "--id", "1")[1])["meta"]["stale"] is True
-    for query in [
-        lambda *flags: listing(run_cli, *flags),
-        lambda *flags: getting(run_cli, "--id", "1", *flags),
-    ]:
-        assert envelope(query("--require-fresh")[1])["error"]["code"] == "CACHE_STALE"
-        assert query("--require-complete")[0] == 0
+    assert envelope(listing(run_cli)[1])["meta"]["stale"]
+    assert (
+        envelope(listing(run_cli, "--require-fresh")[1])["error"]["code"]
+        == "CACHE_STALE"
+    )
     with sqlite3.connect(setup.cache_path) as connection:
-        # Synthetic incomplete metadata; production snapshots remain untouched.
-        connection.execute(
-            "UPDATE snapshots SET backend_complete = 0, acquisition = NULL"
-        )
+        connection.execute("UPDATE snapshots SET backend_complete=0, acquisition=NULL")
     assert (
         envelope(listing(run_cli, "--require-complete")[1])["error"]["code"]
         == "INCOMPLETE_RESULT"
     )
-    # Absence cannot be confirmed against an incomplete snapshot.
-    assert (
-        envelope(getting(run_cli, "--id", "absent")[1])["error"]["code"]
-        == "INCOMPLETE_RESULT"
-    )
-    # A present ID still resolves from the incomplete snapshot.
-    assert getting(run_cli, "--id", "1")[0] == 0
+    setup.state.business_script.append(detail("absent"))
+    code, out, _ = getting(run_cli, "--id", "absent", "--require-complete")
+    assert code == 0 and envelope(out)["meta"]["complete"]
+    assert envelope(out)["meta"]["stale"] is False
 
 
 @pytest.mark.parametrize(
     "mode,expected",
     [
-        ("drift", "INVALID_RESPONSE"),
+        ("invalid", "INVALID_RESPONSE"),
         ("duplicate", "INCOMPLETE_RESULT"),
         ("missing", "INCOMPLETE_RESULT"),
     ],
 )
-def test_cached_pair_revalidation_surfaces_distinctly(
+def test_cached_list_revalidation_surfaces_distinctly(
     run_cli, envelope, setup, mode, expected
 ):
     import json
     import sqlite3
 
-    setup.state.business_script.extend(
-        [page([row("1"), row("2")]), detail("1"), detail("2")]
-    )
+    setup.state.business_script.append(page([row("1"), row("2")]))
     assert refresh(run_cli)[0] == 0
-    ns = "collection.va.rules.list:rules:cdp"
+    ns = "temporary-query:collection.va.rules"
     with sqlite3.connect(setup.cache_path) as connection:
-        # Synthetic cache corruption exercises read-time re-validation only.
-        bodies = dict(
+        if mode == "missing":
             connection.execute(
-                "SELECT seqid, body FROM records WHERE namespace = ?", (ns,)
-            )
-        )
-        if mode == "drift":
-            pair = json.loads(bodies[1])
-            pair["detail"]["ruleStatus"] = "DRIFTED"
-            connection.execute(
-                "UPDATE records SET body = ? WHERE namespace = ? AND seqid = 1",
-                (json.dumps(pair), ns),
-            )
-        elif mode == "duplicate":
-            pair = json.loads(bodies[2])
-            pair["rule"]["vaRuleId"] = "1"
-            pair["detail"]["vaRuleId"] = "1"
-            connection.execute(
-                "UPDATE records SET body = ? WHERE namespace = ? AND seqid = 2",
-                (json.dumps(pair), ns),
+                "DELETE FROM records WHERE namespace=? AND seqid=2", (ns,)
             )
         else:
+            record = row("" if mode == "invalid" else "1")
             connection.execute(
-                "DELETE FROM records WHERE namespace = ? AND seqid = 2", (ns,)
+                "UPDATE records SET body=? WHERE namespace=? AND seqid=2",
+                (json.dumps(record), ns),
             )
-    for out in [listing(run_cli)[1], getting(run_cli, "--id", "1")[1]]:
-        assert envelope(out)["error"]["code"] == expected
+    assert envelope(listing(run_cli)[1])["error"]["code"] == expected
+    setup.state.business_script.append(detail())
+    assert getting(run_cli, "--id", "1")[0] == 0
 
 
-def test_offline_get_never_substitutes_list_row(run_cli, envelope, setup):
-    setup.state.business_script.extend(
-        [page(), detail("1", clientEntity="SYNTHETIC-DETAIL-ONLY")]
-    )
-    assert refresh(run_cli)[0] == 0
+def test_get_never_substitutes_saved_list_row(run_cli, envelope, setup):
+    seed(run_cli, setup)
     setup.state.running = False
-    data = envelope(getting(run_cli, "--id", "1")[1])["data"]
-    # The cached detail object, not the list row, answers an offline get.
-    assert data["clientEntity"] == "SYNTHETIC-DETAIL-ONLY"
-    for list_only in ["aliasName", "bankAccountNo", "countries"]:
-        assert list_only not in data
+    code, out, _ = getting(run_cli, "--id", "1")
+    assert code == 1 and envelope(out)["error"]["code"] == "BROWSER_UNAVAILABLE"
+    assert envelope(out)["data"] is None
 
 
 def test_live_detail_failures_are_explicit_never_not_found(run_cli, envelope, setup):
@@ -678,7 +575,7 @@ def test_live_detail_failures_are_explicit_never_not_found(run_cli, envelope, se
         codes.append(envelope(out)["error"]["code"])
     assert codes == ["INVALID_RESPONSE", "BUSINESS_QUERY_FAILED"]
     assert setup.cache_path.read_bytes() == digest
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
 
 
 @pytest.mark.parametrize("action", ["list", "get", "refresh"])
@@ -705,7 +602,7 @@ def test_live_auth_failures_map_to_auth_required(run_cli, envelope, setup, actio
         assert envelope(result[1])["error"]["code"] == "AUTH_REQUIRED"
         assert "PRIVATE" not in result[1]
         assert "PRIVATE" not in result[2]
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
 
 
 @pytest.mark.parametrize("status", [400, 403])
@@ -731,7 +628,7 @@ def test_non_retryable_status_preserves_evidence_without_retry_or_cache_change(
     assert error["retryable"] is False
     assert "SENSITIVE-DENIAL" not in result[1]
     assert len(setup.state.business_requests) == count + 1
-    assert (listing(run_cli)[1], getting(run_cli, "--id", "1")[1]) == old
+    assert (listing(run_cli)[1], None) == old
 
 
 def test_detail_retries_retryable_statuses_with_bounded_waits(
@@ -765,7 +662,6 @@ def test_windowing_flag_boundaries_conflicts_and_id_validation(
     for flags in [
         ("--all", "--limit", "1"),
         ("--all", "--offset", "1"),
-        ("--limit", "0"),
         ("--limit", "-1"),
         ("--offset", "-1"),
     ]:
@@ -797,6 +693,7 @@ def test_fields_projection_contract_and_formats(run_cli, envelope, setup):
     # Unknown fields are dropped, never fabricated.
     unknown = envelope(listing(run_cli, "--fields", "vaRuleId,unknownField")[1])
     assert unknown["data"] == [{"vaRuleId": "1"}]
+    setup.state.business_script.append(detail())
     got = envelope(getting(run_cli, "--id", "1", "--fields", "clientEntity")[1])
     assert got["data"] == {"clientEntity": "SYNTHETIC-CLIENT"}
     for flags in [("--fields", " , "), ("--fields", "")]:
@@ -809,14 +706,15 @@ def test_fields_projection_contract_and_formats(run_cli, envelope, setup):
     assert (
         envelope(listing(run_cli, "--format", "json")[1])["data"][0]["vaRuleId"] == "1"
     )
-    assert "source: cache" in getting(run_cli, "--id", "1", "--format", "table")[1]
+    setup.state.business_script.append(detail())
+    assert "source: live" in getting(run_cli, "--id", "1", "--format", "table")[1]
 
 
 def test_stable_id_sort_preserves_strings_before_windowing(run_cli, envelope, setup):
     identities = ["20", "2", "02", "a", "١", "²", "A"]
     rows = [row(identity) for identity in identities]
     setup.state.business_script.append(page(rows))
-    result = envelope(listing(run_cli, "--live", "--all")[1])
+    result = envelope(listing(run_cli, "--live", "--limit", "0")[1])
     assert [record["vaRuleId"] for record in result["data"]] == [
         "02",
         "2",
@@ -862,10 +760,9 @@ def test_ctoken_never_reaches_output_cache_or_payloads(run_cli, setup):
 def test_namespace_isolation_vs_payment_cost_and_sla_caches(run_cli, envelope, setup):
     from test_collection_cost_cli_sit import page as cost_page
     from test_collection_cost_cli_sit import row as cost_row
-    from test_collection_sla_cli_sit import detail as sla_config_detail
     from test_collection_sla_cli_sit import page as sla_config_page
     from test_collection_sla_cli_sit import row as sla_config_row
-    from test_sla_cli_sit import detail_outcome, list_page, sla_row
+    from test_sla_cli_sit import list_page, sla_row
 
     config = setup.tmp_path / "config.toml"
     with config.open("a") as file:
@@ -873,13 +770,9 @@ def test_namespace_isolation_vs_payment_cost_and_sla_caches(run_cli, envelope, s
             '\n[sources.collection_sla]\nkind = "cdp"'
             '\n[sources.collection_cost]\nkind = "cdp"\n'
         )
-    setup.state.business_script.extend(
-        [list_page([sla_row("900")]), detail_outcome("900")]
-    )
+    setup.state.business_script.extend([list_page([sla_row("900")])])
     assert run_cli(["refresh", "payment", "sla"])[0] == 0
-    setup.state.business_script.extend(
-        [sla_config_page([sla_config_row("800")]), sla_config_detail("800")]
-    )
+    setup.state.business_script.extend([sla_config_page([sla_config_row("800")])])
     assert run_cli(["refresh", "collection", "sla"])[0] == 0
     setup.state.business_script.append(cost_page([cost_row("700")]))
     assert run_cli(["refresh", "collection", "cost"])[0] == 0
@@ -896,9 +789,7 @@ def test_namespace_isolation_vs_payment_cost_and_sla_caches(run_cli, envelope, s
         run_cli(["collection", "sla", "configs", "list"])[1],
         run_cli(["collection", "cost", "list"])[1],
     ) == others
-    setup.state.business_script.extend(
-        [list_page([sla_row("901")]), detail_outcome("901")]
-    )
+    setup.state.business_script.extend([list_page([sla_row("901")])])
     assert run_cli(["refresh", "payment", "sla"])[0] == 0
     assert listing(run_cli)[1] == va_before
 

@@ -301,8 +301,7 @@ def test_freshness_and_incomplete_cache_requirements(run_cli, envelope, setup):
         == "CACHE_STALE"
     )
     assert listing(run_cli, "--require-complete")[0] == 0
-    setup.state.business_script.append(detail())
-    assert getting(run_cli, "--id", "1", "--require-fresh")[0] == 0
+    assert getting(run_cli, "--id", "1", "--require-fresh")[0] == 2
     with sqlite3.connect(setup.cache_path) as connection:
         connection.execute(
             "UPDATE snapshots SET backend_complete = 0, acquisition = NULL"

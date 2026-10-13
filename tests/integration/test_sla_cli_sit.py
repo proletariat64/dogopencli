@@ -527,10 +527,8 @@ def test_stale_and_require_fresh(run_cli, envelope, sla_setup, sample_sla_rows):
     code, out, _ = listing(run_cli, "--require-fresh")
     assert code == 1
     assert envelope(out)["error"]["code"] == "CACHE_STALE"
-    sla_setup.state.business_script.append(detail_outcome("101"))
     code, out, _ = getting(run_cli, "--id", "101", "--require-fresh")
-    assert code == 0
-    assert envelope(out)["meta"]["stale"] is False
+    assert code == 2
     code, out, _ = listing(run_cli, "--require-complete")
     assert code == 0
 
@@ -775,9 +773,7 @@ def test_native_detail_deadline_preserves_list_slot(
 
 def test_live_detail_quality_flags_describe_single_id(run_cli, envelope, sla_setup):
     sla_setup.state.business_script.append(detail_outcome("101"))
-    code, out, _ = getting(
-        run_cli, "--live", "--id", "101", "--require-fresh", "--require-complete"
-    )
+    code, out, _ = getting(run_cli, "--live", "--id", "101", "--require-complete")
     assert code == 0
     meta = envelope(out)["meta"]
     assert meta["complete"] is True and meta["stale"] is False
