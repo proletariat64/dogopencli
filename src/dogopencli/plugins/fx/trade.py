@@ -12,7 +12,7 @@ from ...errors import (
     INVALID_RESPONSE,
     CliError,
 )
-from ...helpspec import BizNode, contract, opt
+from ...helpspec import LIVE, BizNode, contract, opt
 from ...jsonutil import parse
 from ...temporal import parse_iso_instant
 from .. import EndpointContract, ParsedPage
@@ -212,7 +212,7 @@ TRADE_NODE = BizNode(
     "Replay temporary FX trades; --live queries the authenticated browser.",
     kind="runtimes",
     options=(
-        opt("live", "Query online without publishing cache.", "bool"),
+        LIVE,
         *(
             native_option(flag, f"Native {field} filter (repeatable).", "append")
             for flag, field in ARRAY_FILTERS
