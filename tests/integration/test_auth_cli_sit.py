@@ -358,13 +358,20 @@ def test_auth_check_delayed_entry_redirect_is_auth_required(
     assert auth_setup.state.launches == []
 
 
-def test_auth_check_unreachable_browser_is_browser_unavailable(run_cli, auth_setup):
+@pytest.mark.parametrize("domain", ["payment", "liquidity", "fx"])
+def test_auth_check_unreachable_browser_is_browser_unavailable(
+    run_cli, auth_setup, domain
+):
     auth_setup.state.running = False
-    code, value, _ = invoke(run_cli, [*auth_setup.argv, "auth", "check"])
+    code, value, _ = invoke(
+        run_cli, [*auth_setup.argv, "auth", "check", "--domain", domain]
+    )
     assert code == 1
     error = value["error"]
     assert error["code"] == "browser_unavailable"
     assert error["retryable"] is True
+    selector = f" --domain {domain}" if domain != "payment" else ""
+    assert error["details"]["launch_command"] == [f"dogopencli login{selector}"]
     assert auth_setup.state.launches == []  # check never starts Chrome
 
 

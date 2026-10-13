@@ -163,7 +163,8 @@ def check_authentication(
         (name for name, url in STARTUP_URLS.items() if url == entry_url), None
     )
     guidance = [
-        "dogopencli login" + (" --domain liquidity" if domain == "liquidity" else "")
+        "dogopencli login"
+        + (f" --domain {domain}" if domain and domain != "payment" else "")
     ]
     details = {"cdp_url": environment.cdp_url, "launch_command": guidance}
     transport = make_transport(environment.cdp_url)
