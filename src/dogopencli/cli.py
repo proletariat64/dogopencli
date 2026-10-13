@@ -447,7 +447,19 @@ def cmd_channel_list(args: argparse.Namespace) -> int:
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
     window = window_rows(matched, limit, offset)
-    meta = cached.meta(matched_total, len(window), offset=offset)
+    meta = cached.meta(
+        matched_total,
+        len(window),
+        offset=offset,
+        local_filters={
+            **filters,
+            **({"payoutType": [args.payout_type]} if args.payout_type else {}),
+        },
+        requested_coverage=(
+            args.payout_type is None
+            or args.payout_type == slot_context(cached.snapshot)["query"]["scope"]
+        ),
+    )
     return _emit_window(args, capability, window, meta, fields)
 
 
@@ -657,7 +669,7 @@ def _cost_list(
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
     window = matched[offset:] if limit == 0 else matched[offset : offset + limit]
-    meta = cached.meta(matched_total, len(window), offset=offset)
+    meta = cached.meta(matched_total, len(window), offset=offset, local_filters=filters)
     return _emit_window(args, capability, window, meta, fields)
 
 
@@ -853,7 +865,7 @@ def cmd_sla_list(args: argparse.Namespace) -> int:
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
     window = matched[offset:] if limit == 0 else matched[offset : offset + limit]
-    meta = cached.meta(matched_total, len(window), offset=offset)
+    meta = cached.meta(matched_total, len(window), offset=offset, local_filters=filters)
     return _emit_window(args, capability, window, meta, fields)
 
 
@@ -976,7 +988,9 @@ def cmd_collection_sla_list(args: argparse.Namespace) -> int:
         cached, pairs = _collection_sla_cached(args, config, source)
         records = cap.sort_records(cap.filter_records(pairs, filters))
         window = records[offset:] if limit == 0 else records[offset : offset + limit]
-        meta = cached.meta(len(records), len(window), offset=offset)
+        meta = cached.meta(
+            len(records), len(window), offset=offset, local_filters=filters
+        )
     return _emit_window(args, cap, window, meta, fields)
 
 
@@ -1208,7 +1222,9 @@ def cmd_collection_va_capacity_list(args: argparse.Namespace) -> int:
         cached, records = _collection_va_capacity_cached(args, config, source)
         records = cap.sort_records(cap.filter_records(records, filters))
         window = records[offset:] if limit == 0 else records[offset : offset + limit]
-        meta = cached.meta(len(records), len(window), offset=offset)
+        meta = cached.meta(
+            len(records), len(window), offset=offset, local_filters=filters
+        )
     return _emit_window(args, cap, window, meta, fields)
 
 
@@ -1270,7 +1286,9 @@ def _list_configuration(
         cached, records = _configuration_cached(args, config, source, cap)
         records = cap.sort_records(cap.filter_records(records, filters))
         window = records[offset:] if limit == 0 else records[offset : offset + limit]
-        meta = cached.meta(len(records), len(window), offset=offset)
+        meta = cached.meta(
+            len(records), len(window), offset=offset, local_filters=filters
+        )
     return _emit_window(args, cap, window, meta, fields)
 
 
@@ -1314,6 +1332,9 @@ def cmd_payment_ptr_orders_list(args: argparse.Namespace) -> int:
     if args.live:
         cap = payment_ptr_orders.bind_window(args.updated_from, args.updated_to)
         return _list_configuration(args, cap)
+    requested = None
+    if args.updated_from is not None or args.updated_to is not None:
+        requested = payment_ptr_orders.bind_window(args.updated_from, args.updated_to)
     config = config_mod.load([payment_ptr_orders.ORDERS.source_config_key])
     source = _cdp_source(config, payment_ptr_orders.ORDERS.source_config_key)
     cached = read_cached_query(
@@ -1322,7 +1343,9 @@ def cmd_payment_ptr_orders_list(args: argparse.Namespace) -> int:
         payment_ptr_orders.ORDERS.name,
         "",
         refresh_command=(
-            "refresh payment ptr orders --updated-from FROM --updated-to TO"
+            requested.refresh_command
+            if requested
+            else "refresh payment ptr orders --updated-from FROM --updated-to TO"
         ),
         require_fresh=args.require_fresh,
         require_complete=False,
@@ -1335,8 +1358,11 @@ def cmd_payment_ptr_orders_list(args: argparse.Namespace) -> int:
         lambda row: row["ptrOrderId"],
         coverage_error="cached PTR order coverage invalid",
     )
-    if args.updated_from is not None or args.updated_to is not None:
-        requested = payment_ptr_orders.bind_window(args.updated_from, args.updated_to)
+    requested_coverage = True
+    if requested is not None:
+        requested_coverage = (
+            cap.start_ms <= requested.start_ms and requested.end_ms <= cap.end_ms
+        )
         rows = [
             row
             for row in rows
@@ -1347,11 +1373,23 @@ def cmd_payment_ptr_orders_list(args: argparse.Namespace) -> int:
         for flag, field in cap.filters
         if getattr(args, flag.replace("-", "_"))
     }
+    if any(not value.strip() for values in filters.values() for value in values):
+        raise _argument_error("business filters must be nonempty")
     rows = cap.filter_records(rows, filters)
     limit, offset, fields = _display_options(args)
     window = window_rows(rows, limit, offset)
     return _emit_window(
-        args, cap, window, cached.meta(len(rows), len(window), offset=offset), fields
+        args,
+        cap,
+        window,
+        cached.meta(
+            len(rows),
+            len(window),
+            offset=offset,
+            local_filters=filters,
+            requested_coverage=requested_coverage,
+        ),
+        fields,
     )
 
 

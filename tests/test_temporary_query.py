@@ -50,3 +50,23 @@ def test_missing_read_and_prune_do_not_initialize_storage(tmp_path):
     assert read_slot(store, "fx.trade") == (None, [])
     assert not prune_slot(store, "fx.trade")
     assert not path.parent.exists()
+
+
+def test_enabled_list_catalog_has_uniform_display_and_prune():
+    from dogopencli.catalog import NODES
+
+    for path, node in NODES.items():
+        if node.handler in (None, "cmd_liquidity_unsupported") or path[0] in (
+            "refresh",
+            "describe",
+            "auth",
+        ):
+            continue
+        if path[-1] != "list" and path != ("fx", "trade"):
+            continue
+        options = {option.name: option for option in node.options}
+        assert "all" not in options
+        assert {"limit", "offset", "format"} <= options.keys()
+        assert options["format"].default == "json"
+        sibling = (*path[:-1], "prune") if path[-1] == "list" else (*path, "prune")
+        assert NODES[sibling].handler == "cmd_prune"

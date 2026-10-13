@@ -14,13 +14,29 @@ def slot_namespace(leaf: str) -> str:
 
 
 def slot_context(snapshot: SnapshotMeta) -> dict:
-    return parse(snapshot.scope)
+    try:
+        context = parse(snapshot.scope)
+    except (ValueError, TypeError) as error:
+        raise CliError(INVALID_RESPONSE, "cached query context is invalid") from error
+    if (
+        not isinstance(context, dict)
+        or not isinstance(context.get("query"), dict)
+        or "variant" not in context
+        or "selection" not in context
+    ):
+        raise CliError(INVALID_RESPONSE, "cached query context is invalid")
+    return context
 
 
 def read_slot(store: Cache, leaf: str) -> tuple[SnapshotMeta | None, list[dict]]:
     store.ensure_temporary_format()
     snapshot, records = store.read(slot_namespace(leaf))
-    rows = [parse(body) for _, body in records]
+    try:
+        rows = [parse(body) for _, body in records]
+    except (ValueError, TypeError) as error:
+        raise CliError(INVALID_RESPONSE, "cached query records are invalid") from error
+    if snapshot is not None:
+        slot_context(snapshot)
     if snapshot is not None and (
         len(rows) != snapshot.row_count
         or any(not isinstance(row, dict) for row in rows)
