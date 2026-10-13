@@ -9,7 +9,7 @@ import pytest
 from dogopencli.jsonutil import parse
 
 pytest_plugins = ["test_liquidity_cli_sit"]
-QUERY = ["liquidity", "cash", "pool-balances", "list", "--all"]
+QUERY = ["liquidity", "cash", "pool-balances", "list", "--limit", "0"]
 REFRESH = ["refresh", "liquidity", "cash", "pool-balances"]
 FIXTURE = Path(__file__).parents[1] / "fixtures/liquidity/pool-balances.json"
 
@@ -74,7 +74,7 @@ def test_public_refresh_live_offline_preserves_native_values_and_cache(setup, ru
     assert meta["source"] == "cache"
     assert meta["complete"] is True
     assert meta["source_observed_from"] is None
-    assert "pool-balances-v1" in meta["scope"]
+    assert meta["capability"] == "liquidity.cash.pool-balances.list"
     row = offline["data"][0]
     member = row["cashPoolMemberVOS"][0]
     assert row["currentBalance"] == "321.123400"
@@ -205,48 +205,42 @@ def test_partial_strict_rollback_default_publication_and_empty_capture(setup, ru
     assert parse(out)["meta"]["complete"] is False
     assert run_cli([*QUERY, "--require-complete"])[0] == 1
     setup.state.reachable = True
-    seed(setup, run_cli, [])
+    before_empty = setup.cache_path.read_bytes()
+    empty = seed(setup, run_cli, [])
+    assert empty["data"]["published"] is False
+    assert empty["data"]["row_count"] == 0
+    assert setup.cache_path.read_bytes() == before_empty
     setup.state.reachable = False
-    code, out, err = run_cli([*QUERY, "--require-complete"])
-    assert code == 0, err
-    assert parse(out)["data"] == []
-    assert parse(out)["meta"]["complete"] is True
+    code, out, err = run_cli(QUERY)
+    assert code == 0 and len(parse(out)["data"]) == 100
+    assert parse(out)["meta"]["complete"] is False
+    assert run_cli([*QUERY, "--require-complete"])[0] == 1
 
 
-def test_pool_settings_list_and_detail_remain_independent(setup, run_cli):
+def test_pool_settings_list_and_native_detail_remain_independent(setup, run_cli):
     row = pool()
     setup.state.business_handler = lambda payload, index: response([row])
     assert run_cli(["refresh", "liquidity", "cash", "pools"])[0] == 0
+    listing = ["liquidity", "cash", "pools", "list"]
+    before_list = parse(run_cli(listing)[1])["data"]
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": {"success": True, "data": row},
     }
-    assert (
-        run_cli(
-            [
-                "refresh",
-                "liquidity",
-                "cash",
-                "pools",
-                "detail",
-                "get",
-                "--pool-id",
-                row["id"],
-            ]
-        )[0]
-        == 0
+    before_get = setup.cache_path.read_bytes()
+    code, out, err = run_cli(
+        ["liquidity", "cash", "pools", "get", "--pool-id", row["id"]]
     )
-    settings_queries = [
-        ["liquidity", "cash", "pools", "list"],
-        ["liquidity", "cash", "pools", "get", "--pool-id", row["id"]],
-    ]
-    before = [parse(run_cli(q)[1])["data"] for q in settings_queries]
+    assert code == 0, err
+    assert "currentBalance" not in parse(out)["data"]
+    assert setup.cache_path.read_bytes() == before_get
     seed(setup, run_cli)
     setup.state.reachable = False
-    after = [parse(run_cli(q)[1])["data"] for q in settings_queries]
-    assert before == after
-    assert "currentBalance" not in after[0][0]
-    assert "currentBalance" not in after[1]
+    assert parse(run_cli(listing)[1])["data"] == before_list
+    assert "currentBalance" not in before_list[0]
+    assert (
+        run_cli(["liquidity", "cash", "pools", "get", "--pool-id", row["id"]])[0] == 1
+    )
     code, out, _ = run_cli(QUERY)
     assert (
         code == 0 and parse(out)["data"][0]["currentBalance"] == row["currentBalance"]
