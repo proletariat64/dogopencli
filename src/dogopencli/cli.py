@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from . import collect as collect_mod
 from . import config as config_mod
-from .cache import Cache, SnapshotMeta, namespace
+from .cache import Cache, SnapshotMeta
 from .cached_query import CachedQuery, is_stale, read_cached_query, snapshot_meta
 from .errors import (
     AUTH_REQUIRED,
@@ -25,11 +25,9 @@ from .errors import (
     EXIT_INTERRUPTED,
     EXIT_OK,
     EXIT_USAGE,
-    INCOMPLETE_RESULT,
     INVALID_ARGUMENT,
     INVALID_RESPONSE,
     LIVE_SOURCE_UNAVAILABLE,
-    NOT_FOUND,
     SOURCE_DATA_INVALID,
     SOURCE_SCOPE_UNAVAILABLE,
     TIMEOUT,
@@ -38,7 +36,7 @@ from .errors import (
 from .helpspec import BizNode, OptionSpec, add_options
 from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
-from .jsonutil import canonical
+from .jsonutil import canonical, parse
 from .plugins import (
     Capability,
     ConfigurationCapability,
@@ -59,8 +57,9 @@ from .plugins.payment import ptr as payment_ptr
 from .plugins.payment import ptr_orders as payment_ptr_orders
 from .plugins.payment import rules as payment_rules
 from .plugins.payment.channel import assign_seqids, validate_cached_record
-from .plugins.payment.sla import SLA_DETAIL, detail_body, validate_cached_pair
+from .plugins.payment.sla import SLA_DETAIL, detail_body
 from .plugins.payment.sla import parse_detail as parse_payment_sla_detail
+from .plugins.payment.sla import validate_cached_record as validate_sla_record
 from .result_policy import (
     AcquisitionEvidence,
     check_complete,
@@ -68,6 +67,14 @@ from .result_policy import (
     prepare_result,
 )
 from .table import render_table
+from .temporary_query import (
+    display_options,
+    prune_slot,
+    publish_candidate,
+    slot_context,
+    window_rows,
+)
+from .temporary_query import query_namespace as namespace
 from .transport import QueryRequest, validate_request
 from .transport.cdp import CdpQueryTransport, FetchFailed
 from .transport.snapshot import SnapshotTransport, load_dataset
@@ -89,6 +96,12 @@ def _parse_time(value: str) -> datetime:
 
 
 def _emit(data: Any, meta: Any, error: Any = None, *, prepared: bool = False) -> None:
+    if isinstance(data, dict) and data.get("published") and data.get("row_count") == 0:
+        data = {
+            **data,
+            "published": False,
+            "reason": "empty acquisition; prior cache preserved",
+        }
     if error is None and isinstance(meta, dict) and not prepared:
         if isinstance(data, dict) and "published" in data:
             meta = {**meta, "published": data["published"]}
@@ -132,6 +145,7 @@ def cmd_refresh_channel(args: argparse.Namespace) -> int:
     capability = get_capability(CHANNEL)
     config = config_mod.load([capability.source_config_key])
     source = config.sources[capability.source_config_key]
+    args.payout_type = args.payout_type or capability.default_scope
     if source.kind == config_mod.SOURCE_CDP:
         return _refresh_channel_cdp(args, capability, config, source)
     return _refresh_channel_snapshot(
@@ -179,7 +193,9 @@ def _refresh_channel_cdp(
             row_count=len(rows),
         )
         collect_mod.remaining_seconds(result.deadline)
-        store.publish(snapshot, [(row["seqid"], canonical(row)) for row in rows])
+        publish_candidate(
+            store, snapshot, [(row["seqid"], canonical(row)) for row in rows]
+        )
     print(f"refresh: published {len(rows)} rows to {ns}", file=sys.stderr)
     stale = is_stale(snapshot, config.ttl_hours, _now())
     _emit(
@@ -307,7 +323,7 @@ def _refresh_channel_snapshot(
             source_path=str(dataset_path.expanduser().resolve()),
             acquisition=evidence.record(),
         )
-        store.publish(snapshot, keyed)
+        publish_candidate(store, snapshot, keyed)
     print(
         f"refresh: published {dataset.row_count} rows to {ns}",
         file=sys.stderr,
@@ -369,7 +385,7 @@ def _cmd_channel_list_live(
     check_complete(evidence_for(result), require_complete=args.require_complete)
     rows = capability.filter_records(assign_seqids(result.records), filters)
     matched_total = len(rows)
-    window = rows[offset:] if args.all else rows[offset : offset + limit]
+    window = rows[offset:] if limit == 0 else rows[offset : offset + limit]
     meta = _live_meta(
         source,
         args.payout_type,
@@ -388,6 +404,8 @@ def cmd_channel_list(args: argparse.Namespace) -> int:
     config = config_mod.load([capability.source_config_key])
     source = config.sources[capability.source_config_key]
     filters = _list_filters(args)
+    if args.live:
+        args.payout_type = args.payout_type or capability.default_scope
     if source.kind == config_mod.SOURCE_CDP:
         if args.live:
             return _cmd_channel_list_live(
@@ -395,7 +413,10 @@ def cmd_channel_list(args: argparse.Namespace) -> int:
             )
     else:
         source = _snapshot_source(config, capability.source_config_key)
-        if args.payout_type != capability.default_scope:
+        if (
+            args.payout_type is not None
+            and args.payout_type != capability.default_scope
+        ):
             raise CliError(
                 SOURCE_SCOPE_UNAVAILABLE, "snapshot source only covers EXTERNAL"
             )
@@ -415,13 +436,17 @@ def cmd_channel_list(args: argparse.Namespace) -> int:
         now=_now(),
     )
     records = cached.validated_records(
-        lambda row: validate_cached_record(row, args.payout_type),
+        lambda row: validate_cached_record(
+            row, slot_context(cached.snapshot)["query"]["scope"]
+        ),
         lambda row: row["seqid"],
         coverage_error="cached channel snapshot coverage is invalid",
     )
+    if args.payout_type is not None:
+        records = [row for row in records if row.get("payoutType") == args.payout_type]
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
-    window = matched[offset:] if args.all else matched[offset : offset + limit]
+    window = window_rows(matched, limit, offset)
     meta = cached.meta(matched_total, len(window), offset=offset)
     return _emit_window(args, capability, window, meta, fields)
 
@@ -429,20 +454,7 @@ def cmd_channel_list(args: argparse.Namespace) -> int:
 def _display_options(
     args: argparse.Namespace,
 ) -> tuple[int, int, list[str] | None]:
-    if args.all and (args.limit is not None or args.offset is not None):
-        raise _argument_error("--all conflicts with explicit --limit/--offset")
-    limit = 100 if args.limit is None else args.limit
-    if limit <= 0:
-        raise _argument_error("--limit must be a positive integer")
-    offset = 0 if args.offset is None else args.offset
-    if offset < 0:
-        raise _argument_error("--offset must not be negative")
-    fields: list[str] | None = None
-    if args.fields is not None:
-        fields = [name.strip() for name in args.fields.split(",") if name.strip()]
-        if not fields:
-            raise _argument_error("--fields must name at least one field")
-    return limit, offset, fields
+    return display_options(args)
 
 
 def _emit_window(
@@ -532,7 +544,8 @@ def _refresh_cost(args: argparse.Namespace, capability_name: str) -> int:
             row_count=len(records),
         )
         collect_mod.remaining_seconds(result.deadline)
-        store.publish(
+        publish_candidate(
+            store,
             snapshot,
             [(index, canonical(record)) for index, record in enumerate(records, 1)],
         )
@@ -581,7 +594,7 @@ def _cmd_cost_list_live(
     check_complete(evidence_for(result), require_complete=args.require_complete)
     records = capability.sort_records(result.records)
     matched_total = len(records)
-    window = records[offset:] if args.all else records[offset : offset + limit]
+    window = records[offset:] if limit == 0 else records[offset : offset + limit]
     meta = {
         "source": "live",
         "backend": source.kind,
@@ -643,7 +656,7 @@ def _cost_list(
     )
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
-    window = matched[offset:] if args.all else matched[offset : offset + limit]
+    window = matched[offset:] if limit == 0 else matched[offset : offset + limit]
     meta = cached.meta(matched_total, len(window), offset=offset)
     return _emit_window(args, capability, window, meta, fields)
 
@@ -711,72 +724,11 @@ def _fetch_sla_detail(
 
 
 def cmd_refresh_sla(args: argparse.Namespace) -> int:
-    capability = get_capability(SLA)
-    config = config_mod.load([capability.source_config_key])
-    source = _cdp_source(config, capability.source_config_key)
-    store = Cache(config.cache_path)
-    ns = namespace(capability.name, capability.default_scope, source.kind)
-    with store.refresh_lock():
-        with inquiry_session(config_file=config_mod.config_path()) as session:
-            transport = session.transport(capability)
-            detail_transport = session.transport(SLA_DETAIL)
-            deadline = collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS
-            result = collect_mod.collect_scope(
-                capability,
-                transport,
-                capability.default_scope,
-                progress=_progress,
-            )
-            evidence = evidence_for(result)
-            check_complete(
-                evidence,
-                require_complete=getattr(args, "require_complete", False),
-                mode="refresh",
-            )
-            baselines = capability.sort_records(result.records)
-            details: list[dict[str, Any]] = []
-            for index, record in enumerate(baselines, 1):
-                details.append(
-                    _fetch_sla_detail(detail_transport, record["id"], deadline)
-                )
-                print(
-                    f"refresh: collected detail {index}/{len(baselines)}",
-                    file=sys.stderr,
-                )
-        rows = [
-            {"id": baseline["id"], "baseline": baseline, "detail": detail}
-            for baseline, detail in zip(baselines, details, strict=True)
-        ]
-        fetched_at = _now().isoformat()
-        snapshot = SnapshotMeta(
-            namespace=ns,
-            capability=capability.name,
-            scope=capability.default_scope,
-            source_kind=source.kind,
-            snapshot_id=hashlib.sha256(canonical(rows).encode()).hexdigest(),
-            dataset_id=None,
-            simulated=False,
-            backend_complete=evidence.scope_complete,
-            dataset_complete=evidence.dataset_complete,
-            fetched_at=fetched_at,
-            loaded_at=_now().isoformat(),
-            source_observed_from=None,
-            source_observed_to=None,
-            acquisition=evidence.record(),
-            row_count=len(rows),
-        )
-        collect_mod.remaining_seconds(deadline)
-        store.publish(
-            snapshot,
-            [(index, canonical(row)) for index, row in enumerate(rows, 1)],
-        )
-    print(f"refresh: published {len(rows)} rows to {ns}", file=sys.stderr)
-    stale = is_stale(snapshot, config.ttl_hours, _now())
-    _emit(
-        {"namespace": ns, "published": True, "row_count": len(rows)},
-        snapshot_meta("cache", snapshot, stale, len(rows), len(rows), False),
+    return _refresh_validated_list(
+        get_capability(SLA),
+        "list",
+        require_complete=getattr(args, "require_complete", False),
     )
-    return EXIT_OK
 
 
 def _sla_filters(args: argparse.Namespace) -> dict[str, list[str]]:
@@ -853,7 +805,7 @@ def _cmd_sla_list_live(
     check_complete(evidence_for(result), require_complete=args.require_complete)
     records = capability.sort_records(result.records)
     matched_total = len(records)
-    window = records[offset:] if args.all else records[offset : offset + limit]
+    window = records[offset:] if limit == 0 else records[offset : offset + limit]
     meta = _live_meta(
         source,
         capability.default_scope,
@@ -893,14 +845,14 @@ def cmd_sla_list(args: argparse.Namespace) -> int:
         now=_now(),
     )
     pairs = cached.validated_records(
-        validate_cached_pair,
+        validate_sla_record,
         lambda row: row["id"],
         coverage_error="cached SLA snapshot coverage is invalid",
     )
-    records = [pair["baseline"] for pair in pairs]
+    records = pairs
     matched = capability.sort_records(capability.filter_records(records, filters))
     matched_total = len(matched)
-    window = matched[offset:] if args.all else matched[offset : offset + limit]
+    window = matched[offset:] if limit == 0 else matched[offset : offset + limit]
     meta = cached.meta(matched_total, len(window), offset=offset)
     return _emit_window(args, capability, window, meta, fields)
 
@@ -934,47 +886,15 @@ def cmd_sla_get(args: argparse.Namespace) -> int:
             raise _argument_error("--fields must name at least one field")
     config = config_mod.load([capability.source_config_key])
     source = _cdp_source(config, capability.source_config_key)
-    if args.live:
-        with inquiry_session(config_file=config_mod.config_path()) as session:
-            transport = session.transport(SLA_DETAIL)
-            detail = _fetch_sla_detail(
-                transport,
-                args.id,
-                collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS,
-            )
-        meta = _live_meta(source, capability.default_scope, True, 1, 1, 0)
-        meta["query"] = {"capability": SLA_DETAIL.name, "id": args.id}
-        return _emit_object(args, capability, detail, meta, fields)
-    cached = read_cached_query(
-        config,
-        source,
-        capability.name,
-        capability.default_scope,
-        refresh_command="refresh payment sla",
-        require_fresh=args.require_fresh,
-        require_complete=args.require_complete,
-        now=_now(),
-    )
-    detail: dict[str, Any] | None = None
-    pairs = cached.validated_records(
-        validate_cached_pair,
-        lambda row: row["id"],
-        coverage_error="cached SLA snapshot coverage is invalid",
-    )
-    for row in pairs:
-        if row["id"] == args.id:
-            detail = row["detail"]
-            break
-    if detail is None:
-        if not cached.snapshot.backend_complete:
-            raise CliError(
-                INCOMPLETE_RESULT, "cannot confirm absence in incomplete SLA snapshot"
-            )
-        raise CliError(
-            NOT_FOUND,
-            f"SLA baseline {args.id} is not present in the cached snapshot",
+    with inquiry_session(config_file=config_mod.config_path()) as session:
+        transport = session.transport(SLA_DETAIL)
+        detail = _fetch_sla_detail(
+            transport,
+            args.id,
+            collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS,
         )
-    meta = cached.meta(1, 1)
+    meta = _live_meta(source, capability.default_scope, True, 1, 1, 0)
+    meta["query"] = {"capability": SLA_DETAIL.name, "id": args.id}
     return _emit_object(args, capability, detail, meta, fields)
 
 
@@ -995,8 +915,8 @@ def _collection_sla_cached(
         now=_now(),
     )
     return cached, cached.validated_records(
-        collection_sla.validate_stored_pair,
-        lambda record: record["config"]["slaConfigId"],
+        collection_sla._validate_record,
+        lambda record: record["slaConfigId"],
         coverage_error="cached SLA configuration coverage is invalid",
     )
 
@@ -1016,71 +936,11 @@ def _fetch_collection_sla_detail(
 
 
 def cmd_refresh_collection_sla(args: argparse.Namespace) -> int:
-    cap = collection_sla.COLLECTION_SLA
-    config = config_mod.load([cap.source_config_key])
-    source = _cdp_source(config, cap.source_config_key)
-    store = Cache(config.cache_path)
-    ns = namespace(cap.name, cap.default_scope, source.kind)
-    with store.refresh_lock():
-        with inquiry_session(config_file=config_mod.config_path()) as session:
-            result = collect_mod.collect_scope(
-                cap,
-                session.transport(cap),
-                cap.default_scope,
-                progress=_progress,
-            )
-            evidence = evidence_for(result)
-            check_complete(
-                evidence,
-                require_complete=getattr(args, "require_complete", False),
-                mode="refresh",
-            )
-            transport = session.transport(collection_sla.COLLECTION_SLA_DETAIL)
-            pairs = []
-            for record in cap.sort_records(result.records):
-                detail = _fetch_collection_sla_detail(
-                    transport, record[cap.id_field], result.deadline
-                )
-                collection_sla.validate_pair(record, detail)
-                pairs.append({"config": record, "detail": detail})
-                print(
-                    f"refresh: collected detail {len(pairs)}/{len(result.records)}",
-                    file=sys.stderr,
-                )
-        fetched_at = _now().isoformat()
-        snapshot = SnapshotMeta(
-            namespace=ns,
-            capability=cap.name,
-            scope=cap.default_scope,
-            source_kind=source.kind,
-            snapshot_id=hashlib.sha256(canonical(pairs).encode()).hexdigest(),
-            dataset_id=None,
-            simulated=False,
-            backend_complete=evidence.scope_complete,
-            dataset_complete=evidence.dataset_complete,
-            fetched_at=fetched_at,
-            loaded_at=_now().isoformat(),
-            source_observed_from=None,
-            source_observed_to=None,
-            acquisition=evidence.record(),
-            row_count=len(pairs),
-        )
-        collect_mod.remaining_seconds(result.deadline)
-        store.publish(
-            snapshot, [(i, canonical(pair)) for i, pair in enumerate(pairs, 1)]
-        )
-    _emit(
-        {"namespace": ns, "published": True, "row_count": len(pairs)},
-        snapshot_meta(
-            "cache",
-            snapshot,
-            is_stale(snapshot, config.ttl_hours, _now()),
-            len(pairs),
-            len(pairs),
-            False,
-        ),
+    return _refresh_validated_list(
+        collection_sla.COLLECTION_SLA,
+        "list",
+        require_complete=getattr(args, "require_complete", False),
     )
-    return EXIT_OK
 
 
 def cmd_collection_sla_list(args: argparse.Namespace) -> int:
@@ -1102,7 +962,7 @@ def cmd_collection_sla_list(args: argparse.Namespace) -> int:
             )
         check_complete(evidence_for(result), require_complete=args.require_complete)
         records = cap.sort_records(cap.filter_records(result.records, filters))
-        window = records[offset:] if args.all else records[offset : offset + limit]
+        window = records[offset:] if limit == 0 else records[offset : offset + limit]
         meta = _live_meta(
             source,
             cap.default_scope,
@@ -1114,10 +974,8 @@ def cmd_collection_sla_list(args: argparse.Namespace) -> int:
         meta.update(evidence_for(result).meta())
     else:
         cached, pairs = _collection_sla_cached(args, config, source)
-        records = cap.sort_records(
-            cap.filter_records([pair["config"] for pair in pairs], filters)
-        )
-        window = records[offset:] if args.all else records[offset : offset + limit]
+        records = cap.sort_records(cap.filter_records(pairs, filters))
+        window = records[offset:] if limit == 0 else records[offset : offset + limit]
         meta = cached.meta(len(records), len(window), offset=offset)
     return _emit_window(args, cap, window, meta, fields)
 
@@ -1133,67 +991,26 @@ def cmd_collection_sla_get(args: argparse.Namespace) -> int:
     cap = collection_sla.COLLECTION_SLA
     config = config_mod.load([cap.source_config_key])
     source = _cdp_source(config, cap.source_config_key)
-    if args.live:
-        with inquiry_session(config_file=config_mod.config_path()) as session:
-            detail = _fetch_collection_sla_detail(
-                session.transport(collection_sla.COLLECTION_SLA_DETAIL),
-                args.id,
-                collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS,
-            )
-        meta = _live_meta(source, cap.default_scope, True, 1, 1, 0)
-        meta["query"] = {
-            "capability": collection_sla.COLLECTION_SLA_DETAIL.name,
-            "id": args.id,
-        }
-    else:
-        cached, pairs = _collection_sla_cached(args, config, source)
-        detail = next(
-            (
-                pair["detail"]
-                for pair in pairs
-                if pair["config"]["slaConfigId"] == args.id
-            ),
-            None,
+    with inquiry_session(config_file=config_mod.config_path()) as session:
+        detail = _fetch_collection_sla_detail(
+            session.transport(collection_sla.COLLECTION_SLA_DETAIL),
+            args.id,
+            collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS,
         )
-        if detail is None:
-            if not cached.snapshot.backend_complete:
-                raise CliError(
-                    INCOMPLETE_RESULT,
-                    "cannot confirm absence in incomplete SLA snapshot",
-                )
-            raise CliError(
-                NOT_FOUND, "SLA configuration is not present in the cached snapshot"
-            )
-        meta = cached.meta(1, 1)
+    meta = _live_meta(source, cap.default_scope, True, 1, 1, 0)
+    meta["query"] = {
+        "capability": collection_sla.COLLECTION_SLA_DETAIL.name,
+        "id": args.id,
+    }
     return _emit_object(args, cap, detail, meta, fields)
 
 
 def cmd_refresh_collection_va(args: argparse.Namespace) -> int:
-    cap = collection_va.COLLECTION_VA_RULES
-    config = config_mod.load([cap.source_config_key])
-    source = _cdp_source(config, cap.source_config_key)
-    snapshot = va_rule_inquiry.refresh(
-        config,
-        source,
-        session_factory=lambda: inquiry_session(config_file=config_mod.config_path()),
+    return _refresh_validated_list(
+        collection_va.COLLECTION_VA_RULES,
+        "list",
         require_complete=getattr(args, "require_complete", False),
-        now=_now,
-        progress=_progress,
-        detail_progress=lambda message: print(message, file=sys.stderr),
     )
-    count = snapshot.row_count
-    _emit(
-        {"namespace": snapshot.namespace, "published": True, "row_count": count},
-        snapshot_meta(
-            "cache",
-            snapshot,
-            is_stale(snapshot, config.ttl_hours, _now()),
-            count,
-            count,
-            False,
-        ),
-    )
-    return EXIT_OK
 
 
 def cmd_collection_va_rules_list(args: argparse.Namespace) -> int:
@@ -1208,7 +1025,7 @@ def cmd_collection_va_rules_list(args: argparse.Namespace) -> int:
             )
         check_complete(evidence_for(result), require_complete=args.require_complete)
         records = cap.sort_records(result.records)
-        window = records[offset:] if args.all else records[offset : offset + limit]
+        window = records[offset:] if limit == 0 else records[offset : offset + limit]
         meta = _live_meta(
             source,
             cap.default_scope,
@@ -1219,16 +1036,23 @@ def cmd_collection_va_rules_list(args: argparse.Namespace) -> int:
         )
         meta.update(evidence_for(result).meta())
     else:
-        snapshot = va_rule_inquiry.read_snapshot(
+        cached = read_cached_query(
             config,
             source,
+            cap.name,
+            cap.default_scope,
+            refresh_command="refresh collection va",
             require_fresh=args.require_fresh,
             require_complete=args.require_complete,
             now=_now(),
         )
-        records = cap.sort_records(snapshot.rows)
-        window = records[offset:] if args.all else records[offset : offset + limit]
-        meta = snapshot.meta(len(records), len(window), offset=offset)
+        records = cached.validated_records(
+            collection_va._validate_row,
+            lambda row: row["vaRuleId"],
+            coverage_error="cached VA rule coverage invalid",
+        )
+        window = window_rows(records, limit, offset)
+        meta = cached.meta(len(records), len(window), offset=offset)
     return _emit_window(args, cap, window, meta, fields)
 
 
@@ -1243,27 +1067,16 @@ def cmd_collection_va_rules_get(args: argparse.Namespace) -> int:
     cap = collection_va.COLLECTION_VA_RULES
     config = config_mod.load([cap.source_config_key])
     source = _cdp_source(config, cap.source_config_key)
-    if args.live:
-        with inquiry_session(config_file=config_mod.config_path()) as session:
-            detail = va_rule_inquiry.fetch_detail(
-                session.transport(collection_va.COLLECTION_VA_RULES_DETAIL),
-                args.id,
-            )
-        meta = _live_meta(source, cap.default_scope, True, 1, 1, 0)
-        meta["query"] = {
-            "capability": collection_va.COLLECTION_VA_RULES_DETAIL.name,
-            "id": args.id,
-        }
-    else:
-        snapshot = va_rule_inquiry.read_snapshot(
-            config,
-            source,
-            require_fresh=args.require_fresh,
-            require_complete=args.require_complete,
-            now=_now(),
+    with inquiry_session(config_file=config_mod.config_path()) as session:
+        detail = va_rule_inquiry.fetch_detail(
+            session.transport(collection_va.COLLECTION_VA_RULES_DETAIL),
+            args.id,
         )
-        detail = snapshot.detail(args.id)
-        meta = snapshot.meta(1, 1)
+    meta = _live_meta(source, cap.default_scope, True, 1, 1, 0)
+    meta["query"] = {
+        "capability": collection_va.COLLECTION_VA_RULES_DETAIL.name,
+        "id": args.id,
+    }
     return _emit_object(args, cap, detail, meta, fields)
 
 
@@ -1327,7 +1140,11 @@ def _refresh_validated_list(
         snapshot = SnapshotMeta(
             namespace=ns,
             capability=cap.name,
-            scope=cap.default_scope,
+            scope=canonical(
+                {"updated_from": cap.updated_from, "updated_to": cap.updated_to}
+            )
+            if hasattr(cap, "updated_from")
+            else cap.default_scope,
             source_kind=source.kind,
             snapshot_id=hashlib.sha256(canonical(records).encode()).hexdigest(),
             dataset_id=None,
@@ -1342,7 +1159,8 @@ def _refresh_validated_list(
             row_count=len(records),
         )
         collect_mod.remaining_seconds(result.deadline)
-        store.publish(
+        publish_candidate(
+            store,
             snapshot,
             [(index, canonical(record)) for index, record in enumerate(records, 1)],
         )
@@ -1376,7 +1194,7 @@ def cmd_collection_va_capacity_list(args: argparse.Namespace) -> int:
             )
         check_complete(evidence_for(result), require_complete=args.require_complete)
         records = cap.sort_records(cap.filter_records(result.records, filters))
-        window = records[offset:] if args.all else records[offset : offset + limit]
+        window = records[offset:] if limit == 0 else records[offset : offset + limit]
         meta = _live_meta(
             source,
             cap.default_scope,
@@ -1389,7 +1207,7 @@ def cmd_collection_va_capacity_list(args: argparse.Namespace) -> int:
     else:
         cached, records = _collection_va_capacity_cached(args, config, source)
         records = cap.sort_records(cap.filter_records(records, filters))
-        window = records[offset:] if args.all else records[offset : offset + limit]
+        window = records[offset:] if limit == 0 else records[offset : offset + limit]
         meta = cached.meta(len(records), len(window), offset=offset)
     return _emit_window(args, cap, window, meta, fields)
 
@@ -1438,7 +1256,7 @@ def _list_configuration(
             )
         check_complete(evidence_for(result), require_complete=args.require_complete)
         records = cap.sort_records(cap.filter_records(result.records, filters))
-        window = records[offset:] if args.all else records[offset : offset + limit]
+        window = records[offset:] if limit == 0 else records[offset : offset + limit]
         meta = _live_meta(
             source,
             cap.default_scope,
@@ -1451,7 +1269,7 @@ def _list_configuration(
     else:
         cached, records = _configuration_cached(args, config, source, cap)
         records = cap.sort_records(cap.filter_records(records, filters))
-        window = records[offset:] if args.all else records[offset : offset + limit]
+        window = records[offset:] if limit == 0 else records[offset : offset + limit]
         meta = cached.meta(len(records), len(window), offset=offset)
     return _emit_window(args, cap, window, meta, fields)
 
@@ -1493,8 +1311,48 @@ def cmd_refresh_collection_card_template(args: argparse.Namespace) -> int:
 
 
 def cmd_payment_ptr_orders_list(args: argparse.Namespace) -> int:
-    cap = payment_ptr_orders.bind_window(args.updated_from, args.updated_to)
-    return _list_configuration(args, cap)
+    if args.live:
+        cap = payment_ptr_orders.bind_window(args.updated_from, args.updated_to)
+        return _list_configuration(args, cap)
+    config = config_mod.load([payment_ptr_orders.ORDERS.source_config_key])
+    source = _cdp_source(config, payment_ptr_orders.ORDERS.source_config_key)
+    cached = read_cached_query(
+        config,
+        source,
+        payment_ptr_orders.ORDERS.name,
+        "",
+        refresh_command=(
+            "refresh payment ptr orders --updated-from FROM --updated-to TO"
+        ),
+        require_fresh=args.require_fresh,
+        require_complete=False,
+        now=_now(),
+    )
+    saved = parse(slot_context(cached.snapshot)["query"]["scope"])
+    cap = payment_ptr_orders.bind_window(saved["updated_from"], saved["updated_to"])
+    rows = cached.validated_records(
+        cap.validate_row,
+        lambda row: row["ptrOrderId"],
+        coverage_error="cached PTR order coverage invalid",
+    )
+    if args.updated_from is not None or args.updated_to is not None:
+        requested = payment_ptr_orders.bind_window(args.updated_from, args.updated_to)
+        rows = [
+            row
+            for row in rows
+            if requested.start_ms <= row["gmtModified"] < requested.end_ms
+        ]
+    filters = {
+        field: getattr(args, flag.replace("-", "_"))
+        for flag, field in cap.filters
+        if getattr(args, flag.replace("-", "_"))
+    }
+    rows = cap.filter_records(rows, filters)
+    limit, offset, fields = _display_options(args)
+    window = window_rows(rows, limit, offset)
+    return _emit_window(
+        args, cap, window, cached.meta(len(rows), len(window), offset=offset), fields
+    )
 
 
 def cmd_refresh_payment_ptr_orders(args: argparse.Namespace) -> int:
@@ -1570,6 +1428,20 @@ def cmd_fx_trade(args: argparse.Namespace) -> int:
     from .plugins.fx.query import run_trade
 
     return run_trade(args)
+
+
+def cmd_refresh_fx_trade(args: argparse.Namespace) -> int:
+    from .plugins.fx.query import run_refresh
+
+    return run_refresh(args)
+
+
+def cmd_prune(args: argparse.Namespace) -> int:
+    leaf = ".".join(args.command_path[:-1])
+    config = config_mod.load([])
+    removed = prune_slot(Cache(config.cache_path), leaf)
+    _emit({"pruned": removed, "leaf": leaf}, {"source": "cache"})
+    return EXIT_OK
 
 
 def cmd_liquidity_list(args: argparse.Namespace) -> int:
@@ -1706,6 +1578,12 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
     remaining = [
         token for index, token in enumerate(values) if index not in word_indices
     ]
+    if "--all" in remaining:
+        return _emit_error(
+            _argument_error(
+                "--all removed; use --limit 0 for output or supported --entity ANY"
+            )
+        )
     alias_check = _check_alias_spellings(node, remaining)
     if isinstance(alias_check, CliError):
         # No successfully parsed output format exists yet; use the JSON default.
@@ -1720,6 +1598,12 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
         args.describe_path = node.path[1:]
     # Generic plugin handlers resolve their leaf from the command path.
     args.command_path = node.path
+    if "--all" in remaining:
+        return _emit_error(
+            _argument_error(
+                "--all removed; use --limit 0 for output or supported --entity ANY"
+            )
+        )
     # business_entry only routes executable nodes, so handler is bound.
     if node.handler is None:
         return _emit_error(_argument_error("command is not executable"))

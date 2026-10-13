@@ -197,7 +197,7 @@ def description(node: BizNode) -> dict[str, Any]:
             ),
             "examples": [
                 "dogopencli collection va capacity list --require-fresh",
-                "dogopencli collection va capacity list --va-rule-id RULE_ID --all",
+                "dogopencli collection va capacity list --va-rule-id RULE_ID --limit 0",
                 "dogopencli refresh collection va capacity",
             ],
         },

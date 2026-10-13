@@ -124,7 +124,7 @@ def description(node: BizNode) -> dict[str, Any]:
             ],
             "evidence": "docs/research/general/2026-09-23-collection-discovery.md",
             "examples": [
-                "dogopencli collection cost list --all",
+                "dogopencli collection cost list --limit 0",
                 "dogopencli collection cost list --live --fields itemId,itemType",
             ],
         },

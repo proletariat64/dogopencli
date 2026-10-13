@@ -165,7 +165,7 @@ def description(node: BizNode) -> dict[str, Any]:
             ],
             "evidence": "docs/research/general/2026-09-23-collection-sla-query.md",
             "examples": [
-                "dogopencli collection sla configs list --all",
+                "dogopencli collection sla configs list --limit 0",
                 (
                     "dogopencli collection sla configs get --id CONFIG_ID "
                     "--fields slaConfigId,holidayLimit"

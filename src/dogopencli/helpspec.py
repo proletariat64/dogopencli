@@ -287,14 +287,13 @@ class BizNode:
 # Shared query options (declared once, reused by every query leaf).
 LIMIT = opt(
     "limit",
-    "Maximum rows to display; a positive integer.",
+    "Maximum rows to display; 0 displays all remaining rows.",
     "int",
     help_default=100,
     argument_contract=contract(
         "integer",
-        preferred_format="positive integer",
+        preferred_format="nonnegative integer",
         modes=display_modes(),
-        constraints=({"kind": "conflicts", "arguments": ["all"]},),
     ),
 )
 OFFSET = opt(
@@ -306,7 +305,6 @@ OFFSET = opt(
         "integer",
         preferred_format="nonnegative integer",
         modes=display_modes(),
-        constraints=({"kind": "conflicts", "arguments": ["all"]},),
     ),
 )
 ALL = opt(
@@ -393,8 +391,8 @@ CACHE_SEMANTICS = (
     " Usable incomplete live/cache results warn and exit 0 by default."
 )
 DISPLAY_WINDOW = (
-    "Display window: default shows 100 rows (limit=100, offset=0); --all"
-    " returns all matched rows and conflicts with explicit --limit/--offset."
+    "Display window: default shows 100 rows (limit=100, offset=0); --limit 0"
+    " returns all remaining matched rows after offset."
 )
 SEQID_UNSTABLE = "seqid is a local cache position and is not stable across datasets."
 LIVE_SINGLE_VALUE = "--live accepts a single value per filter."

@@ -111,7 +111,7 @@ LIST_NODE = BizNode(
     effects_variants=QUERY_EFFECTS_VARIANTS,
     output=QUERY_OUTPUT,
     errors=ERRORS,
-    examples=("dogopencli collection account-isolation list --all",),
+    examples=("dogopencli collection account-isolation list --limit 0",),
     next=("dogopencli help refresh collection account-isolation",),
     handler="cmd_collection_account_isolation_list",
 )

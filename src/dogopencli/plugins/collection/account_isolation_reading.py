@@ -92,7 +92,7 @@ def description(node: BizNode) -> dict[str, Any]:
             "2026-09-27-collection-account-isolation-contract.md",
             "examples": [
                 "dogopencli refresh collection account-isolation",
-                "dogopencli collection account-isolation list --all",
+                "dogopencli collection account-isolation list --limit 0",
             ],
         },
     }

@@ -263,7 +263,7 @@ COLLECTION_VA_RULE_LIST_NODE = BizNode(
     errors=_ERRORS,
     examples=(
         "dogopencli collection va rules list",
-        "dogopencli collection va rules list --all",
+        "dogopencli collection va rules list --limit 0",
         "dogopencli collection va rules list --live --fields vaRuleId,ruleStatus",
     ),
     next=(

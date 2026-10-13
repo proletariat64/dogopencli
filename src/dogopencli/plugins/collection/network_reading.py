@@ -121,7 +121,7 @@ def description(node: BizNode) -> dict[str, Any]:
                 f"docs/research/general/2026-09-27-collection-{cap.slug}-contract.md"
             ),
             "examples": [
-                f"dogopencli collection {cap.slug} list --currency GBP --all",
+                f"dogopencli collection {cap.slug} list --currency GBP --limit 0",
                 f"dogopencli refresh collection {cap.slug}",
             ],
         },

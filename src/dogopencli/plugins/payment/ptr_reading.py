@@ -74,7 +74,7 @@ LIST_NODE = BizNode(
     effects_variants=QUERY_EFFECTS_VARIANTS,
     output=QUERY_OUTPUT,
     errors=ERRORS,
-    examples=("dogopencli payment ptr cases list --case-type NEGATIVE --all",),
+    examples=("dogopencli payment ptr cases list --case-type NEGATIVE --limit 0",),
     next=("dogopencli help refresh payment ptr cases",),
     handler="cmd_payment_ptr_cases_list",
 )
@@ -134,6 +134,6 @@ def description(node: BizNode) -> dict[str, Any]:
                 "docs/research/payment/"
                 "2026-09-27-payment-ptr-cases-accounts-contract.md"
             ),
-            "examples": ["dogopencli payment ptr cases list --all"],
+            "examples": ["dogopencli payment ptr cases list --limit 0"],
         },
     }
