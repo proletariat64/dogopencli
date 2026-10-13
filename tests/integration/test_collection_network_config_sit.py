@@ -300,11 +300,15 @@ def test_help_inventory_and_navigation(run_cli, envelope, slug, monkeypatch):
         "options"
     ]
     assert {flag for option in refresh_options for flag in option["flags"]} == {
-        "--require-complete"
+        "--require-complete",
+        "--limit",
+        "--offset",
+        "--fields",
+        "--format",
     }
     for extra in [["--unknown"], ["--warning-state", "Y"], ["--profile", "x"]]:
         assert listing(run_cli, slug, *extra)[0] == 2
-    for extra in [["--currency", "GBP"], ["--limit", "0"], ["extra"]]:
+    for extra in [["--currency", "GBP"], ["--limit", "-1"], ["extra"]]:
         assert run_cli(["refresh", "collection", slug, *extra])[0] == 2
 
 

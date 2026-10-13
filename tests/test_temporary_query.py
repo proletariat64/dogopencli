@@ -106,7 +106,7 @@ def test_public_help_inventory_declares_uniform_list_operations(capsys):
                 or getattr(bindings.get(candidate), "name", None) == capability
             )
             for candidate, other in NODES.items()
-        )
+        ), path
 
 
 def test_format_switch_discards_legacy_once_and_preserves_external_inputs(tmp_path):

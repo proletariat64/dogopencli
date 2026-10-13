@@ -322,7 +322,11 @@ def test_offline_help_describe_and_bare_navigation(run_cli, envelope, monkeypatc
         run_cli(["help", "refresh", "collection", "va", "capacity"])[1]
     )
     assert {flag for option in refresh_help["options"] for flag in option["flags"]} == {
-        "--require-complete"
+        "--require-complete",
+        "--limit",
+        "--offset",
+        "--fields",
+        "--format",
     }
     # Bare refresh collection va keeps its executable rule refresh contract.
     va_help = envelope(run_cli(["help", "refresh", "collection", "va"])[1])
@@ -354,7 +358,6 @@ def test_bare_refresh_collection_va_still_executes_rule_refresh(
     config = setup.tmp_path / "config.toml"
     with config.open("a") as file:
         file.write('\n[sources.collection_va]\nkind = "cdp"\n')
-    from test_collection_va_rule_cli_sit import detail as rule_detail
     from test_collection_va_rule_cli_sit import page as rule_page
 
     setup.state.business_script.extend([rule_page()])
@@ -638,7 +641,7 @@ def test_unsupported_flags_rejected_before_browser(run_cli, envelope, setup):
         ["collection", "va", "capacity", "list", "--live", "--memo", "X"],
         ["collection", "va", "capacity", "get", "--id", "1"],
         ["refresh", "collection", "va", "capacity", "--va-rule-id", "1"],
-        ["refresh", "collection", "va", "capacity", "--limit", "0"],
+        ["refresh", "collection", "va", "capacity", "--limit", "-1"],
     ]:
         code, out, _ = run_cli(argv)
         assert code == 2, argv
@@ -703,7 +706,6 @@ def test_ctoken_never_reaches_output_cache_or_payloads(run_cli, setup):
 def test_namespace_isolation_vs_other_caches(run_cli, envelope, setup):
     from test_collection_cost_cli_sit import page as cost_page
     from test_collection_cost_cli_sit import row as cost_row
-    from test_collection_va_rule_cli_sit import detail as rule_detail
     from test_collection_va_rule_cli_sit import page as rule_page
 
     config = setup.tmp_path / "config.toml"

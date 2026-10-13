@@ -1012,3 +1012,17 @@ def test_temporary_cache_empty_preservation_limit_zero_and_prune(
     assert envelope(out)["data"]["pruned"] is True
     code, out, _ = listing(run_cli)
     assert envelope(out)["error"]["code"] == "CACHE_MISS"
+
+
+def test_refresh_output_controls_keep_complete_candidate(run_cli, envelope, cdp_setup):
+    rows = [channel_row(n) for n in range(1, 6)]
+    cdp_setup.state.business_handler = paging_handler({1: rows}, 5)
+    code, out, _ = refresh(
+        run_cli, "--limit", "1", "--offset", "50", "--fields", "abilityId"
+    )
+    assert code == 0, out
+    assert envelope(out)["data"]["published"] is True
+    cdp_setup.state.running = False
+    result = envelope(listing(run_cli, "--limit", "0")[1])
+    assert len(result["data"]) == 5
+    assert result["data"][0]["futureUnknownField"] == {"keep": ["as-is", 1]}

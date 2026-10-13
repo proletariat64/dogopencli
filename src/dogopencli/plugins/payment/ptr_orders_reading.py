@@ -231,6 +231,8 @@ def description(node: BizNode) -> dict[str, Any]:
             "evidence": (
                 "docs/research/payment/2026-09-27-payment-ptr-orders-contract.md"
             ),
-            "examples": [f"dogopencli payment ptr orders list {EXAMPLE_WINDOW} --limit 0"],
+            "examples": [
+                f"dogopencli payment ptr orders list {EXAMPLE_WINDOW} --limit 0"
+            ],
         },
     }

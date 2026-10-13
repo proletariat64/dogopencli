@@ -87,7 +87,7 @@ def display_modes() -> dict[str, Any]:
     return {
         "cache": _mode(ROLE_DISPLAY, SINGLE),
         "live": _mode(ROLE_DISPLAY, SINGLE),
-        "refresh": _unavailable(),
+        "refresh": _mode(ROLE_DISPLAY, SINGLE),
     }
 
 

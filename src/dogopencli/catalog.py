@@ -12,6 +12,10 @@ from typing import Any
 from .auth.spec import SPECS as AUTH_SPECS
 from .describe import description_nodes
 from .helpspec import (
+    FIELDS,
+    FORMAT_TABLE,
+    LIMIT,
+    OFFSET,
     REFRESH_CDP_CONSTRAINTS,
     REFRESH_CDP_EFFECTS,
     REFRESH_CDP_ERRORS,
@@ -24,8 +28,8 @@ from .helpspec import (
 )
 from .helpspec import REFRESH_OUTPUT as _REFRESH_OUTPUT
 from .plugins import command_nodes, group_nodes, refresh_nodes
+from .plugins.fx.trade import FX_TRADE, TRADE_NODE
 from .plugins.fx.trade import GROUP_NODE as FX_GROUP
-from .plugins.fx.trade import TRADE_NODE
 from .plugins.payment.channel import CHANNEL_CAPABILITY
 from .plugins.payment.cost import COST_CAPABILITY
 from .plugins.payment.sla import SLA_CAPABILITY
@@ -286,6 +290,18 @@ def build_catalog(declarations: Iterable[BizNode]) -> dict[tuple[str, ...], BizN
                 ),
             )
         if node.path[:1] == ("refresh",) and node.handler is not None:
+            existing = {option.name for option in node.options}
+            node = replace(
+                node,
+                options=(
+                    *node.options,
+                    *(
+                        option
+                        for option in (LIMIT, OFFSET, FIELDS, FORMAT_TABLE)
+                        if option.name not in existing
+                    ),
+                ),
+            )
             if not any(option.name == "require_complete" for option in node.options):
                 node = replace(node, options=(*node.options, REQUIRE_COMPLETE))
         if node.path in nodes or node.path in AUTH_PATHS:
@@ -375,6 +391,7 @@ NODES = build_catalog(
             TRADE_NODE,
             path=("refresh", "fx", "trade"),
             handler="cmd_refresh_fx_trade",
+            cache_capability=FX_TRADE.name,
             options=tuple(
                 option
                 for option in TRADE_NODE.options

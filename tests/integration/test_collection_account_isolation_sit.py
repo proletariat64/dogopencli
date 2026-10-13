@@ -345,7 +345,7 @@ def test_common_options_and_help_inventory(run_cli, envelope, setup):
         )[0]
         == 0
     )
-    for extra in [["--currency", "GBP"], ["--limit", "0"], ["extra"]]:
+    for extra in [["--currency", "GBP"], ["--limit", "-1"], ["extra"]]:
         assert run_cli(["refresh", "collection", "account-isolation", *extra])[0] == 2
     assert run_cli(["collection", "account-isolation", "get", "--id", "001"])[0] == 2
     assert run_cli(["collection", "bank-va", "rules", "list"])[0] == 2

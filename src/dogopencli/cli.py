@@ -1500,12 +1500,6 @@ def cmd_refresh_liquidity_list(args: argparse.Namespace) -> int:
     return run_refresh_list(args)
 
 
-def cmd_refresh_liquidity_detail(args: argparse.Namespace) -> int:
-    from .plugins.liquidity.refresh import run_refresh_detail
-
-    return run_refresh_detail(args)
-
-
 def cmd_liquidity_unsupported(args: argparse.Namespace) -> int:
     from .plugins.liquidity.query import run_unsupported
 
@@ -1636,17 +1630,13 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
         args.describe_path = node.path[1:]
     # Generic plugin handlers resolve their leaf from the command path.
     args.command_path = node.path
-    if "--all" in remaining:
-        return _emit_error(
-            _argument_error(
-                "--all removed; use --limit 0 for output or supported --entity ANY"
-            )
-        )
     # business_entry only routes executable nodes, so handler is bound.
     if node.handler is None:
         return _emit_error(_argument_error("command is not executable"))
     handler = globals()[node.handler]
     try:
+        if node.path[:1] == ("refresh",):
+            display_options(args)
         return handler(args)
     except CliError as error:
         if node.path[0] == "refresh" and error.meta is None:

@@ -389,10 +389,12 @@ class Cache:
             for meta, records in writes:
                 if meta.namespace.startswith("temporary-query:"):
                     connection.execute(
-                        "CREATE TABLE IF NOT EXISTS cache_format (version INTEGER NOT NULL)"
+                        "CREATE TABLE IF NOT EXISTS cache_format "
+                        "(version INTEGER NOT NULL)"
                     )
                     connection.execute(
-                        "INSERT INTO cache_format SELECT 157 WHERE NOT EXISTS (SELECT 1 FROM cache_format)"
+                        "INSERT INTO cache_format SELECT 157 "
+                        "WHERE NOT EXISTS (SELECT 1 FROM cache_format)"
                     )
                 if meta.acquisition is not None:
                     evidence = AcquisitionEvidence.from_record(meta.acquisition)
