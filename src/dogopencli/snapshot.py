@@ -13,13 +13,9 @@ from .auth.spec import SPECS as AUTH_SPECS
 from .catalog import NODES
 from .errors import CliError
 from .plugins import cache_bindings, get_capability
-from .plugins.liquidity.capability import (
-    LiquidityDetailCapability,
-    LiquidityListCapability,
-)
-from .plugins.liquidity.leaves import DEFERRED_BY_PATH, LIST_LEAVES
-from .plugins.liquidity.store import INDEX_SCOPE, _owning_variant
+from .plugins.liquidity.leaves import DEFERRED_BY_PATH
 from .snapshot_cache import Inventory, capture
+from .temporary_query import slot_context, slot_namespace
 
 
 class ArgumentError(ValueError):
@@ -36,7 +32,13 @@ def bindings() -> dict[tuple[str, ...], Any]:
     for path, node in NODES.items():
         if node.cache_capability is not None:
             discovered[path] = get_capability(node.cache_capability)
-    return discovered
+    return {
+        path: owner
+        for path, owner in discovered.items()
+        if path[-1:] == ("list",)
+        or path == ("fx", "trade")
+        or (path[:1] == ("refresh",) and "detail" not in path)
+    }
 
 
 def overview(
@@ -50,7 +52,7 @@ def overview(
             "complete": None,
             "freshness": None,
             "oldest_updated": None,
-            "captures": [],
+            "slots": [],
         }
     qualities = {(item["complete"], item["freshness"]) for item in captures}
     complete_values = {item["complete"] for item in captures}
@@ -58,7 +60,7 @@ def overview(
     complete = next(iter(complete_values)) if len(complete_values) == 1 else None
     freshness = next(iter(freshness_values)) if len(freshness_values) == 1 else None
     if len(qualities) > 1:
-        summary = f"mixed · {len(captures)} captures"
+        summary = f"mixed · {len(captures)} slots"
         status = "mixed"
     else:
         summary = (
@@ -75,7 +77,7 @@ def overview(
         "complete": complete,
         "freshness": freshness,
         "oldest_updated": min(times, key=_time) if times else None,
-        "captures": captures,
+        "slots": captures,
     }
 
 
@@ -86,85 +88,19 @@ def _time(value: str) -> datetime:
 def inspect(
     owner: Any, path: tuple[str, ...], inventory: Inventory, ttl: float, now: datetime
 ) -> list[dict[str, Any]]:
-    if isinstance(owner, LiquidityListCapability):
-        entries = inventory.entries(owner.name)
-        if entries is None:
-            return []
-        results = []
-        for entry in entries:
-            meta = inventory.metadata.get(entry.namespace)
-            if (
-                meta is None
-                or isinstance(meta, Exception)
-                or meta.capability != owner.name
-            ):
-                raise ValueError("published capture is missing")
-            item = capture(meta, inventory.count(meta.namespace), ttl, now, entry=entry)
-            declared = owner.descriptor
-            variants = LIST_LEAVES[declared.path].variants
-            item["profile"] = entry.profile
-            if len(variants) > 1:
-                variant = _owning_variant(declared, entry)
-                item["contract_variant"] = (
-                    "/".join(
-                        option.match
-                        for option in variant.scope_options
-                        if option.virtual and option.match
-                    )
-                    or f"contract-{variants.index(variant) + 1}"
-                )
-            results.append(item)
-        return results
-    if isinstance(owner, LiquidityDetailCapability):
-        from .plugins.liquidity.details import details_namespace
-
-        retained = inventory.metadata.get(details_namespace(owner.name))
-        if isinstance(retained, Exception):
-            raise ValueError("invalid detail metadata")
-        results = []
-        for meta in [retained] if retained is not None else []:
-            if meta.scope != "detail" or meta.source_kind != "cdp":
-                continue
-            objects = inventory.details(meta)
-            if len(objects) != meta.row_count or len(
-                {key for key, _ in objects}
-            ) != len(objects):
-                raise ValueError("detail storage count mismatch")
-            if not objects:
-                results.append(capture(meta, 0, ttl, now, detail=True))
-            for key, updated in objects:
-                results.append(
-                    capture(
-                        meta,
-                        1,
-                        ttl,
-                        now,
-                        key=key,
-                        fetched_at=updated or "",
-                        detail=True,
-                    )
-                )
-        return results
-    metas = inventory.metas(owner.name)
-    results = []
-    paired_detail = path[-1:] == ("get",) and any(
-        node.path[-1:] == ("list",) and node.path[:-1] == path[:-1]
-        for node in NODES.values()
-    )
-    for meta in metas:
-        if meta.scope == INDEX_SCOPE:
-            continue
-        count = inventory.count(meta.namespace)
-        item = capture(meta, count, ttl, now)
-        if paired_detail:
-            detail_count = inventory.detail_count(meta)
-            item["rows"] = detail_count
-            item["variant"] = "paired_native_document"
-            if detail_count != count:
-                item["complete"] = False
-                item["reasons"].append("DETAIL_COVERAGE_GAP")
-        results.append(item)
-    return results
+    inquiry = path[1:] if path[:1] == ("refresh",) else path
+    leaf = inquiry[:-1] if inquiry[-1:] == ("list",) else inquiry
+    meta = inventory.metadata.get(slot_namespace(".".join(leaf)))
+    if meta is None:
+        return []
+    if isinstance(meta, Exception):
+        raise ValueError("invalid temporary slot metadata")
+    context = slot_context(meta)
+    if not isinstance(context, dict) or not isinstance(context.get("query"), dict):
+        raise ValueError("invalid temporary slot context")
+    item = capture(meta, inventory.count(meta.namespace), ttl, now)
+    item["contract_variant"] = context.get("variant")
+    return [item]
 
 
 def build_report(
@@ -175,7 +111,7 @@ def build_report(
     if path != ("help",) and path not in nodes:
         raise ArgumentError("unknown command path")
     report: dict[str, Any] = {
-        "snapshot_version": 1,
+        "snapshot_version": 2,
         "generated_at": now.isoformat(),
         "application_version": __version__,
         "inspection_complete": True,
@@ -280,9 +216,7 @@ def build_report(
                                 " acquired scope"
                             )
                         if any(item["updated"] is None for item in captures):
-                            reasons.append(
-                                "acquisition timestamp unknown for one or more captures"
-                            )
+                            reasons.append("acquisition timestamp unknown for the slot")
                         leaf["reason"] = "; ".join(reasons) or None
                 except (
                     sqlite3.Error,

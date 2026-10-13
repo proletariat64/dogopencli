@@ -1,5 +1,7 @@
 # Liquidity capture store and retention implementation
 
+> Cache, detail persistence and retention decisions below are superseded by [ADR 0020](0020-temporary-query-cache-and-duckdog.md) and #157. Native inquiry authorization and contracts remain historical evidence.
+
 Status: accepted
 Date: 2026-10-01
 
