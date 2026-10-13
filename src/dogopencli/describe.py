@@ -118,9 +118,9 @@ def describe(path: tuple[str, ...]) -> dict[str, Any]:
     guide.setdefault("metadata", {}).update(
         {
             "local_filters": "Explicit filters applied to the saved acquisition.",
-            "requested_coverage": "Whether saved acquisition proves requested scope coverage; "
+            "requested_coverage": "Whether saved acquisition proves scope coverage; "
             "null is unknown.",
-            "source_acquisition": "Original source quality, unchanged by local filtering.",
+            "source_acquisition": "Original source quality before local filtering.",
             "variant": "Saved native contract variant.",
             "selection": "Frozen values selected for online enumeration, or null.",
             "cache_only_absence": "Optional explanation of unmatched local rows; "

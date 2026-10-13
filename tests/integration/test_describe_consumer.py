@@ -100,13 +100,13 @@ def test_channel_schema_projection_and_partial_source(
     assert meta["source"] == "cache" and meta["scope"] == "EXTERNAL"
     assert meta["snapshot_id"] and meta["dataset_id"]
     assert meta["source_observed_from"] and meta["source_observed_to"]
-    full = success(run_cli, path + " --all")
+    full = success(run_cli, path + " --limit 0")
     validate(doc, full)
     assert len(full["data"]) == 101 and not full["meta"]["has_more"]
     by_id = {row["abilityId"]: row for row in full["data"]}
     assert by_id[rows[1]["abilityId"]]["chargeAmount"] is None
     assert "chargeAmount" not in by_id[rows[2]["abilityId"]]
-    projected = success(run_cli, path + " --all --fields status")
+    projected = success(run_cli, path + " --limit 0 --fields status")
     assert all(set(row) == {"status"} for row in projected["data"])
     assert projected["meta"] == full["meta"]
     assert "partial data" in doc["read_guide"]["projection"]
@@ -152,13 +152,13 @@ def test_cost_nested_fee_branches_and_raw_representations(run_cli, cost_setup):
     missing = cost_row(102, costRateConfigList=[])
     del missing["isFvt"]
     refreshed(run_cli, cost_setup, [row, missing])
-    result = success(run_cli, path + " --all")
+    result = success(run_cli, path + " --limit 0")
     validate(doc, result)
     first, second = result["data"]
     assert first["isFvt"] is None and "isFvt" not in second
     assert first["costRateConfigList"] == row["costRateConfigList"]
     assert first["transCurrencyCode"] != first["costCurrencyCode"]
-    projected = success(run_cli, path + " --all --fields costRateConfigList")
+    projected = success(run_cli, path + " --limit 0 --fields costRateConfigList")
     assert projected["data"][0] == {"costRateConfigList": row["costRateConfigList"]}
     assert projected["meta"] == result["meta"]
     schema = doc["data_schema"]
@@ -182,22 +182,29 @@ def test_sla_list_to_detail_and_quality_policy(run_cli, sla_setup):
     refresh_sla(
         run_cli, sla_setup, [sla_row(101, serviceLevelLimit=[None, {"new": 1}])]
     )
-    listing = success(run_cli, path + " list --all")
+    listing = success(run_cli, path + " list --limit 0")
     validate(list_doc, listing)
     baseline_id = listing["data"][0]["id"]
+    sla_setup.state.business_script.append(
+        {"status": 200, "body": {"success": True, "resultData": sla_detail(101)}}
+    )
+    before = sla_setup.cache_path.read_bytes()
     detail = success(run_cli, path + f" get --id {baseline_id}")
     validate(detail_doc, detail)
     assert detail["data"]["riskRuleCode"] == "RISK-101"
     assert "riskRuleCode" not in listing["data"][0]
-    assert listing["meta"]["snapshot_id"] == detail["meta"]["snapshot_id"]
-    assert detail["meta"]["stale"] and detail["meta"]["complete"]
+    assert detail["meta"]["source"] == "live"
+    assert detail["meta"]["snapshot_id"] is None
+    assert sla_setup.cache_path.read_bytes() == before
     code, out, _ = run_cli((path + f" get --id {baseline_id} --require-fresh").split())
-    assert code == 1 and json.loads(out)["error"]["code"] == "CACHE_STALE"
+    assert code == 2 and json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+    sla_setup.state.business_script.append(
+        {"status": 200, "body": {"success": True, "resultData": sla_detail(101)}}
+    )
     projected = success(
         run_cli, path + f" get --id {baseline_id} --fields creditorMinAmount"
     )
     assert projected["data"] == {"creditorMinAmount": "0.10"}
-    assert projected["meta"] == detail["meta"]
     live_data = sla_detail(
         101, creditorSlaBuffer=None, serviceLevelLimit=[1, "unknown"]
     )

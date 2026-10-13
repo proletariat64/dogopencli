@@ -14,7 +14,13 @@ def test_every_executable_is_discoverable_and_dispatches(run_cli, monkeypatch):
     leaves = [node for node in NODES.values() if node.handler]
     assert all(
         NODES[node.path].handler == node.handler
-        and NODES[node.path].options == node.options
+        and NODES[node.path].options
+        == tuple(
+            option
+            for option in node.options
+            if option.name != "all"
+            and not (node.path[-1] == "get" and option.name == "require_fresh")
+        )
         for node in command_nodes()
     )
     for node in leaves:

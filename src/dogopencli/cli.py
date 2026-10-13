@@ -1658,7 +1658,8 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
             if not registered:
                 return _emit_error(
                     _argument_error(
-                        f"{option.flag} does not support ANY; use explicit native values"
+                        f"{option.flag} does not support ANY; "
+                        "use explicit native values"
                     )
                 )
     if node.path[0] == "describe":
