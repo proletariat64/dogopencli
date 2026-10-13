@@ -257,6 +257,48 @@ class Cache:
             os.close(fd)
 
     @_sqlite_errors
+    def ensure_temporary_format(self) -> None:
+        """Discard disposable legacy query data once; never create an absent DB."""
+        if not self._path.exists():
+            return
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS cache_format (version INTEGER NOT NULL)"
+            )
+            row = connection.execute("SELECT version FROM cache_format").fetchone()
+            if row != (157,):
+                connection.execute("DELETE FROM records")
+                connection.execute("DELETE FROM snapshots")
+                connection.execute("DELETE FROM cache_format")
+                connection.execute("INSERT INTO cache_format VALUES (157)")
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+
+    @_sqlite_errors
+    def remove(self, namespace_name: str) -> bool:
+        if not self._path.exists():
+            return False
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            removed = (
+                connection.execute(
+                    "DELETE FROM snapshots WHERE namespace = ?", (namespace_name,)
+                ).rowcount
+                > 0
+            )
+            connection.execute(
+                "DELETE FROM records WHERE namespace = ?", (namespace_name,)
+            )
+            connection.execute("COMMIT")
+            return removed
+        finally:
+            connection.close()
+
+    @_sqlite_errors
     def current(self, namespace_name: str) -> SnapshotMeta | None:
         if not self._path.exists():
             return None
@@ -345,6 +387,13 @@ class Cache:
                 connection.execute("DELETE FROM records WHERE namespace = ?", (name,))
                 connection.execute("DELETE FROM snapshots WHERE namespace = ?", (name,))
             for meta, records in writes:
+                if meta.namespace.startswith("temporary-query:"):
+                    connection.execute(
+                        "CREATE TABLE IF NOT EXISTS cache_format (version INTEGER NOT NULL)"
+                    )
+                    connection.execute(
+                        "INSERT INTO cache_format SELECT 157 WHERE NOT EXISTS (SELECT 1 FROM cache_format)"
+                    )
                 if meta.acquisition is not None:
                     evidence = AcquisitionEvidence.from_record(meta.acquisition)
                     if (
