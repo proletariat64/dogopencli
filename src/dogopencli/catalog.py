@@ -25,6 +25,7 @@ from .helpspec import (
 from .helpspec import REFRESH_OUTPUT as _REFRESH_OUTPUT
 from .plugins import command_nodes, group_nodes, refresh_nodes
 from .plugins.fx.trade import GROUP_NODE as FX_GROUP
+from .plugins.fx.trade import TRADE_NODE
 from .plugins.payment.channel import CHANNEL_CAPABILITY
 from .plugins.payment.cost import COST_CAPABILITY
 from .plugins.payment.sla import SLA_CAPABILITY
@@ -114,7 +115,7 @@ _REFRESH_COST_NODE = BizNode(
 _REFRESH_SLA_NODE = BizNode(
     ("refresh", "payment", "sla"),
     "Rebuild the payment SLA baseline cache through the existing CDP session"
-    " (full list, then every detail).",
+    " (list only).",
     constraints=REFRESH_CDP_CONSTRAINTS,
     effects=dict(REFRESH_CDP_EFFECTS),
     output=dict(_REFRESH_OUTPUT),
@@ -129,8 +130,7 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
     (): BizNode(
         (),
         "Inquiry-only, read-only payment, collection, liquidity and FX queries;"
-        " payment, collection and liquidity default to local cache reads; FX trades"
-        " query live.",
+        " all enabled lists default to temporary cache replay.",
         constraints=(
             "Business queries never modify production business configuration.",
         ),
@@ -247,8 +247,7 @@ _GROUPS: dict[tuple[str, ...], BizNode] = {
     ),
     ("refresh", "liquidity"): BizNode(
         ("refresh", "liquidity"),
-        "Rebuild liquidity caches; list and per-object detail acquisition are"
-        " independent.",
+        "Replace one temporary liquidity list acquisition.",
         next=("dogopencli help refresh liquidity investment",),
     ),
     ("fx",): FX_GROUP,
@@ -259,6 +258,28 @@ def build_catalog(declarations: Iterable[BizNode]) -> dict[tuple[str, ...], BizN
     """Reject ambiguous/unreachable declarations and derive direct children."""
     nodes: dict[tuple[str, ...], BizNode] = {}
     for node in declarations:
+        node = replace(
+            node,
+            options=tuple(option for option in node.options if option.name != "all"),
+            examples=tuple(
+                example.replace("--all", "--limit 0") for example in node.examples
+            ),
+            constraints=tuple(
+                c.replace("--all", "--limit 0") for c in node.constraints
+            ),
+        )
+        if node.path[-1:] == ("get",) and node.handler != "cmd_liquidity_unsupported":
+            node = replace(
+                node,
+                effects={
+                    "mutates": False,
+                    "network": True,
+                    "browser_required": True,
+                    "destructive": False,
+                },
+                effects_variants=(),
+                summary="Online native detail inquiry; never reads or writes query cache.",
+            )
         if node.path[:1] == ("refresh",) and node.handler is not None:
             if not any(option.name == "require_complete" for option in node.options):
                 node = replace(node, options=(*node.options, REQUIRE_COMPLETE))
@@ -326,6 +347,35 @@ NODES = build_catalog(
         *group_nodes(),
         *_GROUPS.values(),
         *description_nodes(command_nodes()),
+        *(
+            BizNode(
+                (*node.path[:-1], "prune")
+                if node.path[-1] == "list"
+                else (*node.path, "prune"),
+                "Delete this leaf's temporary query cache; idempotent and offline.",
+                handler="cmd_prune",
+                effects={
+                    "mutates": True,
+                    "network": False,
+                    "browser_required": False,
+                    "destructive": True,
+                },
+            )
+            for node in command_nodes()
+            if node.handler not in (None, "cmd_liquidity_unsupported")
+            and (node.path[-1] == "list" or node.path == ("fx", "trade"))
+        ),
+        BizNode(("refresh", "fx"), "Refresh FX temporary query caches."),
+        replace(
+            TRADE_NODE,
+            path=("refresh", "fx", "trade"),
+            handler="cmd_refresh_fx_trade",
+            options=tuple(
+                option
+                for option in TRADE_NODE.options
+                if option.name not in ("live", "require_fresh")
+            ),
+        ),
         _REFRESH_CHANNEL_NODE,
         _REFRESH_COST_NODE,
         *refresh_nodes(),
