@@ -22,6 +22,8 @@ _NOTES = (
     "Native row offsets, stable overlap and terminal witnesses establish coverage;"
     " source counts alone do not prove completeness.",
     "Native timestamps and raw fields are preserved; capture time is separate.",
+    "Reported total counts native row occurrences; arrivals and unique"
+    " identities are reported independently, with duplicates incomplete.",
     "An observed empty native DTO tntInstId is preserved as unset;"
     " fixed request tenant binds acquisition scope, never a synthesized row value.",
 )
@@ -162,9 +164,14 @@ def collect_access_list(
     while budget_available():
         rows = fetch(offset, width, "acquisition")
         assert expected is not None
-        if width == 5000 and rows and len(rows) < min(width, expected):
-            attempts[-1]["discarded"] = True
+        if width == 5000 and rows and len(rows) < min(width, expected - offset):
+            for attempt in attempts:
+                attempt["discarded"] = True
             reasons.append("PAGE_SIZE_CAPPED")
+            arrived.clear()
+            ordered.clear()
+            seen.clear()
+            offset = 0
             width = 1000
             continue
         if rows and len(rows) < min(width, expected - offset):
@@ -213,6 +220,7 @@ def collect_access_list(
         reported_total=expected,
         collected_total=len(ordered),
         arrivals=len(arrived),
+        total_semantics="occurrences",
         reasons=tuple(dict.fromkeys(reasons)),
         attempts=tuple(attempts),
     )

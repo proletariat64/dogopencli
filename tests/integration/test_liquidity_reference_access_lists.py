@@ -491,7 +491,117 @@ def test_identical_duplicate_is_usable_incomplete_and_strict_withholds(setup, ru
     assert result["data"] == [{"instId": "E1"}]
     assert result["meta"]["complete"] is False
     assert result["meta"]["acquisition"]["duplicate_count"] == 1
+    assert result["meta"]["acquisition"]["total_semantics"] == "occurrences"
+    assert result["meta"]["acquisition"]["reported_total"] == 2
+    assert result["meta"]["acquisition"]["arrivals"] == 2
+    assert result["meta"]["acquisition"]["unique_count"] == 1
     code, out, err = run_cli([*root, "--require-complete"])
     assert code == 1, err
     assert parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
     assert parse(out)["data"] is None
+
+
+@pytest.mark.parametrize("later_cap", [False, True])
+def test_large_access_list_tail_and_later_cap_use_independent_candidates(
+    setup, run_cli, later_cap
+):
+    total = 12000 if later_cap else 7000
+    rows = [{"aliasName": f"A{i}", "status": "VALID"} for i in range(total)]
+
+    def answer(payload, index):
+        vo = json.loads(payload["accountFilterConfigQuery"])
+        size = vo["pageSize"]
+        start = vo["rowStart"]
+        if later_cap and size == 5000 and start == 5000:
+            size = 1000
+        return access_page(rows[start : start + size], total)
+
+    setup.state.business_handler = answer
+    code, out, err = run_cli(
+        [
+            "liquidity",
+            "reference",
+            "blacklist",
+            "account",
+            "list",
+            "--live",
+            "--limit",
+            "0",
+        ]
+    )
+    assert code == 0, err
+    result = parse(out)
+    assert result["data"] == rows
+    evidence = result["meta"]["acquisition"]
+    assert evidence["scope_complete"] is True
+    assert evidence["total_semantics"] == "occurrences"
+    assert evidence["reported_total"] == evidence["arrivals"] == total
+    assert evidence["unique_count"] == total
+    requests = [
+        json.loads(p["accountFilterConfigQuery"]) for p in setup.state.business_requests
+    ]
+    if later_cap:
+        assert [p["rowStart"] for p in requests] == [
+            0,
+            5000,
+            *range(0, total, 1000),
+            1,
+            total,
+        ]
+        assert [p["pageSize"] for p in requests] == [5000, 5000] + [1000] * 14
+        assert evidence["reasons"] == ["PAGE_SIZE_CAPPED"]
+        assert [a.get("discarded", False) for a in evidence["attempts"]] == (
+            [True, True] + [False] * 14
+        )
+    else:
+        assert [p["rowStart"] for p in requests] == [0, 5000, 1, total]
+        assert [p["pageSize"] for p in requests] == [5000, 5000, 1000, 1000]
+        assert evidence["reasons"] == []
+
+
+@pytest.mark.parametrize("changed_total", [False, True])
+def test_later_cap_restart_keeps_total_and_global_request_budget(
+    setup, run_cli, monkeypatch, changed_total
+):
+    from dogopencli import collect
+
+    rows = [{"aliasName": f"A{i}"} for i in range(12000)]
+    monkeypatch.setattr(collect, "MAX_PAGES", 3)
+
+    def answer(payload, index):
+        vo = json.loads(payload["accountFilterConfigQuery"])
+        start = vo["rowStart"]
+        size = 1000 if start == 5000 else vo["pageSize"]
+        total = 12001 if changed_total and index == 2 else 12000
+        return access_page(rows[start : start + size], total)
+
+    setup.state.business_handler = answer
+    code, out, err = run_cli(
+        [
+            "liquidity",
+            "reference",
+            "blacklist",
+            "account",
+            "list",
+            "--live",
+            "--limit",
+            "0",
+        ]
+    )
+    result = parse(out)
+    assert len(setup.state.business_requests) == 3
+    if changed_total:
+        assert code == 1, err
+        assert result["error"]["code"] == "INVALID_RESPONSE"
+        assert result["data"] is None
+    else:
+        assert code == 0, err
+        assert result["data"] == rows[:1000]
+        evidence = result["meta"]["acquisition"]
+        assert evidence["scope_complete"] is False
+        assert evidence["reported_total"] == 12000
+        assert evidence["arrivals"] == evidence["unique_count"] == 1000
+        assert "COLLECTION_BUDGET_EXHAUSTED" in evidence["reasons"]
+        assert [a.get("discarded", False) for a in evidence["attempts"]] == (
+            [True, True, False]
+        )
