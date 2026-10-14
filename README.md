@@ -213,8 +213,11 @@ SLA 是配置目标，不是观测到账耗时。
 [PR #126](https://github.com/proletariat64/dogopencli/pull/126)，以及
 [PR #138](https://github.com/proletariat64/dogopencli/pull/138)、
 [PR #140](https://github.com/proletariat64/dogopencli/pull/140)、
-[PR #142](https://github.com/proletariat64/dogopencli/pull/142) 的实现共支持 98 个查询叶子；
-共 132 个查询叶子，其中 34 个延期叶子（12 list、22 get）可通过帮助发现，
+[PR #142](https://github.com/proletariat64/dogopencli/pull/142)，以及
+[#157](https://github.com/proletariat64/dogopencli/issues/157) 和
+[#162](https://github.com/proletariat64/dogopencli/issues/162) 的目录调整后，
+当前源码共支持 95 个查询叶子；共 129 个查询叶子，其中 34 个延期叶子
+（12 list、22 get）可通过帮助发现，
 执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
 v0.2.8 包含 #97/#98 及 #103/#104/#105 的新增能力（85 supported / 46 unsupported）；
 v0.3.0 还包含 [PR #135](https://github.com/proletariat64/dogopencli/pull/135) 的 list 参数契约统一，
@@ -301,7 +304,6 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `ledger accounts` | `list` |
 | `ledger customers` | `list`, `get` |
 | `network account-capabilities` | `list`, `get` |
-| `network bank-baselines` | `list`, `get` |
 | `operations asset-trades` | `list` |
 | `operations decisions` | `list`（必填启动与创建时间范围）, `get`, `history` |
 | `operations forwards` | `list`, `get` |
@@ -328,6 +330,17 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `rules realtime` | `list`, `get` |
 | `rules transfer` | `list`, `get` |
 | `rules waterlevel` | `list`, `get` |
+
+### 现金账户：统一资料和完整性
+
+`cash accounts list` 合并现金账户、baseline 列表和逐账户原生详情；
+`accountType` 与 `status` 完全采用 baseline 来源，正常状态保留 `NORMAL`。
+字段来源、冲突和详情状态随每行保留，列表覆盖与详情覆盖分别报告。
+现金原生单空洞只有在当前查询重新验证后才允许通过列表完整性检查；
+原生总数、有效总数和探测证据仍可见，`--require-complete` 还要求所有必要详情成功。
+显式详情拒绝保留列表资料并标记不完整；成功信封中的空详情仍是协议错误，
+不会发布替换缓存。旧现金账户缓存需显式 `refresh liquidity cash accounts` 后使用。
+字段规则见[统一现金账户设计](docs/design/unified-cash-accounts-v1.0.0.md)。
 
 ### 现金余额：日期、ANY 和页宽
 
