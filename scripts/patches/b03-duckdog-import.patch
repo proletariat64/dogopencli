@@ -1,0 +1,60 @@
+--- a/.agents/skills/duckdog-import/scripts/import_settings.py
++++ b/.agents/skills/duckdog-import/scripts/import_settings.py
+@@ -12,6 +12,8 @@
+ import tempfile
+ import uuid
+ from pathlib import Path
++
++B03_STORAGE_VERSION = 1
+ 
+ REGISTRY = {
+     "liquidity/reference/banks": {
+@@ -318,6 +320,35 @@
+                         ),
+                     ],
+                 )
++                if selector == "liquidity/network/realtime":
++                    expected = [encode(row) for row in rows]
++                    for sql in (
++                        "SELECT _record FROM "
++                        + identifier(relation)
++                        + " ORDER BY _row_order",
++                        "SELECT record FROM read_parquet("
++                        + literal(parquet)
++                        + ") ORDER BY _row_order",
++                    ):
++                        if [
++                            r[0] for r in connection.execute(sql).fetchall()
++                        ] != expected:
++                            raise ImportRejected("realtime full readback mismatch")
++                    registry = connection.execute(
++                        "SELECT parquet_path, content_sha256, row_count, "
++                        "acquisition_metadata "
++                        "FROM _duckdog_datasets WHERE selector = ?",
++                        [selector],
++                    ).fetchone()
++                    if registry[:3] != (str(parquet), digest, len(rows)):
++                        raise ImportRejected("realtime registry verification mismatch")
++                    if (
++                        json.loads(registry[3], parse_float=decimal.Decimal)[
++                            "acquisition"
++                        ]
++                        != meta
++                    ):
++                        raise ImportRejected("realtime metadata verification mismatch")
+                 connection.execute("COMMIT")
+             except BaseException:
+                 connection.execute("ROLLBACK")
+@@ -326,7 +357,11 @@
+                 raise
+         # Under the writer lock, remove unreferenced generations for this leaf only.
+         cleanup_pending = False
+-        for old in leaf_dir.glob("*.parquet"):
++        for old in (
++            ()
++            if selector == "liquidity/network/realtime"
++            else leaf_dir.glob("*.parquet")
++        ):
+             if old != parquet:
+                 try:
+                     old.unlink()
