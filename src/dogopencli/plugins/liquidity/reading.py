@@ -800,6 +800,51 @@ def _detail_schema(detail: spec.DetailSpec) -> dict[str, Any]:
         )
         schema["x-context-echo"] = "optional native fields; absence is not fabricated"
         return schema
+    if detail.name == "liquidity.operations.prefunds.get":
+        history = _field_schema(SAMPLED_FIELDS[detail.name])
+        history["required"] = ["id", "version", "status", "prefundingBizNo"]
+        schema["properties"]["historyApplications"] = {
+            "type": "array",
+            "items": history,
+            "x-cli-association": True,
+            "description": "Same-business APPROVED_FINAL native application rows. "
+            "Current-version membership evidence is separate in meta.components.",
+        }
+        transaction = _field_schema(
+            {
+                "preFundingUseDetailId": "str",
+                "preFundingOrderId": "str",
+                "prefundingBizNo": "str",
+                "tntInstId": "str",
+                "useDirection": "str",
+                "status": "str",
+                "currency": "str",
+                "amount": "str",
+                "applyCurrency": "str",
+                "exchangeAmount": "str",
+                "useRevertRelationVOList": "list",
+            }
+        )
+        transaction["required"] = ["preFundingUseDetailId", "preFundingOrderId"]
+        transaction["properties"]["useRevertRelationVOList"] = {
+            "type": ["array", "null"],
+            "items": {"type": "object"},
+            "description": "Unflattened native exchange relations; native decimals "
+            "and source dates remain unchanged.",
+        }
+        schema["properties"]["drawdownDetails"] = {
+            "type": "array",
+            "items": transaction,
+            "x-cli-association": True,
+            "description": "Business-scoped native USE/REVERT rows, including FAIL. "
+            "Blank business echoes stay blank; application-version membership binds "
+            "rows. Native count is evidence, not a trustworthy exhaustion proof.",
+        }
+        schema["x-component-quality"] = (
+            "meta.components; --fields selects whole top-level collections only, "
+            "not dotted paths; projection never changes quality or request scope"
+        )
+        return schema
     if detail.schema_version not in {
         "funding-demand-detail-v1",
         "realtime-network-detail-v1",

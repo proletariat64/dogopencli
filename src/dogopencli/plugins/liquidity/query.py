@@ -666,13 +666,23 @@ def run_detail(args: argparse.Namespace) -> int:
         from .decision_history import fetch_native_detail
 
         deadline = None
-        if detail.name == "liquidity.network.realtime.get":
+        if detail.name in (
+            "liquidity.network.realtime.get",
+            "liquidity.operations.prefunds.get",
+        ):
             from ... import collect as collect_mod
 
             deadline = collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS
-            payload = fetch_detail(
-                session.transport(leaf.capability), leaf, values, deadline=deadline
-            )
+            if detail.name == "liquidity.operations.prefunds.get":
+                from .prefund_detail import fetch_selected
+
+                payload, application_reported = fetch_selected(
+                    session, leaf, values, deadline=deadline
+                )
+            else:
+                payload = fetch_detail(
+                    session.transport(leaf.capability), leaf, values, deadline=deadline
+                )
         else:
             payload = fetch_native_detail(session, leaf, values)
         captured_at = now().isoformat()
@@ -682,6 +692,16 @@ def run_detail(args: argparse.Namespace) -> int:
 
             payload, component_meta = component_result(
                 session, payload, captured_at, deadline=deadline
+            )
+        if detail.name == "liquidity.operations.prefunds.get":
+            from .prefund_detail import component_result
+
+            payload, component_meta = component_result(
+                session,
+                payload,
+                captured_at,
+                deadline=deadline,
+                application_reported=application_reported,
             )
     meta = {
         "source": "live",
@@ -706,7 +726,10 @@ def run_detail(args: argparse.Namespace) -> int:
     if detail.schema_version and isinstance(payload, dict) and "version" in payload:
         meta["source_version"] = payload["version"]
     meta.update(detail_context_meta(detail, values, payload))
-    if detail.name == "liquidity.network.realtime.get":
+    if detail.name in (
+        "liquidity.network.realtime.get",
+        "liquidity.operations.prefunds.get",
+    ):
         meta.update(component_meta)
         try:
             meta = prepare_result(
