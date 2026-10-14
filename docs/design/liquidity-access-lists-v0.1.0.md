@@ -29,7 +29,7 @@ All supported filters are exact local matches after acquisition. They do not cha
 | List | Local flags and native fields |
 | --- | --- |
 | Entity whitelist | `--entity` / `instId`; `--financial-code` / `instCode`; `--status` / `status` |
-| Account blacklist | `--entity` / `instId`; `--bank-id` / `bankId`; `--alias-name` / `aliasName`; `--status` / `status` |
+| Account blacklist | `--entity` / `instId`; `--bank-id` / `bankId`; `--account-alias` / `aliasName`; `--status` / `status` |
 
 Default output retains all statuses, including VALID and INVALID. Status values do not establish whether a configuration is active. Unsupported filters are rejected before browser work. JSON preserves native types, nulls, empty strings, zero values, nested structures and source timestamps. Capture time is separate from modification time.
 
