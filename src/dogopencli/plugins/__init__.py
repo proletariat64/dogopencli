@@ -215,7 +215,7 @@ def register(
     _REFRESH_COMMANDS[capability.name] = refresh_commands
     _GROUPS[capability.name] = groups
     if description is not None:
-        for node in commands:
+        for node in (*commands, *refresh_commands):
             _DESCRIPTIONS[node.path] = description
 
 
@@ -439,6 +439,16 @@ def _load_builtins() -> None:
             commands=(liquidity_leaves.detail_query_node(leaf),),
             refresh_commands=(),
             groups=(),
+            description=liquidity_reading.description,
+        )
+    for leaf in liquidity_leaves.RETIRED_LEAVES.values():
+        query, refresh = liquidity_leaves.retired_nodes(leaf)
+        handle = liquidity_leaves.UnsupportedLeafHandle(query)
+        handle.cache_enabled = False
+        register(
+            handle,
+            commands=(query,),
+            refresh_commands=(refresh,),
             description=liquidity_reading.description,
         )
     for deferred in liquidity_leaves.DEFERRED:

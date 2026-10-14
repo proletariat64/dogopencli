@@ -268,6 +268,13 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 硬失败和严格 partial 拒绝也保留旧缓存。每叶子 `prune` 仅清除自己的缓存。
 采集时间与业务日期分别报告，新鲜缓存不证明业务数据新鲜或来源完整。
 
+B01/#164 已按业务决定退役 `pricing factors`、`factor-values`、`cost-prices`、
+`strategies`、`client-prices` 与 `fee-orders`。旧 list/refresh 路径保留参数兼容，
+均返回 `UNSUPPORTED_CAPABILITY`（退出码 1），不读取配置、浏览器或缓存；
+这六个资源的 prune 已移除，历史缓存与外部 duckdog 数据保留。
+help/describe/snapshot 将其标为退役且不可用。下文旧版本 UAT 与源码支持数是
+历史记录，不代表当前可执行能力；当前目录以 `dogopencli snapshot liquidity` 为准。
+
 以下省略 `dogopencli liquidity` 前缀；`returns list` 包含 accrual/cash 两个来源，
 参数和逐变体契约以 `help` / `describe` 为准。
 
@@ -308,10 +315,12 @@ dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
 | `operations prefunds` | `list`, `get` |
 | `operations swaps` | `list`（必填交易日期范围） |
 | `operations transfers` | `list`（必填交易日期范围）, `get` |
-| `pricing client-prices` | `list` |
-| `pricing cost-prices` | `list` |
-| `pricing factor-values` | `list` |
-| `pricing strategies` | `list` |
+| `pricing client-prices` | 已退役，list/refresh 仅拒绝 |
+| `pricing cost-prices` | 已退役，list/refresh 仅拒绝 |
+| `pricing factor-values` | 已退役，list/refresh 仅拒绝 |
+| `pricing strategies` | 已退役，list/refresh 仅拒绝 |
+| `pricing factors` | 已退役，list/refresh 仅拒绝 |
+| `pricing fee-orders` | 已退役，list/refresh 仅拒绝 |
 | `reference banks` | `list` |
 | `reference business-lines` | `list` |
 | `reference calendars` | `list` |
@@ -580,8 +589,6 @@ Batch C 本身没有新增 get/history；其余目标由 #72 继续追踪。
 dogopencli liquidity investment strategy-results get --task-id TASK_ID --task-type FUND_DECISION_TASK
 dogopencli liquidity risk events get --risk-event-id EVENT_ID
 dogopencli liquidity risk anomalies get --risk-event-id ALERT_ID
-dogopencli refresh liquidity pricing fee-orders --from-date 20260801 --to-date 20260831 --require-complete
-dogopencli liquidity pricing fee-orders list --from-date 20260801 --to-date 20260831 --limit 0
 ```
 
 费用订单按包含两端的 Service Date 查询，每次最多 31 个日历日，固定发送原生

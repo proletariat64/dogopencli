@@ -64,6 +64,7 @@ from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .qualified_getters import QUALIFIED_GETTERS
 from .realtime_network import REALTIME_NETWORK
+from .retirement import RETIRED_PATHS, RETIREMENT_REASON, refuse_retired
 from .rfqs import RFQS, validate_rfq_query
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import RELEASED as RISK_RELEASED
@@ -2710,10 +2711,15 @@ DEFERRED = tuple(
 )
 
 LIST_LEAVES, DETAIL_LEAVES = _build_registry()
+# Keep historical descriptors only for legacy option parsing and evidence.
+
+RETIRED_LEAVES = {path: LIST_LEAVES.pop(path) for path in RETIRED_PATHS}
+LIST_SPECS = tuple(item for item in LIST_SPECS if item.path not in RETIRED_PATHS)
 DEFERRED_BY_PATH = {leaf.path: leaf for leaf in DEFERRED}
 
 
 def list_leaf(path: tuple[str, ...]) -> ListLeaf:
+    refuse_retired(path)
     try:
         return LIST_LEAVES[path]
     except KeyError as error:
@@ -3103,6 +3109,11 @@ def group_nodes() -> tuple[BizNode, ...]:
         # Refresh tree: the resource path is the executable list refresh.
         for depth in range(1, len(list_spec.path)):
             add_refresh_group(list_spec.path[:depth])
+    for leaf in RETIRED_LEAVES.values():
+        for depth in range(1, len(leaf.path) + 1):
+            add_query_group(leaf.path[:depth])
+        for depth in range(1, len(leaf.path)):
+            add_refresh_group(leaf.path[:depth])
     for detail in DETAIL_SPECS:
         for depth in range(1, len(detail.path) + 1):
             add_query_group(detail.path[:depth])
@@ -3119,3 +3130,35 @@ class UnsupportedLeafHandle:
 
     def __init__(self, node: BizNode) -> None:
         self.name = "liquidity." + ".".join(node.path[1:]) + ".unsupported"
+
+
+def retired_nodes(leaf: ListLeaf) -> tuple[BizNode, BizNode]:
+    """Legacy list/refresh grammar with no acquisition or cache contract."""
+
+    def refusal(node: BizNode) -> BizNode:
+        return replace(
+            node,
+            summary=RETIREMENT_REASON,
+            options=tuple(
+                replace(option, required=False, argument_contract=None)
+                for option in node.options
+            ),
+            constraints=(
+                RETIREMENT_REASON,
+                "Execution always fails with UNSUPPORTED_CAPABILITY;"
+                " no cache or browser access.",
+            ),
+            effects={
+                "mutates": False,
+                "network": False,
+                "browser_required": False,
+                "destructive": False,
+            },
+            effects_variants=None,
+            errors=("UNSUPPORTED_CAPABILITY",),
+            examples=(),
+            next=(),
+            handler="cmd_liquidity_unsupported",
+        )
+
+    return refusal(list_query_node(leaf)), refusal(refresh_list_node(leaf))

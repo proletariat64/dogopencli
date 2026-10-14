@@ -873,6 +873,30 @@ def _deferred_description(node: BizNode) -> dict[str, Any]:
 
 def description(node: BizNode) -> dict[str, Any]:
     """Provider registered for every liquidity command node."""
+    from .retirement import RETIREMENT_REASON, retired_command
+
+    if retired_command(node.path):
+        return {
+            "schema_version": 1,
+            "data_schema": {
+                "type": "object",
+                "x-evidence": "retired capability: no executable schema",
+                **schema_annotations(),
+            },
+            "read_guide": {
+                "capability": " ".join(node.path),
+                "kind": node.kind,
+                "release_status": "retired",
+                "reason": RETIREMENT_REASON,
+                "quality": "No acquisition, cache replay, or publication is available.",
+                "projection": "Legacy projection options are accepted for refusal only.",
+                "pagination": "Legacy display options are accepted only for refusal.",
+                "envelope": {
+                    "data": "Always null on retirement refusal.",
+                    "error": "UNSUPPORTED_CAPABILITY, exit status 1.",
+                },
+            },
+        }
     path = node.path[1:]  # strip the `liquidity` prefix
     if path in DEFERRED_BY_PATH:
         return _deferred_description(node)
