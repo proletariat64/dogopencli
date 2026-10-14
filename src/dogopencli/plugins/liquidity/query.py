@@ -110,6 +110,13 @@ def _emit_object(
     if args.format == "table" and isinstance(record, dict):
         rows = _project([record], fields)
         selected = tuple(fields) if fields is not None else columns
+        if "components" in meta:
+            from ...jsonutil import canonical
+
+            sys.stdout.write("components: " + canonical(meta["components"]) + "\n")
+            sys.stdout.write(
+                "Nested associations are shown as JSON cells when selected.\n"
+            )
         sys.stdout.write(render_table(rows, selected, meta) + "\n")
     else:
         if fields is not None and isinstance(record, dict):
@@ -658,7 +665,24 @@ def run_detail(args: argparse.Namespace) -> int:
     ) as session:
         from .decision_history import fetch_native_detail
 
-        payload = fetch_native_detail(session, leaf, values)
+        deadline = None
+        if detail.name == "liquidity.network.realtime.get":
+            from ... import collect as collect_mod
+
+            deadline = collect_mod._monotonic() + collect_mod.REFRESH_BUDGET_SECONDS
+            payload = fetch_detail(
+                session.transport(leaf.capability), leaf, values, deadline=deadline
+            )
+        else:
+            payload = fetch_native_detail(session, leaf, values)
+        captured_at = now().isoformat()
+        component_meta = {}
+        if detail.name == "liquidity.network.realtime.get":
+            from .network_detail import component_result
+
+            payload, component_meta = component_result(
+                session, payload, captured_at, deadline=deadline
+            )
     meta = {
         "source": "live",
         "backend": "cdp",
@@ -666,7 +690,7 @@ def run_detail(args: argparse.Namespace) -> int:
         "simulated": False,
         "capability": detail.name,
         "identity": dict(values),
-        "fetched_at": now().isoformat(),
+        "fetched_at": captured_at,
         "loaded_at": None,
         "stale": False,
         "complete": True,
@@ -682,16 +706,31 @@ def run_detail(args: argparse.Namespace) -> int:
     if detail.schema_version and isinstance(payload, dict) and "version" in payload:
         meta["source_version"] = payload["version"]
     meta.update(detail_context_meta(detail, values, payload))
+    if detail.name == "liquidity.network.realtime.get":
+        meta.update(component_meta)
+        try:
+            meta = prepare_result(
+                meta,
+                require_complete=getattr(args, "require_complete", False),
+                mode="live",
+            )
+        except CliError as error:
+            error.meta = {**meta, **(error.meta or {})}
+            raise
     return _emit_object(args, detail.table_columns, payload, meta, fields)
 
 
 def fetch_detail(
-    transport: CdpQueryTransport, leaf: DetailLeaf, values: dict[str, str]
+    transport: CdpQueryTransport,
+    leaf: DetailLeaf,
+    values: dict[str, str],
+    *,
+    deadline: float | None = None,
 ) -> Any:
     from ... import collect as collect_mod
 
     response = collect_mod.execute_bounded(
-        leaf.capability, transport, leaf.capability.detail_body(values)
+        leaf.capability, transport, leaf.capability.detail_body(values), deadline
     )
     if is_business_refusal(response.body):
         raise CliError(BUSINESS_QUERY_FAILED, "backend reported a business failure")

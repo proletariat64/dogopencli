@@ -2,6 +2,16 @@
 
 ## 未发布
 
+规格 #173 / B02 #165：realtime network get 保留原有 26 个配置字段，增加独立的
+`operationHistory` 和 `routeDetails`，组件身份、请求范围、采集时间、报数及质量在
+`meta.components`。历史按原生别名与 fundAction 查询，不按网络 ID 或版本固定，
+保留各版本原生 ID；来源未提供总数或分页终止证明，因此历史覆盖持续 incomplete。
+路由仅使用选中网络的 routeId 与借方别名上下文，原生空路由表示不适用，未知上下文
+返回 null 并告警。网络 null 不被路由额度或服务窗口覆盖；硬失败及新增严格
+`--require-complete` 拒绝均不返回业务数据。get 不写缓存，列表及 refresh 不采集关联。
+输出边界供 B03 #166 使用；外部历史数据去重不在本次修改范围。
+
+
 规格 #162：`liquidity cash accounts list` 合并现金清单、基线清单与真实基线详情，
 `accountType`、`status` 仅取基线；新增默认 `timeZone`、`detail_state` 列。
 退出对客 `network bank-baselines list/get` 及其独立 refresh/prune，直接调用引导至现金账户。

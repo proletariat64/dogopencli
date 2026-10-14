@@ -814,6 +814,61 @@ def _detail_schema(detail: spec.DetailSpec) -> dict[str, Any]:
         for field in ("createTime", "updateTime"):
             schema["properties"][field]["x-timezone"] = "unknown"
     elif detail.projection == "realtime_network":
+        from .native_getters import NETWORK_DETAIL
+        from .qualified_getters import QUOTA_DETAIL
+
+        history = _field_schema(SAMPLED_FIELDS[NETWORK_DETAIL.name])
+        history["additionalProperties"] = False
+        history["required"] = [
+            "id",
+            "version",
+            "scene",
+            "creditAliasName",
+            "debitAliasName",
+            "fundAction",
+        ]
+        history["properties"]["scene"]["const"] = "REALTIME"
+        history["properties"]["version"].update(
+            type="integer", **{"x-observed-type": "int"}
+        )
+        schema["properties"]["operationHistory"] = {
+            "type": ["array", "null"],
+            "items": history,
+            "x-cli-association": True,
+            "description": "Alias/action-scoped versions; independent native "
+            "id/version. Null is unverified; empty array has no exhaustion "
+            "proof. See meta.components.",
+        }
+        route = _detail_schema(QUOTA_DETAIL)
+
+        def safe_nested(definition: dict[str, Any], *, nullable: bool = True) -> None:
+            if definition.get("type") == "object":
+                definition["additionalProperties"] = False
+                if nullable:
+                    definition["type"] = ["object", "null"]
+            elif definition.get("type") == "array" and nullable:
+                definition["type"] = ["array", "null"]
+            for child in definition.get("properties", {}).values():
+                safe_nested(child)
+            if "items" in definition:
+                safe_nested(definition["items"], nullable=False)
+
+        safe_nested(route)
+        for section in ("dynamicQuotas", "staticQuotas"):
+            route["properties"][section]["type"] = "array"
+        route["x-safe-projection"] = (
+            "B02 known quota/window fields only; unknown fields excluded"
+        )
+        route["type"] = ["object", "null"]
+        route["x-cli-association"] = True
+        route["description"] = (
+            "Selected root routeId and debit alias context. Null may be "
+            "inapplicable or unverified; see meta.components."
+        )
+        schema["properties"]["routeDetails"] = route
+        schema["x-component-quality"] = (
+            "meta.components; projection does not change coverage"
+        )
         schema["required"] = ["id"]
         schema["properties"]["version"]["description"] = (
             "Native source configuration version; no version-pinned request."
