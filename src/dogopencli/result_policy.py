@@ -40,7 +40,13 @@ class AcquisitionEvidence:
         reasons: tuple[str, ...] = (),
         attempts: tuple[dict[str, Any], ...] = (),
     ) -> "AcquisitionEvidence":
-        if reported_total is not None and collected_total > reported_total:
+        # Bank's native total counts date groups while collected_total counts rows.
+        comparable = total_semantics != "quote_date_groups"
+        if (
+            comparable
+            and reported_total is not None
+            and collected_total > reported_total
+        ):
             raise CliError(INVALID_RESPONSE, "unique records exceed reported total")
         codes = list(reasons)
         duplicate_count = (
@@ -53,7 +59,11 @@ class AcquisitionEvidence:
         semantics = total_semantics or (
             "unique_objects" if has_identity else "occurrences"
         )
-        if reported_total is not None and collected_total < reported_total:
+        if (
+            comparable
+            and reported_total is not None
+            and collected_total < reported_total
+        ):
             codes.append("COUNT_SHORTFALL")
             complete = False
         if duplicate_count:
@@ -177,11 +187,13 @@ class AcquisitionEvidence:
                 )
             )
             or (
-                evidence.reported_total is not None
+                evidence.total_semantics != "quote_date_groups"
+                and evidence.reported_total is not None
                 and evidence.collected_total > evidence.reported_total
             )
             or (
                 evidence.scope_complete
+                and evidence.total_semantics != "quote_date_groups"
                 and evidence.reported_total is not None
                 and evidence.collected_total != evidence.reported_total
             )

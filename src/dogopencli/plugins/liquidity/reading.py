@@ -95,6 +95,10 @@ def _public_balance_field(item: spec.ListSpec, field: str) -> str:
 
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
+    if item.path == ("investment", "interest-rates"):
+        from .interest_rates import SOURCE_FIELDS
+
+        fields = SOURCE_FIELDS.get(item.endpoint, fields)
     schema = _field_schema(fields)
     if item.schema_version == "access-lists-v1":
         properties = schema["properties"]
@@ -114,6 +118,19 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
             properties[field]["description"] = (
                 "Native default field; not pagination or coverage evidence."
             )
+    if item.path == ("investment", "interest-rates"):
+        value = "ruleValue" if item.kind == spec.SETTINGS else "rateValue"
+        schema["properties"][value]["x-unit"] = "unknown; raw value preserved"
+        schema["properties"][value]["description"] = (
+            "Source-specific raw rate string; precision and empty/null values"
+            " retained without scaling."
+        )
+        if item.kind == spec.SETTINGS:
+            for name in ("effectiveDate", "expireDate"):
+                schema["properties"][name]["description"] = (
+                    "Native configuration validity date; not an observation window."
+                )
+        return schema
     if item.path == ("cash", "accounts"):
         source_fields = {
             "cash": fields,
@@ -592,6 +609,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
     for item in leaf.variants:
         variants.append(
             {
+                "kind": item.kind,
                 "request": {
                     "method": item.method,
                     "path": item.endpoint,
@@ -715,6 +733,16 @@ def _list_description(node: BizNode) -> dict[str, Any]:
 
 
 def _detail_schema(detail: spec.DetailSpec) -> dict[str, Any]:
+    if detail.path == ("investment", "interest-rates"):
+        from .interest_rates import EXTERNAL_DETAIL_FIELDS
+
+        schema = _field_schema(EXTERNAL_DETAIL_FIELDS)
+        schema["properties"]["ruleValue"]["x-unit"] = "unknown; raw value preserved"
+        schema["x-nested-values"] = (
+            "Arrays/maps/objects/null retained as native;"
+            " no recursive reads or downloads."
+        )
+        return schema
     schema = _field_schema(SAMPLED_FIELDS.get(detail.name, {}))
     if detail.projection in {"asset_trade_detail", "quotation_group_detail"}:
         from .versioned_getters import CONTACT_FIELDS, PRODUCT_FIELDS
@@ -819,6 +847,51 @@ def _detail_schema(detail: spec.DetailSpec) -> dict[str, Any]:
             "request-scoped aggregate; member IDs may be blank or duplicate"
         )
         schema["x-context-echo"] = "optional native fields; absence is not fabricated"
+        return schema
+    if detail.name == "liquidity.operations.prefunds.get":
+        history = _field_schema(SAMPLED_FIELDS[detail.name])
+        history["required"] = ["id", "version", "status", "prefundingBizNo"]
+        schema["properties"]["historyApplications"] = {
+            "type": "array",
+            "items": history,
+            "x-cli-association": True,
+            "description": "Same-business APPROVED_FINAL native application rows. "
+            "Current-version membership evidence is separate in meta.components.",
+        }
+        transaction = _field_schema(
+            {
+                "preFundingUseDetailId": "str",
+                "preFundingOrderId": "str",
+                "prefundingBizNo": "str",
+                "tntInstId": "str",
+                "useDirection": "str",
+                "status": "str",
+                "currency": "str",
+                "amount": "str",
+                "applyCurrency": "str",
+                "exchangeAmount": "str",
+                "useRevertRelationVOList": "list",
+            }
+        )
+        transaction["required"] = ["preFundingUseDetailId", "preFundingOrderId"]
+        transaction["properties"]["useRevertRelationVOList"] = {
+            "type": ["array", "null"],
+            "items": {"type": "object"},
+            "description": "Unflattened native exchange relations; native decimals "
+            "and source dates remain unchanged.",
+        }
+        schema["properties"]["drawdownDetails"] = {
+            "type": "array",
+            "items": transaction,
+            "x-cli-association": True,
+            "description": "Business-scoped native USE/REVERT rows, including FAIL. "
+            "Blank business echoes stay blank; application-version membership binds "
+            "rows. Native count is evidence, not a trustworthy exhaustion proof.",
+        }
+        schema["x-component-quality"] = (
+            "meta.components; --fields selects whole top-level collections only, "
+            "not dotted paths; projection never changes quality or request scope"
+        )
         return schema
     if detail.schema_version not in {
         "funding-demand-detail-v1",
@@ -945,7 +1018,9 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
             **_source_guide(
                 detail.name,
                 contract,
-                "2026-10-07"
+                "2026-10-15"
+                if detail.path == ("investment", "interest-rates")
+                else "2026-10-07"
                 if detail.schema_version
                 in {
                     "funding-demand-detail-v1",
@@ -962,6 +1037,11 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
                 else "2026-10-02"
                 if detail.schema_version
                 else "2026-10-01",
+            ),
+            **(
+                {"rate_source": "expection"}
+                if detail.path == ("investment", "interest-rates")
+                else {}
             ),
             "projection": detail.projection or None,
             "schema_version": detail.schema_version or None,

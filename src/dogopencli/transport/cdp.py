@@ -52,7 +52,7 @@ def _fetch_expression(
     url = f"https://{request.host}{request.path}"
     payload = canonical(request.body)
     timeout_ms = int(timeout_seconds * 1000)
-    if request.method == "GET":
+    if request.method == "GET" or encoding == "post-query":
         # GET carries no body: the validated payload keys serialize into the
         # URL query (they already passed the contract allowlist).
         prepare = "const params = new URLSearchParams(payload).toString();"
@@ -62,7 +62,8 @@ def _fetch_expression(
         )
         options = (
             f'method: "{request.method}", credentials: "include", '
-            "signal: controller.signal"
+            + ('body: "", ' if encoding == "post-query" else "")
+            + "signal: controller.signal"
         )
     elif encoding == "form":
         # Verified form contract: scalar values url-encode into the request

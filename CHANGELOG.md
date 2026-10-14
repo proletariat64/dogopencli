@@ -9,6 +9,23 @@
 银行黑名单路径可发现但不执行：重复 bankId 的行／版本身份仍未验证；
 不合成身份，不新增 get/detail/Edit，不宣称三叶验收完成。#168 保持开放。
 
+规格 #178 / R04 #170：interest-rates 统一支持 market、bank、expectation-rule 和
+保留原拼写的 expection；支持 source 前置并兼容已有 market 后置调用。仅 expection
+提供真实在线 get，保留原生规则详情及嵌套字段。银行使用配对 ISO 日期，原生日期组报数
+与实取产品行数分开；未证明分页覆盖仍明确 incomplete。规则分类为 settings，
+市场／银行分类为 runtimes；原始利率、配置状态和有效期不转换、不按当前有效性删行。
+四来源共享一个临时列表槽，非空刷新原子替换来源；空／硬失败／严格拒绝保留旧槽，
+live/get 不写槽。单位与生产覆盖限制分别记录。用法见
+[来源查询合同](docs/design/liquidity-interest-rates-v0.1.0.md)。
+
+规格 #177 / R03 #169：prefunds get 保留指定申请的原生详情，增加同业务的
+`historyApplications` 与 `drawdownDetails`，支持历史申请 ID，保留 FAIL 流水、
+原生空业务单号与嵌套换汇关系。通过有界历史及当前版本查询核对业务、实体和申请身份；
+各组件的来源、范围、采集时间及原生报数保留在 `meta.components`。
+流水使用原生单数组合同，报数为零但非空的异常不被改写；即便成功空数组，覆盖仍未获证明，
+默认返回安全部分数据并告警，`--require-complete` 拒绝发布不完整结果。
+顶层仍表示一个申请；get 不写缓存，list/refresh 不扩大状态范围或采集关联。
+
 
 规格 #175 / R01 #167：退役 cash groups、investment strategies、rules notification、
 ledger customers、ledger accounts（INNER/OUTER）、reference business-lines 与

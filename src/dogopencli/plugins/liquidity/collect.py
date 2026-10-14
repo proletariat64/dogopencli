@@ -48,6 +48,8 @@ def collect_liquidity_scope(
         from .account_capacity import collect_capacity
 
         return collect_capacity(capability, transport, scope, deadline, progress)
+    if capability.descriptor.endpoint == "/queryEnquireRateList.json":
+        return _collect_bank(capability, transport, scope, deadline, progress)
     if capability.descriptor.pagination == spec.PAGE_SINGLE:
         return _collect_single(capability, transport, scope, deadline, progress)
     return _collect_offset(capability, transport, scope, deadline, progress)
@@ -228,4 +230,94 @@ def acquire_liquidity_list(
         return collect_accuracy(session, capability, scope, progress=progress)
     return collect_liquidity_scope(
         capability, session.transport(capability), scope, progress=progress
+    )
+
+
+def _collect_bank(capability, transport, scope, deadline, progress):
+    """Acquire the verified descending quote-date group contract (2026-10-15)."""
+    seen = {}
+    ordered = []
+    dates = set()
+    arrivals = 0
+    total = None
+    row_start = 0
+    pages = 0
+    reasons = []
+    previous_date = None
+    size = capability.descriptor.page_size
+    while True:
+        collect_mod.remaining_seconds(deadline)
+        if pages >= collect_mod.MAX_PAGES:
+            raise CliError(TIMEOUT, "bank group page budget exceeded", retryable=True)
+        response = collect_mod.execute_bounded(
+            capability, transport, capability.page_body(scope, row_start), deadline
+        )
+        rows, reported = capability.parse_rows(response.body)
+        capability.validate_rows_scope(rows, scope)
+        if reported is None:
+            raise CliError(INVALID_RESPONSE, "bank inquiry requires native group total")
+        if total is None:
+            total = reported
+            if total > size * collect_mod.MAX_PAGES:
+                raise CliError(
+                    TIMEOUT, "bank group page budget exceeded", retryable=True
+                )
+        elif total != reported:
+            raise CliError(
+                INVALID_RESPONSE, "backend total changed during bank collection"
+            )
+        pages += 1
+        groups = list(dict.fromkeys(row["quoteDate"] for row in rows))
+        # Rows belonging to each date must remain contiguous in descending order.
+        native_dates = [row["quoteDate"] for row in rows]
+        if native_dates != sorted(native_dates, reverse=True):
+            reasons.append("BANK_GROUP_ORDER_UNPROVEN")
+        if dates.intersection(groups):
+            reasons.append("BANK_GROUP_OVERLAP")
+        if previous_date is not None and groups and groups[0] >= previous_date:
+            reasons.append("BANK_GROUP_BOUNDARY_UNPROVEN")
+        if len(groups) > size:
+            reasons.append("BANK_GROUP_PAGE_WIDTH_UNPROVEN")
+        remaining = max(0, total - row_start)
+        if len(groups) != min(size, remaining):
+            reasons.append("BANK_GROUP_COUNT_SHORTFALL")
+        arrivals += len(rows)
+        _merge_page(capability, seen, ordered, rows)
+        dates.update(groups)
+        if groups:
+            previous_date = groups[-1]
+        if progress is not None:
+            progress(pages, max(-(-total // size), pages))
+        if reasons or row_start + size >= total:
+            break
+        row_start += size
+    if len(dates) != total:
+        reasons.append("BANK_GROUP_COVERAGE_UNPROVEN")
+    complete = not reasons and arrivals == len(ordered)
+    evidence = AcquisitionEvidence.for_collection(
+        complete=complete,
+        reported_total=total,
+        collected_total=len(ordered),
+        arrivals=arrivals,
+        total_semantics="quote_date_groups",
+        reasons=tuple(reasons),
+        attempts=(
+            {
+                "contract": "bank-quote-date-groups-v1",
+                "pages": pages,
+                "collected_groups": len(dates),
+                "reported_groups": total,
+            },
+        ),
+    )
+    collect_mod.remaining_seconds(deadline)
+    return CollectedScope(
+        records=ordered,
+        complete=evidence.scope_complete,
+        total_count=total,
+        page_size=size,
+        pages=pages,
+        rebuilt=False,
+        deadline=deadline,
+        evidence=evidence,
     )

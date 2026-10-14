@@ -183,3 +183,5 @@
 - [转账规则配置列表生产 UAT](research/general/2026-10-05-liquidity-transfer-rules-uat.md)：#103 原生全量配置对齐、offline/live 与真实详情缓存隔离。
 - [定价因子类型定义契约](research/general/2026-10-05-factor-definitions-contract.md)：#105 独立列表的原生范围、验收证据和限制。
 - [定价因子类型定义生产 UAT](research/general/2026-10-05-factor-definitions-uat.md)：#105 独立列表的原生范围、验收证据和限制。
+
+- [Interest-rate source inquiries](design/liquidity-interest-rates-v0.1.0.md): #178 / #170, four source lists, native external-rule detail and shared temporary slot.
