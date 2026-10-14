@@ -111,9 +111,19 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
             " not capture time.",
         }
         for field, meaning in meanings.items():
-            properties[field]["description"] = meaning
+            if field in properties:
+                properties[field]["description"] = meaning
         for field in item.identity:
             properties[field]["description"] = "Verified nonempty native row identity."
+        if item.path == ("reference", "blacklist", "bank"):
+            schema["required"] = ["bankId", "gmtCreate"]
+            properties["bankId"]["description"] = (
+                "Business bank identity; retain greatest gmtCreate"
+                " before local filters."
+            )
+            properties["gmtCreate"]["type"] = "integer"
+            properties["gmtCreate"]["minimum"] = 0
+            properties["gmtCreate"]["x-unit"] = "epoch milliseconds"
         for field in ("pageNo", "pageSize", "rowStart", "startindex", "totalSize"):
             properties[field]["description"] = (
                 "Native default field; not pagination or coverage evidence."

@@ -29,11 +29,10 @@ def test_access_list_offline_without_slot_never_opens_browser(setup, run_cli, pa
     assert not setup.cache_path.exists()
 
 
-def test_bank_blacklist_unproven_identity_is_unavailable(setup, run_cli):
+def test_bank_blacklist_offline_requires_its_own_slot(setup, run_cli):
     code, out, err = run_cli(["liquidity", "reference", "blacklist", "bank", "list"])
     assert code == 1, err
-    assert parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
-    assert "identity" in parse(out)["error"]["message"]
+    assert parse(out)["error"]["code"] == "CACHE_MISS"
     assert setup.state.transports == []
     assert not setup.cache_path.exists()
 

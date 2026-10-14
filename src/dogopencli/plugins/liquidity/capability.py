@@ -401,6 +401,11 @@ class LiquidityListCapability:
     def validate_rows_scope(self, rows: list[dict[str, Any]], scope: str) -> None:
         """Reject out-of-scope rows before live output or publication."""
         if self._spec.schema_version == "access-lists-v1":
+            from .access_lists import BANK_BLACKLIST, latest_bank_rows
+
+            bank_selection = self._spec.path == BANK_BLACKLIST.path
+            if bank_selection:
+                latest_bank_rows(rows)
             seen: dict[str, str] = {}
             for row in rows:
                 identity = row.get(self._spec.identity[0])
@@ -411,7 +416,11 @@ class LiquidityListCapability:
                 if "tntInstId" in row and row["tntInstId"] not in ("", spec.TENANT):
                     raise _invalid("access-list row belongs to another tenant")
                 content = canonical(row)
-                if identity in seen and seen[identity] != content:
+                if (
+                    not bank_selection
+                    and identity in seen
+                    and seen[identity] != content
+                ):
                     raise _invalid("conflicting access-list identity")
                 seen[identity] = content
         if self._spec.endpoint == "/latestBalanceQuery.json":
