@@ -231,6 +231,19 @@ class LiquidityListCapability:
             encoding=(
                 spec.ENC_FORM if self._spec.encoding == spec.ENC_FORM else spec.ENC_JSON
             ),
+            json_body_contracts=(
+                (
+                    (
+                        self._spec.vo_field,
+                        frozenset(self._spec.template[self._spec.vo_field])
+                        | {"rowStart", "pageSize"},
+                        tuple(self._spec.template[self._spec.vo_field].items()),
+                    ),
+                )
+                if self._spec.schema_version == "access-lists-v1"
+                and self._spec.vo_field
+                else ()
+            ),
         )
 
     def page_body(
@@ -375,6 +388,20 @@ class LiquidityListCapability:
 
     def validate_rows_scope(self, rows: list[dict[str, Any]], scope: str) -> None:
         """Reject out-of-scope rows before live output or publication."""
+        if self._spec.schema_version == "access-lists-v1":
+            seen: dict[str, str] = {}
+            for row in rows:
+                identity = row.get(self._spec.identity[0])
+                if not isinstance(identity, str) or not identity.strip():
+                    raise _invalid(
+                        "access-list native identity is not a nonempty string"
+                    )
+                if "tntInstId" in row and row["tntInstId"] not in ("", spec.TENANT):
+                    raise _invalid("access-list row belongs to another tenant")
+                content = canonical(row)
+                if identity in seen and seen[identity] != content:
+                    raise _invalid("conflicting access-list identity")
+                seen[identity] = content
         if self._spec.endpoint == "/latestBalanceQuery.json":
             values = decode_scope(scope)
             entities = values.get("entitys")

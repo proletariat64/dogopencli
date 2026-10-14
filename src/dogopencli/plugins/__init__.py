@@ -59,6 +59,11 @@ class EndpointContract:
     # Business keys and versions do not establish native row identity.
     # Distinct content under an unverified key leaves consistency unproven.
     consistency_version_field: str | None = None
+    # Named GET sources can carry an exact inquiry object as a JSON string.
+    # Its keys and fixed scope values are validated before transport execution.
+    json_body_contracts: tuple[
+        tuple[str, frozenset[str], tuple[tuple[str, str | int], ...]], ...
+    ] = ()
 
 
 @dataclass(frozen=True)

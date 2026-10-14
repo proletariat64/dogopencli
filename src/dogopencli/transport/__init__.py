@@ -7,6 +7,7 @@ a raw response body and independent origin metadata, and both feed the
 formal plugin parsers.
 """
 
+import json
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -83,3 +84,22 @@ def validate_request(request: QueryRequest, contract: EndpointContract) -> None:
                 REQUEST_NOT_ALLOWED,
                 f"request field {key} has an unregistered shape",
             )
+
+    for key, allowed, fixed in contract.json_body_contracts:
+        value = request.body.get(key)
+        try:
+            decoded = json.loads(value) if isinstance(value, str) else None
+        except (ValueError, TypeError):
+            decoded = None
+        if not isinstance(decoded, dict) or set(decoded) != allowed:
+            raise CliError(
+                REQUEST_NOT_ALLOWED,
+                f"request JSON field {key} has an unregistered shape",
+            )
+        for field, expected in fixed:
+            actual = decoded.get(field)
+            if type(actual) is not type(expected) or actual != expected:
+                raise CliError(
+                    REQUEST_NOT_ALLOWED,
+                    f"request JSON field {key}.{field} must match its fixed value",
+                )

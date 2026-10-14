@@ -6,6 +6,7 @@ Samples are not
 complete schemas, validation assertions, or nullability guarantees.
 """
 
+from .access_lists import ACCOUNT_BLACKLIST, ENTITY_WHITELIST
 from .account_capacity import ACCOUNT_CAPACITY
 from .account_capacity import SAMPLED_FIELDS as CAPACITY_FIELDS
 from .decision_list import DECISIONS
@@ -3274,3 +3275,54 @@ SAMPLED_FIELDS[GROUP_DETAIL.name] = dict.fromkeys(GROUP_FIELDS, "str")
 SAMPLED_FIELDS[GROUP_DETAIL.name].update(
     version="int", contactInfoList="list", operationHistoryList="list"
 )
+
+# Independent native access-list settings, observed 2026-10-15. Dummy id and
+# default pagination fields are retained observations, never row identities.
+_ACCESS_INTS = (
+    "gmtCreate",
+    "gmtModified",
+    "id",
+    "pageNo",
+    "pageSize",
+    "rowStart",
+    "startindex",
+    "totalSize",
+)
+SAMPLED_FIELDS[ENTITY_WHITELIST.name] = {
+    **dict.fromkeys(
+        (
+            "cityCode",
+            "countryCode",
+            "innerReconInst",
+            "instCode",
+            "instId",
+            "instName",
+            "memo",
+            "processId",
+            "processStatus",
+            "status",
+        ),
+        "str",
+    ),
+    **dict.fromkeys(_ACCESS_INTS, "int"),
+    "entityCode": "list",
+}
+SAMPLED_FIELDS[ACCOUNT_BLACKLIST.name] = {
+    **dict.fromkeys(
+        (
+            "accountName",
+            "accountNo",
+            "aliasName",
+            "bankId",
+            "currency",
+            "instId",
+            "operator",
+            "processId",
+            "processStatus",
+            "status",
+            "tntInstId",
+        ),
+        "str",
+    ),
+    **dict.fromkeys(_ACCESS_INTS, "int"),
+}

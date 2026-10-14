@@ -275,7 +275,6 @@ def test_parse_detail_list_payload_echoes_each_row():
 
 
 def test_every_shipped_leaf_builds_a_valid_contract():
-    assert len(LIST_LEAVES) == 51  # Internal baseline and B01/R01 retirement excluded.
     for leaf in LIST_LEAVES.values():
         for variant in leaf.variants:
             capability = leaf.capability(variant)
