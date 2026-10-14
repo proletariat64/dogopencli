@@ -938,7 +938,7 @@ def description(node: BizNode) -> dict[str, Any]:
                 "release_status": "retired",
                 "reason": RETIREMENT_REASON,
                 "quality": "No acquisition, cache replay, or publication is available.",
-                "projection": "Legacy projection options are accepted for refusal only.",
+                "projection": "Projection options are accepted for refusal only.",
                 "pagination": "Legacy display options are accepted only for refusal.",
                 "envelope": {
                     "data": "Always null on retirement refusal.",
