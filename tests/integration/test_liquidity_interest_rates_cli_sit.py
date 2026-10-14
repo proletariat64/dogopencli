@@ -162,6 +162,86 @@ def test_rule_sources_settings_native_templates_and_single_slot(setup, run_cli):
         assert code == 2 and parse(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
+@pytest.mark.parametrize(
+    "source,category,template",
+    [
+        (
+            "expectation-rule",
+            "CUSTOMER_TYPE",
+            {
+                "currentArea": "1",
+                "timeZone": "GMT+08",
+                "tntInstId": "GUAPW3SG",
+                "rateCategory": "CUSTOMER_TYPE",
+                "beginDate": "",
+                "endDate": "",
+            },
+        ),
+        (
+            "expection",
+            "FINANCIAL_INST_TYPE",
+            {
+                "rateCategory": "FINANCIAL_INST_TYPE",
+                "rateProvide": "",
+                "productTerm": "",
+                "isPage": "Y",
+                "customizedMarketRateName": "",
+                "expectedRateProvider": "",
+                "currency": "",
+                "rateType": "",
+                "ruleStatus": "",
+            },
+        ),
+    ],
+)
+def test_rule_sources_second_page_preserves_contract_and_saved_rows(
+    setup, run_cli, source, category, template
+):
+    rows = [rule(category, f"SYN-RULE-{index:04d}") for index in range(1003)]
+    for row, status, value in zip(
+        rows[1000:], ("VALID", "INVALID", "FUTURE"), (None, "0", ""), strict=True
+    ):
+        row.update(ruleStatus=status, ruleValue=value)
+    expected_requests = [
+        {**template, "rowStart": 0, "pageSize": 1000},
+        {**template, "rowStart": 1000, "pageSize": 1000},
+    ]
+
+    def answer(payload, index):
+        assert payload == expected_requests[index]
+        return page(rows[:1000] if index == 0 else rows[1000:], 1003)
+
+    setup.state.business_handler = answer
+    code, out, err = run_cli(
+        ["refresh", *ROOT, "--source", source, "--require-complete"]
+    )
+    assert code == 0, err
+    refreshed = parse(out)
+    assert refreshed["data"]["row_count"] == 1003
+    assert refreshed["meta"]["complete"] is True
+    assert refreshed["meta"]["reported_total"] == 1003
+    assert refreshed["meta"]["rate_source"] == source
+    assert refreshed["meta"]["kind"] == "settings"
+    assert setup.state.business_requests == expected_requests
+
+    before = setup.cache_path.read_bytes()
+    setup.state.reachable = False
+    for selection in ([], ["--source", source]):
+        code, out, err = run_cli(
+            [*ROOT, "list", *selection, "--limit", "0", "--require-complete"]
+        )
+        assert code == 0, err
+        cached = parse(out)
+        assert cached["data"] == rows
+        assert cached["meta"]["rate_source"] == source
+        assert cached["meta"]["kind"] == "settings"
+        assert cached["meta"]["complete"] is True
+        assert cached["meta"]["reported_total"] == 1003
+        assert cached["meta"]["returned_count"] == 1003
+    assert setup.state.business_requests == expected_requests
+    assert setup.cache_path.read_bytes() == before
+
+
 def external_detail():
     return {
         **rule("FINANCIAL_INST_TYPE"),
