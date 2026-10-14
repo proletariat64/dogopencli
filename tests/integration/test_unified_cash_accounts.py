@@ -462,3 +462,41 @@ def test_cash_anomalous_page_keeps_later_native_range(setup, run_cli, empty_firs
         if "bankAccountQueryVO" in payload
     ]
     assert pages == [0, 5000]
+
+
+def test_successful_native_null_detail_is_hard_and_preserves_prior_cache(
+    setup, run_cli
+):
+    normal = native_handler([account()], [account()])
+    setup.state.business_handler = normal
+    assert run_cli(["refresh", "liquidity", "cash", "accounts"])[0] == 0
+    before = setup.cache_path.read_bytes()
+
+    def answer(payload, index):
+        if "aliasName" in payload:
+            return {
+                "status": 200,
+                "body": {
+                    "resultFlag": True,
+                    "count": 0,
+                    "result": {
+                        "success": True,
+                        "data": None,
+                        "count": 0,
+                        "detailMessage": None,
+                        "errorCode": None,
+                        "errorContext": None,
+                        "errorMessage": None,
+                    },
+                },
+            }
+        return normal(payload, index)
+
+    setup.state.business_handler = answer
+    code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
+    assert code == 1
+    result = parse(out)
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+    assert result["error"]["message"] == "detail payload is not an object"
+    assert result["data"] is None
+    assert setup.cache_path.read_bytes() == before
