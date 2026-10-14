@@ -4,7 +4,7 @@ import argparse
 
 from ... import config as config_mod
 from ...cache import Cache
-from ...errors import EXIT_OK
+from ...errors import EXIT_OK, CliError
 from ...inquiry import inquiry_session
 from ...result_policy import check_complete, evidence_for, prepare_result
 from ...temporary_query import publish_slot, slot_namespace
@@ -33,11 +33,18 @@ def run_refresh_list(args: argparse.Namespace) -> int:
         changed_groups = 0
         if variant.projection == "balances":
             _, changed_groups = latest_statement_rows(result.records)
-        check_complete(
-            evidence,
-            require_complete=getattr(args, "require_complete", False),
-            mode="refresh",
-        )
+        try:
+            check_complete(
+                evidence,
+                require_complete=getattr(args, "require_complete", False),
+                mode="refresh",
+            )
+        except CliError as error:
+            if leaf.path == ("cash", "accounts"):
+                from .unified_accounts import account_meta
+
+                error.meta = {**(error.meta or {}), **account_meta(evidence)}
+            raise
         fetched_at = now().isoformat()
         frozen = selection(evidence)
         snapshot = publish_slot(
@@ -74,6 +81,10 @@ def run_refresh_list(args: argparse.Namespace) -> int:
         },
         mode="refresh",
     )
+    if leaf.path == ("cash", "accounts"):
+        from .unified_accounts import account_meta
+
+        meta.update(account_meta(evidence))
     notice = update_notice(changed_groups)
     if notice:
         meta["warnings"] = [*meta.get("warnings", []), notice]
