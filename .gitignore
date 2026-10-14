@@ -1,6 +1,7 @@
 /tmp/
 /.code-review-graph/
 /.qoder/
+/.agents/skills/duckdog-import/
 /docs/research/
 /.venv/
 __pycache__/
