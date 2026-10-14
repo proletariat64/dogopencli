@@ -2,6 +2,15 @@
 
 ## 未发布
 
+规格 #178 / R04 #170：interest-rates 统一支持 market、bank、expectation-rule 和
+保留原拼写的 expection；支持 source 前置并兼容已有 market 后置调用。仅 expection
+提供真实在线 get，保留原生规则详情及嵌套字段。银行使用配对 ISO 日期，原生日期组报数
+与实取产品行数分开；未证明分页覆盖仍明确 incomplete。规则分类为 settings，
+市场／银行分类为 runtimes；原始利率、配置状态和有效期不转换、不按当前有效性删行。
+四来源共享一个临时列表槽，非空刷新原子替换来源；空／硬失败／严格拒绝保留旧槽，
+live/get 不写槽。单位与生产覆盖限制分别记录。用法见
+[来源查询合同](docs/design/liquidity-interest-rates-v0.1.0.md)。
+
 规格 #177 / R03 #169：prefunds get 保留指定申请的原生详情，增加同业务的
 `historyApplications` 与 `drawdownDetails`，支持历史申请 ID，保留 FAIL 流水、
 原生空业务单号与嵌套换汇关系。通过有界历史及当前版本查询核对业务、实体和申请身份；

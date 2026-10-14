@@ -294,6 +294,10 @@ class LiquidityListCapability:
             from .rfqs import rfq_wire_dates
 
             rfq_wire_dates(body)
+        if self._spec.endpoint == "/queryEnquireRateList.json":
+            from .interest_rates import wire_dates
+
+            wire_dates(body)
         return body
 
     def parse_rows(self, body: bytes) -> tuple[list[dict[str, Any]], int | None]:
@@ -355,6 +359,13 @@ class LiquidityListCapability:
                 seen_identities.add(key)
         if self._spec.projection == "rfq_subtasks" and not rows and total != 0:
             raise _invalid("empty RFQ response does not cover its reported total")
+        if self._spec.endpoint in (
+            "/queryMarketRateRuleList.json",
+            "/queryFinancialMarketRateRuleList.json",
+        ):
+            from .interest_rates import validate_rules
+
+            validate_rules(rows, self._spec.template["rateCategory"])
         seen_raw: dict[tuple[str, ...], str] = {}
         for row in rows:
             identity = self.identity_key(row)
@@ -415,6 +426,10 @@ class LiquidityListCapability:
             from .investment_batch import validate_strategy_rows_scope
 
             validate_strategy_rows_scope(rows, decode_scope(scope))
+        if self._spec.endpoint == "/queryEnquireRateList.json":
+            from .interest_rates import validate_bank_scope
+
+            validate_bank_scope(rows, decode_scope(scope))
         if not (self._spec.schema_version and self._spec.profile == spec.PROFILE_DATED):
             return
         # Use the native business-date parser so acquisition and
@@ -501,12 +516,12 @@ class LiquidityDetailCapability:
                 for key, value in self._spec.template.items()
                 if isinstance(value, (str, int)) and not isinstance(value, bool)
             )
-            + (("tntInstId", spec.TENANT),)
-            if self._spec.schema_version and self._spec.sends_tenant
-            else (),
-            encoding=(
-                spec.ENC_FORM if self._spec.encoding == spec.ENC_FORM else spec.ENC_JSON
+            + (
+                (("tntInstId", spec.TENANT),)
+                if self._spec.schema_version and self._spec.sends_tenant
+                else ()
             ),
+            encoding=(self._spec.encoding),
         )
 
     def detail_body(self, values: dict[str, str]) -> dict[str, Any]:
@@ -594,6 +609,10 @@ class LiquidityDetailCapability:
                     raise _invalid("detail identity does not match the request")
             elif str(actual) != str(expected):
                 raise _invalid("detail identity does not match the request")
+        if self._spec.endpoint == "/queryFinancialInstRateRuleDetail.json":
+            from .interest_rates import validate_rules
+
+            validate_rules([detail], "FINANCIAL_INST_TYPE")
         if self._spec.name == "liquidity.network.realtime.get":
             if detail.get("tntInstId") not in (None, "", spec.TENANT):
                 raise _invalid("network detail tenant contradicts requested source")

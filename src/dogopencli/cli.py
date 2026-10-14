@@ -1616,6 +1616,15 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
                 "--all removed; use --limit 0 for output or supported --entity ANY"
             )
         )
+    if "interest-rates" in node.path:
+        sources = []
+        for index, token in enumerate(remaining):
+            if token.startswith("--source="):
+                sources.append(token.split("=", 1)[1])
+            elif token == "--source" and index + 1 < len(remaining):
+                sources.append(remaining[index + 1])
+        if len(set(sources)) > 1:
+            return _emit_error(_argument_error("conflicting --source values"))
     alias_check = _check_alias_spellings(node, remaining)
     if isinstance(alias_check, CliError):
         # No successfully parsed output format exists yet; use the JSON default.
