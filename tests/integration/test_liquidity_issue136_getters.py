@@ -88,9 +88,13 @@ def test_network_get_is_native_unpinned_settings(setup, run_cli):
     assert code == 0, (out, err)
     result = parse(out)
     assert result["data"] == {
-        key: value
-        for key, value in native.items()
-        if key not in ("successRate", "operator")
+        **{
+            key: value
+            for key, value in native.items()
+            if key not in ("successRate", "operator")
+        },
+        "operationHistory": None,
+        "routeDetails": None,
     }
     assert result["meta"]["kind"] == "settings"
     assert result["meta"]["source_version"] == 7
@@ -234,6 +238,14 @@ def test_empty_identity_rejected_without_network(setup, run_cli, leaf, bad):
     ],
 )
 def test_unknown_parameters_rejected_without_network(setup, run_cli, leaf, extra):
+    if leaf[0] == ("network", "realtime") and extra == ["--require-complete"]:
+        setup.state.business_handler = lambda payload, index: {
+            "status": 200,
+            "body": leaf[3](),
+        }
+        code, out, _ = run_cli([*invocation(leaf), *extra])
+        assert code == 1 and parse(out)["error"]["code"] == "INCOMPLETE_RESULT"
+        return
     code, out, _ = run_cli([*invocation(leaf), *extra])
     assert code == 2
     assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
@@ -500,7 +512,7 @@ def test_native_getter_description_exposes_only_projected_schema(setup, run_cli,
         assert "accountNo" not in properties
         assert properties["createTime"]["x-timezone"] == "unknown"
     elif path[0] == "network":
-        assert len(properties) == 26
+        assert len(properties) == 28
         assert properties["id"]["x-observed-type"] == "str"
         assert properties["version"]["x-observed-type"] == "unknown"
         assert "successRate" not in properties

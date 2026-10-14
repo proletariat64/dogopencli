@@ -55,7 +55,7 @@ Settings 使用 `dogopencli <leaf> list --live --limit 0 --offset 0 --require-co
 
 ## Skill 与验收
 
-[duckdog-import](../../.agents/skills/duckdog-import/SKILL.md) 支持上述两个 settings selectors，可主动执行 live 查询，或消费已确认来源的完整 live JSON 文件；不增加核心 CLI 业务写命令。
+本地安装的 `duckdog-import` skill 不随仓库分发，支持上述两个 settings selectors，可主动执行 live 查询，或消费已确认来源的完整 live JSON 文件；不增加核心 CLI 业务写命令。[Settings 导入契约](duckdog-settings-import-v0.1.0.md)记录已声明的来源和身份边界。
 
 验收：Parquet 回读数量正确；JSON 精度、未知字段和嵌套数据保留；重复导入不增加重复记录；全量替换只保留当前文件；完整空结果清空；不完整、错误来源、筛选结果、重复唯一键和较旧采集不替换；发布事务失败保留旧数据。合成验证使用临时目录；真实导入与 ANY 配置另行验证。
 

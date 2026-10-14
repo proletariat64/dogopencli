@@ -594,6 +594,13 @@ class LiquidityDetailCapability:
                     raise _invalid("detail identity does not match the request")
             elif str(actual) != str(expected):
                 raise _invalid("detail identity does not match the request")
+        if self._spec.name == "liquidity.network.realtime.get":
+            if detail.get("tntInstId") not in (None, "", spec.TENANT):
+                raise _invalid("network detail tenant contradicts requested source")
+            if {"operationHistory", "routeDetails"}.intersection(detail):
+                raise _invalid(
+                    "native network payload collides with reserved association fields"
+                )
         if self._spec.projection == "route_quota_detail":
             from .qualified_getters import validate_quota_context
 

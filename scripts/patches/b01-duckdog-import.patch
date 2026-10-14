@@ -181,9 +181,9 @@
  
  ## Execute
  
---- a/docs/design/duckdog-settings-import-contracts.md
-+++ b/docs/design/duckdog-settings-import-contracts.md
-@@ -38,8 +38,6 @@
+--- a/docs/design/duckdog-settings-import-v0.1.0.md
++++ b/docs/design/duckdog-settings-import-v0.1.0.md
+@@ -40,8 +40,6 @@
  | network/realtime | id |
  | network/bank-baselines | aliasName |
  | network/account-capabilities | id |
@@ -192,7 +192,7 @@
  | ledger/customers | customerNo, version |
  | reference/banks | bankId |
  | reference/entities | id; additionally unique string instId |
-@@ -56,3 +54,11 @@
+@@ -58,3 +56,11 @@
  missing/unparseable dates need confirmation. Recent nested configuration changes
  also establish activity. Old timestamps establish age, not proof that a backend
  job stopped. Previously confirmed model retirement retains its independent basis.

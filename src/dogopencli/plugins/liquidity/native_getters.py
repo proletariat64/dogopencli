@@ -93,13 +93,31 @@ NETWORK_DETAIL = DetailSpec(
     list_leaf=("network", "realtime"),
     projection="realtime_network",
     schema_version="realtime-network-detail-v1",
-    table_columns=("id", "routeId", "version", "networkStatus", "runStatus"),
+    table_columns=(
+        "id",
+        "routeId",
+        "version",
+        "networkStatus",
+        "runStatus",
+        "operationHistory",
+        "routeDetails",
+    ),
     notes=(
         "Latest object JSON POST with only id; no tenant or version-pinned read.",
         "Native version is source configuration version, independent of "
         "capture and list generation.",
-        "26 native settings fields only; dynamic statistics, personnel, "
+        "26 native settings fields retained; dynamic statistics, personnel, "
         "free text and actions are excluded.",
+        "operationHistory queries selected root credit/debit aliases and fundAction; "
+        "historical IDs/versions stay independent. No native total/exhaustion proof, "
+        "so history coverage remains incomplete even for an empty successful array.",
+        "routeDetails queries root routeId with debitAliasName/GUAPW3SG only; "
+        "empty/null native routeId is inapplicable. Missing context stays unverified "
+        "with null data and explicit meta.components status.",
+        "Sequential inquiries share one deadline; no atomic snapshot guarantee. "
+        "Root cardinality stays one; association counts and provenance are separate.",
+        "Default safe incomplete results warn; --require-complete withholds "
+        "business data.",
     ),
 )
 

@@ -26,6 +26,7 @@ from ...helpspec import (
     QUERY_OUTPUT,
     REFRESH_CDP_EFFECTS,
     REFRESH_OUTPUT,
+    REQUIRE_COMPLETE,
     BizNode,
     OptionSpec,
     contract,
@@ -3005,6 +3006,11 @@ def detail_query_node(leaf: DetailLeaf) -> BizNode:
             ),
             FORMAT_TABLE,
             FIELDS,
+            *(
+                (REQUIRE_COMPLETE,)
+                if detail.name == "liquidity.network.realtime.get"
+                else ()
+            ),
         ),
         constraints=(
             "Always online; no detail cache or detail refresh.",
