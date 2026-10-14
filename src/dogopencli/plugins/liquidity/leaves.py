@@ -57,6 +57,16 @@ from .fee_orders import FEE_ORDERS, validate_fee_query
 from .forecast_accuracy import FORECAST_ACCURACY
 from .forecast_accuracy import validate_query as validate_accuracy_query
 from .funding_demands import DEMANDS, validate_demand_query
+from .interest_rates import (
+    BANK_RATES,
+    CUSTOM_EXPECTATION_RULES,
+    EXTERNAL_EXPECTATION_DETAIL,
+    EXTERNAL_EXPECTATION_RULES,
+    SOURCES,
+    UNIT_NOTE,
+    source_option,
+    validate_source_options,
+)
 from .investment_batch import CANDIDATES as INVESTMENT_CANDIDATES
 from .investment_batch import RELEASED as INVESTMENT_RELEASED
 from .investment_batch import validate_quote_query, validate_strategy_query
@@ -492,8 +502,9 @@ INVESTMENT_TRANSACTIONS = ListSpec(
 INVESTMENT_INTEREST_RATES = ListSpec(
     path=("investment", "interest-rates"),
     kind=RUNTIMES,
-    title="market base interest rates",
+    title="interest rates (source-specific runtimes/settings)",
     endpoint="/incrementBaseRateList.json",
+    page_size=1000,
     method="POST",
     envelope=ENV_SUCCESS,
     container=("data", "data"),
@@ -502,18 +513,15 @@ INVESTMENT_INTEREST_RATES = ListSpec(
     profile=PROFILE_DATED,
     series_field="effectiveDate",
     series_format="%Y-%m-%d",
-    template={"tntInstId": TENANT, "currency": [], "productTerm": [], "isPage": "Y"},
+    template={
+        "currentArea": "2",
+        "tntInstId": TENANT,
+        "currency": [],
+        "productTerm": [],
+        "isPage": "Y",
+    },
     scope_options=(
-        ScopeOption(
-            "source",
-            "source",
-            "Rate source; only the market base-rate route is verified. The"
-            " bank-quoted route stays deferred (empty tested scopes).",
-            required=True,
-            choices=("market",),
-            virtual=True,
-            match="market",
-        ),
+        source_option("market"),
         _timezone(),
         *_window("beginDate", "endDate"),
     ),
@@ -527,8 +535,7 @@ INVESTMENT_INTEREST_RATES = ListSpec(
         "rateProvide",
     ),
     notes=(
-        "Only the market base-rate route is registered; the bank-quoted"
-        " route returned empty tested scopes and stays deferred.",
+        UNIT_NOTE,
         _PAGE_ECHO_NOTE,
         _NULL_NOTE,
     ),
@@ -1401,6 +1408,9 @@ LIST_SPECS: tuple[ListSpec, ...] = (
     INVESTMENT_HOLDINGS,
     INVESTMENT_TRANSACTIONS,
     INVESTMENT_INTEREST_RATES,
+    BANK_RATES,
+    CUSTOM_EXPECTATION_RULES,
+    EXTERNAL_EXPECTATION_RULES,
     INVESTMENT_STRATEGIES,
     INVESTMENT_BENCHMARKS,
     INVESTMENT_COMPOUND_LEDGER,
@@ -2614,6 +2624,13 @@ class ListLeaf:
                 exit_code=EXIT_USAGE,
             )
         variant = candidates[0]
+        if self.path == ("investment", "interest-rates"):
+            validate_source_options(variant, provided)
+            provided = {
+                key: value
+                for key, value in provided.items()
+                if key in {option.flag for option in variant.scope_options}
+            }
         request_values, window = scope_values(variant.scope_options, provided)
         if self.path == ("cash", "balances"):
             request_values["entitys"] = sorted(set(request_values["entitys"]))
@@ -2709,6 +2726,10 @@ DEFERRED = tuple(
     item
     for item in DEFERRED
     if item.path not in {(*detail.path, detail.action) for detail in QUALIFIED_GETTERS}
+)
+DETAIL_SPECS += (EXTERNAL_EXPECTATION_DETAIL,)
+DEFERRED = tuple(
+    item for item in DEFERRED if item.path != (*EXTERNAL_EXPECTATION_DETAIL.path, "get")
 )
 DETAIL_SPECS += NATIVE_GETTERS
 DEFERRED = tuple(
@@ -2989,12 +3010,23 @@ def detail_query_node(leaf: DetailLeaf) -> BizNode:
         " or writes. Kind: {leaf.kind}.",
         options=(
             *(
+                (
+                    opt(
+                        "source",
+                        "Explicit source; only expection supports genuine get.",
+                        choices=SOURCES,
+                    ),
+                )
+                if detail.path == ("investment", "interest-rates")
+                else ()
+            ),
+            *(
                 OptionSpec(
                     option.flag,
                     "--" + option.flag.replace("_", "-"),
                     option.summary,
                     "str",
-                    required=True,
+                    required=detail.path != ("investment", "interest-rates"),
                     choices=option.choices,
                     argument_contract=contract(
                         "string",
@@ -3127,6 +3159,15 @@ def group_nodes() -> tuple[BizNode, ...]:
             groups[full] = BizNode(
                 full,
                 _GROUP_TITLES.get(path, "Liquidity inquiries."),
+                options=(
+                    opt(
+                        "source",
+                        "Explicit interest-rate source.",
+                        choices=("market", "bank", "expectation-rule", "expection"),
+                    ),
+                )
+                if path == ("investment", "interest-rates")
+                else (),
                 next=(f"dogopencli help liquidity {' '.join(path)} list",),
             )
 

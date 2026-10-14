@@ -71,6 +71,10 @@ def _emit_window(
     variant: spec_mod.ListSpec | None = None,
     changed_groups: int = 0,
 ) -> int:
+    if variant is not None and variant.path == ("investment", "interest-rates"):
+        from .interest_rates import metadata
+
+        meta.update(metadata(variant))
     try:
         meta = prepare_result(
             meta,
@@ -458,6 +462,16 @@ def run_list(args):
         )
     else:
         account_quality = {}
+    if leaf.path == ("investment", "interest-rates"):
+        expected_source = next(
+            option.match for option in variant.scope_options if option.flag == "source"
+        )
+        if context.get("query", {}).get("source") != expected_source:
+            raise CliError(
+                INVALID_RESPONSE,
+                "cached interest-rate source identity is untrustworthy;"
+                " explicit refresh required",
+            )
     _validate_cached_rows(leaf, variant, context, records)
     rows, filters, coverage, requested_window = _offline_selection(
         args, leaf, variant, context, records
@@ -648,6 +662,21 @@ def _run_list_live(
 def run_detail(args: argparse.Namespace) -> int:
     leaf = detail_leaf(args.command_path[1:])
     detail = leaf.spec
+    if detail.path == ("investment", "interest-rates"):
+        from .interest_rates import SOURCES
+
+        source = getattr(args, "source", None)
+        if source not in SOURCES:
+            raise CliError(
+                INVALID_ARGUMENT,
+                "get requires an explicit recognized --source",
+                exit_code=EXIT_USAGE,
+            )
+        if source != "expection":
+            raise CliError(
+                UNSUPPORTED_CAPABILITY,
+                "genuine interest-rate get supports only expection",
+            )
     values = identity_values(args, leaf)
     # Validation of required/typed identity happens in detail_body.
     leaf.capability.detail_body(values)
@@ -699,6 +728,14 @@ def run_detail(args: argparse.Namespace) -> int:
         "returned_count": 1,
         "has_more": False,
     }
+    if detail.path == ("investment", "interest-rates"):
+        meta.update(
+            {
+                "rate_source": "expection",
+                "contract": detail.endpoint,
+                "raw_rate_units": "unconfirmed; no scale conversion",
+            }
+        )
     if detail.schema_version:
         meta["request_scope"] = (
             {"tntInstId": spec_mod.TENANT} if detail.sends_tenant else {}

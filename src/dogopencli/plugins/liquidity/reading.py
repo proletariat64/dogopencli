@@ -95,7 +95,24 @@ def _public_balance_field(item: spec.ListSpec, field: str) -> str:
 
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
+    if item.path == ("investment", "interest-rates"):
+        from .interest_rates import SOURCE_FIELDS
+
+        fields = SOURCE_FIELDS.get(item.endpoint, fields)
     schema = _field_schema(fields)
+    if item.path == ("investment", "interest-rates"):
+        value = "ruleValue" if item.kind == spec.SETTINGS else "rateValue"
+        schema["properties"][value]["x-unit"] = "unknown; raw value preserved"
+        schema["properties"][value]["description"] = (
+            "Source-specific raw rate string; precision and empty/null values"
+            " retained without scaling."
+        )
+        if item.kind == spec.SETTINGS:
+            for name in ("effectiveDate", "expireDate"):
+                schema["properties"][name]["description"] = (
+                    "Native configuration validity date; not an observation window."
+                )
+        return schema
     if item.path == ("cash", "accounts"):
         source_fields = {
             "cash": fields,
@@ -574,6 +591,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
     for item in leaf.variants:
         variants.append(
             {
+                "kind": item.kind,
                 "request": {
                     "method": item.method,
                     "path": item.endpoint,
@@ -695,6 +713,16 @@ def _list_description(node: BizNode) -> dict[str, Any]:
 
 
 def _detail_schema(detail: spec.DetailSpec) -> dict[str, Any]:
+    if detail.path == ("investment", "interest-rates"):
+        from .interest_rates import EXTERNAL_DETAIL_FIELDS
+
+        schema = _field_schema(EXTERNAL_DETAIL_FIELDS)
+        schema["properties"]["ruleValue"]["x-unit"] = "unknown; raw value preserved"
+        schema["x-nested-values"] = (
+            "Arrays/maps/objects/null retained as native;"
+            " no recursive reads or downloads."
+        )
+        return schema
     schema = _field_schema(SAMPLED_FIELDS.get(detail.name, {}))
     if detail.projection in {"asset_trade_detail", "quotation_group_detail"}:
         from .versioned_getters import CONTACT_FIELDS, PRODUCT_FIELDS
@@ -925,7 +953,9 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
             **_source_guide(
                 detail.name,
                 contract,
-                "2026-10-07"
+                "2026-10-15"
+                if detail.path == ("investment", "interest-rates")
+                else "2026-10-07"
                 if detail.schema_version
                 in {
                     "funding-demand-detail-v1",
@@ -942,6 +972,11 @@ def _detail_description(node: BizNode) -> dict[str, Any]:
                 else "2026-10-02"
                 if detail.schema_version
                 else "2026-10-01",
+            ),
+            **(
+                {"rate_source": "expection"}
+                if detail.path == ("investment", "interest-rates")
+                else {}
             ),
             "projection": detail.projection or None,
             "schema_version": detail.schema_version or None,

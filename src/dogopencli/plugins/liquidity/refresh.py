@@ -81,6 +81,10 @@ def run_refresh_list(args: argparse.Namespace) -> int:
         },
         mode="refresh",
     )
+    if leaf.path == ("investment", "interest-rates"):
+        from .interest_rates import metadata
+
+        meta.update(metadata(variant))
     if leaf.path == ("cash", "accounts"):
         from .unified_accounts import account_meta
 
