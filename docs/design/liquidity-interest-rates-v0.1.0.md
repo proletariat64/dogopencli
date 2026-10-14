@@ -102,5 +102,8 @@ Historical sample counts are not permanent expectations.
 The existing market syntax, repeated equal source, projection, limit and
 offset also passed. External refresh published its isolated temporary slot;
 no-source replay reported the saved settings source, and an explicit market
-request refused that slot. Production observations remain private; this
+request refused that slot. Bank refresh then replaced the same slot; no-source
+strict replay returned the saved bank variant. A successful empty bank refresh
+kept the prior SQLite bytes unchanged. Genuine get, live list and offline table
+projection also preserved the SQLite hash. Production observations remain private; this
 record contains only scopes, aggregate counts and contract evidence.
