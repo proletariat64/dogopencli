@@ -3,14 +3,18 @@
 import re
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, NoReturn
 
 from ... import collect as collect_mod
 from ...collect import CollectedScope
 from ...errors import INVALID_RESPONSE, CliError
+from ...inquiry import InquirySession
 from ...jsonutil import canonical, parse
 from ...result_policy import AcquisitionEvidence
+from ...transport.cdp import CdpQueryTransport
 from .capability import LiquidityListCapability
 from .collect import _merge_page, collect_liquidity_scope
 from .leaves import NETWORK_BANK_BASELINES, internal_detail_leaf
@@ -22,11 +26,13 @@ CASH_MODIFICATION_FIELDS = ("gmtModified", "operator")
 ACQUISITION_BUDGET_SECONDS = 1800.0
 
 
-def _invalid(message: str) -> None:
+def _invalid(message: str) -> NoReturn:
     raise CliError(INVALID_RESPONSE, message)
 
 
-def _accounts(records):
+def _accounts(
+    records: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
     aliases = {}
     for row in records:
         for field in IDENTITY_FIELDS:
@@ -39,13 +45,19 @@ def _accounts(records):
     return aliases
 
 
-def _same_identity(left, right):
+def _same_identity(left: dict[str, Any], right: dict[str, Any]) -> None:
     for field in IDENTITY_FIELDS:
         if field in right and right[field] != left.get(field):
             _invalid(f"account sources disagree on identity field {field}")
 
 
-def _cash_list(capability, transport, scope, deadline, progress):
+def _cash_list(
+    capability: LiquidityListCapability,
+    transport: CdpQueryTransport,
+    scope: str,
+    deadline: float,
+    progress: Callable[[int, int], None] | None,
+) -> CollectedScope:
     seen, records = {}, []
     native_total = None
     arrivals = pages = start = 0
@@ -92,7 +104,7 @@ def _cash_list(capability, transport, scope, deadline, progress):
     )
 
 
-def _detail_refusal(body):
+def _detail_refusal(body: bytes) -> dict[str, Any] | None:
     document = parse(body)
     if not isinstance(document, dict):
         _invalid("detail envelope is not an object")
@@ -118,7 +130,12 @@ def _detail_refusal(body):
     return error
 
 
-def _merge(cash, baseline, detail, refusal):
+def _merge(
+    cash: dict[str, Any] | None,
+    baseline: dict[str, Any] | None,
+    detail: dict[str, Any] | None,
+    refusal: dict[str, Any] | None,
+) -> dict[str, Any]:
     row, provenance, conflicts = {}, {}, {}
     sources = {"cash": cash, "baseline": baseline, "detail": detail}
     for source, record in sources.items():
@@ -165,7 +182,14 @@ def _merge(cash, baseline, detail, refusal):
     return row
 
 
-def collect_accounts(session, capability, scope, *, progress=None, hint_path=None):
+def collect_accounts(
+    session: InquirySession,
+    capability: LiquidityListCapability,
+    scope: str,
+    *,
+    progress: Callable[[int, int], None] | None = None,
+    hint_path: Path | None = None,
+) -> CollectedScope:
     deadline = time.monotonic() + ACQUISITION_BUDGET_SECONDS
     started = time.monotonic()
     cash_transport = session.transport(capability)
@@ -305,7 +329,7 @@ def collect_accounts(session, capability, scope, *, progress=None, hint_path=Non
     )
 
 
-def account_meta(evidence):
+def account_meta(evidence: AcquisitionEvidence) -> dict[str, Any]:
     attempt = next(
         (
             item
@@ -347,7 +371,9 @@ def account_meta(evidence):
     }
 
 
-def validate_cached_accounts(records, evidence):
+def validate_cached_accounts(
+    records: list[dict[str, Any]], evidence: AcquisitionEvidence
+) -> dict[str, Any]:
     meta = account_meta(evidence)
     _accounts(records)
     for row in records:
