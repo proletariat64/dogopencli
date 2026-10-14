@@ -2,6 +2,14 @@
 
 ## 未发布
 
+规格 #175 / R01 #167：退役 cash groups、investment strategies、rules notification、
+ledger customers、ledger accounts（INNER/OUTER）、reference business-lines 与
+reference calendars 的 list/refresh。合法旧参数返回 UNSUPPORTED_CAPABILITY/退出 1，
+先于配置、浏览器、缓存读取；移除对应 prune 与采集注册，发现接口统一显示退役。
+Ledger 依据业务确认，日期证据不代表后端停机。历史存储保留；活跃共享调用、独立 get、
+B01 定价退役归属及 forecast adjustments 保持原有边界。外部 settings importer 的
+四个实际 selector 同时拒绝 live、保存输入及直接发布；外部安装需独立应用保留补丁。
+
 规格 #173 / B02 #165：realtime network get 保留原有 26 个配置字段，增加独立的
 `operationHistory` 和 `routeDetails`，组件身份、请求范围、采集时间、报数及质量在
 `meta.components`。历史按原生别名与 fundAction 查询，不按网络 ID 或版本固定，

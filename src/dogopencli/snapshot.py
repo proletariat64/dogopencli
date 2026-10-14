@@ -137,12 +137,12 @@ def build_report(
                 if selected[:1] == ("liquidity",)
                 else None
             )
-            from .plugins.liquidity.retirement import RETIREMENT_REASON, retired_command
+            from .plugins.liquidity.retirement import retired_command, retirement_reason
 
             retired = retired_command(selected)
             result.update(
                 availability="unsupported" if deferred or retired else "supported",
-                availability_reason=RETIREMENT_REASON
+                availability_reason=retirement_reason(selected)
                 if retired
                 else deferred.reason
                 if deferred

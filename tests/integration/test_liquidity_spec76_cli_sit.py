@@ -13,7 +13,6 @@ from dogopencli.plugins.liquidity.cash_forecast import (
     CASH_BALANCES,
     CASH_CREDIT_LINES,
     CASH_GROUP_BALANCES,
-    CASH_GROUPS,
     CASH_POOLS,
     CASH_POOLS_GET,
     CASH_STATEMENTS_EOD,
@@ -106,16 +105,6 @@ CASES = [
             "curBalance": "123.4500",
             "statementCreateTime": "",
             "timeZone": "GMT+08",
-        },
-    ),
-    (
-        CASH_GROUPS,
-        ["--group-code", "G1"],
-        {
-            "id": "G1",
-            "groupName": "group",
-            "currentBalance": "900",
-            "memberList": [{"id": "M1", "aliasName": "A1", "currentBalance": "900"}],
         },
     ),
     (
@@ -229,9 +218,6 @@ def test_candidate_refresh_live_and_browser_disconnected_offline(
     assert offline["meta"]["kind"] == item.kind
     assert offline["meta"]["source"] == "cache"
     assert len(setup.state.business_requests) == count
-    if item is CASH_GROUPS:
-        assert "currentBalance" not in offline["data"][0]
-        assert "currentBalance" not in offline["data"][0]["memberList"][0]
     if item is CASH_CREDIT_LINES:
         assert "usedAmount" not in offline["data"][0]
         assert "usedAmount" not in offline["data"][0]["bankAccountCreditLineList"][0]
@@ -564,22 +550,28 @@ def test_latest_page_size_help_is_leaf_only(run_cli):
         assert parse(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
-def test_settings_runtime_same_endpoint_have_independent_scope_caches(setup, run_cli):
+def test_retired_settings_preserve_active_shared_runtime_cache(setup, run_cli):
     row = {"id": "G1", "groupName": "group", "currentBalance": "1", "memberList": []}
-    setup.state.business_handler = lambda payload, index: response(CASH_GROUPS, [row])
-    for resource in ["groups", "group-balances"]:
-        code, out, err = run_cli(["refresh", "liquidity", "cash", resource])
-        assert code == 0, err
+    setup.state.business_handler = lambda payload, index: response(
+        CASH_GROUP_BALANCES, [row]
+    )
+    code, _, err = run_cli(["refresh", "liquidity", "cash", "group-balances"])
+    assert code == 0, err
+    before = setup.cache_path.read_bytes()
+    requests = len(setup.state.business_requests)
     setup.state.reachable = False
-    code, out, _ = run_cli(["liquidity", "cash", "groups", "list"])
-    settings = parse(out)
-    assert code == 0
+    for command in (
+        ["liquidity", "cash", "groups", "list"],
+        ["refresh", "liquidity", "cash", "groups"],
+    ):
+        code, out, _ = run_cli(command)
+        assert code == 1
+        assert parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+        assert setup.cache_path.read_bytes() == before
+        assert len(setup.state.business_requests) == requests
     code, out, _ = run_cli(["liquidity", "cash", "group-balances", "list"])
-    runtime = parse(out)
     assert code == 0
-    assert settings["meta"]["capability"] != runtime["meta"]["capability"]
-    assert "currentBalance" not in settings["data"][0]
-    assert runtime["data"][0]["currentBalance"] == "1"
+    assert parse(out)["data"][0]["currentBalance"] == "1"
 
 
 def test_pool_native_get_failure_preserves_independent_list_and_detail(setup, run_cli):

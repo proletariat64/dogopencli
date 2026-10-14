@@ -1,0 +1,227 @@
+--- a/.agents/skills/duckdog-import/scripts/import_settings.py
++++ b/.agents/skills/duckdog-import/scripts/import_settings.py
+@@ -28,11 +28,9 @@
+ # directories use the same current-only replacement policy as settings.
+ for _leaf, _identity in {
+     "cash/accounts": ("aliasName", "currency"),
+-    "cash/groups": ("id",),
+     "cash/pools": ("id",),
+     "cash/credit-lines": ("id",),
+     "investment/products": ("incrementProductId",),
+-    "investment/strategies": ("strategyRuleCode",),
+     "investment/benchmarks": ("id",),
+     "risk/thresholds": ("benchmarkId",),
+     "risk/sla": ("slaConfigId",),
+@@ -41,21 +39,17 @@
+     "rules/realtime": ("id",),
+     "rules/action-mapping": ("id",),
+     "rules/fx-settlement": ("id",),
+-    "rules/notification": ("id",),
+     "rules/forecast": ("ruleId",),
+     "rules/waterlevel": ("bufferId",),
+     "rules/transfer": ("ruleId",),
+     "network/realtime": ("id",),
+     "network/bank-baselines": ("aliasName",),
+     "network/account-capabilities": ("id",),
+-    "ledger/customers": ("customerNo", "version"),
+ }.items():
+     REGISTRY["liquidity/" + _leaf] = {
+         "identity": _identity,
+         "columns": _identity,
+     }
+-REGISTRY["liquidity/cash/groups"]["scope"] = {"equiCurrency": "USD"}
+-REGISTRY["liquidity/cash/groups"]["query"] = {"equiCurrency": "USD"}
+ 
+ 
+ class ImportRejected(ValueError):
+@@ -74,8 +68,24 @@
+     )
+ )
+ 
++R01_RETIREMENTS = {
++    "liquidity/cash/groups": "dated cash-group configuration selected for retirement",
++    "liquidity/investment/strategies": (
++        "dated investment-strategy configuration selected for retirement"
++    ),
++    "liquidity/rules/notification": (
++        "discontinued notification configuration selected for retirement"
++    ),
++    "liquidity/ledger/customers": "ledger model retired by business confirmation",
++}
++RETIRED_SELECTORS = RETIRED_SELECTORS | R01_RETIREMENTS.keys()
++
+ 
+ def reject_retired(selector):
++    if selector in R01_RETIREMENTS:
++        raise ImportRejected(
++            f"{selector} is retired: {R01_RETIREMENTS[selector]} (R01/#167)"
++        )
+     if selector in RETIRED_SELECTORS:
+         raise ImportRejected(
+             f"{selector} is retired: cost/revenue business discontinued (B01/#164)"
+--- a/.agents/skills/duckdog-import/scripts/verify_import.py
++++ b/.agents/skills/duckdog-import/scripts/verify_import.py
+@@ -11,7 +11,7 @@
+ from unittest import mock
+ 
+ import duckdb
+-from import_settings import ImportRejected, encode, publish
++from import_settings import REGISTRY, ImportRejected, encode, main, publish
+ 
+ SELECTOR = "liquidity/reference/entities"
+ RELATION = "liquidity_reference_entities"
+@@ -44,6 +44,99 @@
+ 
+ 
+ class SettingsImportChecks(unittest.TestCase):
++    def test_r01_import_modes_and_publication_preserve_storage(self):
++        selectors = {
++            "liquidity/cash/groups": [{"id": "GROUP"}],
++            "liquidity/investment/strategies": [{"strategyRuleCode": "STRATEGY"}],
++            "liquidity/rules/notification": [{"id": "RULE"}],
++            "liquidity/ledger/customers": [{"customerNo": "CUSTOMER", "version": 1}],
++        }
++        for existing in (False, True):
++            if existing:
++                self.write()
++            before = self.files()
++            for selector, rows in selectors.items():
++                candidate = envelope(rows)
++                candidate["meta"]["capability"] = selector.replace("/", ".") + ".list"
++                if selector.endswith("/groups"):
++                    candidate["meta"]["scope"] = {"equiCurrency": "USD"}
++                    candidate["meta"]["query"] = {"equiCurrency": "USD"}
++                saved = Path(self.temp.name) / "saved.json"
++                saved.write_text(encode(candidate), encoding="utf-8")
++                saved_bytes = saved.read_bytes()
++                for saved_input in (False, True):
++                    with self.subTest(
++                        selector=selector, existing=existing, saved_input=saved_input
++                    ):
++                        args = [
++                            "import_settings",
++                            "--root",
++                            str(self.root),
++                            "--selector",
++                            selector,
++                        ]
++                        if saved_input:
++                            args.extend(["--input", str(saved)])
++                        with (
++                            mock.patch.object(sys, "argv", args),
++                            mock.patch("import_settings.subprocess.run") as acquire,
++                            mock.patch("import_settings.Path.read_text") as read,
++                            mock.patch("sys.stderr") as stderr,
++                        ):
++                            self.assertEqual(main(), 1)
++                        acquire.assert_not_called()
++                        read.assert_not_called()
++                        diagnostic = json.loads(
++                            "".join(
++                                call.args[0] for call in stderr.write.call_args_list
++                            )
++                        )
++                        self.assertEqual(diagnostic["code"], "UNSUPPORTED_CAPABILITY")
++                        self.assertIn("#167", diagnostic["message"])
++                        self.assertFalse(diagnostic["published"])
++                        self.assertEqual(self.files(), before)
++                        self.assertEqual(saved.read_bytes(), saved_bytes)
++                with self.assertRaisesRegex(ImportRejected, "retired.*#167"):
++                    publish(self.root, selector, encode(candidate))
++                self.assertEqual(self.files(), before)
++                self.assertNotIn(selector, REGISTRY)
++
++    def test_r01_already_excluded_selectors_stay_unavailable(self):
++        for leaf in (
++            "ledger/accounts",
++            "reference/business-lines",
++            "reference/calendars",
++        ):
++            selector = "liquidity/" + leaf
++            self.assertNotIn(selector, REGISTRY)
++            for saved_input in (False, True):
++                args = [
++                    "import_settings",
++                    "--root",
++                    str(self.root),
++                    "--selector",
++                    selector,
++                ]
++                if saved_input:
++                    args.extend(["--input", str(self.root / "missing.json")])
++                with mock.patch.object(sys, "argv", args), mock.patch("sys.stderr"):
++                    with self.assertRaises(SystemExit) as caught:
++                        main()
++                self.assertEqual(caught.exception.code, 2)
++                self.assertFalse(self.root.exists())
++            candidate = envelope([{"id": "HISTORICAL"}])
++            candidate["meta"]["capability"] = selector.replace("/", ".") + ".list"
++            with self.assertRaises((ImportRejected, KeyError)):
++                publish(self.root, selector, encode(candidate))
++            self.assertFalse(self.root.exists())
++
++    def files(self):
++        return {
++            p.relative_to(self.root): p.read_bytes()
++            for p in self.root.rglob("*")
++            if p.is_file()
++        }
++
+     def test_retired_import_modes_refuse_without_creating_storage(self):
+         resources = (
+             "factors",
+@@ -196,23 +289,23 @@
+                 db.execute("SELECT count(*) FROM _duckdog_datasets").fetchone()[0], 2
+             )
+ 
+-    def test_compound_identity_and_default_scope(self):
+-        selector = "liquidity/ledger/customers"
+-        rows = [{"customerNo": "A", "version": 1}, {"customerNo": "A", "version": 2}]
++    def test_active_compound_identity_and_unfiltered_scope(self):
++        selector = "liquidity/cash/accounts"
++        rows = [
++            {"aliasName": "A", "currency": "USD"},
++            {"aliasName": "A", "currency": "EUR"},
++        ]
+         data = envelope(rows)
+         data["meta"]["capability"] = selector.replace("/", ".") + ".list"
+         publish(self.root, selector, encode(data))
+-        data["data"][1]["version"] = 1
++        data["data"][1]["currency"] = "USD"
+         with self.assertRaises(ImportRejected):
+             publish(self.root, selector, encode(data))
+-        data = envelope([{"id": "GROUP"}])
+-        data["meta"]["capability"] = "liquidity.cash.groups.list"
+-        data["meta"]["scope"] = {"equiCurrency": "USD"}
+-        data["meta"]["query"] = {"equiCurrency": "USD"}
+-        publish(self.root, "liquidity/cash/groups", encode(data))
+-        data["meta"]["scope"]["groupCode"] = "FILTERED"
+-        with self.assertRaises(ImportRejected):
+-            publish(self.root, "liquidity/cash/groups", encode(data))
++        data = envelope([{"aliasName": "A", "currency": "USD"}])
++        data["meta"]["capability"] = selector.replace("/", ".") + ".list"
++        data["meta"]["scope"] = {"entity": "FILTERED"}
++        with self.assertRaises(ImportRejected):
++            publish(self.root, selector, encode(data))
+ 
+     def test_transaction_failure_rolls_back_view_and_metadata(self):
+         first = self.write()
+--- a/.agents/skills/duckdog-import/SKILL.md
++++ b/.agents/skills/duckdog-import/SKILL.md
+@@ -25,6 +25,16 @@
+ `--input` publication, and direct publication refuse before reading input or
+ changing storage. Existing DuckDB/Parquet datasets remain available for historical
+ read-only analysis; no cleanup runs.
++
++## R01 retirement
++
++R01 (#167, specification #175) removes cash groups, investment strategies,
++notification rules and ledger customers from the active import registry. Live
++acquisition, saved `--input` and direct publication reject before acquisition,
++input reads or storage changes. Calendars, ledger accounts (INNER and OUTER)
++and business lines remain excluded. Existing datasets and saved inputs remain
++available for authorized historical analysis. Ledger retirement follows business
++confirmation, not an assertion that its source has not changed for years.
+ 
+ ## Execute
+ 
