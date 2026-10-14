@@ -143,6 +143,20 @@ def test_access_native_identity_and_tenant_are_validated(setup, run_cli, row):
         {"tntInstId": "OTHER"},
         {"currentArea": "2"},
         {"timezone": "UTC"},
+        {"rowStart": -1},
+        {"rowStart": True},
+        {"rowStart": 1.0},
+        {"rowStart": "1"},
+        {"rowStart": {}},
+        {"rowStart": None},
+        {"pageSize": 0},
+        {"pageSize": 10},
+        {"pageSize": 1001},
+        {"pageSize": True},
+        {"pageSize": 1000.0},
+        {"pageSize": "1000"},
+        {"pageSize": {}},
+        {"pageSize": None},
     ],
 )
 def test_access_transport_rejects_unverified_nested_requests(change):
@@ -213,7 +227,13 @@ def test_silent_cap_restarts_clean_and_uses_actual_row_offsets(
     requests = [
         json.loads(p["accountFilterConfigQuery"]) for p in setup.state.business_requests
     ]
-    assert [p["rowStart"] for p in requests] == [0, *range(0, 2100, cap), 1, 2100]
+    assert [p["rowStart"] for p in requests] == [
+        0,
+        *range(0, 2100, cap),
+        1,
+        *range(cap - 1, 2099, cap),
+        2100,
+    ]
     assert [p["pageSize"] for p in requests] == [5000] + [1000] * (len(requests) - 1)
 
 
@@ -546,16 +566,17 @@ def test_large_access_list_tail_and_later_cap_use_independent_candidates(
             5000,
             *range(0, total, 1000),
             1,
+            *range(999, total - 1, 1000),
             total,
         ]
-        assert [p["pageSize"] for p in requests] == [5000, 5000] + [1000] * 14
+        assert [p["pageSize"] for p in requests] == [5000, 5000] + [1000] * 25
         assert evidence["reasons"] == ["PAGE_SIZE_CAPPED"]
         assert [a.get("discarded", False) for a in evidence["attempts"]] == (
-            [True, True] + [False] * 14
+            [True, True] + [False] * 25
         )
     else:
-        assert [p["rowStart"] for p in requests] == [0, 5000, 1, total]
-        assert [p["pageSize"] for p in requests] == [5000, 5000, 1000, 1000]
+        assert [p["rowStart"] for p in requests] == [0, 5000, 1, 4999, total]
+        assert [p["pageSize"] for p in requests] == [5000, 5000, 1000, 1000, 1000]
         assert evidence["reasons"] == []
 
 
@@ -605,3 +626,45 @@ def test_later_cap_restart_keeps_total_and_global_request_budget(
         assert [a.get("discarded", False) for a in evidence["attempts"]] == (
             [True, True, False]
         )
+
+
+@pytest.mark.parametrize("capped", [False, True])
+@pytest.mark.parametrize("refresh", [False, True])
+def test_later_boundary_shift_with_same_total_withholds_data_and_preserves_slot(
+    setup, run_cli, capped, refresh
+):
+    root = ["liquidity", "reference", "blacklist", "account"]
+    source_rows(setup, {"accountFilterConfigQuery": [{"aliasName": "SAVED"}]})
+    assert run_cli(["refresh", *root, "--require-complete"])[0] == 0
+    before = setup.cache_path.read_bytes()
+    total = 3500 if capped else 7000
+    boundary = 2000 if capped else 5000
+    rows = [{"aliasName": f"A{i}"} for i in range(total)]
+    changed = False
+
+    def answer(payload, index):
+        nonlocal changed
+        vo = json.loads(payload["accountFilterConfigQuery"])
+        start = vo["rowStart"]
+        size = min(vo["pageSize"], 1000) if capped else vo["pageSize"]
+        page = rows[start : start + size]
+        if not changed and start + size == boundary:
+            # Keep the total and first overlap stable, but shift the next page.
+            del rows[boundary - 1]
+            rows.append({"aliasName": f"A{total}"})
+            changed = True
+        return access_page(page, total)
+
+    setup.state.business_handler = answer
+    argv = (
+        ["refresh", *root, "--require-complete"]
+        if refresh
+        else [*root, "list", "--live", "--limit", "0"]
+    )
+    code, out, err = run_cli(argv)
+    result = parse(out)
+    assert changed
+    assert code == 1, err
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+    assert result["data"] is None
+    assert setup.cache_path.read_bytes() == before

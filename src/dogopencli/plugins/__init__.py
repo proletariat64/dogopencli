@@ -60,9 +60,10 @@ class EndpointContract:
     # Distinct content under an unverified key leaves consistency unproven.
     consistency_version_field: str | None = None
     # Named GET sources can carry an exact inquiry object as a JSON string.
-    # Its keys and fixed scope values are validated before transport execution.
+    # Its keys, fixed scope and optional page widths are validated before execution.
     json_body_contracts: tuple[
-        tuple[str, frozenset[str], tuple[tuple[str, str | int], ...]], ...
+        tuple[str, frozenset[str], tuple[tuple[str, str | int], ...], frozenset[int]],
+        ...,
     ] = ()
 
 

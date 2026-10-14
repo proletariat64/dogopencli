@@ -85,7 +85,7 @@ def validate_request(request: QueryRequest, contract: EndpointContract) -> None:
                 f"request field {key} has an unregistered shape",
             )
 
-    for key, allowed, fixed in contract.json_body_contracts:
+    for key, allowed, fixed, page_sizes in contract.json_body_contracts:
         value = request.body.get(key)
         try:
             decoded = json.loads(value) if isinstance(value, str) else None
@@ -96,6 +96,19 @@ def validate_request(request: QueryRequest, contract: EndpointContract) -> None:
                 REQUEST_NOT_ALLOWED,
                 f"request JSON field {key} has an unregistered shape",
             )
+        if page_sizes:
+            start = decoded.get("rowStart")
+            size = decoded.get("pageSize")
+            if type(start) is not int or start < 0:
+                raise CliError(
+                    REQUEST_NOT_ALLOWED,
+                    f"request JSON field {key}.rowStart must be a nonnegative integer",
+                )
+            if type(size) is not int or size not in page_sizes:
+                raise CliError(
+                    REQUEST_NOT_ALLOWED,
+                    f"request JSON field {key}.pageSize must use a registered size",
+                )
         for field, expected in fixed:
             actual = decoded.get(field)
             if type(actual) is not type(expected) or actual != expected:

@@ -238,6 +238,7 @@ class LiquidityListCapability:
                         frozenset(self._spec.template[self._spec.vo_field])
                         | {"rowStart", "pageSize"},
                         tuple(self._spec.template[self._spec.vo_field].items()),
+                        frozenset((1000, self._spec.page_size)),
                     ),
                 )
                 if self._spec.schema_version == "access-lists-v1"

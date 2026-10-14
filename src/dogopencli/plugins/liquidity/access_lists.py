@@ -124,6 +124,7 @@ def collect_access_list(
     arrived: list[dict[str, Any]] = []
     ordered: list[dict[str, Any]] = []
     seen: dict[tuple[str, ...], str] = {}
+    boundaries: list[int] = []
     pages = 0
     offset = 0
     coverage = False
@@ -171,6 +172,7 @@ def collect_access_list(
             arrived.clear()
             ordered.clear()
             seen.clear()
+            boundaries.clear()
             offset = 0
             width = 1000
             continue
@@ -185,6 +187,8 @@ def collect_access_list(
             else:
                 seen[key] = content
                 ordered.append(row)
+        if rows and offset:
+            boundaries.append(offset)
         arrived.extend(rows)
         if progress is not None:
             progress(pages, max(pages, -(-expected // width)))
@@ -198,21 +202,25 @@ def collect_access_list(
             if budget_available():
                 coverage = not fetch(0, 1000, "empty-witness")
             break
-        # A fresh overlapping read validates the observed order and content;
+        # Recheck the beginning and every join between acquisition pages;
         # a separate exact-total read validates the end boundary.
         start = 1 if expected > 1 else 0
-        if not budget_available():
-            break
-        overlap = fetch(start, 1000, "overlap-witness")
-        if not overlap:
-            reasons.append("COVERAGE_UNPROVEN")
-            break
-        if overlap != arrived[start : start + len(overlap)]:
-            raise CliError(INVALID_RESPONSE, "access-list overlap changed during query")
-        if not budget_available():
-            break
-        terminal = fetch(expected, 1000, "terminal-witness")
-        coverage = not terminal and len(arrived) == expected == len(ordered)
+        starts = dict.fromkeys((start, *(boundary - 1 for boundary in boundaries)))
+        for start in starts:
+            if not budget_available():
+                break
+            overlap = fetch(start, 1000, "overlap-witness")
+            if not overlap:
+                reasons.append("COVERAGE_UNPROVEN")
+                break
+            if overlap != arrived[start : start + len(overlap)]:
+                raise CliError(
+                    INVALID_RESPONSE, "access-list overlap changed during query"
+                )
+        else:
+            if budget_available():
+                terminal = fetch(expected, 1000, "terminal-witness")
+                coverage = not terminal and len(arrived) == expected == len(ordered)
         break
 
     evidence = AcquisitionEvidence.for_collection(
