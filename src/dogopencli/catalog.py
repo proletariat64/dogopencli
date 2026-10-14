@@ -367,7 +367,20 @@ NODES = build_catalog(
         ),
         *group_nodes(),
         *_GROUPS.values(),
-        *description_nodes(command_nodes()),
+        *(
+            node
+            for node in description_nodes(
+                (
+                    *command_nodes(),
+                    *(
+                        node
+                        for node in refresh_nodes()
+                        if node.handler == "cmd_liquidity_unsupported"
+                    ),
+                )
+            )
+            if node.path[:1] != ("refresh",)
+        ),
         *(
             BizNode(
                 (*node.path[:-1], "prune")

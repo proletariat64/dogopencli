@@ -1,5 +1,7 @@
 # 文档索引
 
+- [B01 定价业务退役 #164/#172](design/liquidity-pricing-retirement-v0.1.0.md)：六个 list/refresh 的拒绝、历史数据保留、外部导入绑定与证据边界；旧定价 UAT 只作历史记录。
+
 - [#157 生产 smoke](research/general/2026-10-13-temporary-query-cache-uat.md)：独立登录、Cash latest/daily 质量、冻结 ANY 离线重放、原生 getter 与 prune；FX 后台错误及完整性限制单独记录。
 
 - [临时查询缓存与 duckdog 规格 #157](design/temporary-query-cache-duckdog-v0.1.0.md)：所有启用 list 单槽重放、非空刷新替换、空刷新保留、在线 get、leaf prune、现金 ANY 原生 selector；[ADR 0020](adr/0020-temporary-query-cache-and-duckdog.md) 明确取代旧历史缓存与详情缓存决策。以下报告及旧规格中的缓存/retention/UAT 为历史记录，不证明本次新行为。

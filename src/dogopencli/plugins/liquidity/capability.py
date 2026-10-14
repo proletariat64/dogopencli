@@ -27,6 +27,7 @@ from .. import EndpointContract
 from . import spec
 from .envelope import dig, envelope_document
 from .projection import project_record
+from .retirement import refuse_retired
 
 
 def _invalid(message: str) -> CliError:
@@ -196,6 +197,7 @@ class LiquidityListCapability:
 
     @property
     def contract(self) -> EndpointContract:
+        refuse_retired(self._spec.path)
         return EndpointContract(
             method=self._spec.method,
             host=spec.HOST,
@@ -235,6 +237,7 @@ class LiquidityListCapability:
         self, scope: str, row_start: int, page_size: int | None = None
     ) -> dict[str, Any]:
         """One verified request body for the offset starting at row_start."""
+        refuse_retired(self._spec.path)
         values = decode_scope(scope)
         if self._spec.projection == "funding_demands" and (
             row_start != 0 or page_size not in (None, self._spec.page_size)

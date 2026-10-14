@@ -27,7 +27,11 @@ def business_lists():
     return {
         path: node
         for path, node in NODES.items()
-        if path and path[-1] == "list" and node.handler and path[0] in BUSINESS_DOMAINS
+        if path
+        and path[-1] == "list"
+        and node.handler
+        and node.handler != "cmd_liquidity_unsupported"
+        and path[0] in BUSINESS_DOMAINS
     }
 
 
