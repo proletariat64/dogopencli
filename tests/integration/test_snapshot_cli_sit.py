@@ -303,21 +303,56 @@ def test_native_get_has_no_cache_inventory(run_cli, snapshot_setup):
     assert result["tree"]["cache"]["status"] == "not_applicable"
 
 
-def test_retired_product_baselines_disappear_without_affecting_bank_or_sla(
+def test_retired_baselines_disappear_without_affecting_capabilities_or_sla(
     run_cli, snapshot_setup
 ):
     code, result, err = report(run_cli, "liquidity", "network")
     assert code == 0, err
     commands = {leaf["command"] for leaf in leaves(result["tree"])}
     assert not any("product-baselines" in command for command in commands)
-    assert "dogopencli liquidity network bank-baselines list" in commands
-    assert "dogopencli liquidity network bank-baselines get" in commands
+    assert not any("bank-baselines" in command for command in commands)
+    assert "dogopencli liquidity network account-capabilities list" in commands
     code, out, err = run_cli(["help", "liquidity", "network"])
     assert code == 0, err
     assert "product-baselines" not in out
+    assert "bank-baselines" not in out
     for action in ("list", "get"):
         code, _, _ = run_cli(["liquidity", "network", "product-baselines", action])
         assert code == 2  # Retired paths are unknown commands, not deferred leaves.
     code, out, err = run_cli(["describe", "payment", "sla", "baselines", "list"])
     assert code == 0, err
     assert json.loads(out)["data_schema"]
+
+
+@pytest.mark.parametrize(
+    "prefix, action",
+    [
+        ([], ["list"]),
+        ([], ["get", "--account", "EXAMPLE"]),
+        ([], ["prune"]),
+        (["refresh"], []),
+        (["help"], ["list"]),
+        (["describe"], ["get"]),
+        (["snapshot"], ["list"]),
+    ],
+)
+def test_retired_bank_baselines_give_account_guidance_without_network(
+    run_cli, snapshot_setup, prefix, action
+):
+    args = [*prefix, "liquidity", "network", "bank-baselines", *action]
+    code, out, err = run_cli(args)
+    assert code == 2
+    assert "liquidity cash accounts list" in out + err
+
+
+def test_accounts_describe_exposes_complementary_fields_and_baseline_ownership(
+    run_cli, snapshot_setup
+):
+    code, out, err = run_cli(["describe", "liquidity", "cash", "accounts", "list"])
+    assert code == 0, err
+    schema = json.loads(out)["data_schema"]
+    assert schema["properties"]["accountType"]["x-source"] == "baseline"
+    assert schema["properties"]["status"]["x-source"] == "baseline"
+    assert "timeZone" in schema["properties"]
+    assert "detail_state" in schema["properties"]
+    assert schema["additionalProperties"] is True

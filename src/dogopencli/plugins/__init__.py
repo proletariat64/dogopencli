@@ -441,6 +441,10 @@ def _load_builtins() -> None:
             groups=(),
             description=liquidity_reading.description,
         )
+    for leaf in liquidity_leaves.INTERNAL_LIST_LEAVES.values():
+        register(leaf.capability(leaf.variants[0]))
+    for leaf in liquidity_leaves.INTERNAL_DETAIL_LEAVES.values():
+        register(leaf.capability)
     for deferred in liquidity_leaves.DEFERRED:
         node = liquidity_leaves.unsupported_node(deferred)
         register(

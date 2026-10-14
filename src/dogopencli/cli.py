@@ -1703,6 +1703,15 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
 def main(argv: list[str] | None = None) -> int:
     values = list(sys.argv[1:] if argv is None else argv)
     word, index = leading_command(values)
+    command_words = values[index:]
+    if word in {"help", "describe", "snapshot", "refresh", "prune"}:
+        command_words = command_words[1:]
+    if command_words[:3] == ["liquidity", "network", "bank-baselines"]:
+        return _emit_error(
+            _argument_error(
+                "bank-baselines retired; use: dogopencli liquidity cash accounts list"
+            )
+        )
     if word == "snapshot" and not any(token in ("--help", "-h") for token in values):
         return cmd_snapshot(
             argparse.Namespace(
