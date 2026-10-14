@@ -1,5 +1,6 @@
 # 文档索引
 
+- [Liquidity 白名单／黑名单契约](design/liquidity-access-lists-v0.1.0.md)：#176 / #168，主体与账户名单独立查询；银行名单原生身份仍待验证。
 - [Duckdog 初始设计 #160](design/duckdog-v0.1.0.md)：DuckDB＋Parquet、settings 全量覆盖、runtime 扩展边界；[settings 导入契约](design/duckdog-settings-import-v0.1.0.md)。`duckdog-import` 为本地安装的 skill，不随仓库分发，首期支持 banks、entities。
 
 - [B01 定价业务退役 #164/#172](design/liquidity-pricing-retirement-v0.1.0.md)：六个 list/refresh 的拒绝、历史数据保留、外部导入绑定与证据边界；旧定价 UAT 只作历史记录。

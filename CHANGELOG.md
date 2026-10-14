@@ -2,6 +2,13 @@
 
 ## 未发布
 
+规格 #176 / R02 #168：新增主体白名单与账户黑名单两个独立 settings list，
+仅使用已验证 GET；原生身份分别为 instId、aliasName。原生 5000／1000 分页、
+边界及终止验证与输出 limit 分开，保留所有状态、字段和采集证据。
+每叶临时槽独立，live 不发布；空、硬失败及严格拒绝刷新保留旧槽。
+银行黑名单路径可发现但不执行：重复 bankId 的行／版本身份仍未验证；
+不合成身份，不新增 get/detail/Edit，不宣称三叶验收完成。#168 保持开放。
+
 规格 #178 / R04 #170：interest-rates 统一支持 market、bank、expectation-rule 和
 保留原拼写的 expection；支持 source 前置并兼容已有 market 后置调用。仅 expection
 提供真实在线 get，保留原生规则详情及嵌套字段。银行使用配对 ISO 日期，原生日期组报数

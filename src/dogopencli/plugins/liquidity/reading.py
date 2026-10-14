@@ -100,6 +100,24 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
 
         fields = SOURCE_FIELDS.get(item.endpoint, fields)
     schema = _field_schema(fields)
+    if item.schema_version == "access-lists-v1":
+        properties = schema["properties"]
+        meanings = {
+            "id": "Observed dummy integer; not the native row identity.",
+            "status": "Raw configuration status; no activation semantics inferred.",
+            "gmtCreate": "Native creation timestamp in epoch milliseconds;"
+            " not capture time.",
+            "gmtModified": "Native modification timestamp in epoch milliseconds;"
+            " not capture time.",
+        }
+        for field, meaning in meanings.items():
+            properties[field]["description"] = meaning
+        for field in item.identity:
+            properties[field]["description"] = "Verified nonempty native row identity."
+        for field in ("pageNo", "pageSize", "rowStart", "startindex", "totalSize"):
+            properties[field]["description"] = (
+                "Native default field; not pagination or coverage evidence."
+            )
     if item.path == ("investment", "interest-rates"):
         value = "ruleValue" if item.kind == spec.SETTINGS else "rateValue"
         schema["properties"][value]["x-unit"] = "unknown; raw value preserved"
@@ -652,7 +670,9 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             **_source_guide(
                 capability,
                 contract,
-                "2026-10-06"
+                "2026-10-15"
+                if variant.schema_version == "access-lists-v1"
+                else "2026-10-06"
                 if variant.projection == "rule_status"
                 else "2026-10-05"
                 if variant.projection

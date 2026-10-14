@@ -35,6 +35,7 @@ from ...helpspec import (
     scope_modes,
     variant_modes,
 )
+from .access_lists import ACCESS_LISTS, BANK_BLACKLIST
 from .account_capacity import ACCOUNT_CAPACITY, validate_capacity_query
 from .capability import (
     LiquidityDetailCapability,
@@ -2534,6 +2535,9 @@ DEFERRED = tuple(item for item in DEFERRED if item.path != (*DEMANDS.path, "list
 LIST_SPECS += (RULE_STATUS,)
 DEFERRED = tuple(item for item in DEFERRED if item.path != (*RULE_STATUS.path, "list"))
 
+LIST_SPECS += ACCESS_LISTS
+DEFERRED += (BANK_BLACKLIST,)
+
 
 def _merged_options(variants: tuple[ListSpec, ...]) -> tuple[ScopeOption, ...]:
     merged: dict[str, ScopeOption] = {}
@@ -2920,7 +2924,9 @@ def _option_spec(option: ScopeOption) -> OptionSpec:
     )
 
 
-def _filter_option(entry: tuple[str, ...]) -> OptionSpec:
+def _filter_option(
+    entry: tuple[str, ...], *, choices: tuple[str, ...] = ()
+) -> OptionSpec:
     flag, field = entry[0], entry[1]
     # Liquidity filters are applied locally after acquisition in every mode;
     # the native request never carries them (verified request shapes).
@@ -2928,6 +2934,7 @@ def _filter_option(entry: tuple[str, ...]) -> OptionSpec:
         flag,
         f"Exact local match on {field}.",
         "append",
+        choices=choices,
         argument_contract=contract(
             "string", modes=filter_modes(repeatable=True, live_native=False)
         ),
@@ -2982,7 +2989,16 @@ def list_query_node(leaf: ListLeaf) -> BizNode:
         f" with --live. Kind: {leaf.kind}.",
         options=(
             *(_list_option_spec(leaf, option) for option in leaf.options),
-            *(_filter_option(entry) for entry in variant.filters),
+            *(
+                _filter_option(
+                    entry,
+                    choices=("VALID", "INVALID")
+                    if variant.schema_version == "access-lists-v1"
+                    and entry[0] == "status"
+                    else (),
+                )
+                for entry in variant.filters
+            ),
             *_acquisition_options(leaf),
             LIMIT,
             OFFSET,
