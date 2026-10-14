@@ -68,6 +68,16 @@ temporary SQLite seam. External import checks run against the installed helper
 independently. Local gates, code review, production-configured refusal smoke,
 and hosted PR checks are reported separately in the implementation PR.
 
+The local production-configured smoke exercised all six resources in offline,
+live, and refresh modes: 18 explicit retirement refusals. Linux `strace` recorded
+no connect/send operations. All 20 known store files retained their baseline
+hashes. This proves local retirement behavior with production configuration;
+it is not a fresh read of production source data or an authenticated browser UAT.
+
+The sampled-field builder cannot reconstruct the current baseline's later
+contracts from its historical report inputs. Retired entries were therefore
+removed from the active field catalog directly; no new field evidence is inferred.
+
 Retired-command production acceptance requires no browser session: refusal must
 occur before CDP access even with the user's normal production configuration.
 No retired source endpoint is queried to prove retirement. No other browser
