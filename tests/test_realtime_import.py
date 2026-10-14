@@ -5,6 +5,94 @@ import duckdb
 import pytest
 
 
+def test_newer_list_accepts_unchanged_numeric_detail_after_record_reconstruction(
+    tmp_path,
+):
+    import copy
+    from decimal import Decimal
+
+    module, owner = fixture_importer()
+    value = b02_candidate(owner)
+    row = value["data"][0]
+    row["singlePaymentLimit"] = {"maxAmount": {"amount": 1}}
+    row["_detail"]["singlePaymentLimit"] = {"maxAmount": {"amount": Decimal("1.0")}}
+    acquired = copy.deepcopy(row["_detail"])
+    metadata = copy.deepcopy(row["_detail_meta"])
+    first = module.publish(tmp_path, owner.encode(value), owner)
+    assert read(first)["_detail_storage"]["state"] == "record"
+    value["meta"]["fetched_at"] = "2026-01-02T00:00:00+00:00"
+    row["singlePaymentLimit"]["maxAmount"]["amount"] = 2
+    second = module.publish(tmp_path, owner.encode(value), owner)
+    stored = read(second)
+    assert stored["_detail_storage"]["state"] == "full"
+    assert stored["singlePaymentLimit"]["maxAmount"]["amount"] == 2
+    assert module.effective_detail(stored) == acquired
+    assert stored["_detail_meta"] == metadata
+    assert Path(first["parquet"]).exists()
+
+
+@pytest.mark.parametrize(
+    "difference", ["precision", "string", "boolean", "null", "absent", "array_order"]
+)
+def test_shared_numeric_equality_keeps_real_component_conflicts(tmp_path, difference):
+    import copy
+    from decimal import Decimal
+
+    module, owner = fixture_importer()
+    value = b02_candidate(owner)
+    row = value["data"][0]
+    row["singlePaymentLimit"] = {"maxAmount": {"amount": 1}, "schedule": [1, 2]}
+    row["_detail"]["singlePaymentLimit"] = {
+        "maxAmount": {"amount": Decimal("1.0")},
+        "schedule": [1, 2],
+    }
+    first = module.publish(tmp_path, owner.encode(value), owner)
+    before = Path(first["parquet"]).read_bytes()
+    previous = read(first)
+    changed = copy.deepcopy(value)
+    changed["meta"]["fetched_at"] = "2026-01-02T00:00:00+00:00"
+    changed["data"][0]["singlePaymentLimit"]["maxAmount"]["amount"] = 2
+    limit = changed["data"][0]["_detail"]["singlePaymentLimit"]
+    if difference == "absent":
+        del limit["maxAmount"]["amount"]
+    elif difference == "array_order":
+        limit["schedule"] = [2, 1]
+    else:
+        limit["maxAmount"]["amount"] = {
+            "precision": Decimal("1.0000000000000000000000000001"),
+            "string": "1",
+            "boolean": True,
+            "null": None,
+        }[difference]
+    with pytest.raises(owner.ImportRejected, match="same component capture"):
+        module.publish(tmp_path, owner.encode(changed), owner)
+    assert read(first) == previous
+    assert Path(first["parquet"]).read_bytes() == before
+    assert list(Path(first["parquet"]).parent.glob("*.parquet")) == [
+        Path(first["parquet"])
+    ]
+
+
+def test_same_list_numeric_representation_allows_fresh_detail(tmp_path):
+    from decimal import Decimal
+
+    module, owner = fixture_importer()
+    value = b02_candidate(owner)
+    row = value["data"][0]
+    row["singlePaymentLimit"] = {"maxAmount": {"amount": 1}}
+    row["_detail"]["singlePaymentLimit"] = {"maxAmount": {"amount": Decimal("1.0")}}
+    first = module.publish(tmp_path, owner.encode(value), owner)
+    row["singlePaymentLimit"]["maxAmount"]["amount"] = Decimal("1.0")
+    row["_detail_meta"]["fetched_at"] = "2026-01-02T00:00:00+00:00"
+    row["_detail_meta"]["components"]["network"]["captured_at"] = (
+        "2026-01-02T00:00:00+00:00"
+    )
+    second = module.publish(tmp_path, owner.encode(value), owner)
+    assert read(second)["_detail_storage"]["state"] == "record"
+    assert second["fetched_at"] == first["fetched_at"]
+    assert Path(first["parquet"]).exists()
+
+
 @pytest.mark.parametrize("component", ["network", "operationHistory", "routeDetails"])
 @pytest.mark.parametrize("conflict", ["older", "equal_changed"])
 @pytest.mark.parametrize("new_list", [False, True])

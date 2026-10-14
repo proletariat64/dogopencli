@@ -178,6 +178,27 @@ def identifier(value):
     return '"' + value.replace('"', '""') + '"'
 
 
+def exact(left: Any, right: Any) -> bool:
+    """JSON number equality without bool coercion, float conversion or key order."""
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is type(right) and left == right
+    if isinstance(left, (int, decimal.Decimal)) and isinstance(
+        right, (int, decimal.Decimal)
+    ):
+        return left == right
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(
+            exact(left[k], right[k]) for k in left
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            exact(a, b) for a, b in zip(left, right, strict=True)
+        )
+    return left == right
+
+
 def validate_realtime_component_order(
     previous_rows: list[dict[str, Any]], rows: list[dict[str, Any]]
 ) -> None:
@@ -216,7 +237,7 @@ def validate_realtime_component_order(
                 or current.get("status") != "succeeded"
                 or old.get("status") != "succeeded"
                 or any(
-                    encode(current.get(field)) != encode(old.get(field))
+                    not exact(current.get(field), old.get(field))
                     for field in ("identity", "request_scope")
                 )
             ):
@@ -227,8 +248,8 @@ def validate_realtime_component_order(
                 raise ImportRejected("component capture time requires timezone")
             if current_time < previous_time:
                 raise ImportRejected("older component cannot replace newer observation")
-            if current_time == previous_time and encode(payload(row, name)) != encode(
-                payload(previous, name)
+            if current_time == previous_time and not exact(
+                payload(row, name), payload(previous, name)
             ):
                 raise ImportRejected("same component capture has conflicting payload")
 
@@ -245,7 +266,7 @@ def newer_realtime_details(
             for row in values
         ]
 
-    if encode(roots(rows)) != encode(roots(previous_rows)):
+    if not exact(roots(rows), roots(previous_rows)):
         return False
     advanced = False
     for current, previous in zip(rows, previous_rows, strict=True):
@@ -267,8 +288,9 @@ def newer_realtime_details(
         if current_time < previous_time:
             return False
         if current_time == previous_time:
-            if encode({k: v for k, v in current.items() if k in reserved}) != encode(
-                {k: v for k, v in previous.items() if k in reserved}
+            if not exact(
+                {k: v for k, v in current.items() if k in reserved},
+                {k: v for k, v in previous.items() if k in reserved},
             ):
                 return False
         else:

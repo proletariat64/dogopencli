@@ -38,28 +38,9 @@ def load_owner(path: Path) -> ModuleType:
         raise ValueError("settings importer requires detail refresh ordering patch")
     if getattr(owner, "B03_COMPONENT_ORDERING", None) is not True:
         raise ValueError("settings importer requires component ordering patch")
+    if not callable(getattr(owner, "exact", None)):
+        raise ValueError("settings importer requires shared numeric equality patch")
     return owner
-
-
-def exact(left: Any, right: Any) -> bool:
-    """JSON number equality without bool coercion, float conversion or key order."""
-    if isinstance(left, bool) or isinstance(right, bool):
-        return type(left) is type(right) and left == right
-    if isinstance(left, (int, decimal.Decimal)) and isinstance(
-        right, (int, decimal.Decimal)
-    ):
-        return left == right
-    if type(left) is not type(right):
-        return False
-    if isinstance(left, dict):
-        return left.keys() == right.keys() and all(
-            exact(left[k], right[k]) for k in left
-        )
-    if isinstance(left, list):
-        return len(left) == len(right) and all(
-            exact(a, b) for a, b in zip(left, right, strict=True)
-        )
-    return left == right
 
 
 def effective_detail(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -101,8 +82,8 @@ def validate_components(
         raise owner.ImportRejected("invalid component metadata")
     network = components.get("network")
     if not isinstance(network, dict) or (
-        not exact(network.get("identity"), {"id": detail["id"]})
-        or not exact(network.get("request_scope"), {"id": detail["id"]})
+        not owner.exact(network.get("identity"), {"id": detail["id"]})
+        or not owner.exact(network.get("request_scope"), {"id": detail["id"]})
         or network.get("status") != "succeeded"
         or network.get("applicability") != "applicable"
         or network.get("complete") is not True
@@ -111,7 +92,7 @@ def validate_components(
     ):
         raise owner.ImportRejected("network component identity or acquisition conflict")
     captured(network.get("captured_at"))
-    if "source_version" in network and not exact(
+    if "source_version" in network and not owner.exact(
         network["source_version"], detail.get("version")
     ):
         raise owner.ImportRejected("network component version conflict")
@@ -195,7 +176,7 @@ def validate_components(
                 "fundAction": detail["fundAction"],
             }
             if (
-                not exact(component.get("request_scope"), expected)
+                not owner.exact(component.get("request_scope"), expected)
                 or component.get("identity") is not None
                 or not isinstance(payload, list)
                 or component["returned_count"] != len(payload)
@@ -214,14 +195,17 @@ def validate_components(
                     or not isinstance(row.get("id"), str)
                     or not str(row["id"]).strip()
                     or row.get("scene") != "REALTIME"
-                    or any(not exact(row.get(field), detail[field]) for field in fields)
+                    or any(
+                        not owner.exact(row.get(field), detail[field])
+                        for field in fields
+                    )
                     or row.get("tntInstId") not in (None, "", TENANT)
                 ):
                     raise owner.ImportRejected(
                         "history record contradicts acquired scope"
                     )
                 identity = (type(row["id"]), row["id"])
-                if identity in history_identities and not exact(
+                if identity in history_identities and not owner.exact(
                     history_identities[identity], row
                 ):
                     raise owner.ImportRejected("conflicting history identity")
@@ -237,8 +221,8 @@ def validate_components(
                     not isinstance(expected[field], str) or not expected[field].strip()
                     for field in ("routeId", "aliasName")
                 )
-                or not exact(component.get("identity"), expected)
-                or not exact(component.get("request_scope"), expected)
+                or not owner.exact(component.get("identity"), expected)
+                or not owner.exact(component.get("request_scope"), expected)
                 or not isinstance(payload, dict)
                 or component["returned_count"] != 1
             ):
@@ -251,7 +235,7 @@ def validate_components(
             ):
                 raise owner.ImportRejected("invalid route aggregate quality")
             for field, value in expected.items():
-                if field in payload and not exact(payload[field], value):
+                if field in payload and not owner.exact(payload[field], value):
                     raise owner.ImportRejected(
                         "native route context contradicts acquired scope"
                     )
@@ -265,12 +249,12 @@ def validate_components(
                 field: len(payload[field])
                 for field in ("dynamicQuotas", "staticQuotas")
             }
-            if not exact(component.get("member_counts"), counts):
+            if not owner.exact(component.get("member_counts"), counts):
                 raise owner.ImportRejected("route member count conflict")
             echoes = {
                 field: "present" if field in payload else "absent" for field in expected
             }
-            if not exact(component.get("native_context_echo"), echoes):
+            if not owner.exact(component.get("native_context_echo"), echoes):
                 raise owner.ImportRejected("route context echo evidence conflict")
 
 
@@ -331,21 +315,21 @@ def prepare(text: str, owner: ModuleType) -> str:
         list_scope = meta.get("request_scope", {})
         if not isinstance(detail_scope, dict) or not isinstance(list_scope, dict):
             raise owner.ImportRejected("invalid request scope")
-        if not exact(detail_scope, list_scope):
+        if not owner.exact(detail_scope, list_scope):
             raise owner.ImportRejected("detail source scope conflict")
         for field in ("tenant", "tenant_id", "instId", "tntInstId", "source_scope"):
             if field in meta or field in detail_meta:
                 if (
                     field not in meta
                     or field not in detail_meta
-                    or not exact(meta[field], detail_meta[field])
+                    or not owner.exact(meta[field], detail_meta[field])
                 ):
                     raise owner.ImportRejected("source tenant scope conflict")
             if field in root or field in detail:
                 if (
                     field not in root
                     or field not in detail
-                    or not exact(root[field], detail[field])
+                    or not owner.exact(root[field], detail[field])
                 ):
                     raise owner.ImportRejected("native tenant scope conflict")
         for document in (root, detail, meta, detail_meta, detail_scope, list_scope):
@@ -383,7 +367,7 @@ def prepare(text: str, owner: ModuleType) -> str:
         )
         if aggregate and decomposable:
             comparable = {k: v for k, v in detail.items() if k in ROOT_FIELDS}
-        duplicate = decomposable and exact(root, comparable)
+        duplicate = decomposable and owner.exact(root, comparable)
         stored["_detail_meta"] = detail_meta
         stored["_detail_storage"] = {
             "version": 1,
@@ -393,7 +377,7 @@ def prepare(text: str, owner: ModuleType) -> str:
             stored["_detail"] = {k: v for k, v in detail.items() if k in ASSOCIATIONS}
         elif not duplicate:
             stored["_detail"] = detail
-        if not exact(effective_detail(stored), detail):
+        if not owner.exact(effective_detail(stored), detail):
             raise owner.ImportRejected("detail reconstruction mismatch")
         result.append(stored)
     # The source list metadata remains complete; detail quality is retained separately.

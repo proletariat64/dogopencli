@@ -100,6 +100,13 @@ in different validated scopes are ordered independently. The entrypoint requires
 the updated owner patch's component-ordering capability. Legacy rows without
 component evidence retain their existing detail-capture ordering rule.
 
+The external owner exports one recursive `exact` comparator for root
+deduplication and refresh guards. JSON integer `1` and decimal `1.0` compare
+as the same number, including after an omitted detail root is reconstructed.
+Numbers remain distinct from booleans and strings; null, field absence, array
+order and genuine precision differences remain significant. Serialized JSON
+is still used for physical Parquet/read-back verification, not business equality.
+
 An authorized read-only inventory on 2026-10-14 observed one current generation
 with 204 rows in both view and Parquet. All 204 nested detail objects repeated
 their list root under recursive type-aware structural comparison. The schema
