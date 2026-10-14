@@ -19,6 +19,7 @@ from .capability import LiquidityListCapability
 _HINT_VERSION = 1
 _HINT_MAX_AGE = 30 * 86400
 _MAX_PROBES = 64
+_INITIAL_HOLE_OFFSET = 2061
 
 
 class _Unstable(Exception):
@@ -174,7 +175,7 @@ def verify_hole(
 
     key = _fingerprint(capability, scope)
     hint = _read_hints(hint_path).get(key, {})
-    candidate = hint.get("offset", 2062)
+    candidate = hint.get("offset", _INITIAL_HOLE_OFFSET)
     try:
         # A before/after first-position anchor rechecks totals and acquisition
         # ordering without redownloading the full directory.

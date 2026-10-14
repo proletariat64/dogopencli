@@ -683,3 +683,67 @@ def test_malformed_detail_qualifier_is_not_hidden_by_missing_list_value(
     assert code == 1
     assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
     assert setup.cache_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("field", ["bankId", "instId"])
+def test_missing_baseline_qualifier_cannot_hide_cash_detail_conflict(
+    setup, run_cli, field
+):
+    setup.state.business_handler = native_handler([account()], [account()])
+    assert run_cli(["refresh", "liquidity", "cash", "accounts"])[0] == 0
+    before = setup.cache_path.read_bytes()
+    setup.state.business_handler = native_handler(
+        [account()],
+        [account(**{field: None})],
+        {"A": account(**{field: "CONFLICT"})},
+    )
+    code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert parse(out)["meta"]["published"] is False
+    assert setup.cache_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("field", ["bankId", "instId"])
+def test_cached_missing_baseline_qualifier_cannot_hide_cash_detail_conflict(
+    setup, run_cli, field
+):
+    from dogopencli.cache import Cache
+    from dogopencli.result_policy import AcquisitionEvidence
+    from dogopencli.temporary_query import publish_slot
+
+    setup.state.business_handler = native_handler(
+        [account()],
+        [account(**{field: None})],
+        {"A": account()},
+    )
+    assert run_cli(["refresh", "liquidity", "cash", "accounts"])[0] == 0
+    code, out, err = run_cli(["liquidity", "cash", "accounts", "list"])
+    assert code == 0, err
+    result = parse(out)
+    # Reproduce an old falsely complete slot without changing its canonical
+    # baseline-owned null field or its otherwise consistent source metadata.
+    row = result["data"][0]
+    row["source_metadata"]["raw"]["detail"][field] = "CONFLICT"
+    row["source_metadata"]["conflicts"][field]["detail"] = "CONFLICT"
+    store = Cache(setup.cache_path)
+    with store.refresh_lock():
+        publish_slot(
+            store,
+            "liquidity.cash.accounts",
+            [row],
+            capability="liquidity.cash.accounts.list",
+            scope={},
+            variant="/queryintnalbkactlist.json",
+            fetched_at=result["meta"]["fetched_at"],
+            evidence=AcquisitionEvidence.from_record(result["meta"]["acquisition"]),
+        )
+    before = setup.cache_path.read_bytes()
+    setup.state.business_requests.clear()
+    code, out, err = run_cli(
+        ["liquidity", "cash", "accounts", "list", "--require-complete"]
+    )
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert setup.state.business_requests == []
+    assert setup.cache_path.read_bytes() == before

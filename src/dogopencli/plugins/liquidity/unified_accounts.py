@@ -298,6 +298,8 @@ def collect_accounts(
         else:
             detail = detail_capability.parse_detail(response.body, values)
             _same_identity(account, detail)
+            if identity in cash_by_identity:
+                _same_identity(cash_by_identity[identity], detail)
             details[identity] = detail
             inventory["detail"].update(detail)
         print(
@@ -451,6 +453,8 @@ def validate_cached_accounts(
             if baseline is None:
                 _invalid("cached detail has no baseline provenance")
             _same_identity(baseline, detail)
+            if cash is not None:
+                _same_identity(cash, detail)
         refusal = source.get("detail_error")
         if refusal is not None and (
             not isinstance(refusal, dict)

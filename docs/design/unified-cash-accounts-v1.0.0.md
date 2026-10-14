@@ -32,3 +32,5 @@ A currently verified internal single cash hole may satisfy list coverage with `V
 Implementation is tested through public CLI, synthetic CDP and temporary SQLite. Production inquiry-only UAT and a full successful native-detail field inventory remain separate release evidence.
 
 The corrected identity/provenance cache schema is revision 2. Earlier cash-only or revision-1 composite slots require explicit refresh; offline rejection preserves their bytes. Hole rediscovery starts in the uniquely deficient native page when available and retains the same point/range/stability proof.
+
+The initial fallback hole candidate is 2061, as updated by the user after the current production observation. A saved verified hint takes priority; neither value is trusted until the current mismatch is reverified. Historical evidence at 2062 remains historical.

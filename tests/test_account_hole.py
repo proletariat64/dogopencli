@@ -185,10 +185,10 @@ def test_expired_aggregate_budget_fails_without_request(tmp_path):
 
 
 def test_initial_candidate_is_currently_proved_not_trusted(tmp_path):
-    source = NativeRows(total=2100, hole=2062)
+    source = NativeRows(total=2100, hole=2061)
     result = verify(source, tmp_path / "hint.json")
-    assert result["hole_offset"] == 2062
-    assert source.requests.count((2062, 1)) >= 2
+    assert result["hole_offset"] == 2061
+    assert source.requests.count((2061, 1)) >= 2
     assert all(size in (1, 3) for _, size in source.requests)
 
 
