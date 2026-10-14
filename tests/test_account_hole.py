@@ -65,6 +65,24 @@ def test_moved_interior_hole_is_verified_and_persisted(tmp_path):
     assert len(source.requests) <= 64
 
 
+def test_rediscovery_uses_the_deficient_native_page_interval(tmp_path):
+    source = NativeRows(total=100, hole=73)
+    result = verify_hole(
+        LiquidityListCapability(CASH_ACCOUNTS),
+        source,
+        "",
+        source.records,
+        source.total,
+        time.monotonic() + 120,
+        hint_path=tmp_path / "hint.json",
+        deficient_interval=(50, 100),
+    )
+    assert result["hole_offset"] == 73
+    discovery_requests = [(start, size) for start, size in source.requests if size > 3]
+    assert discovery_requests
+    assert all(50 <= start < start + size <= 100 for start, size in discovery_requests)
+
+
 def verify(source, hint, records=None, deadline=None):
     return verify_hole(
         LiquidityListCapability(CASH_ACCOUNTS),

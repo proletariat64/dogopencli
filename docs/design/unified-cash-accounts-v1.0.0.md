@@ -4,6 +4,8 @@ Specification: [GitHub issue #162](https://github.com/proletariat64/dogopencli/i
 
 `dogopencli liquidity cash accounts list` returns one reference account row per validated `(aliasName, currency)`. The shared native cash `id` is not an account join key. Cash, baseline and genuine detail identity fields must agree; no alias-based entity inference is applied. Account information, attached settings and balances remain separate concepts.
 
+Distinct cash currencies for the same alias remain distinct accounts. Baseline aliases must stay unique because the native detail request selects only an alias. Bank/entity qualifiers can be missing, null or empty; supplied nonempty values must agree across sources. Qualifier absence does not invalidate an otherwise valid account row or fabricate a source value.
+
 The three inquiry-only GET sources are `/queryintnalbkactlist.json` (ordinary page size 5000), `/bankAccountBaseLineQuery.json` (page size 1000), and `/bankAccountBaseLineDetail.json`, on `iliquidity.alipay.com`, tenant `GUAPW3SG`. Baseline commands and standalone cache maintenance are internal only. Sequential details share one authenticated session; stderr reports detail acquisition progress.
 
 | Public fields | Canonical source | Interpretation |
@@ -23,6 +25,10 @@ Default table columns include account identity, baseline `accountType`/`status`,
 
 List coverage and required detail coverage are independent. Individual native detail business refusals retain list fields with safe error evidence; valid unmatched accounts remain visible and incomplete. Default usable incomplete output returns rows with warnings and exit 0; `--require-complete` rejects missing coverage. Authentication, transport, malformed envelope and identity failures remain hard errors.
 
+Only a successful outer request (`resultFlag=true`) with an explicit inner business refusal (`result.success=false`) qualifies for per-account tolerance. A failed outer request, including the observed permission-failure envelope, follows the existing hard-error path. Malformed JSON remains `INVALID_RESPONSE`.
+
 A currently verified internal single cash hole may satisfy list coverage with `VERIFIED_BACKEND_HOLE`. Native reported count remains visible alongside effective expected count, unique arrivals and current probe evidence. A persisted offset is only a hint, never completeness proof. It cannot excuse missing details or other leaves' deficits. Live never saves business rows; explicit refresh stores unified rows and evidence in one atomic temporary slot. Offline replay cannot probe or update hints. Old cash-only slots require explicit refresh.
 
 Implementation is tested through public CLI, synthetic CDP and temporary SQLite. Production inquiry-only UAT and a full successful native-detail field inventory remain separate release evidence.
+
+The corrected identity/provenance cache schema is revision 2. Earlier cash-only or revision-1 composite slots require explicit refresh; offline rejection preserves their bytes. Hole rediscovery starts in the uniquely deficient native page when available and retains the same point/range/stability proof.

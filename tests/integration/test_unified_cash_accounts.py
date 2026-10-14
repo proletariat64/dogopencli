@@ -35,7 +35,7 @@ def native_handler(cash, baselines, details=None):
                 return {
                     "status": 200,
                     "body": {
-                        "resultFlag": False,
+                        "resultFlag": True,
                         "errorCode": "ACCOUNT_REFUSED",
                         "errorMessage": "secret",
                         "result": {"success": False},
@@ -499,4 +499,187 @@ def test_successful_native_null_detail_is_hard_and_preserves_prior_cache(
     assert result["error"]["code"] == "INVALID_RESPONSE"
     assert result["error"]["message"] == "detail payload is not an object"
     assert result["data"] is None
+    assert setup.cache_path.read_bytes() == before
+
+
+def test_cash_currency_identities_join_only_matching_baseline_and_replay(
+    setup, run_cli
+):
+    setup.state.business_handler = native_handler(
+        [account(id="shared"), account(id="shared", currency="EUR")],
+        [account(accountType="OA", status="NORMAL")],
+    )
+    code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
+    assert code == 0, err
+    assert parse(out)["meta"]["list_coverage"] == {
+        "complete": False,
+        "matched": 1,
+        "cash_only": 1,
+        "baseline_only": 0,
+    }
+    assert sum("aliasName" in p for p in setup.state.business_requests) == 1
+    setup.state.business_requests.clear()
+    code, out, err = run_cli(["liquidity", "cash", "accounts", "list"])
+    assert code == 0, err
+    rows = parse(out)["data"]
+    assert [(row["aliasName"], row["currency"]) for row in rows] == [
+        ("A", "USD"),
+        ("A", "EUR"),
+    ]
+    assert rows[0]["detail_state"] == "succeeded"
+    assert rows[1]["detail_state"] == "missing"
+    assert "accountType" not in rows[1]
+    assert setup.state.business_requests == []
+
+
+def test_unmatched_cash_account_keeps_optional_empty_bank_entity(setup, run_cli):
+    setup.state.business_handler = native_handler(
+        [{"aliasName": "A", "currency": "USD", "bankId": None, "instId": ""}], []
+    )
+    code, out, err = run_cli(["liquidity", "cash", "accounts", "list", "--live"])
+    assert code == 0, err
+    result = parse(out)
+    assert result["meta"]["complete"] is False
+    assert result["data"][0]["bankId"] is None
+    assert result["data"][0]["instId"] == ""
+    assert result["data"][0]["source_metadata"]["matched"] is False
+
+
+def test_equal_common_fields_keep_baseline_provenance_on_cache_replay(setup, run_cli):
+    setup.state.business_handler = native_handler(
+        [account(timeZone="UTC")], [account(timeZone="UTC")]
+    )
+    assert run_cli(["refresh", "liquidity", "cash", "accounts"])[0] == 0
+    setup.state.business_requests.clear()
+    code, out, err = run_cli(["liquidity", "cash", "accounts", "list"])
+    assert code == 0, err
+    row = parse(out)["data"][0]
+    assert row["source_metadata"]["provenance"]["timeZone"] == "baseline"
+    assert row["source_metadata"]["provenance"]["aliasName"] == "baseline"
+    assert "timeZone" not in row["source_metadata"]["conflicts"]
+    assert setup.state.business_requests == []
+
+
+@pytest.mark.parametrize("failure", ["json", "permission"])
+def test_invalid_detail_or_outer_request_failure_preserves_cache(
+    setup, run_cli, failure
+):
+    normal = native_handler([account()], [account()])
+    setup.state.business_handler = normal
+    assert run_cli(["refresh", "liquidity", "cash", "accounts"])[0] == 0
+    before = setup.cache_path.read_bytes()
+
+    def answer(payload, index):
+        if "aliasName" not in payload:
+            return normal(payload, index)
+        body = (
+            "invalid JSON"
+            if failure == "json"
+            else {
+                "resultFlag": False,
+                "result": {"success": False, "errorCode": "PERMISSION_DENIED"},
+            }
+        )
+        return {"status": 200, "body": body}
+
+    setup.state.business_handler = answer
+    code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
+    result = parse(out)
+    assert code == 1
+    assert result["error"]["code"] == (
+        "INVALID_RESPONSE" if failure == "json" else "BUSINESS_QUERY_FAILED"
+    )
+    assert result["data"] is None
+    assert result["meta"]["published"] is False
+    assert setup.cache_path.read_bytes() == before
+
+
+def test_hole_probe_cancellation_preserves_cache_and_does_not_save_hint(setup, run_cli):
+    setup.state.business_handler = native_handler([account()], [account()])
+    assert run_cli(["refresh", "liquidity", "cash", "accounts"])[0] == 0
+    before = setup.cache_path.read_bytes()
+    normal = hole_handler()
+
+    def interrupted(payload, index):
+        if "bankAccountQueryVO" in payload:
+            request = json.loads(payload["bankAccountQueryVO"])
+            if request["pageSize"] == 1:
+                raise KeyboardInterrupt
+        return normal(payload, index)
+
+    setup.state.business_handler = interrupted
+    code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
+    assert code == 130
+    assert "interrupted" in err
+    assert setup.cache_path.read_bytes() == before
+    assert not (setup.tmp_path / "cache.sqlite3.account-hole-hints.json").exists()
+
+
+def test_cash_rediscovery_stays_within_the_short_native_page(setup, run_cli):
+    native = [account(f"A{i}") if i != 5000 else None for i in range(5002)]
+    normal = native_handler([], [])
+
+    def answer(payload, index):
+        if "bankAccountQueryVO" not in payload:
+            return normal(payload, index)
+        request = json.loads(payload["bankAccountQueryVO"])
+        start, size = request["rowStart"], request["pageSize"]
+        return {
+            "status": 200,
+            "body": {
+                "resultFlag": True,
+                "count": 5002,
+                "result": {
+                    "bankAccountPropertyVOList": [
+                        row for row in native[start : start + size] if row is not None
+                    ]
+                },
+            },
+        }
+
+    setup.state.business_handler = answer
+    code, out, err = run_cli(["liquidity", "cash", "accounts", "list", "--live"])
+    assert code == 0, err
+    result = parse(out)
+    assert result["meta"]["accepted_diagnostics"][0]["hole_offset"] == 5000
+    assert result["meta"]["complete"] is False  # No baseline coverage.
+    cash_requests = [
+        json.loads(p["bankAccountQueryVO"])
+        for p in setup.state.business_requests
+        if "bankAccountQueryVO" in p
+    ]
+    assert [(p["rowStart"], p["pageSize"]) for p in cash_requests[:2]] == [
+        (0, 5000),
+        (5000, 5000),
+    ]
+    assert all(p["pageSize"] <= 3 for p in cash_requests[2:])
+
+
+def test_ambiguous_baseline_alias_is_still_hard_failure(setup, run_cli):
+    setup.state.business_handler = native_handler(
+        [account(), account(currency="EUR")],
+        [account(), account(currency="EUR")],
+    )
+    code, out, err = run_cli(["liquidity", "cash", "accounts", "list", "--live"])
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert not any("aliasName" in p for p in setup.state.business_requests)
+
+
+@pytest.mark.parametrize("field", ["bankId", "instId"])
+def test_malformed_detail_qualifier_is_not_hidden_by_missing_list_value(
+    setup, run_cli, field
+):
+    normal = native_handler([account(**{field: None})], [account(**{field: None})])
+    setup.state.business_handler = normal
+    assert run_cli(["refresh", "liquidity", "cash", "accounts"])[0] == 0
+    before = setup.cache_path.read_bytes()
+    setup.state.business_handler = native_handler(
+        [account(**{field: None})],
+        [account(**{field: None})],
+        {"A": account(**{field: 0})},
+    )
+    code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
     assert setup.cache_path.read_bytes() == before

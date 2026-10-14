@@ -104,6 +104,7 @@ def verify_hole(
     deadline: float,
     *,
     hint_path: Path,
+    deficient_interval: tuple[int, int] | None = None,
 ) -> dict[str, Any] | None:
     """Verify a stable interior omission; return no exception for ambiguity.
 
@@ -114,6 +115,10 @@ def verify_hole(
     if capability.descriptor.path != ("cash", "accounts"):
         return None
     if native_total < 3 or native_total - len(records) != 1:
+        return None
+    if deficient_interval is not None and not (
+        0 <= deficient_interval[0] < deficient_interval[1] <= native_total
+    ):
         return None
     identities = [capability.identity_key(record) for record in records]
     if len(set(identities)) != len(identities):
@@ -175,7 +180,7 @@ def verify_hole(
         # ordering without redownloading the full directory.
         equal(probe(0, 1), contents[:1])
         if not check(candidate):
-            low, high = 0, native_total
+            low, high = deficient_interval or (0, native_total)
             while high - low > 1:
                 middle = (low + high) // 2
                 left = probe(low, middle - low)

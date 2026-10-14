@@ -19,7 +19,7 @@ from .capability import LiquidityListCapability
 from .collect import _merge_page, collect_liquidity_scope
 from .leaves import NETWORK_BANK_BASELINES, internal_detail_leaf
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 IDENTITY_FIELDS = ("aliasName", "currency", "bankId", "instId")
 SOURCE_FIELDS = ("accountType", "status")
 CASH_MODIFICATION_FIELDS = ("gmtModified", "operator")
@@ -32,21 +32,38 @@ def _invalid(message: str) -> NoReturn:
 
 def _accounts(
     records: list[dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    aliases = {}
+    *,
+    require_unique_alias: bool = False,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    accounts = {}
+    aliases = set()
     for row in records:
-        for field in IDENTITY_FIELDS:
+        for field in IDENTITY_FIELDS[:2]:
             if not isinstance(row.get(field), str) or not row[field].strip():
                 _invalid(f"account source requires nonempty {field}")
+        for field in IDENTITY_FIELDS[2:]:
+            if row.get(field) is not None and not isinstance(row[field], str):
+                _invalid(f"account source has invalid {field}")
         alias = row["aliasName"]
-        if alias in aliases:
-            _invalid("account alias is ambiguous across native identities")
-        aliases[alias] = row
-    return aliases
+        identity = (alias, row["currency"])
+        if identity in accounts or require_unique_alias and alias in aliases:
+            _invalid("account source has ambiguous native identities")
+        accounts[identity] = row
+        aliases.add(alias)
+    return accounts
 
 
 def _same_identity(left: dict[str, Any], right: dict[str, Any]) -> None:
     for field in IDENTITY_FIELDS:
+        if field in IDENTITY_FIELDS[2:] and any(
+            row.get(field) is not None and not isinstance(row[field], str)
+            for row in (left, right)
+        ):
+            _invalid(f"account source has invalid {field}")
+        if field in IDENTITY_FIELDS[2:] and (
+            left.get(field) in (None, "") or right.get(field) in (None, "")
+        ):
+            continue
         if field in right and right[field] != left.get(field):
             _invalid(f"account sources disagree on identity field {field}")
 
@@ -61,6 +78,7 @@ def _cash_list(
     seen, records = {}, []
     native_total = None
     arrivals = pages = start = 0
+    deficient_pages = []
     size = capability.descriptor.page_size
     while True:
         response = collect_mod.execute_bounded(
@@ -78,6 +96,16 @@ def _cash_list(
             _invalid("cash directory total changed during collection")
         if len(rows) > size:
             _invalid("cash directory page exceeds request size")
+        native_span = min(size, total - start)
+        if len(rows) < native_span:
+            deficient_pages.append(
+                {
+                    "kind": "cash_native_page",
+                    "row_start": start,
+                    "native_span": native_span,
+                    "returned": len(rows),
+                }
+            )
         arrivals += len(rows)
         pages += 1
         _merge_page(capability, seen, records, rows)
@@ -91,6 +119,7 @@ def _cash_list(
         reported_total=native_total,
         collected_total=len(records),
         arrivals=arrivals,
+        attempts=tuple(deficient_pages),
     )
     return CollectedScope(
         records,
@@ -105,11 +134,16 @@ def _cash_list(
 
 
 def _detail_refusal(body: bytes) -> dict[str, Any] | None:
-    document = parse(body)
+    try:
+        document = parse(body)
+    except ValueError as error:
+        raise CliError(INVALID_RESPONSE, "response is not valid JSON") from error
     if not isinstance(document, dict):
         _invalid("detail envelope is not an object")
     result = document.get("result")
-    refused = document.get("resultFlag") is False or (
+    # A failed outer request includes permission failures, not evidence of an
+    # individual account refusal. Its normal envelope error must propagate.
+    refused = (
         document.get("resultFlag") is True
         and isinstance(result, dict)
         and result.get("success") is False
@@ -154,8 +188,8 @@ def _merge(
                     provenance[field]: row[field],
                     source: value,
                 }
-                if source == "baseline":
-                    row[field], provenance[field] = value, source
+            if source == "baseline":
+                row[field], provenance[field] = value, source
     # Keep competing native classifications in qualified source metadata.
     for field in (*SOURCE_FIELDS, *CASH_MODIFICATION_FIELDS):
         values = {
@@ -194,7 +228,7 @@ def collect_accounts(
     started = time.monotonic()
     cash_transport = session.transport(capability)
     cash = _cash_list(capability, cash_transport, scope, deadline, progress)
-    cash_by_alias = _accounts(cash.records)
+    cash_by_identity = _accounts(cash.records)
     accepted = None
     normalized_cash = cash.evidence
     if cash.total_count - len(cash.records) == 1 and cash.evidence.duplicate_count == 0:
@@ -204,6 +238,14 @@ def collect_accounts(
             from .common import load_config
 
             hint_path = Path(str(load_config().cache_path) + ".account-hole-hints.json")
+        deficient_interval = None
+        if len(cash.evidence.attempts) == 1:
+            page = cash.evidence.attempts[0]
+            if page["native_span"] - page["returned"] == 1:
+                deficient_interval = (
+                    page["row_start"],
+                    page["row_start"] + page["native_span"],
+                )
         accepted = verify_hole(
             capability,
             cash_transport,
@@ -212,6 +254,7 @@ def collect_accounts(
             cash.total_count,
             deadline,
             hint_path=hint_path,
+            deficient_interval=deficient_interval,
         )
         if accepted:
             normalized_cash = AcquisitionEvidence.for_collection(
@@ -229,9 +272,9 @@ def collect_accounts(
         "",
         deadline=deadline,
     )
-    baseline_by_alias = _accounts(baseline.records)
-    for alias in cash_by_alias.keys() & baseline_by_alias.keys():
-        _same_identity(cash_by_alias[alias], baseline_by_alias[alias])
+    baseline_by_identity = _accounts(baseline.records, require_unique_alias=True)
+    for identity in cash_by_identity.keys() & baseline_by_identity.keys():
+        _same_identity(cash_by_identity[identity], baseline_by_identity[identity])
     detail_capability = internal_detail_leaf(
         ("network", "bank-baselines", "get")
     ).capability
@@ -241,8 +284,8 @@ def collect_accounts(
     for source, result in (("cash", cash), ("baseline", baseline)):
         for row in result.records:
             inventory[source].update(row)
-    for done, (alias, account) in enumerate(baseline_by_alias.items(), 1):
-        values = {"account": alias}
+    for done, (identity, account) in enumerate(baseline_by_identity.items(), 1):
+        values = {"account": account["aliasName"]}
         response = collect_mod.execute_bounded(
             detail_capability,
             detail_transport,
@@ -251,38 +294,40 @@ def collect_accounts(
         )
         refusal = _detail_refusal(response.body)
         if refusal is not None:
-            refusals[alias] = refusal
+            refusals[identity] = refusal
         else:
             detail = detail_capability.parse_detail(response.body, values)
             _same_identity(account, detail)
-            details[alias] = detail
+            details[identity] = detail
             inventory["detail"].update(detail)
         print(
-            f"accounts: details {done}/{len(baseline_by_alias)}; "
+            f"accounts: details {done}/{len(baseline_by_identity)}; "
             f"elapsed {time.monotonic() - started:.1f}s",
             file=sys.stderr,
         )
-    aliases = list(cash_by_alias) + [
-        alias for alias in baseline_by_alias if alias not in cash_by_alias
+    identities = list(cash_by_identity) + [
+        identity
+        for identity in baseline_by_identity
+        if identity not in cash_by_identity
     ]
     rows = [
         _merge(
-            cash_by_alias.get(alias),
-            baseline_by_alias.get(alias),
-            details.get(alias),
-            refusals.get(alias),
+            cash_by_identity.get(identity),
+            baseline_by_identity.get(identity),
+            details.get(identity),
+            refusals.get(identity),
         )
-        for alias in aliases
+        for identity in identities
     ]
-    matched = len(cash_by_alias.keys() & baseline_by_alias.keys())
+    matched = len(cash_by_identity.keys() & baseline_by_identity.keys())
     lists_complete = (
         normalized_cash.scope_complete
         and baseline.complete
-        and matched == len(cash_by_alias) == len(baseline_by_alias)
+        and matched == len(cash_by_identity) == len(baseline_by_identity)
     )
-    detail_complete = len(details) == len(baseline_by_alias)
+    detail_complete = len(details) == len(baseline_by_identity)
     reasons = list(normalized_cash.reasons) + list(baseline.evidence.reasons)
-    if matched != len(cash_by_alias) or matched != len(baseline_by_alias):
+    if matched != len(cash_by_identity) or matched != len(baseline_by_identity):
         reasons.append("ACCOUNT_SOURCE_MISMATCH")
     if not detail_complete:
         reasons.append("DETAIL_COVERAGE_INCOMPLETE")
@@ -296,13 +341,13 @@ def collect_accounts(
         "list_coverage": {
             "complete": lists_complete,
             "matched": matched,
-            "cash_only": len(cash_by_alias) - matched,
-            "baseline_only": len(baseline_by_alias) - matched,
+            "cash_only": len(cash_by_identity) - matched,
+            "baseline_only": len(baseline_by_identity) - matched,
         },
         "detail_coverage": {
             "complete": detail_complete,
-            "required": len(baseline_by_alias),
-            "attempted": len(baseline_by_alias),
+            "required": len(baseline_by_identity),
+            "attempted": len(baseline_by_identity),
             "succeeded": len(details),
             "refused": len(refusals),
             "failed": 0,
@@ -340,7 +385,7 @@ def account_meta(evidence: AcquisitionEvidence) -> dict[str, Any]:
     )
     if attempt is None or attempt.get("schema_version") != SCHEMA_VERSION:
         _invalid(
-            "cash-only cache is incompatible; run dogopencli refresh "
+            "cash account cache schema is incompatible; run dogopencli refresh "
             "liquidity cash accounts"
         )
     required = {
@@ -382,7 +427,10 @@ def validate_cached_accounts(
             not isinstance(source, dict)
             or source.get("schema_version") != SCHEMA_VERSION
         ):
-            _invalid("cash-only cache is incompatible; refresh liquidity cash accounts")
+            _invalid(
+                "cash account cache schema is incompatible; "
+                "refresh liquidity cash accounts"
+            )
         raw = source.get("raw")
         if (
             not isinstance(raw, dict)
@@ -422,7 +470,7 @@ def validate_cached_accounts(
             for row in records
             if source in row["source_metadata"]["raw"]
         ]
-        _accounts(source_records)
+        _accounts(source_records, require_unique_alias=source == "baseline")
         quality = AcquisitionEvidence.from_record(meta["sources"].get(source))
         qualities[source] = quality
         count = sum(source in row["source_metadata"]["raw"] for row in records)
