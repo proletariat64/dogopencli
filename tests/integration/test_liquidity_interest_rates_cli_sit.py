@@ -225,12 +225,14 @@ def test_rule_sources_second_page_preserves_contract_and_saved_rows(
     assert setup.state.business_requests == expected_requests
 
     before = setup.cache_path.read_bytes()
-    setup.state.reachable = False
+    transport_count = len(setup.state.transports)
+    setup.state.running = False
     for selection in ([], ["--source", source]):
         code, out, err = run_cli(
             [*ROOT, "list", *selection, "--limit", "0", "--require-complete"]
         )
         assert code == 0, err
+        assert len(setup.state.transports) == transport_count
         cached = parse(out)
         assert cached["data"] == rows
         assert cached["meta"]["rate_source"] == source
