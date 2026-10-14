@@ -4,6 +4,95 @@ from pathlib import Path
 import duckdb
 
 
+def test_saved_list_refresh_orders_detail_without_changing_list_metadata(tmp_path):
+    import copy
+    import json
+    import subprocess
+
+    import pytest
+
+    module, owner = fixture_importer()
+    saved = candidate(owner)
+    detail = saved["data"][0].pop("_detail")
+    detail_meta = saved["data"][0].pop("_detail_meta")
+    captures = iter(("2026-01-02T00:00:00+00:00", "2026-01-03T00:00:00+00:00"))
+
+    def run(command, **kwargs):
+        meta = dict(detail_meta, fetched_at=next(captures))
+        return subprocess.CompletedProcess(
+            command, 0, owner.encode({"data": detail, "meta": meta})
+        )
+
+    first_input = module.acquire(owner.encode(saved), owner, run)
+    first = module.publish(tmp_path, first_input, owner)
+    second_input = module.acquire(owner.encode(saved), owner, run)
+    second = module.publish(tmp_path, second_input, owner)
+    assert first["parquet"] != second["parquet"]
+    assert Path(first["parquet"]).exists()
+    assert read(second)["_detail_meta"]["fetched_at"] == "2026-01-03T00:00:00+00:00"
+    with duckdb.connect(second["database"], read_only=True) as db:
+        metadata, capture = db.execute(
+            "SELECT acquisition_metadata, epoch(fetched_at) FROM _duckdog_datasets"
+        ).fetchone()
+    assert json.loads(metadata)["acquisition"] == saved["meta"]
+    assert capture == 1767225600
+    unchanged = module.publish(tmp_path, second_input, owner)
+    assert unchanged["reused_content"] is True
+
+    baseline = Path(second["parquet"]).read_bytes()
+    generations = sorted(Path(second["parquet"]).parent.glob("*.parquet"))
+    conflicting = json.loads(second_input)
+    conflicting["data"][0]["_detail"]["version"] = 99
+    older_list = copy.deepcopy(conflicting)
+    older_list["meta"]["fetched_at"] = "2025-12-31T00:00:00+00:00"
+    older_list["data"][0]["_detail_meta"]["fetched_at"] = "2026-01-04T00:00:00+00:00"
+    changed_list = copy.deepcopy(older_list)
+    changed_list["meta"] = saved["meta"].copy()
+    changed_list["data"][0]["version"] = 99
+    for text in (
+        first_input,
+        owner.encode(conflicting),
+        owner.encode(older_list),
+        owner.encode(changed_list),
+    ):
+        with pytest.raises(owner.ImportRejected):
+            module.publish(tmp_path, text, owner)
+        assert read(second)["_detail_meta"]["fetched_at"] == "2026-01-03T00:00:00+00:00"
+        assert Path(second["parquet"]).read_bytes() == baseline
+        assert sorted(Path(second["parquet"]).parent.glob("*.parquet")) == generations
+        with duckdb.connect(second["database"], read_only=True) as db:
+            assert db.execute(
+                "SELECT acquisition_metadata, epoch(fetched_at) FROM _duckdog_datasets"
+            ).fetchone() == (metadata, capture)
+
+
+def test_detail_refresh_rejects_one_stale_member_despite_newer_batch_max(tmp_path):
+    import copy
+
+    import pytest
+
+    module, owner = fixture_importer()
+    value = candidate(owner)
+    value["data"][0]["_detail_meta"]["fetched_at"] = "2026-01-02T00:00:00+00:00"
+    other = copy.deepcopy(value["data"][0])
+    other["id"] = other["_detail"]["id"] = "2"
+    other["_detail_meta"]["identity"] = {"network_id": "2"}
+    other["_detail_meta"]["fetched_at"] = "2026-01-03T00:00:00+00:00"
+    value["data"].append(other)
+    for key in ("returned_count", "matched_total", "collected_total", "reported_total"):
+        value["meta"][key] = 2
+    first = module.publish(tmp_path, owner.encode(value), owner)
+    original = Path(first["parquet"]).read_bytes()
+    value["data"][0]["_detail_meta"]["fetched_at"] = "2026-01-04T00:00:00+00:00"
+    value["data"][1]["_detail_meta"]["fetched_at"] = "2026-01-02T00:00:00+00:00"
+    with pytest.raises(owner.ImportRejected):
+        module.publish(tmp_path, owner.encode(value), owner)
+    assert Path(first["parquet"]).read_bytes() == original
+    assert list(Path(first["parquet"]).parent.glob("*.parquet")) == [
+        Path(first["parquet"])
+    ]
+
+
 def test_identical_detail_stored_once(tmp_path):
     path = Path(__file__).parents[1] / "scripts/duckdog/import_realtime.py"
     spec = importlib.util.spec_from_file_location("realtime_import", path)

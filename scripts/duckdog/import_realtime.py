@@ -34,6 +34,8 @@ def load_owner(path: Path) -> ModuleType:
     spec.loader.exec_module(owner)
     if getattr(owner, "B03_STORAGE_VERSION", None) != 1:
         raise ValueError("settings importer requires B03 owner patch")
+    if getattr(owner, "B03_DETAIL_REFRESH", None) is not True:
+        raise ValueError("settings importer requires detail refresh ordering patch")
     return owner
 
 

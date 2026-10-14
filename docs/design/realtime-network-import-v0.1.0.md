@@ -81,6 +81,16 @@ generations; history cleanup is not part of B03. Other selectors keep their
 existing replacement behavior. Normal replacement still requires invoking an
 explicit import operation.
 
+List acquisition ordering and detail refresh ordering are independent. A newer
+list capture retains the existing replacement rule; an older list is rejected
+even if its details are newer. For an unchanged list capture, a refresh can
+replace enrichment only when its original ordered list roots match, no detail
+capture regresses, and at least one detail capture advances. Differing detail at
+the same capture time is rejected. Identical saved input still reuses its
+generation. Registry `fetched_at` and the original list acquisition metadata
+remain unchanged by a detail refresh; detail capture times stay in `_detail_meta`.
+The entrypoint requires the updated owner patch's detail-refresh capability.
+
 An authorized read-only inventory on 2026-10-14 observed one current generation
 with 204 rows in both view and Parquet. All 204 nested detail objects repeated
 their list root under recursive type-aware structural comparison. The schema
