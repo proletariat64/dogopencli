@@ -202,6 +202,7 @@ def validate_components(
                 or "HISTORY_COVERAGE_UNPROVEN" not in component["reasons"]
             ):
                 raise owner.ImportRejected("history coverage is not proven")
+            history_identities: dict[tuple[type, str], dict[str, Any]] = {}
             for row in payload:
                 if (
                     not isinstance(row, dict)
@@ -215,6 +216,12 @@ def validate_components(
                     raise owner.ImportRejected(
                         "history record contradicts acquired scope"
                     )
+                identity = (type(row["id"]), row["id"])
+                if identity in history_identities and not exact(
+                    history_identities[identity], row
+                ):
+                    raise owner.ImportRejected("conflicting history identity")
+                history_identities[identity] = row
         else:
             expected = {
                 "routeId": detail.get("routeId"),

@@ -564,3 +564,48 @@ def test_integer_realtime_identity_rejected_without_storage_or_acquisition(tmp_p
     with pytest.raises(ValueError, match="native identity must be a string"):
         module.acquire(owner.encode(value), owner, run)
     assert calls == []
+
+
+def test_conflicting_history_identity_rejected_and_identical_repeats_preserved(
+    tmp_path,
+):
+    import copy
+
+    import pytest
+
+    module, owner = fixture_importer()
+    value = b02_candidate(owner)
+    previous = module.publish(tmp_path, owner.encode(value), owner)
+    old = Path(previous["parquet"])
+    previous_bytes = old.read_bytes()
+    previous_record = read(previous)
+    with duckdb.connect(previous["database"]) as db:
+        registry = db.execute(
+            "SELECT to_json(dataset) FROM _duckdog_datasets dataset"
+        ).fetchall()
+    row = value["data"][0]
+    row["_detail"]["operationHistory"].append(
+        copy.deepcopy(row["_detail"]["operationHistory"][0])
+    )
+    row["_detail"]["operationHistory"][1]["version"] = 99
+    row["_detail_meta"]["components"]["operationHistory"]["returned_count"] = 2
+    value["meta"]["fetched_at"] = "2026-01-02T00:00:00+00:00"
+    with pytest.raises(ValueError, match="conflicting history identity"):
+        module.publish(tmp_path, owner.encode(value), owner)
+    assert old.read_bytes() == previous_bytes
+    assert read(previous) == previous_record
+    with duckdb.connect(previous["database"]) as db:
+        assert (
+            db.execute(
+                "SELECT to_json(dataset) FROM _duckdog_datasets dataset"
+            ).fetchall()
+            == registry
+        )
+    assert list(old.parent.glob("*.parquet")) == [old]
+    row["_detail"]["operationHistory"][1]["version"] = 1
+    result = module.publish(tmp_path, owner.encode(value), owner)
+    assert (
+        read(result)["_detail"]["operationHistory"]
+        == row["_detail"]["operationHistory"]
+    )
+    assert len(read(result)["_detail"]["operationHistory"]) == 2
