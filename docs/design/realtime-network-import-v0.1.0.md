@@ -1,6 +1,7 @@
 # Realtime network enrichment storage v1
 
-B03 implements specification #174 and tracker #166 at the external duckdog
+B03 implements specification [#174](https://github.com/proletariat64/dogopencli/issues/174)
+and tracker [#166](https://github.com/proletariat64/dogopencli/issues/166) at the external duckdog
 import boundary. It does not alter CLI acquisition, list cache, or selectors.
 The original enrichment writer was recovered from an execution archive: it
 consumed a saved complete realtime list, acquired each scoped live get, and
@@ -53,7 +54,13 @@ is immaterial. JSON numbers use integers and Decimal without floating-point
 conversion. Boolean values never compare equal to numbers. Duplicate JSON keys
 and non-finite values are rejected. Typed root identities, live provenance,
 get identity, acquisition timestamps and source request scope are validated
-before storage. Acquisition metadata is outside business comparison.
+before storage. Native realtime identities remain nonempty strings, as in the
+public inquiry contract. Association scopes bind to the independently acquired
+detail root, including history aliases/action and route/account/application
+tenant; changed root context is retained in full. Successful components require
+matching payloads, capture timestamps and counts. Unverified and inapplicable
+components retain null payloads without fabricated acquisition evidence. Saved
+list JSON is strictly validated before any live detail command. Acquisition metadata is outside business comparison.
 
 The accepted B02 aggregate root contains only the 26 fields declared in
 `realtime-network-detail-v0.1.0.md`. Associations `operationHistory` and
