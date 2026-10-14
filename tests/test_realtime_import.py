@@ -2,6 +2,118 @@ import importlib.util
 from pathlib import Path
 
 import duckdb
+import pytest
+
+
+@pytest.mark.parametrize("component", ["network", "operationHistory", "routeDetails"])
+@pytest.mark.parametrize("conflict", ["older", "equal_changed"])
+@pytest.mark.parametrize("new_list", [False, True])
+def test_refresh_preserves_component_observations(
+    tmp_path, component, conflict, new_list
+):
+    import copy
+
+    module, owner = fixture_importer()
+    initial = b02_candidate(owner)
+    initial_meta = initial["data"][0]["_detail_meta"]
+    initial_meta["fetched_at"] = "2026-01-02T00:00:00+00:00"
+    for name, proof in initial_meta["components"].items():
+        proof["captured_at"] = (
+            "2026-01-02T00:00:00+00:00"
+            if name == "network"
+            else "2026-01-05T00:00:00+00:00"
+        )
+    published = module.publish(tmp_path, owner.encode(initial), owner)
+    before = Path(published["parquet"]).read_bytes()
+    registry_sql = (
+        "SELECT selector, kind, relation_name, parquet_path, content_sha256, "
+        "row_count, epoch(fetched_at), epoch(imported_at), acquisition_metadata "
+        "FROM _duckdog_datasets"
+    )
+    with duckdb.connect(published["database"], read_only=True) as db:
+        registry = db.execute(registry_sql).fetchall()
+    refreshed = copy.deepcopy(initial)
+    if new_list:
+        refreshed["meta"]["fetched_at"] = "2026-01-02T12:00:00+00:00"
+    row = refreshed["data"][0]
+    meta = row["_detail_meta"]
+    meta["fetched_at"] = "2026-01-03T00:00:00+00:00"
+    meta["components"]["network"]["captured_at"] = meta["fetched_at"]
+    proof = meta["components"][component]
+    if conflict == "older":
+        proof["captured_at"] = (
+            "2026-01-01T00:00:00+00:00"
+            if component == "network"
+            else "2026-01-04T00:00:00+00:00"
+        )
+    else:
+        proof["captured_at"] = initial_meta["components"][component]["captured_at"]
+        if component == "network":
+            row["_detail"]["version"] = 3
+            proof["source_version"] = 3
+        elif component == "operationHistory":
+            row["_detail"][component][0]["version"] = 99
+        else:
+            row["_detail"][component]["staticQuotas"] = [{"quotaId": "NEW"}]
+            proof["member_counts"]["staticQuotas"] = 1
+    with pytest.raises(owner.ImportRejected):
+        module.publish(tmp_path, owner.encode(refreshed), owner)
+    assert Path(published["parquet"]).read_bytes() == before
+    assert list(Path(published["parquet"]).parent.glob("*.parquet")) == [
+        Path(published["parquet"])
+    ]
+    with duckdb.connect(published["database"], read_only=True) as db:
+        assert db.execute(registry_sql).fetchall() == registry
+    assert read(published)["_detail_meta"] == initial_meta
+
+
+def test_component_refresh_allows_equal_payload_and_new_scopes(tmp_path):
+    import copy
+
+    module, owner = fixture_importer()
+    initial = b02_candidate(owner)
+    initial_meta = initial["data"][0]["_detail_meta"]
+    initial_meta["fetched_at"] = "2026-01-02T00:00:00+00:00"
+    for name, proof in initial_meta["components"].items():
+        proof["captured_at"] = (
+            "2026-01-02T00:00:00+00:00"
+            if name == "network"
+            else "2026-01-05T00:00:00+00:00"
+        )
+    first = module.publish(tmp_path, owner.encode(initial), owner)
+    refreshed = copy.deepcopy(initial)
+    meta = refreshed["data"][0]["_detail_meta"]
+    meta["fetched_at"] = "2026-01-03T00:00:00+00:00"
+    meta["components"]["network"]["captured_at"] = meta["fetched_at"]
+    second = module.publish(tmp_path, owner.encode(refreshed), owner)
+    assert (
+        read(second)["_detail"]["operationHistory"]
+        == initial["data"][0]["_detail"]["operationHistory"]
+    )
+    changed = copy.deepcopy(refreshed)
+    row = changed["data"][0]
+    row["_detail"].update(version=3, debitAliasName="NEW_DEBIT", routeId="NEW_ROUTE")
+    meta = row["_detail_meta"]
+    meta["fetched_at"] = "2026-01-04T00:00:00+00:00"
+    meta["components"]["network"].update(
+        captured_at=meta["fetched_at"], source_version=3
+    )
+    history = meta["components"]["operationHistory"]
+    history["captured_at"] = "2026-01-04T12:00:00+00:00"
+    history["request_scope"]["debitAliasName"] = ["NEW_DEBIT"]
+    row["_detail"]["operationHistory"][0]["debitAliasName"] = "NEW_DEBIT"
+    route = meta["components"]["routeDetails"]
+    route["captured_at"] = "2026-01-04T12:00:00+00:00"
+    for document in (
+        route["identity"],
+        route["request_scope"],
+        row["_detail"]["routeDetails"],
+    ):
+        document.update(routeId="NEW_ROUTE", aliasName="NEW_DEBIT")
+    third = module.publish(tmp_path, owner.encode(changed), owner)
+    assert read(third)["_detail_storage"]["state"] == "full"
+    assert module.effective_detail(read(third)) == row["_detail"]
+    assert all(Path(result["parquet"]).exists() for result in (first, second, third))
 
 
 def test_saved_list_refresh_orders_detail_without_changing_list_metadata(tmp_path):
@@ -692,6 +804,11 @@ def test_conflicting_history_identity_rejected_and_identical_repeats_preserved(
         )
     assert list(old.parent.glob("*.parquet")) == [old]
     row["_detail"]["operationHistory"][1]["version"] = 1
+    row["_detail_meta"]["fetched_at"] = "2026-01-02T00:00:00+00:00"
+    for name in ("network", "operationHistory"):
+        row["_detail_meta"]["components"][name]["captured_at"] = (
+            "2026-01-02T00:00:00+00:00"
+        )
     result = module.publish(tmp_path, owner.encode(value), owner)
     assert (
         read(result)["_detail"]["operationHistory"]

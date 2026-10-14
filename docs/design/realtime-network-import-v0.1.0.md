@@ -91,6 +91,15 @@ generation. Registry `fetched_at` and the original list acquisition metadata
 remain unchanged by a detail refresh; detail capture times stay in `_detail_meta`.
 The entrypoint requires the updated owner patch's detail-refresh capability.
 
+Every realtime replacement also compares independently acquired component times
+for matching native identities and request scopes. An older network, history or
+route observation cannot replace a newer one, even when the root capture or list
+capture advances. Equal component times require identical component business
+payloads. Unchanged association payloads at equal times remain usable; observations
+in different validated scopes are ordered independently. The entrypoint requires
+the updated owner patch's component-ordering capability. Legacy rows without
+component evidence retain their existing detail-capture ordering rule.
+
 An authorized read-only inventory on 2026-10-14 observed one current generation
 with 204 rows in both view and Parquet. All 204 nested detail objects repeated
 their list root under recursive type-aware structural comparison. The schema

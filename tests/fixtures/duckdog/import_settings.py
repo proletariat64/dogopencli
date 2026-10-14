@@ -16,6 +16,7 @@ from typing import Any
 
 B03_STORAGE_VERSION = 1
 B03_DETAIL_REFRESH = True
+B03_COMPONENT_ORDERING = True
 
 REGISTRY = {
     "liquidity/reference/banks": {
@@ -177,17 +178,65 @@ def identifier(value):
     return '"' + value.replace('"', '""') + '"'
 
 
+def validate_realtime_component_order(
+    previous_rows: list[dict[str, Any]], rows: list[dict[str, Any]]
+) -> None:
+    """Protect independently acquired components within the same native scope."""
+    previous_by_id = {(type(row["id"]), row["id"]): row for row in previous_rows}
+    reserved = {"_detail", "_detail_meta", "_detail_storage"}
+
+    def detail(row: dict[str, Any]) -> dict[str, Any]:
+        if row.get("_detail_storage", {}).get("state") == "record":
+            return {
+                **{key: value for key, value in row.items() if key not in reserved},
+                **row.get("_detail", {}),
+            }
+        return row.get("_detail", {})
+
+    def payload(row: dict[str, Any], name: str) -> Any:
+        acquired = detail(row)
+        if name == "network":
+            return {
+                key: value
+                for key, value in acquired.items()
+                if key not in {"operationHistory", "routeDetails"}
+            }
+        return acquired.get(name)
+
+    for row in rows:
+        previous = previous_by_id.get((type(row["id"]), row["id"]))
+        if previous is None:
+            continue
+        components = row.get("_detail_meta", {}).get("components", {})
+        previous_components = previous.get("_detail_meta", {}).get("components", {})
+        for name, current in components.items():
+            old = previous_components.get(name)
+            if (
+                not old
+                or current.get("status") != "succeeded"
+                or old.get("status") != "succeeded"
+                or any(
+                    encode(current.get(field)) != encode(old.get(field))
+                    for field in ("identity", "request_scope")
+                )
+            ):
+                continue
+            current_time = dt.datetime.fromisoformat(current["captured_at"])
+            previous_time = dt.datetime.fromisoformat(old["captured_at"])
+            if current_time.tzinfo is None or previous_time.tzinfo is None:
+                raise ImportRejected("component capture time requires timezone")
+            if current_time < previous_time:
+                raise ImportRejected("older component cannot replace newer observation")
+            if current_time == previous_time and encode(payload(row, name)) != encode(
+                payload(previous, name)
+            ):
+                raise ImportRejected("same component capture has conflicting payload")
+
+
 def newer_realtime_details(
-    connection: Any, previous_parquet: str, rows: list[dict[str, Any]]
+    previous_rows: list[dict[str, Any]], rows: list[dict[str, Any]]
 ) -> bool:
     """Order detail refreshes within an unchanged saved list acquisition."""
-    previous_rows = [
-        json.loads(raw, parse_float=decimal.Decimal, parse_constant=reject_constant)
-        for (raw,) in connection.execute(
-            "SELECT record FROM read_parquet(?) ORDER BY _row_order",
-            [previous_parquet],
-        ).fetchall()
-    ]
     reserved = {"_detail", "_detail_meta", "_detail_storage"}
 
     def roots(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -258,6 +307,22 @@ def publish(root, selector, text):
             acquired = dt.datetime.fromisoformat(meta["fetched_at"])
             if previous and acquired.timestamp() < previous[2]:
                 raise ImportRejected("older acquisition cannot replace a newer dataset")
+            previous_rows = []
+            if (
+                previous
+                and selector == "liquidity/network/realtime"
+                and digest != previous[1]
+            ):
+                previous_rows = [
+                    json.loads(
+                        raw, parse_float=decimal.Decimal, parse_constant=reject_constant
+                    )
+                    for (raw,) in connection.execute(
+                        "SELECT record FROM read_parquet(?) ORDER BY _row_order",
+                        [previous[0]],
+                    ).fetchall()
+                ]
+                validate_realtime_component_order(previous_rows, rows)
             if (
                 previous
                 and acquired.timestamp() == previous[2]
@@ -265,7 +330,7 @@ def publish(root, selector, text):
             ):
                 if (
                     selector != "liquidity/network/realtime"
-                    or not newer_realtime_details(connection, previous[0], rows)
+                    or not newer_realtime_details(previous_rows, rows)
                 ):
                     raise ImportRejected("same capture time has conflicting content")
             leaf_dir = root / "parquet" / selector

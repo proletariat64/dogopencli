@@ -36,6 +36,8 @@ def load_owner(path: Path) -> ModuleType:
         raise ValueError("settings importer requires B03 owner patch")
     if getattr(owner, "B03_DETAIL_REFRESH", None) is not True:
         raise ValueError("settings importer requires detail refresh ordering patch")
+    if getattr(owner, "B03_COMPONENT_ORDERING", None) is not True:
+        raise ValueError("settings importer requires component ordering patch")
     return owner
 
 
