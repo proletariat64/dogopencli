@@ -1,5 +1,7 @@
 # Duckdog settings and reference import contracts
 
+Storage and publication authority: [Duckdog specification #160](https://github.com/proletariat64/dogopencli/issues/160).
+
 Declared on 2026-10-14 for the user-authorized Liquidity settings audit.
 Use the storage and publication policy in [duckdog v0.1.0](duckdog-v0.1.0.md).
 These declarations extend importer support; they do not establish leaf activity.
