@@ -1,0 +1,224 @@
+--- a/.agents/skills/duckdog-import/scripts/import_settings.py
++++ b/.agents/skills/duckdog-import/scripts/import_settings.py
+@@ -12,6 +12,11 @@
+ import tempfile
+ import uuid
+ from pathlib import Path
++from typing import Any
++
++B03_STORAGE_VERSION = 1
++B03_DETAIL_REFRESH = True
++B03_COMPONENT_ORDERING = True
+ 
+ REGISTRY = {
+     "liquidity/reference/banks": {
+@@ -173,6 +178,126 @@
+     return '"' + value.replace('"', '""') + '"'
+ 
+ 
++def exact(left: Any, right: Any) -> bool:
++    """JSON number equality without bool coercion, float conversion or key order."""
++    if isinstance(left, bool) or isinstance(right, bool):
++        return type(left) is type(right) and left == right
++    if isinstance(left, (int, decimal.Decimal)) and isinstance(
++        right, (int, decimal.Decimal)
++    ):
++        return left == right
++    if type(left) is not type(right):
++        return False
++    if isinstance(left, dict):
++        return left.keys() == right.keys() and all(
++            exact(left[k], right[k]) for k in left
++        )
++    if isinstance(left, list):
++        return len(left) == len(right) and all(
++            exact(a, b) for a, b in zip(left, right, strict=True)
++        )
++    return left == right
++
++
++def validate_realtime_component_order(
++    previous_rows: list[dict[str, Any]], rows: list[dict[str, Any]]
++) -> None:
++    """Protect independently acquired components within the same native scope."""
++    previous_by_id = {(type(row["id"]), row["id"]): row for row in previous_rows}
++    reserved = {"_detail", "_detail_meta", "_detail_storage"}
++
++    def detail(row: dict[str, Any]) -> dict[str, Any]:
++        if row.get("_detail_storage", {}).get("state") == "record":
++            return {
++                **{key: value for key, value in row.items() if key not in reserved},
++                **row.get("_detail", {}),
++            }
++        return row.get("_detail", {})
++
++    def payload(row: dict[str, Any], name: str) -> Any:
++        acquired = detail(row)
++        if name == "network":
++            return {
++                key: value
++                for key, value in acquired.items()
++                if key not in {"operationHistory", "routeDetails"}
++            }
++        return acquired.get(name)
++
++    for row in rows:
++        previous = previous_by_id.get((type(row["id"]), row["id"]))
++        if previous is None:
++            continue
++        components = row.get("_detail_meta", {}).get("components", {})
++        previous_components = previous.get("_detail_meta", {}).get("components", {})
++        for name, current in components.items():
++            old = previous_components.get(name)
++            if (
++                not old
++                or current.get("status") != "succeeded"
++                or old.get("status") != "succeeded"
++                or any(
++                    not exact(current.get(field), old.get(field))
++                    for field in ("identity", "request_scope")
++                )
++            ):
++                continue
++            current_time = dt.datetime.fromisoformat(current["captured_at"])
++            previous_time = dt.datetime.fromisoformat(old["captured_at"])
++            if current_time.tzinfo is None or previous_time.tzinfo is None:
++                raise ImportRejected("component capture time requires timezone")
++            if current_time < previous_time:
++                raise ImportRejected("older component cannot replace newer observation")
++            if current_time == previous_time and not exact(
++                payload(row, name), payload(previous, name)
++            ):
++                raise ImportRejected("same component capture has conflicting payload")
++
++
++def newer_realtime_details(
++    previous_rows: list[dict[str, Any]], rows: list[dict[str, Any]]
++) -> bool:
++    """Order detail refreshes within an unchanged saved list acquisition."""
++    reserved = {"_detail", "_detail_meta", "_detail_storage"}
++
++    def roots(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
++        return [
++            {key: value for key, value in row.items() if key not in reserved}
++            for row in values
++        ]
++
++    if not exact(roots(rows), roots(previous_rows)):
++        return False
++    advanced = False
++    for current, previous in zip(rows, previous_rows, strict=True):
++        current_meta = current.get("_detail_meta")
++        previous_meta = previous.get("_detail_meta")
++        if current_meta is None:
++            if previous_meta is not None:
++                return False
++            continue
++        current_time = dt.datetime.fromisoformat(current_meta["fetched_at"])
++        if current_time.tzinfo is None:
++            raise ImportRejected("detail capture time requires timezone")
++        if previous_meta is None:
++            advanced = True
++            continue
++        previous_time = dt.datetime.fromisoformat(previous_meta["fetched_at"])
++        if previous_time.tzinfo is None:
++            raise ImportRejected("previous detail capture time requires timezone")
++        if current_time < previous_time:
++            return False
++        if current_time == previous_time:
++            if not exact(
++                {k: v for k, v in current.items() if k in reserved},
++                {k: v for k, v in previous.items() if k in reserved},
++            ):
++                return False
++        else:
++            advanced = True
++    return advanced
++
++
+ def publish(root, selector, text):
+     rows, meta = validate(text, selector)
+     import duckdb
+@@ -204,12 +329,32 @@
+             acquired = dt.datetime.fromisoformat(meta["fetched_at"])
+             if previous and acquired.timestamp() < previous[2]:
+                 raise ImportRejected("older acquisition cannot replace a newer dataset")
++            previous_rows = []
++            if (
++                previous
++                and selector == "liquidity/network/realtime"
++                and digest != previous[1]
++            ):
++                previous_rows = [
++                    json.loads(
++                        raw, parse_float=decimal.Decimal, parse_constant=reject_constant
++                    )
++                    for (raw,) in connection.execute(
++                        "SELECT record FROM read_parquet(?) ORDER BY _row_order",
++                        [previous[0]],
++                    ).fetchall()
++                ]
++                validate_realtime_component_order(previous_rows, rows)
+             if (
+                 previous
+                 and acquired.timestamp() == previous[2]
+                 and digest != previous[1]
+             ):
+-                raise ImportRejected("same capture time has conflicting content")
++                if (
++                    selector != "liquidity/network/realtime"
++                    or not newer_realtime_details(previous_rows, rows)
++                ):
++                    raise ImportRejected("same capture time has conflicting content")
+             leaf_dir = root / "parquet" / selector
+             leaf_dir.mkdir(parents=True, exist_ok=True)
+             parquet = leaf_dir / (uuid.uuid4().hex + ".parquet")
+@@ -318,6 +463,35 @@
+                         ),
+                     ],
+                 )
++                if selector == "liquidity/network/realtime":
++                    expected = [encode(row) for row in rows]
++                    for sql in (
++                        "SELECT _record FROM "
++                        + identifier(relation)
++                        + " ORDER BY _row_order",
++                        "SELECT record FROM read_parquet("
++                        + literal(parquet)
++                        + ") ORDER BY _row_order",
++                    ):
++                        if [
++                            r[0] for r in connection.execute(sql).fetchall()
++                        ] != expected:
++                            raise ImportRejected("realtime full readback mismatch")
++                    registry = connection.execute(
++                        "SELECT parquet_path, content_sha256, row_count, "
++                        "acquisition_metadata "
++                        "FROM _duckdog_datasets WHERE selector = ?",
++                        [selector],
++                    ).fetchone()
++                    if registry[:3] != (str(parquet), digest, len(rows)):
++                        raise ImportRejected("realtime registry verification mismatch")
++                    if (
++                        json.loads(registry[3], parse_float=decimal.Decimal)[
++                            "acquisition"
++                        ]
++                        != meta
++                    ):
++                        raise ImportRejected("realtime metadata verification mismatch")
+                 connection.execute("COMMIT")
+             except BaseException:
+                 connection.execute("ROLLBACK")
+@@ -326,7 +500,11 @@
+                 raise
+         # Under the writer lock, remove unreferenced generations for this leaf only.
+         cleanup_pending = False
+-        for old in leaf_dir.glob("*.parquet"):
++        for old in (
++            ()
++            if selector == "liquidity/network/realtime"
++            else leaf_dir.glob("*.parquet")
++        ):
+             if old != parquet:
+                 try:
+                     old.unlink()
