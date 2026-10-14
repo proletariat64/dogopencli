@@ -288,6 +288,7 @@ BANK_FIELDS = dict.fromkeys(
     ),
     "str",
 )
+BANK_FIELDS["bestExcellent"] = "bool"
 CUSTOM_RULE_FIELDS = dict.fromkeys(
     (
         "currency",

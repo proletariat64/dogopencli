@@ -270,6 +270,15 @@ def test_describe_exposes_each_source_kind_identity_and_raw_units(setup, run_cli
         "expectation-rule": "settings",
         "expection": "settings",
     }
+    bank_description = next(
+        item for item in variants if item["selectors"]["source"] == "bank"
+    )
+    assert (
+        bank_description["data_schema"]["properties"]["bestExcellent"][
+            "x-observed-type"
+        ]
+        == "bool"
+    )
     for item in variants:
         value = "ruleValue" if item["kind"] == "settings" else "rateValue"
         assert (
