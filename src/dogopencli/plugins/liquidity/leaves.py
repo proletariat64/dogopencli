@@ -1105,6 +1105,7 @@ NETWORK_BANK_BASELINES = ListSpec(
     path=("network", "bank-baselines"),
     kind=SETTINGS,
     title="bank account baselines",
+    page_size=1000,
     endpoint="/bankAccountBaseLineQuery.json",
     method="GET",
     envelope=ENV_RESULT_FLAG,
@@ -1238,15 +1239,20 @@ CASH_ACCOUNTS = ListSpec(
         "currency",
         "accountType",
         "status",
+        "timeZone",
+        "detail_state",
     ),
     notes=(
         "The wallet flag stays at its verified false; wallet membership is"
         " not established and no wallet filter is exposed.",
         "Account list identity uses aliasName and currency; the observed id"
         " is shared by different accounts and cannot identify list rows.",
-        "Incomplete account lists return available rows with INCOMPLETE_RESULT"
-        " and a nonzero exit; refresh retains the previous complete cache."
-        " --require-complete rejects partial live data.",
+        "One composite account row includes cash, baseline list and native detail."
+        " accountType and status come exclusively from baseline; NORMAL stays NORMAL.",
+        "List and required detail coverage are reported separately. Usable partial"
+        " rows return warnings; --require-complete rejects missing coverage.",
+        "A currently verified single native cash hole may satisfy list coverage;"
+        " native counts and effective counts remain visible.",
         _PAGE_ECHO_NOTE,
         _NULL_NOTE,
     ),
@@ -2710,6 +2716,31 @@ DEFERRED = tuple(
     if item.path not in {(*detail.path, detail.action) for detail in NATIVE_GETTERS}
 )
 
+# Baselines remain allowlisted sources for composite accounts, never public leaves.
+INTERNAL_LIST_LEAVES = {
+    NETWORK_BANK_BASELINES.path: ListLeaf((NETWORK_BANK_BASELINES,))
+}
+INTERNAL_DETAIL_LEAVES = {
+    (*item.path, item.action): DetailLeaf(item)
+    for item in DETAIL_SPECS
+    if item.path == NETWORK_BANK_BASELINES.path
+}
+LIST_SPECS = tuple(
+    item for item in LIST_SPECS if item.path != NETWORK_BANK_BASELINES.path
+)
+DETAIL_SPECS = tuple(
+    item for item in DETAIL_SPECS if item.path != NETWORK_BANK_BASELINES.path
+)
+
+
+def internal_list_leaf(path: tuple[str, ...]) -> ListLeaf:
+    return INTERNAL_LIST_LEAVES[path]
+
+
+def internal_detail_leaf(path: tuple[str, ...]) -> DetailLeaf:
+    return INTERNAL_DETAIL_LEAVES[path]
+
+
 LIST_LEAVES, DETAIL_LEAVES = _build_registry()
 # Keep historical descriptors only for legacy option parsing and evidence.
 
@@ -3070,7 +3101,7 @@ _GROUP_TITLES: dict[tuple[str, ...], str] = {
     ("investment",): "Investment products, holdings, transactions and returns.",
     ("risk",): "Risk metrics, thresholds and SLA.",
     ("rules",): "Liquidity routing, risk and notification rules.",
-    ("network",): "Account network baselines and capabilities.",
+    ("network",): "Account service capabilities.",
     ("ledger",): "Ledger customers and accounts.",
     ("pricing",): (
         "Client/cost prices, factor type definitions, factor values and"

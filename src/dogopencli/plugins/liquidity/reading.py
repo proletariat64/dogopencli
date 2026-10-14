@@ -96,6 +96,55 @@ def _public_balance_field(item: spec.ListSpec, field: str) -> str:
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
     schema = _field_schema(fields)
+    if item.path == ("cash", "accounts"):
+        source_fields = {
+            "cash": fields,
+            "baseline": SAMPLED_FIELDS.get("liquidity.network.bank-baselines.list", {}),
+            "detail": SAMPLED_FIELDS.get("liquidity.network.bank-baselines.get", {}),
+        }
+        schema = _field_schema(
+            {
+                **source_fields["detail"],
+                **source_fields["cash"],
+                **source_fields["baseline"],
+                "detail_state": "str",
+                "source_metadata": "object",
+            }
+        )
+        for field, definition in schema["properties"].items():
+            owner = next(
+                (
+                    source
+                    for source in ("baseline", "cash", "detail")
+                    if field in source_fields[source]
+                ),
+                "diagnostic",
+            )
+            if field in {"gmtModified", "operator"} and field in fields:
+                owner = "cash"
+            definition["x-source"] = owner
+        for field in ("accountType", "status"):
+            schema["properties"][field]["description"] = (
+                "Baseline list only, without cash fallback; "
+                "native empty and unexpected values preserved."
+            )
+        schema["properties"]["detail_state"]["enum"] = [
+            "succeeded",
+            "refused",
+            "missing",
+        ]
+        schema["x-source-contracts"] = [
+            "/queryintnalbkactlist.json",
+            "/bankAccountBaseLineQuery.json",
+            "/bankAccountBaseLineDetail.json",
+        ]
+        schema["x-field-ownership"] = (
+            "Baseline list owns common fields; cash owns gmtModified/operator. "
+            "Complementary fields enrich rows; source_metadata carries raw source "
+            "values, provenance, conflicts, presence and detail refusal evidence. "
+            "Unknown fields remain supported; collisions never silently overwrite data."
+        )
+        return schema
     if item.endpoint == "/balStatisticalQuery.json":
         schema = _field_schema(
             dict.fromkeys(

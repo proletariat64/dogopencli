@@ -351,27 +351,53 @@ def test_kind_in_help_and_describe(setup, run_cli):
     assert document["data_schema"]["properties"]["investmentNo"]
 
 
-def test_accounts_result_flag_family_end_to_end(setup, run_cli):
-    rows = [
-        {"id": "0", "aliasName": f"ALIAS{i:03d}", "currency": "USD"} for i in range(15)
-    ]
+def accounts_handler(rows, cash_total=None):
+    """Answer every native component of the composite directory."""
+    cash_total = len(rows) if cash_total is None else cash_total
+    baselines = [{**row, "accountType": "OA", "status": "NORMAL"} for row in rows]
 
     def answer(payload, index):
-        vo = json.loads(payload["bankAccountQueryVO"])
+        if "aliasName" in payload:
+            detail = next(
+                row for row in baselines if row["aliasName"] == payload["aliasName"]
+            )
+            return {
+                "status": 200,
+                "body": {"resultFlag": True, "result": {"data": detail}},
+            }
+        if "bankAccountQueryVO" in payload:
+            vo = json.loads(payload["bankAccountQueryVO"])
+            source, container, total = rows, "bankAccountPropertyVOList", cash_total
+        else:
+            vo = json.loads(payload["bankAccountBaseLineQuery"])
+            source, container, total = baselines, "data", len(baselines)
         return {
             "status": 200,
             "body": {
                 "resultFlag": True,
                 "result": {
-                    "bankAccountPropertyVOList": rows[
-                        vo["rowStart"] : vo["rowStart"] + vo["pageSize"]
-                    ]
+                    container: source[vo["rowStart"] : vo["rowStart"] + vo["pageSize"]]
                 },
-                "count": 15,
+                "count": total,
             },
         }
 
-    setup.state.business_handler = answer
+    return answer
+
+
+def account_row(alias):
+    return {
+        "id": "0",
+        "aliasName": alias,
+        "currency": "USD",
+        "bankId": "BANK",
+        "instId": "ENTITY",
+    }
+
+
+def test_accounts_result_flag_family_end_to_end(setup, run_cli):
+    rows = [account_row(f"ALIAS{i:03d}") for i in range(15)]
+    setup.state.business_handler = accounts_handler(rows)
     code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
     assert code == 0, err
     request = setup.state.business_requests[0]
@@ -388,6 +414,7 @@ def test_accounts_result_flag_family_end_to_end(setup, run_cli):
         "ALIAS001",
         "ALIAS002",
     ]
+    assert envelope["meta"]["detail_coverage"]["succeeded"] == 15
     assert envelope["meta"]["has_more"] is True
 
 
@@ -395,30 +422,26 @@ def test_accounts_result_flag_family_end_to_end(setup, run_cli):
     "extra", [[], ["--limit", "1"], ["--fields", "aliasName"], ["--format", "table"]]
 )
 def test_accounts_partial_live_warns_and_returns_usable_rows(setup, run_cli, extra):
-    rows = [{"id": "0", "aliasName": f"A{i}", "currency": "USD"} for i in range(2)]
-    setup.state.business_handler = lambda payload, index: {
-        "status": 200,
-        "body": {
-            "resultFlag": True,
-            "result": {"bankAccountPropertyVOList": rows},
-            "count": 3,
-        },
-    }
+    rows = [account_row(f"A{i}") for i in range(2)]
+    # Two missing native positions cannot receive the single-hole exception.
+    setup.state.business_handler = accounts_handler(rows, cash_total=4)
     before = setup.cache_path.read_bytes() if setup.cache_path.exists() else None
     code, out, err = run_cli(
         ["liquidity", "cash", "accounts", "list", "--live", *extra]
     )
     assert code == 0
     assert "warning: INCOMPLETE_RESULT" in err
-    assert "collected 2, reported 3" in err
+    assert "COUNT_SHORTFALL" in err
     if "table" in extra:
         assert "A0" in out
     else:
         envelope = parse(out)
         assert envelope["error"] is None
         assert envelope["meta"]["complete"] is False
-        assert envelope["meta"]["reported_total"] == 3
+        assert envelope["meta"]["sources"]["cash"]["reported_total"] == 4
         assert envelope["meta"]["collected_total"] == 2
+        assert envelope["meta"]["detail_coverage"]["succeeded"] == 2
+        assert envelope["meta"]["accepted_diagnostics"] == []
         assert envelope["meta"]["warnings"][0]["code"] == "INCOMPLETE_RESULT"
         assert len(envelope["data"]) == (1 if "--limit" in extra else 2)
         if "--fields" in extra:
@@ -435,27 +458,13 @@ def test_accounts_partial_live_warns_and_returns_usable_rows(setup, run_cli, ext
 
 
 def test_accounts_partial_refresh_replaces_cache_and_warns(setup, run_cli):
-    old_rows = [{"id": "0", "aliasName": "OLD", "currency": "USD"}]
-    setup.state.business_handler = lambda payload, index: {
-        "status": 200,
-        "body": {
-            "resultFlag": True,
-            "result": {"bankAccountPropertyVOList": old_rows},
-            "count": 1,
-        },
-    }
+    old_rows = [account_row("OLD")]
+    setup.state.business_handler = accounts_handler(old_rows)
     code, _, _ = run_cli(["refresh", "liquidity", "cash", "accounts"])
     assert code == 0
     before = setup.cache_path.read_bytes()
-    new_rows = [{"id": "0", "aliasName": "NEW", "currency": "USD"}]
-    setup.state.business_handler = lambda payload, index: {
-        "status": 200,
-        "body": {
-            "resultFlag": True,
-            "result": {"bankAccountPropertyVOList": new_rows},
-            "count": 2,
-        },
-    }
+    new_rows = [account_row("NEW")]
+    setup.state.business_handler = accounts_handler(new_rows, cash_total=3)
     code, out, err = run_cli(["refresh", "liquidity", "cash", "accounts"])
     assert code == 0
     assert "warning: INCOMPLETE_RESULT" in err
@@ -468,7 +477,11 @@ def test_accounts_partial_refresh_replaces_cache_and_warns(setup, run_cli):
     assert setup.cache_path.read_bytes() != before
     code, out, _ = run_cli(["liquidity", "cash", "accounts", "list"])
     assert code == 0
-    assert parse(out)["data"] == new_rows
+    result = parse(out)
+    assert [row["aliasName"] for row in result["data"]] == ["NEW"]
+    assert result["data"][0]["status"] == "NORMAL"
+    assert result["meta"]["sources"]["cash"]["reported_total"] == 3
+    assert result["meta"]["detail_coverage"]["succeeded"] == 1
 
 
 @pytest.mark.parametrize(

@@ -12,3 +12,9 @@ Date: 2026-10-03
 这明确重新考虑 [ADR 0003](0003-local-query-snapshots.md) 的“仅完整真实来源快照发布”及 [ADR 0010](0010-collection-va-partial-detail-tolerance.md) 的“部分发布后失败退出”：全有或全无会丢弃可供分析的合法数据，但错误标完整会制造不存在证明和误导统计。选择可用性与真实质量分开；代价是默认退出码不再承担完整性门禁，自动化必须使用 --require-complete。最新安全 partial 可替换旧 complete，不引入优选旧版本或双缓存。
 
 本决定在当前 feature branch 已实施，并完成[新策略生产只读 UAT](../research/general/2026-10-03-unified-incomplete-production-uat.md)：82/83 个目标命令通过，channel EXTERNAL 源端阻塞，ledger balances 按用户要求跳过；尚未发布。历史文档保留当时证据。全部迁移、缓存兼容、PTR稳定性例外与验收条件见[统一规格](../design/unified-incomplete-v0.1.0.md)，对外行为变化见[未发布变更记录](../../CHANGELOG.md)。
+
+## 2026-10-14：现金账户单空洞覆盖例外（#162）
+
+[规格 #162](https://github.com/proletariat64/dogopencli/issues/162) 接受一个受限兼容定义：仅现金账户目录原生报数比唯一实取多一，且本次采集再次验证内部单空洞、相邻位置及覆盖区间身份一致时，可按原生报数减去该已验证位置判断清单完整。保留原生报数、有效预期数、实取数、偏移及当前验证证据，发布 `VERIFIED_BACKEND_HOLE`，不再把已接受差异报告为 `COUNT_SHORTFALL`。
+
+这不是被压制账户无业务意义的证明，也不豁免其他叶子、多个缺口、边界缺口、重复冲突或不稳定数据。历史提示每次必须重验。复合账户的清单覆盖和所需详情覆盖分别报告；基线未匹配或详情拒绝仍使顶层 incomplete，严格调用不返回数据、不替换业务槽。

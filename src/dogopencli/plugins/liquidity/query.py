@@ -71,11 +71,16 @@ def _emit_window(
     variant: spec_mod.ListSpec | None = None,
     changed_groups: int = 0,
 ) -> int:
-    meta = prepare_result(
-        meta,
-        require_complete=args.require_complete,
-        mode="live" if args.live else "cache",
-    )
+    try:
+        meta = prepare_result(
+            meta,
+            require_complete=args.require_complete,
+            mode="live" if args.live else "cache",
+        )
+    except CliError as error:
+        if variant is not None and variant.path == ("cash", "accounts"):
+            error.meta = {**meta, **(error.meta or {})}
+        raise
     if variant is not None and variant.path == ("cash", "balances"):
         daily = variant.endpoint == "/balStatisticalQuery.json"
         window = [export_balance_record(record, daily=daily) for record in window]
@@ -438,6 +443,14 @@ def run_list(args):
         raise CliError(
             INVALID_RESPONSE, "cached contract variant is invalid; refresh required"
         )
+    if leaf.path == ("cash", "accounts"):
+        from .unified_accounts import validate_cached_accounts
+
+        account_quality = validate_cached_accounts(
+            records, AcquisitionEvidence.from_record(snapshot.acquisition)
+        )
+    else:
+        account_quality = {}
     _validate_cached_rows(leaf, variant, context, records)
     rows, filters, coverage, requested_window = _offline_selection(
         args, leaf, variant, context, records
@@ -479,6 +492,7 @@ def run_list(args):
         else None,
         "requested_scope_covered": coverage,
         "source_acquisition": source_acquisition,
+        **account_quality,
         "snapshot_id": snapshot.snapshot_id,
         "fetched_at": snapshot.fetched_at,
         "stale": stale,
@@ -606,6 +620,10 @@ def _run_list_live(
         "returned_count": len(window),
         "has_more": offset + len(window) < matched_total,
     }
+    if leaf.path == ("cash", "accounts"):
+        from .unified_accounts import account_meta
+
+        meta.update(account_meta(evidence))
     frozen = selection(evidence)
     if frozen is not None:
         meta["selection"] = frozen
