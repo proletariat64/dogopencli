@@ -113,7 +113,7 @@ def test_release_distinguishes_complete_and_backend_compatible_uat():
             if list_spec.path == ("cash", "credit-usage")
             else VERSION
         )
-        assert list_spec.path in LIST_LEAVES
+        assert (list_spec.path in LIST_LEAVES) == (list_spec.path != ("cash", "groups"))
         assert (*list_spec.path, "list") not in DEFERRED_BY_PATH
     for detail_spec in ACCEPTED_DETAIL_SPECS:
         assert detail_spec.schema_version == VERSION
@@ -155,8 +155,8 @@ def test_balances_post_body_with_entity_and_account_arrays():
     assert contract.fixed_body_values == (("tntInstId", "GUAPW3SG"),)
 
 
-def test_groups_get_carries_vo_as_one_json_string():
-    capability = LiquidityListCapability(CASH_GROUPS)
+def test_group_balances_get_carries_vo_as_one_json_string():
+    capability = LiquidityListCapability(CASH_GROUP_BALANCES)
     contract = capability.contract
     assert contract.method == "GET"
     assert contract.path == "/bankAccountGroupQuery.json"
@@ -734,7 +734,11 @@ def test_dated_window_binds_request_scope_not_cache_scope():
 
 @pytest.mark.parametrize(
     "path",
-    [(*item.path, "list") for item in ACCEPTED_LIST_SPECS]
+    [
+        (*item.path, "list")
+        for item in ACCEPTED_LIST_SPECS
+        if item.path != ("cash", "groups")
+    ]
     + [(*item.path, item.action) for item in ACCEPTED_DETAIL_SPECS],
 )
 def test_released_public_help_and_describe_do_not_contact_browser(path, monkeypatch):

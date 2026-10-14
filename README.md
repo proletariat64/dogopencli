@@ -278,6 +278,13 @@ B01/#164 已按业务决定退役 `pricing factors`、`factor-values`、`cost-pr
 help/describe/snapshot 将其标为退役且不可用。下文旧版本 UAT 与源码支持数是
 历史记录，不代表当前可执行能力；当前目录以 `dogopencli snapshot liquidity` 为准。
 
+R01/#167 退役 `cash groups`、`investment strategies`、`rules notification`、
+`ledger customers`、`ledger accounts`（INNER/OUTER）、`reference business-lines`
+与 `reference calendars` 的 list/refresh。沿用上述拒绝约定与数据保留边界；
+Ledger 依据业务确认未使用，不以来源时间久远为理由。已有独立 get 及共享端点的
+其他调用者保持原有支持；`forecast adjustments` 不在本次退役范围。
+外部 importer 的四个已注册 selector 同时拒绝 live 与保存输入发布。
+
 以下省略 `dogopencli liquidity` 前缀；`returns list` 包含 accrual/cash 两个来源，
 参数和逐变体契约以 `help` / `describe` 为准。
 
@@ -285,7 +292,7 @@ help/describe/snapshot 将其标为退役且不可用。下文旧版本 UAT 与�
 | --- | --- |
 | `cash accounts` | `list` |
 | `cash balances` | `list` |
-| `cash groups` | `list` |
+| `cash groups` | 已退役，list/refresh 仅拒绝（#167） |
 | `cash group-balances` | `list` |
 | `cash pool-balances` | `list` |
 | `cash credit-usage` | `list` |
@@ -306,10 +313,10 @@ help/describe/snapshot 将其标为退役且不可用。下文旧版本 UAT 与�
 | `investment interest-rates` | `list` |
 | `investment products` | `list`, `get`, `history` |
 | `investment returns` | `list` |
-| `investment strategies` | `list`, `get` |
+| `investment strategies` | 已退役 list/refresh（#167）；`get` |
 | `investment transactions` | `list`, `get` |
-| `ledger accounts` | `list` |
-| `ledger customers` | `list`, `get` |
+| `ledger accounts` | 已退役，list/refresh 仅拒绝（#167） |
+| `ledger customers` | 已退役 list/refresh（#167）；`get` |
 | `network account-capabilities` | `list`, `get` |
 | `operations asset-trades` | `list` |
 | `operations decisions` | `list`（必填启动与创建时间范围）, `get`, `history` |
@@ -324,8 +331,8 @@ help/describe/snapshot 将其标为退役且不可用。下文旧版本 UAT 与�
 | `pricing factors` | 已退役，list/refresh 仅拒绝 |
 | `pricing fee-orders` | 已退役，list/refresh 仅拒绝 |
 | `reference banks` | `list` |
-| `reference business-lines` | `list` |
-| `reference calendars` | `list` |
+| `reference business-lines` | 已退役，list/refresh 仅拒绝（#167） |
+| `reference calendars` | 已退役，list/refresh 仅拒绝（#167） |
 | `reference entities` | `list` |
 | `risk metrics` | `list` |
 | `risk sla` | `get` |
@@ -334,7 +341,7 @@ help/describe/snapshot 将其标为退役且不可用。下文旧版本 UAT 与�
 | `rules forecast` | `list` |
 | `rules funding` | `list` |
 | `rules fx-settlement` | `list` |
-| `rules notification` | `list`, `get` |
+| `rules notification` | 已退役 list/refresh（#167）；`get` |
 | `rules operation` | `list`, `get` |
 | `rules realtime` | `list`, `get` |
 | `rules transfer` | `list`, `get` |

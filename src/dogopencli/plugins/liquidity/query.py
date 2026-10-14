@@ -738,10 +738,10 @@ def fetch_detail(
 
 
 def run_unsupported(args: argparse.Namespace) -> int:
-    from .retirement import RETIREMENT_REASON, retired_command
+    from .retirement import retired_command, retirement_reason
 
     if retired_command(args.command_path):
-        raise CliError(UNSUPPORTED_CAPABILITY, RETIREMENT_REASON)
+        raise CliError(UNSUPPORTED_CAPABILITY, retirement_reason(args.command_path))
     leaf = DEFERRED_BY_PATH.get(args.command_path[1:])
     reason = leaf.reason if leaf is not None else "unsupported liquidity leaf"
     raise CliError(

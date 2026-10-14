@@ -20,11 +20,9 @@ Selectors start with `liquidity/`; views replace slashes with underscores.
 | Selector suffix | Native list identity |
 | --- | --- |
 | cash/accounts | aliasName, currency |
-| cash/groups | id |
 | cash/pools | id |
 | cash/credit-lines | id |
 | investment/products | incrementProductId |
-| investment/strategies | strategyRuleCode |
 | investment/benchmarks | id |
 | risk/thresholds | benchmarkId |
 | risk/sla | slaConfigId |
@@ -33,22 +31,18 @@ Selectors start with `liquidity/`; views replace slashes with underscores.
 | rules/realtime | id |
 | rules/action-mapping | id |
 | rules/fx-settlement | id |
-| rules/notification | id |
 | rules/forecast | ruleId |
 | rules/waterlevel | bufferId |
 | rules/transfer | ruleId |
 | network/realtime | id |
 | network/bank-baselines | aliasName |
 | network/account-capabilities | id |
-| ledger/customers | customerNo, version |
 | reference/banks | bankId |
 | reference/entities | id; additionally unique string instId |
 
 All acquisitions use `list --live --limit 0 --offset 0 --require-complete --format json`
-without optional filters. Expected `.meta.query` and `.meta.scope` are empty except
-cash/groups, whose verified default query and scope are `{"equiCurrency":"USD"}`. This is the
-CLI's supported equivalent-currency contract; it does not establish other currency
-variants. Extra filters are rejected. Calendars, ledger/accounts and business-lines
+without optional filters. Expected `.meta.query` and `.meta.scope` are empty.
+Extra filters are rejected. Calendars, ledger/accounts and business-lines
 remain excluded because the user has already selected them for retirement.
 
 Activity is assessed separately: a modification within approximately two years
@@ -64,3 +58,16 @@ factors and strategies from active import contracts. All six retired pricing
 selectors refuse live acquisition and saved-input publication. Existing datasets
 and historical analysis remain intact; no import, replacement, or cleanup is
 authorized by retirement. R01-only selectors retain their separate scope.
+
+## R01 retirement
+
+R01 #167 and specification #175 retire cash/groups, investment/strategies,
+rules/notification and ledger/customers from active import contracts. Both live
+acquisition and saved-input publication, including direct publication, refuse
+before opening input or storage. Historical selectors and datasets remain readable
+for analysis. Calendars, ledger/accounts and business-lines remain excluded.
+
+The former cash/groups declaration used identity `id` and default query/scope
+`{"equiCurrency":"USD"}`. The former investment/strategies identity was
+`strategyRuleCode`, rules/notification was `id`, and ledger/customers was
+`customerNo, version`. These are historical evidence, not active import contracts.

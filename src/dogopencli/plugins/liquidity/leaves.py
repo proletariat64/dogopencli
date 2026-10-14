@@ -65,7 +65,7 @@ from .operations_batch import RELEASED as OPERATIONS_RELEASED
 from .operations_batch import SWAP_ORDERS, validate_swap_query
 from .qualified_getters import QUALIFIED_GETTERS
 from .realtime_network import REALTIME_NETWORK
-from .retirement import RETIRED_PATHS, RETIREMENT_REASON, refuse_retired
+from .retirement import RETIRED_PATHS, refuse_retired, retirement_reason
 from .rfqs import RFQS, validate_rfq_query
 from .risk_batch import ACCEPTED_LIST_SPECS as RISK_LIST_SPECS
 from .risk_batch import RELEASED as RISK_RELEASED
@@ -3175,13 +3175,13 @@ def retired_nodes(leaf: ListLeaf) -> tuple[BizNode, BizNode]:
     def refusal(node: BizNode) -> BizNode:
         return replace(
             node,
-            summary=RETIREMENT_REASON,
+            summary=retirement_reason(leaf.path),
             options=tuple(
                 replace(option, required=False, argument_contract=None)
                 for option in node.options
             ),
             constraints=(
-                RETIREMENT_REASON,
+                retirement_reason(leaf.path),
                 "Execution always fails with UNSUPPORTED_CAPABILITY;"
                 " no cache or browser access.",
             ),

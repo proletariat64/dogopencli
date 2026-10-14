@@ -977,7 +977,7 @@ def _deferred_description(node: BizNode) -> dict[str, Any]:
 
 def description(node: BizNode) -> dict[str, Any]:
     """Provider registered for every liquidity command node."""
-    from .retirement import RETIREMENT_REASON, retired_command
+    from .retirement import retired_command, retirement_reason
 
     if retired_command(node.path):
         return {
@@ -991,7 +991,7 @@ def description(node: BizNode) -> dict[str, Any]:
                 "capability": " ".join(node.path),
                 "kind": node.kind,
                 "release_status": "retired",
-                "reason": RETIREMENT_REASON,
+                "reason": retirement_reason(node.path),
                 "quality": "No acquisition, cache replay, or publication is available.",
                 "projection": "Projection options are accepted for refusal only.",
                 "pagination": "Legacy display options are accepted only for refusal.",
