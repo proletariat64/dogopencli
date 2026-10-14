@@ -216,9 +216,10 @@ SLA 是配置目标，不是观测到账耗时。
 [PR #142](https://github.com/proletariat64/dogopencli/pull/142)，以及
 [#157](https://github.com/proletariat64/dogopencli/issues/157) 和
 [#162](https://github.com/proletariat64/dogopencli/issues/162) 的目录调整后，
-当前源码共支持 95 个查询叶子；共 129 个查询叶子，其中 34 个延期叶子
-（12 list、22 get）可通过帮助发现，
-执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
+加入 [#176](https://github.com/proletariat64/dogopencli/issues/176) 的两个已验证名单后，
+当前源码共支持 84 个查询叶子；共 132 个查询叶子，其中 35 个延期叶子
+（13 list、22 get）及 13 个已退役 list 可通过帮助发现，
+执行返回 `UNSUPPORTED_CAPABILITY`。源码可使用本节命令；
 v0.2.8 包含 #97/#98 及 #103/#104/#105 的新增能力（85 supported / 46 unsupported）；
 v0.3.0 还包含 [PR #135](https://github.com/proletariat64/dogopencli/pull/135) 的 list 参数契约统一，
 以及 [PR #143](https://github.com/proletariat64/dogopencli/pull/143) 的登录闪屏和重复标签页修复。
@@ -334,6 +335,9 @@ Ledger 依据业务确认未使用，不以来源时间久远为理由。已有�
 | `reference business-lines` | 已退役，list/refresh 仅拒绝（#167） |
 | `reference calendars` | 已退役，list/refresh 仅拒绝（#167） |
 | `reference entities` | `list` |
+| `reference whitelist entity` | `list`（settings，独立临时槽） |
+| `reference blacklist account` | `list`（settings，独立临时槽） |
+| `reference blacklist bank` | `list` 不可执行：原生行／版本身份未验证（#176） |
 | `risk metrics` | `list` |
 | `risk sla` | `get` |
 | `risk thresholds` | `list`, `get` |
@@ -825,6 +829,18 @@ JSON 业务结果使用 `data`、`meta`、`error`。先检查退出码和 `error
 业务查询和刷新退出码：`0` 成功、`1` 运行失败、`2` 参数错误、`130` 用户中断。
 允许的部分结果也可能退出 `0`，因此需要检查质量字段或指定 `--require-complete`。
 认证命令使用独立的 `output_version` envelope，参数和运行错误均退出 `1`。
+
+## 主体白名单与账户黑名单（规格 #176）
+
+`liquidity reference whitelist entity list` 与 `liquidity reference blacklist account list`
+查询两个独立 settings 来源；支持 live、显式 refresh、默认离线及每叶独立 prune。
+原生身份分别为 `instId` 与 `aliasName`，不是响应中的占位整数 `id`。
+默认保留 VALID/INVALID 和原生字段；过滤仅为采集后的本地精确匹配。
+原生 5000／1000 页宽与输出 limit 分开，完整性检查保留分页边界及终止证据。
+
+`liquidity reference blacklist bank list` 仅可发现，不执行：原生 bankId 出现创建时间不同的
+重复行，尚无已证明的行／版本身份；不以时间拼接身份。#168 继续开放，不宣称三叶完整验收。
+来源、字段、过滤、分页、独立临时槽及继续条件见[契约指南](docs/design/liquidity-access-lists-v0.1.0.md)。
 
 ## 配置与本地会话
 
