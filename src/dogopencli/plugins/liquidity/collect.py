@@ -210,6 +210,10 @@ def acquire_liquidity_list(
     progress: Callable[[int, int], None] | None = None,
 ) -> CollectedScope:
     """Acquire one list, including its leaf-specific native composition."""
+    if capability.descriptor.path == ("cash", "accounts"):
+        from .unified_accounts import collect_accounts
+
+        return collect_accounts(session, capability, scope, progress=progress)
     if capability.descriptor.path == ("cash", "balances"):
         from .cash_balances import collect_balances
 
