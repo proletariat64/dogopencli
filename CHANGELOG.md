@@ -11,6 +11,15 @@
 live/get 不写槽。单位与生产覆盖限制分别记录。用法见
 [来源查询合同](docs/design/liquidity-interest-rates-v0.1.0.md)。
 
+规格 #177 / R03 #169：prefunds get 保留指定申请的原生详情，增加同业务的
+`historyApplications` 与 `drawdownDetails`，支持历史申请 ID，保留 FAIL 流水、
+原生空业务单号与嵌套换汇关系。通过有界历史及当前版本查询核对业务、实体和申请身份；
+各组件的来源、范围、采集时间及原生报数保留在 `meta.components`。
+流水使用原生单数组合同，报数为零但非空的异常不被改写；即便成功空数组，覆盖仍未获证明，
+默认返回安全部分数据并告警，`--require-complete` 拒绝发布不完整结果。
+顶层仍表示一个申请；get 不写缓存，list/refresh 不扩大状态范围或采集关联。
+
+
 规格 #175 / R01 #167：退役 cash groups、investment strategies、rules notification、
 ledger customers、ledger accounts（INNER/OUTER）、reference business-lines 与
 reference calendars 的 list/refresh。合法旧参数返回 UNSUPPORTED_CAPABILITY/退出 1，

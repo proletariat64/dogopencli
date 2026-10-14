@@ -1535,6 +1535,21 @@ DETAIL_SPECS: tuple[DetailSpec, ...] = (
                 "id", "preFundingId", "Pre-funding id from the list.", "str", "id"
             ),
         ),
+        notes=(
+            "Selected native application remains the root; historyApplications and "
+            "drawdownDetails are CLI-owned same-business associations.",
+            "History preserves APPROVED_FINAL rows; a bounded APPROVED/CLOSED inquiry "
+            "establishes current-version membership; list scope stays unchanged.",
+            "Source directions/statuses and nested exchange relations are retained; "
+            "get never recalculates balances or downloads attachment content.",
+            "Separate source reads are not an atomic snapshot. Native transaction "
+            "count=0 with rows is retained as an anomaly; array exhaustion and empty "
+            "coverage remain unproven. Default returns safe partial with warnings; "
+            "--require-complete withholds incomplete aggregates.",
+            "meta.components retains source/scope/capture/count/coverage evidence. "
+            "--fields selects whole top-level fields/arrays; no dotted paths. "
+            "Table omits unselected nested arrays; select JSON cells or use JSON.",
+        ),
         list_leaf=("operations", "prefunds"),
     ),
     DetailSpec(
@@ -3040,7 +3055,11 @@ def detail_query_node(leaf: DetailLeaf) -> BizNode:
             FIELDS,
             *(
                 (REQUIRE_COMPLETE,)
-                if detail.name == "liquidity.network.realtime.get"
+                if detail.name
+                in (
+                    "liquidity.network.realtime.get",
+                    "liquidity.operations.prefunds.get",
+                )
                 else ()
             ),
         ),
