@@ -229,6 +229,7 @@ def component_result(
     consistency_fields = (
         "id",
         "version",
+        "status",
         "prefundingBizNo",
         "instId",
         "currency",

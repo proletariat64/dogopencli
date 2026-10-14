@@ -395,6 +395,39 @@ def test_selected_version_movement_is_explicit_safe_partial(setup, run_cli):
     assert "SOURCE_CHANGED" in result["meta"]["components"]["application"]["reasons"]
 
 
+@pytest.mark.parametrize("modified", [None, "2026-01-01 00:00:00"])
+@pytest.mark.parametrize("current_status", ["APPROVED", "CLOSED"])
+def test_status_only_movement_updates_application_evidence(
+    setup, run_cli, modified, current_status
+):
+    root = application()
+    if modified is not None:
+        root["gmtModified"] = modified
+    configure(setup, root=root)
+    healthy = setup.state.business_handler
+
+    def answer(payload, index):
+        result = healthy(payload, index)
+        if "preFundingOrderQueryVO" in payload:
+            query = json.loads(payload["preFundingOrderQueryVO"])
+            if query["statusList"] == ["APPROVED", "CLOSED"]:
+                return page([{**root, "status": current_status}], 1)
+        return result
+
+    setup.state.business_handler = answer
+    code, out, err = run_cli(COMMAND)
+    result = parse(out)
+    assert code == 0, (out, err)
+    assert result["data"]["status"] == "APPROVED"
+    component = result["meta"]["components"]["application"]
+    changed = current_status != root["status"]
+    assert component["selected_version_relation"] == (
+        "changed" if changed else "matched"
+    )
+    assert component["complete"] is (not changed)
+    assert ("SOURCE_CHANGED" in component["reasons"]) is changed
+
+
 def test_missing_transaction_tenant_is_not_silent_binding(setup, run_cli):
     row = transaction()
     del row["tntInstId"]
