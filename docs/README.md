@@ -1,5 +1,7 @@
 # 文档索引
 
+- [Duckdog 初始设计 #160](design/duckdog-v0.1.0.md)：DuckDB＋Parquet、settings 全量覆盖、runtime 扩展边界；[导入 skill](../.agents/skills/duckdog-import/SKILL.md) 首期支持 banks、entities。
+
 - [B01 定价业务退役 #164/#172](design/liquidity-pricing-retirement-v0.1.0.md)：六个 list/refresh 的拒绝、历史数据保留、外部导入绑定与证据边界；旧定价 UAT 只作历史记录。
 
 - [#157 生产 smoke](research/general/2026-10-13-temporary-query-cache-uat.md)：独立登录、Cash latest/daily 质量、冻结 ANY 离线重放、原生 getter 与 prune；FX 后台错误及完整性限制单独记录。

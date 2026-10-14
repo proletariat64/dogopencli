@@ -1,0 +1,3 @@
+interface:
+  display_name: "Duckdog Import"
+  short_description: "Import complete live settings into DuckDB and Parquet"
