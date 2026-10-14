@@ -16,7 +16,9 @@ The bank response contained duplicate `bankId` values with differing creation ti
 
 ## Acquisition and filters
 
-Each executable source requires boolean `resultFlag=true` and nested `result.success=true`, an array of objects at `result.data`, and equal nonnegative integer counts at `count` and `result.count`. Missing or malformed success markers, mismatched totals, invalid native identities, tenant mismatches and conflicting content fail without business data.
+Each executable source requires boolean `resultFlag=true` and nested `result.success=true`, an array of objects at `result.data`, and equal nonnegative integer counts at `count` and `result.count`. Missing or malformed success markers, mismatched totals, invalid native identities, nonempty foreign tenant values and conflicting content fail without business data.
+The observed account DTO carries an empty tenant field; that value stays empty.
+Scope is bound by the fixed native request, rather than synthesizing a row echo.
 
 The production request carries the fixed tenant, timezone and source variant in a named JSON query object. The verified `rowStart` unit is a zero-based row offset. Acquisition prefers `pageSize=5000`; observed silent truncation restarts a clean candidate at verified `pageSize=1000`. A failed authentication, transport, business query or parse is not a page-size rejection and never triggers fallback. No explicit backend size-rejection diagnostic was proven, so such refusals remain errors.
 

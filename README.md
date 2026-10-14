@@ -216,9 +216,10 @@ SLA 是配置目标，不是观测到账耗时。
 [PR #142](https://github.com/proletariat64/dogopencli/pull/142)，以及
 [#157](https://github.com/proletariat64/dogopencli/issues/157) 和
 [#162](https://github.com/proletariat64/dogopencli/issues/162) 的目录调整后，
-当前源码共支持 95 个查询叶子；共 129 个查询叶子，其中 34 个延期叶子
-（12 list、22 get）可通过帮助发现，
-执行返回 `UNSUPPORTED_CAPABILITY`，不会返回占位数据。源码可使用本节命令；
+加入 [#176](https://github.com/proletariat64/dogopencli/issues/176) 的两个已验证名单后，
+当前源码共支持 84 个查询叶子；共 132 个查询叶子，其中 35 个延期叶子
+（13 list、22 get）及 13 个已退役 list 可通过帮助发现，
+执行返回 `UNSUPPORTED_CAPABILITY`。源码可使用本节命令；
 v0.2.8 包含 #97/#98 及 #103/#104/#105 的新增能力（85 supported / 46 unsupported）；
 v0.3.0 还包含 [PR #135](https://github.com/proletariat64/dogopencli/pull/135) 的 list 参数契约统一，
 以及 [PR #143](https://github.com/proletariat64/dogopencli/pull/143) 的登录闪屏和重复标签页修复。
