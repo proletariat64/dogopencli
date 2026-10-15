@@ -69,3 +69,45 @@ def test_setup_refuses_copied_worktree_config(tmp_path, bootstrap):
     (other / "config.toml").write_text(original.read_text())
     with pytest.raises(RuntimeError, match="another worktree"):
         bootstrap(tmp_path / "copy")
+
+
+@pytest.mark.parametrize("domain", ["payment", "liquidity", "fx"])
+def test_main_verifies_selected_domain_on_isolated_browser(
+    tmp_path, monkeypatch, bootstrap, capsys, domain
+):
+    namespace = runpy.run_path(str(SCRIPT))
+    main = namespace["main"]
+    environment = bootstrap(tmp_path)
+    monkeypatch.setenv("DOGOPENCLI_CHROME_PROFILE", "/foreign/profile")
+    monkeypatch.setenv("DOGOPENCLI_CHROME_CDP_URL", "http://127.0.0.1:9222")
+    monkeypatch.setitem(main.__globals__, "setup", lambda root: environment)
+    calls = []
+    monkeypatch.setitem(main.__globals__, "login", lambda env: calls.append(env))
+    assert main(["--domain", domain]) == 0
+    assert len(calls) == 1
+    assert calls[0].profile == environment.profile
+    assert calls[0].cdp_url == environment.cdp_url
+    assert calls[0].log_path == environment.log_path
+    assert calls[0].startup_url == namespace["STARTUP_URLS"][domain]
+    assert "authentication verified headless" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_main_login_failure_does_not_claim_success(
+    tmp_path, monkeypatch, bootstrap, capsys, interrupted
+):
+    namespace = runpy.run_path(str(SCRIPT))
+    main = namespace["main"]
+    environment = bootstrap(tmp_path)
+    monkeypatch.setitem(main.__globals__, "setup", lambda root: environment)
+
+    def fail(env):
+        if interrupted:
+            raise KeyboardInterrupt
+        raise namespace["AuthError"]("auth_required", "login deadline reached")
+
+    monkeypatch.setitem(main.__globals__, "login", fail)
+    assert main([]) == (130 if interrupted else 1)
+    output = capsys.readouterr()
+    assert "PASS" not in output.out
+    assert ("interrupted" if interrupted else "auth_required") in output.err

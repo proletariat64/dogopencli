@@ -1,9 +1,12 @@
 """Start an isolated worktree browser without borrowing existing authentication."""
 
+import argparse
 import json
 import os
 import shlex
 import socket
+import sys
+from dataclasses import replace
 from pathlib import Path
 
 from dogopencli.browser import launcher
@@ -12,11 +15,13 @@ from dogopencli.browser.environment import (
     CHROME_BIN_ENV,
     DEFAULT_CHROME_BIN,
     FORBIDDEN_PORTS,
+    STARTUP_URLS,
     BrowserEnvironment,
     _auth_section,
     cdp_port,
 )
 from dogopencli.browser.errors import AuthError
+from dogopencli.browser.login import login
 
 
 def available_port() -> int:
@@ -99,16 +104,34 @@ def setup(root: Path) -> BrowserEnvironment:
         )
         shell.chmod(0o600)
         print(f"Activate isolated config: source {shlex.quote(str(shell))}")
-        print(
-            "Browser ready; authentication has not been checked. Use dogopencli login."
-        )
         return environment
     finally:
         lock.release()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--domain", choices=STARTUP_URLS, default="payment")
+    args = parser.parse_args(argv)
     try:
-        setup(Path(__file__).resolve().parents[1])
+        environment = setup(Path(__file__).resolve().parents[1])
+        print(
+            f"Verifying isolated {args.domain} login; complete SSO if Chrome opens.",
+            flush=True,
+        )
+        login(replace(environment, startup_url=STARTUP_URLS[args.domain]))
+        print(
+            f"bootstrap browser: PASS; {args.domain} authentication verified headless"
+        )
+        return 0
+    except KeyboardInterrupt:
+        print("bootstrap browser: interrupted; browser preserved", file=sys.stderr)
+        return 130
     except (OSError, RuntimeError, AuthError, launcher.LauncherError) as error:
-        raise SystemExit(f"bootstrap browser: {error}") from error
+        code = f"{error.code}: " if isinstance(error, AuthError) else ""
+        print(f"bootstrap browser: {code}{error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

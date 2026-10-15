@@ -956,7 +956,10 @@ rtk proxy make doc-guard test-doc-guard
 ```
 
 bootstrap 最后更新当前工作树的 code-review-graph 索引（首次自动构建），
-并启动独立的 headless Chrome。需要已安装 `rtk`、`code-review-graph` 和
+并启动独立的 Chrome、执行登录认证（默认 payment；资金管理使用
+`make bootstrap BOOTSTRAP_DOMAIN=liquidity`，FX 使用 `BOOTSTRAP_DOMAIN=fx`）。
+认证失效时自动打开可见 Chrome 等待人工 SSO，成功后回到 headless 并重新验证。
+需要已安装 `rtk`、`code-review-graph` 和
 `google-chrome`（可用 `DOGOPENCLI_CHROME_BIN` 指定可执行文件）。Chrome
 保留默认沙箱与 Origin 限制，使用 OS 分配的空闲 loopback 端口，排除
 9330–9340。profile、日志、配置和查询缓存均位于被 Git 忽略的
@@ -971,8 +974,10 @@ rtk proxy .venv/bin/dogopencli login --domain liquidity
 rtk proxy .venv/bin/dogopencli auth check --domain liquidity
 ```
 
-bootstrap 仅证明 Chrome/CDP 可用，不代表已登录。人工 SSO 由 `login`
-完成；全局配置和已有浏览器会话保留。移除工作树前应先关闭其专用 Chrome。
+bootstrap 的浏览器阶段仅在所选域通过 headless 认证后报告 PASS；人工 SSO
+复用现有 `login` 流程，等待上限为 600 秒。超时或中断保留浏览器，可激活
+隔离配置后执行 `login` 继续。全局配置和已有浏览器会话保留。
+移除工作树前应先关闭其专用 Chrome。
 
 测试使用缩短的浏览器轮询间隔，生产探测仍使用 0.25 秒间隔；
 验证稳定窗口的测试显式设置其窗口和时钟。`make test` 与 CI 输出最慢的
