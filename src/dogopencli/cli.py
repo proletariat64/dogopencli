@@ -1475,7 +1475,12 @@ def cmd_refresh_fx_trade(args: argparse.Namespace) -> int:
 
 
 def cmd_prune(args: argparse.Namespace) -> int:
-    leaf = ".".join(args.command_path[:-1])
+    path = (
+        args.command_path[1:]
+        if args.command_path[0] == "prune"
+        else args.command_path[:-1]
+    )
+    leaf = ".".join(path)
     config = config_mod.load([])
     removed = prune_slot(Cache(config.cache_path), leaf)
     _emit({"pruned": removed, "leaf": leaf}, {"source": "cache"})
@@ -1610,6 +1615,27 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
     remaining = [
         token for index, token in enumerate(values) if index not in word_indices
     ]
+    if any(
+        word in node.path
+        for word in (
+            "account_t0",
+            "account_t3",
+            "account_hours_max",
+            "account_daily_max",
+            "account_demands",
+            "account_cashflows",
+            "account_demands_intraday",
+            "account_strategies",
+        )
+    ):
+        for option in node.options:
+            if option.kind == "append":
+                continue
+            count = sum(token.partition("=")[0] in option.flags for token in remaining)
+            if count > 1:
+                return _emit_error(
+                    _argument_error(f"{option.flag} accepts a single value")
+                )
     if "--all" in remaining:
         return _emit_error(
             _argument_error(

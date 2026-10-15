@@ -9,12 +9,21 @@ from ...errors import (
     AUTH_REQUIRED,
     BROWSER_UNAVAILABLE,
     CACHE_MISS,
+    EXIT_USAGE,
     INVALID_ARGUMENT,
     INVALID_RESPONSE,
     SOURCE_DATA_MISSING,
     TIMEOUT,
     CliError,
 )
+
+
+@dataclass(frozen=True)
+class AccountDirectory:
+    """Rows and acquisition quality from an existing account directory."""
+
+    rows: list[dict]
+    quality: dict
 
 
 @dataclass(frozen=True)
@@ -30,10 +39,10 @@ def resolve_account_context(
     entity: str | None = None,
     bank: str | None = None,
     *,
-    cached_accounts: Callable[[], list[dict]],
-    live_accounts: Callable[[], list[dict]],
+    cached_accounts: Callable[[], list[dict] | AccountDirectory],
+    live_accounts: Callable[[], list[dict] | AccountDirectory],
     config_file: Path | None = None,
-    duckdog_accounts: Callable[[], list[dict]] | None = None,
+    duckdog_accounts: Callable[[], list[dict] | AccountDirectory] | None = None,
 ) -> AccountContext:
     """Resolve ownership without overwriting explicit account constraints."""
     for name, value in (("alias", alias), ("entity", entity), ("bank", bank)):
@@ -47,7 +56,9 @@ def resolve_account_context(
             or value.upper() == "ANY"
         ):
             raise CliError(
-                INVALID_ARGUMENT, f"--{name} requires one nonempty explicit value"
+                INVALID_ARGUMENT,
+                f"--{name} requires one nonempty explicit value",
+                exit_code=EXIT_USAGE,
             )
     if entity and bank:
         return AccountContext(
@@ -93,6 +104,17 @@ def resolve_account_context(
                     meta=error.meta,
                 ) from error
             raise
+        quality = records.quality if isinstance(records, AccountDirectory) else {}
+        if isinstance(records, AccountDirectory):
+            records = records.rows
+        if not isinstance(quality, dict):
+            raise CliError(INVALID_RESPONSE, f"{source} directory quality is malformed")
+        for warning in quality.get("warnings", []):
+            if not isinstance(warning, dict):
+                raise CliError(
+                    INVALID_RESPONSE, f"{source} directory warning is malformed"
+                )
+            warnings.append({**warning, "source": source})
         if not isinstance(records, list) or any(
             not isinstance(row, dict) for row in records
         ):
@@ -107,6 +129,8 @@ def resolve_account_context(
             and (bank is None or row.get("bankId") == bank)
         ]
         note = {"source": source, "status": "no_match", "match_count": len(matches)}
+        if quality:
+            note["quality"] = quality
         sources.append(note)
         if not matches:
             continue
@@ -129,17 +153,20 @@ def resolve_account_context(
             )
         resolved_entity = entity if entity is not None else selected.get("instId")
         resolved_bank = bank if bank is not None else selected.get("bankId")
-        if not resolved_entity or not resolved_bank:
-            note["status"] = "missing_fields"
-            continue
         if any(
-            not isinstance(value, str) or not value.strip()
+            value is not None and not isinstance(value, str)
             for value in (resolved_entity, resolved_bank)
         ):
             raise CliError(
                 INVALID_RESPONSE,
                 f"{source} account directory has malformed ownership fields",
             )
+        if any(
+            value is None or not value.strip()
+            for value in (resolved_entity, resolved_bank)
+        ):
+            note["status"] = "missing_fields"
+            continue
         note["status"] = "selected"
         return AccountContext(
             alias,
@@ -147,6 +174,7 @@ def resolve_account_context(
             resolved_bank,
             {
                 "source": source,
+                "directory_quality": quality,
                 "sources": sources,
                 "warnings": warnings,
                 "ownership_reference": (

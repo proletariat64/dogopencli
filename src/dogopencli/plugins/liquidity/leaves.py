@@ -37,6 +37,12 @@ from ...helpspec import (
 )
 from .access_lists import ACCESS_LISTS
 from .account_capacity import ACCOUNT_CAPACITY, validate_capacity_query
+from .account_forecasts import ACCOUNT_LISTS, ACCOUNT_PATHS, validate_account_query
+from .account_forecasts import PENDING as ACCOUNT_PENDING
+from .account_strategies import ACCOUNT_STRATEGIES
+from .account_strategies import (
+    validate_strategy_query as validate_account_strategy_query,
+)
 from .capability import (
     LiquidityDetailCapability,
     LiquidityListCapability,
@@ -2536,6 +2542,9 @@ LIST_SPECS += (RULE_STATUS,)
 DEFERRED = tuple(item for item in DEFERRED if item.path != (*RULE_STATUS.path, "list"))
 
 LIST_SPECS += ACCESS_LISTS
+DEFERRED += ACCOUNT_PENDING
+LIST_SPECS += ACCOUNT_LISTS
+LIST_SPECS += (ACCOUNT_STRATEGIES,)
 
 
 def _merged_options(variants: tuple[ListSpec, ...]) -> tuple[ScopeOption, ...]:
@@ -2654,6 +2663,10 @@ class ListLeaf:
             request_values["entitys"] = sorted(set(request_values["entitys"]))
             if request_values.get("aliasNames"):
                 request_values["aliasNames"] = sorted(set(request_values["aliasNames"]))
+        if variant.projection == "account_strategies":
+            validate_account_strategy_query(request_values)
+        if self.path in ACCOUNT_PATHS:
+            validate_account_query(request_values)
         if variant.projection == "funding_demands":
             validate_demand_query(request_values)
         if variant.projection == "rule_status":
@@ -3151,6 +3164,28 @@ def unsupported_node(leaf: DeferredLeaf) -> BizNode:
     return BizNode(
         path,
         f"Unsupported ({leaf.status}): {leaf.reason}",
+        options=(
+            opt(
+                "alias"
+                if leaf.path[1] == "account_demands_intraday"
+                else "account_alias",
+                "Account alias; execution remains gated.",
+            ),
+            opt("from_date", "Start YYYYMMDD; execution remains gated."),
+            opt("to_date", "End YYYYMMDD; execution remains gated."),
+            LIVE,
+            LIMIT,
+            OFFSET,
+            FIELDS,
+            REQUIRE_COMPLETE,
+            *(
+                (opt("entity", "Account entity."), opt("bank", "Account bank."))
+                if leaf.path[1] == "account_demands_intraday"
+                else ()
+            ),
+        )
+        if leaf in ACCOUNT_PENDING
+        else (),
         constraints=(
             "This audited leaf is deferred; its evidence status is recorded"
             " in issue #71 and docs/research/general/"

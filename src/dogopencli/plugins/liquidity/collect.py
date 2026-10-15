@@ -40,6 +40,15 @@ def collect_liquidity_scope(
         collect_mod.REFRESH_BUDGET_SECONDS if budget_seconds is None else budget_seconds
     )
     deadline = time.monotonic() + budget if deadline is None else deadline
+    if capability.descriptor.projection in {
+        "account_demands",
+        "account_cashflows",
+        "account_t3",
+        "account_strategies",
+    }:
+        from .account_collection import collect_account_list
+
+        return collect_account_list(capability, transport, scope, progress=progress)
     from .access_lists import ACCESS_PATHS, collect_access_list
 
     if capability.descriptor.path in ACCESS_PATHS:

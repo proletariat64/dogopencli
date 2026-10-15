@@ -63,6 +63,7 @@ def test_invalid_inputs_fail_before_any_source(alias, entity, bank):
             duckdog_accounts=forbidden,
         )
     assert caught.value.code == "INVALID_ARGUMENT"
+    assert caught.value.exit_code == 2
 
 
 def test_incomplete_first_match_falls_back_whole_record_without_cross_fill():
@@ -152,3 +153,42 @@ def test_missing_cache_slot_falls_back_without_using_display_codes():
     )
     assert (result.entity, result.bank) == ("ENTITY", "BANK")
     assert result.metadata["sources"][1]["status"] == "unavailable"
+
+
+def test_directory_quality_stays_visible_without_changing_selected_ownership():
+    from dogopencli.plugins.liquidity.account_context import AccountDirectory
+
+    quality = {
+        "complete": False,
+        "reported_total": 3,
+        "collected_total": 1,
+        "warnings": [
+            {"code": "INCOMPLETE_RESULT", "message": "cash list has missing rows"}
+        ],
+    }
+    result = resolve_account_context(
+        "A",
+        duckdog_accounts=lambda: [],
+        cached_accounts=lambda: [],
+        live_accounts=lambda: AccountDirectory(
+            [{"aliasName": "A", "instId": "E", "bankId": "B"}], quality
+        ),
+    )
+    assert result.entity == "E"
+    assert result.metadata["directory_quality"] == quality
+    assert result.metadata["sources"][-1]["quality"] == quality
+    assert result.metadata["warnings"][0]["code"] == "INCOMPLETE_RESULT"
+
+
+@pytest.mark.parametrize("invalid", [0, False, [], {}])
+def test_falsey_malformed_ownership_is_error_not_missing_field(invalid):
+    with pytest.raises(CliError) as caught:
+        resolve_account_context(
+            "A",
+            duckdog_accounts=lambda: [
+                {"aliasName": "A", "instId": invalid, "bankId": "B"}
+            ],
+            cached_accounts=lambda: [{"aliasName": "A", "instId": "E", "bankId": "B"}],
+            live_accounts=lambda: [],
+        )
+    assert caught.value.code == "INVALID_RESPONSE"

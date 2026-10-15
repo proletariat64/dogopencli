@@ -461,11 +461,18 @@ def _load_builtins() -> None:
         register(leaf.capability(leaf.variants[0]))
     for leaf in liquidity_leaves.INTERNAL_DETAIL_LEAVES.values():
         register(leaf.capability)
+    from dataclasses import replace
+
     for deferred in liquidity_leaves.DEFERRED:
         node = liquidity_leaves.unsupported_node(deferred)
         register(
             liquidity_leaves.UnsupportedLeafHandle(node),
             commands=(node,),
+            refresh_commands=(
+                replace(node, path=("refresh", "liquidity", *deferred.path[:-1])),
+            )
+            if deferred in liquidity_leaves.ACCOUNT_PENDING
+            else (),
             groups=(),
             description=liquidity_reading.description,
         )
