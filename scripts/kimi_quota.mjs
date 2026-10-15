@@ -1,8 +1,22 @@
-// Kimi CLI fallback only: usage preflight does not send a model prompt.
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+// Kimi subscription quota preflight for OCR; never sends a model prompt.
+import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { isQuotaError, report, runReview } from './qoder_review.mjs';
+
+function isQuotaError(text) {
+  // Generic HTTP 429 rate limits are not proof of exhausted quota.
+  return /\bcredit_exhausted\b|\b(?:credits?|quota)\s+(?:is\s+|are\s+|has been\s+)?(?:exhausted|depleted|exceeded|insufficient)\b|\binsufficient\s+(?:credits?|quota)\b|\b(?:out of|not enough|no remaining)\s+credits?\b/i.test(text);
+}
+
+function report(status, reason, quotaState = status, provider = 'OCR') {
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT,
+      `status=${status}\nquota_state=${quotaState}\nrun_review=${status === 'available'}\n`);
+  }
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${provider} review: **${status}**. ${reason}\n\n`);
+  }
+  console.log(`${status === 'skipped' ? '::notice::' : ''}${provider} review: ${reason}`);
+}
 
 export const KIMI_BASE_URL = 'https://api.kimi.com/coding/v1';
 
@@ -31,7 +45,7 @@ export function kimiQuotaDecision(payload) {
     if (ratios.some(ratio => ratio >= 1)) return 'exhausted';
     return ratios.length && !invalid ? 'available' : 'unknown';
   }
-  // The pinned CLI also handles the earlier usage + limits[].detail contract.
+  // Earlier usage responses use the usage + limits[].detail contract.
   const rows = [];
   if (payload?.usage !== undefined) rows.push(payload.usage);
   if (payload?.limits !== undefined) {
@@ -88,66 +102,19 @@ export async function checkKimiQuota(fetchUsage = fetch) {
     }
   }
   report(decision === 'available' ? 'available' : 'skipped', {
-    available: 'Quota available; fallback review can start.',
+    available: 'Quota available; OCR review can start.',
     exhausted: 'Quota exhausted; no review was started.',
     unknown: `Quota unavailable (${unavailableReason}); no review was started.`,
-  }[decision], decision, 'Kimi');
+  }[decision], decision, 'OCR');
   return decision;
-}
-
-export function prepareKimi(home) {
-  if (!home) throw new Error("KIMI_CODE_HOME is missing");
-  mkdirSync(home, { recursive: true, mode: 0o700 });
-  writeFileSync(join(home, 'config.toml'), `
-default_model = "k3"
-telemetry = false
-
-[providers.kimi]
-type = "kimi"
-base_url = "${KIMI_BASE_URL}"
-api_key_env = "KIMI_API_KEY"
-
-[models.k3]
-provider = "kimi"
-model = "k3"
-max_context_size = 1048576
-capabilities = ["thinking", "always_thinking", "image_in", "tool_use"]
-support_efforts = ["low", "high", "max"]
-default_effort = "high"
-
-[thinking]
-enabled = true
-effort = "high"
-
-[secondary_model]
-default_model = "k3"
-default_effort = "high"
-force = true
-`, { mode: 0o600 });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    if (process.argv[2] === 'check') {
-      await checkKimiQuota();
-    } else if (process.argv[2] === 'review') {
-      prepareKimi(process.env.KIMI_CODE_HOME);
-      if (!process.env.REVIEW_PROMPT || !process.env.REVIEW_REPORT) throw new Error("Review prompt/report paths are missing");
-      await runReview("kimi", {
-        provider: "Kimi",
-        prompt: readFileSync(process.env.REVIEW_PROMPT, "utf8"),
-        reportPath: process.env.REVIEW_REPORT,
-      });
-    } else {
-      throw new Error('Expected check or review');
-    }
-  } catch (error) {
-    let safe = error.message;
-    for (const key of ['KIMI_API_KEY', 'GITHUB_TOKEN', 'QODER_PERSONAL_ACCESS_TOKEN']) {
-      if (process.env[key]) safe = safe.replaceAll(process.env[key], '[REDACTED]');
-    }
-    safe = safe.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
-    console.log(`::error::Kimi review: ${safe}`);
+    await checkKimiQuota();
+  } catch {
+    // Do not log provider payloads, credentials, or raw network exceptions.
+    console.error('::error::OCR quota preflight failed; check KIMI_API_KEY and API connectivity.');
     process.exitCode = 1;
   }
 }

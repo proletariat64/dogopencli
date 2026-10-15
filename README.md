@@ -976,18 +976,22 @@ bootstrap 仅证明 Chrome/CDP 可用，不代表已登录。人工 SSO 由 `log
 运行完整检查；功能分支通过 PR 验证，避免同一 PR 再运行一次分支 push CI。
 同一 PR 或引用的新运行会取消过期运行。
 
-AI 审查由 `qoder-auto-review.yml` 串行选择 CLI：先检查 Qoder credits，
-仅在预检或审查执行中明确额度耗尽时回退 Kimi。Kimi 通过同一 Coding API
-的 `/usages` 做无模型请求的额度检查；额度耗尽或未知时跳过，认证、配置、
-网络和普通限流错误仍使检查失败。不会用额外钱包余额绕过已耗尽的订阅额度。
-Kimi CLI 固定 `2.1.1`、模型 `k3`、thinking effort `high`，主审查和子任务
-保持相同配置。两条路径读取同一[审查提示词](docs/agents/ai-review.md)和 PR diff，
-返回相同 JSON 格式并保留 Qoder 的四段 Summary 模板。CLI 只做分析，不接
-GitHub MCP；工作流通过 `gh api` 统一发布行内评论和最终 review，发布前验证
-当前 PR head、评论文件与变更行，重跑时按 commit 标记避免重复发布。
-需要 repository secrets `QODER_PERSONAL_ACCESS_TOKEN` 和 `KIMI_API_KEY`。
-运行日志与 Actions Summary 区分 completed 和 skipped；额度守卫通过不代表
-AI 审查已执行，也不代表测试或生产 UAT 通过。
+AI 审查由 `.github/workflows/ocr-review.yml` 在同仓库 PR 打开、更新和重新打开时
+运行；纯 `docs/**` 变更跳过。直接使用官方 `alibaba/open-code-review@main` Action，
+默认安装最新版 OCR，并由 Action 管理配置、JSON 输出、评论发布和日志 artifact。
+Kimi Code 的 OpenAI-compatible endpoint 为
+`https://api.kimi.com/coding/v1/chat/completions`，模型 `k3`，
+`llm_reasoning_effort: high`，密钥复用 repository secret `KIMI_API_KEY`。
+设置 `llm_extra_body: '{}'` 以覆盖 Action 默认关闭 thinking 的行为，保留 K3 推理。
+其他输入保持官方默认：review effort 为 `medium`，sticky summary 开启，
+`stream_progress` 关闭；Action 内部使用 `--format json --audience agent`。
+官方 Action 不提供命名 provider 输入，因此通过 `with` 直接连接 Kimi Code，
+不再自行配置本地命名 provider `kimicode`。
+
+启动 OCR 前通过 `/usages` 检查订阅额度；额度耗尽或未知时跳过，认证、配置、
+网络和普通限流错误仍使检查失败，不用钱包余额绕过订阅限制。
+Qoder/Kimi CLI review 和 Qoder Assistant 工作流已移除；现有 Qoder secret 不再使用。
+额度检查通过不代表审查已执行，AI review 不替代 Python CI 或生产 UAT。
 
 业务插件位于 `src/dogopencli/plugins/payment/`、`src/dogopencli/plugins/collection/`
 与 `src/dogopencli/plugins/liquidity/`；

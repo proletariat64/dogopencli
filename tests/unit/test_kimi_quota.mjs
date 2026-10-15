@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { checkKimiQuota, KIMI_BASE_URL, kimiQuotaDecision, prepareKimi } from '../../scripts/kimi_review.mjs';
-import { runReview } from '../../scripts/qoder_review.mjs';
+import { checkKimiQuota, KIMI_BASE_URL, kimiQuotaDecision } from '../../scripts/kimi_quota.mjs';
 
 delete process.env.GITHUB_OUTPUT;
 delete process.env.GITHUB_STEP_SUMMARY;
@@ -82,50 +81,33 @@ test('usage preflight sends only a bounded usage GET, and keeps auth/network err
   }
 });
 
-test('Kimi config uses k3/high for primary and children without GitHub MCP or stored keys', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'kimi-resources-'));
-  try {
-    const home = join(dir, 'home');
-    prepareKimi(home);
-    const config = readFileSync(join(home, 'config.toml'), 'utf8');
-    assert.match(config, /model = "k3"/);
-    assert.match(config, /\[thinking\]\nenabled = true\neffort = "high"/);
-    assert.match(config, /\[secondary_model\]\ndefault_model = "k3"\ndefault_effort = "high"\nforce = true/);
-    assert.match(config, /api_key_env = "KIMI_API_KEY"/);
-    assert.equal(existsSync(join(home, 'mcp.json')), false);
-    assert.throws(() => prepareKimi(), /KIMI_CODE_HOME is missing/);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
-
-test('Kimi CLI receives model/prompt without incompatible auto flag; quota vs errors stay separate', async t => {
+test('preflight outputs start OCR only for available quota and records explicit skips', async t => {
   t.mock.method(console, 'log', () => {});
-  const dir = mkdtempSync(join(tmpdir(), 'kimi-runner-'));
-  const oldOutput = process.env.GITHUB_OUTPUT;
-  process.env.GITHUB_OUTPUT = join(dir, 'output');
-  const executable = join(dir, 'fake-kimi');
-  const fake = body => writeFileSync(executable, `#!/usr/bin/env node\n${body}\n`, { mode: 0o700 });
-  const options = { provider: 'Kimi', prompt: 'exact shared review prompt' };
+  const dir = mkdtempSync(join(tmpdir(), 'ocr-quota-'));
+  const names = ['KIMI_API_KEY', 'GITHUB_OUTPUT', 'GITHUB_STEP_SUMMARY'];
+  const saved = names.map(name => process.env[name]);
+  process.env.KIMI_API_KEY = 'test-key';
   try {
-    fake(`const assert = require('node:assert/strict');
-      assert.deepEqual(process.argv.slice(2), ['--model','k3','--output-format','stream-json','-p','exact shared review prompt']);
-      console.log(JSON.stringify({role:'assistant',content:'Review submitted.'}));`);
-    await runReview(executable, options);
-    assert.match(readFileSync(process.env.GITHUB_OUTPUT, 'utf8'), /status=completed/);
-    fake('console.error("quota is exhausted"); process.exitCode=1;');
-    await runReview(executable, options);
-    assert.match(readFileSync(process.env.GITHUB_OUTPUT, 'utf8'), /quota_state=exhausted/);
-    fake('console.error("HTTP 429 rate limit exceeded"); process.exitCode=1;');
-    await assert.rejects(runReview(executable, options), /HTTP 429/);
-    fake('console.error("invalid API key"); process.exitCode=1;');
-    await assert.rejects(runReview(executable, options), /invalid API key/);
-    fake('console.log(JSON.stringify({role:"assistant",content:"quota is exhausted"})); process.exitCode=1;');
-    await assert.rejects(runReview(executable, options), /No error details/);
-    fake('console.log(JSON.stringify({role:"tool", content:"sensitive tool response"}));');
-    await assert.rejects(runReview(executable, options), /No error details/);
-    fake('console.log("not json");');
-    await assert.rejects(runReview(executable, options), /No error details/);
+    for (const [state, payload] of [
+      ['available', { usages: { limit_5h: { used_ratio: 0.1 } } }],
+      ['exhausted', { usages: { limit_5h: { used_ratio: 1 } } }],
+      ['unknown', {}],
+    ]) {
+      process.env.GITHUB_OUTPUT = join(dir, `${state}-output`);
+      process.env.GITHUB_STEP_SUMMARY = join(dir, `${state}-summary`);
+      await checkKimiQuota(async () => new Response(JSON.stringify(payload)));
+      const output = readFileSync(process.env.GITHUB_OUTPUT, 'utf8');
+      assert.match(output, new RegExp(`quota_state=${state}\\n`));
+      assert.match(output, new RegExp(`run_review=${state === 'available'}\\n`));
+      const summary = readFileSync(process.env.GITHUB_STEP_SUMMARY, 'utf8');
+      assert.match(summary, /OCR review:/);
+      if (state !== 'available') assert.match(summary, /\*\*skipped\*\*.*no review was started/);
+      assert.ok(!summary.includes('test-key'));
+    }
   } finally {
-    if (oldOutput === undefined) delete process.env.GITHUB_OUTPUT; else process.env.GITHUB_OUTPUT = oldOutput;
+    names.forEach((name, i) => {
+      if (saved[i] === undefined) delete process.env[name]; else process.env[name] = saved[i];
+    });
     rmSync(dir, { recursive: true, force: true });
   }
 });
