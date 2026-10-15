@@ -1,0 +1,9 @@
+{
+  "rules": [
+    {
+      "path": "**/*",
+      "merge_system_rule": true,
+      "rule": "Report only actionable defects introduced by this change, supported by code evidence, a concrete reachable trigger, and a material impact. Inspect relevant callers, contracts, and existing safeguards before reporting; do not infer missing behavior from a diff fragment alone. Do not generate findings solely for missing tests or assertions, style preferences, optional refactoring, documentation gaps, or speculative future requirements. A test bug that masks a demonstrated implementation defect may be reported with that evidence. Respect the documented scope and explicitly accepted design choices; flag them only when concrete evidence demonstrates a failure within that scope. Consolidate findings with the same root cause into one comment at the best location. Classify each finding by its actual impact and category; do not inflate severity or relabel test/style suggestions as bugs to bypass publishing policy. If no supported defect is found, return no findings. Passing checks and prior reviews are context, not proof that the change is correct."
+    }
+  ]
+}

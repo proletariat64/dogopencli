@@ -57,3 +57,16 @@ jobs:
           llm_reasoning_effort: high
           # Override the Action's thinking-disabled default to keep K3 reasoning.
           llm_extra_body: '{}'
+          rule: .opencodereview/rule.json
+          background: |
+            Dogopencli is an inquiry-only CLI for one person on one machine.
+            Accepted CI choices: track the official OCR Action at main, use the
+            fixed Kimi Code endpoint, skip exhausted or unknown quota, and fail
+            on authentication, configuration, or network errors. These choices
+            alone are not defects; report concrete failures in their implementation.
+            PR title: ${{ github.event.pull_request.title }}
+            PR description: ${{ github.event.pull_request.body }}
+          route_categories: 'test,style,documentation,maintainability'
+          route_severity_below: 'low'
+          sticky_summary: 'true'
+          checkpoint_range: 'true'

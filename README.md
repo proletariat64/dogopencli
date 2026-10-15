@@ -983,7 +983,11 @@ Kimi Code 的 OpenAI-compatible endpoint 为
 `https://api.kimi.com/coding/v1/chat/completions`，模型 `k3`，
 `llm_reasoning_effort: high`，密钥复用 repository secret `KIMI_API_KEY`。
 设置 `llm_extra_body: '{}'` 以覆盖 Action 默认关闭 thinking 的行为，保留 K3 推理。
-其他输入保持官方默认：review effort 为 `medium`，sticky summary 开启，
+审查规则 `.opencodereview/rule.json` 保留内置语言规则，并要求可验证的缺陷证据；
+不因缺少测试、风格偏好或假设性风险单独生成 finding。低严重度及 test、style、
+documentation、maintainability 类别进入 sticky summary，其他问题保留行内发布。
+开启 checkpoint 增量范围；首次或 checkpoint 失效时完整审查。位置去重与自动解决
+过时线程保持关闭。其他输入保持官方默认：review effort 为 `medium`，
 `stream_progress` 关闭；Action 内部使用 `--format json --audience agent`。
 官方 Action 不提供命名 provider 输入，因此通过 `with` 直接连接 Kimi Code，
 不再自行配置本地命名 provider `kimicode`。
