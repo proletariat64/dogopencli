@@ -71,7 +71,12 @@ test('usage preflight sends only a bounded usage GET, and keeps auth/network err
     for (const status of [401, 403, 429, 500]) {
       await assert.rejects(checkKimiQuota(async () => new Response(JSON.stringify({
         error: { message: 'sensitive test-key; generic rate limit' },
-      }), { status })), new RegExp(`HTTP ${status}`));
+      }), { status })), error => {
+        assert.match(error.message, new RegExp(`HTTP ${status}`));
+        assert.ok(!error.message.includes('test-key'), 'error must not echo the API key');
+        assert.ok(!error.message.includes('sensitive'), 'error must not echo the provider body');
+        return true;
+      });
     }
     await assert.rejects(checkKimiQuota(async () => { throw new Error('network timeout'); }), /network timeout/);
     delete process.env.KIMI_API_KEY;
