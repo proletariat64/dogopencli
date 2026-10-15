@@ -5,6 +5,8 @@ DEV_PYTHON = .venv/bin/python
 
 bootstrap:
 	$(PYTHON) -B scripts/bootstrap.py
+	rtk code-review-graph update --repo "$(CURDIR)" --brief
+	$(DEV_PYTHON) -B scripts/bootstrap_browser.py
 
 test:
 	$(DEV_PYTHON) -m pytest -q --durations=20
