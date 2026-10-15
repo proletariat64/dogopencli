@@ -1,0 +1,67 @@
+name: AI Code Review (OCR)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - 'docs/**'
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ocr-review:
+    # Fork PRs do not receive the repository's Kimi secret.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Test Kimi quota guard
+        run: node --test tests/unit/test_kimi_quota.mjs
+
+      - name: Check Kimi quota before review
+        id: quota
+        timeout-minutes: 2
+        env:
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+        run: node scripts/kimi_quota.mjs
+
+      - name: Run OCR review with Kimi Code
+        if: steps.quota.outputs.run_review == 'true'
+        uses: alibaba/open-code-review@main
+        with:
+          # The Action takes a full endpoint rather than a provider Base URL.
+          llm_url: https://api.kimi.com/coding/v1/chat/completions
+          llm_auth_token: ${{ secrets.KIMI_API_KEY }}
+          llm_model: k3
+          llm_use_anthropic: 'false'
+          llm_reasoning_effort: high
+          # Override the Action's thinking-disabled default to keep K3 reasoning.
+          llm_extra_body: '{}'
+          rule: .opencodereview/rule.json
+          background: |
+            PR title: ${{ github.event.pull_request.title }}
+            PR description: ${{ github.event.pull_request.body }}
+          route_categories: 'test,style,documentation,maintainability'
+          route_severity_below: 'low'
+          sticky_summary: 'true'
+          checkpoint_range: 'true'
