@@ -157,6 +157,30 @@ approval status, version, and strategy display text as separate source facts.
   pagination or equality with a sum of D01 rows. Keep execution gated until
   these semantics are verified.
 
+### Final bounded discovery attempt
+
+A separate native research probe omitted both alias and entity for
+`20261010`–`20261016`, with only `startDate`, `endDate`, `rowStart=0`, and the
+native first-page width. Exactly one request was sent to each endpoint:
+
+| Leaf | Page width | HTTP | Business result | Observed rows |
+| --- | --- | --- | --- | --- |
+| F01 `/dailyForecastList.json` | 10 | 200 | `success=true,totalCount=0` | 0 |
+| F03 `/hourlyMaxForecastList.json` | 24 | 200 | `success=false,errorCode="001"` | No successful list |
+| F04 `/dailyMaxForecastList.json` | 10 | 200 | `success=true,totalCount=0` | 0 |
+
+No rows or candidate account identities were returned, and no broader discovery
+was attempted. The F03 business failure is not a successful empty response.
+These probes do not change the product CLI's required single-account contract.
+
+D03's deployed source was inspected again: the **Intraday Trend- Demands Amount**
+chart uses a single **Expect Value Date**, optional fund-action selection, and
+the direct statistics service in module `25572`. It supplies no authoritative
+interval, timezone, inclusion-status, or missing-slot definition. A graph-first
+knowledge-base lookup followed by a literal check of the Liquidity documents
+found no matching endpoint, `statisticalDate`, intraday chart label, or
+fifteen-minute contract. This bounded search did not resolve D03's semantic gates.
+
 These native observations must be followed by separate public CLI UAT for each
 enabled leaf, including live/refresh/offline behavior, quality metadata, and
 cache publication boundaries. Samples are not universal nullability guarantees
