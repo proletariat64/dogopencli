@@ -16,12 +16,20 @@ function nonnegativeNumber(value) {
 export function kimiQuotaDecision(payload) {
   const ratios = [];
   let invalid = false;
+  let currentWindows = false;
   if (payload?.usages && typeof payload.usages === 'object') {
     for (const name of ['limit_5h', 'limit_7d', 'limit_month_total', 'limit_month_code']) {
       if (payload.usages[name] === undefined) continue;
+      currentWindows = true;
       const ratio = nonnegativeNumber(payload.usages[name]?.used_ratio);
       if (ratio === null) invalid = true; else ratios.push(ratio);
     }
+  }
+  // The current API deliberately includes legacy compatibility fields too.
+  // Its canonical usages windows are authoritative (matching the official client).
+  if (currentWindows) {
+    if (ratios.some(ratio => ratio >= 1)) return 'exhausted';
+    return ratios.length && !invalid ? 'available' : 'unknown';
   }
   // The pinned CLI also handles the earlier usage + limits[].detail contract.
   const rows = [];

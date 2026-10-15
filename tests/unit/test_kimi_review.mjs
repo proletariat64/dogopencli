@@ -35,6 +35,19 @@ test('missing, malformed and partial malformed quota windows never start a revie
   ]) assert.equal(kimiQuotaDecision(payload), 'unknown', JSON.stringify(payload));
 });
 
+test('current quota windows take precedence over legacy remaining-only compatibility fields', () => {
+  const payload = {
+    usage: { used: 0, limit: 0, remaining: 0 },
+    limits: [{ detail: { limit: 100, remaining: 90 } }],
+    usages: { limit_5h: { used_ratio: 0.1 }, limit_7d: { used_ratio: 0.2 } },
+  };
+  assert.equal(kimiQuotaDecision(payload), 'available');
+  payload.usages.limit_7d.used_ratio = 1;
+  assert.equal(kimiQuotaDecision(payload), 'exhausted');
+  payload.usages.limit_7d.used_ratio = null;
+  assert.equal(kimiQuotaDecision(payload), 'unknown');
+});
+
 test('usage preflight sends only a bounded usage GET, and keeps auth/network errors red', async t => {
   t.mock.method(console, 'log', () => {});
   const oldKey = process.env.KIMI_API_KEY;
