@@ -111,6 +111,10 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
                 gmtModified="null",
                 bankAccountFlowDateSourceType="null",
             )
+    if item.projection == "account_demands_intraday":
+        from .account_intraday import FIELDS
+
+        fields = dict.fromkeys(FIELDS, "str")
     if item.projection == "account_strategies":
         from .account_strategies import FIELDS
 
@@ -120,6 +124,10 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
 
         fields = SOURCE_FIELDS.get(item.endpoint, fields)
     schema = _field_schema(fields)
+    if item.projection == "account_demands_intraday":
+        schema["required"] = ["statisticalDate"]
+        for field in ("inflowAmount", "outflowAmount", "totalAmount"):
+            schema["properties"][field]["type"] = ["string", "null"]
     if item.schema_version == "access-lists-v1":
         properties = schema["properties"]
         meanings = {
@@ -707,6 +715,7 @@ def _list_description(node: BizNode) -> dict[str, Any]:
                     "account_demands",
                     "account_cashflows",
                     "account_t3",
+                    "account_demands_intraday",
                     "account_strategies",
                 }
                 else "2026-10-15"

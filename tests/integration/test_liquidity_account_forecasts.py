@@ -293,7 +293,6 @@ def test_demands_native_zero_offset_echo_remains_supported(setup, run_cli):
         "account_t0",
         "account_hours_max",
         "account_daily_max",
-        "account_demands_intraday",
     ],
 )
 def test_unqualified_sources_are_discoverable_but_never_execute(setup, run_cli, leaf):

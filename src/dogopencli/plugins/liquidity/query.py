@@ -167,7 +167,10 @@ def resolve_online_scope(leaf, args):
     values = provided(args, scope_flags(leaf))
     from .account_forecasts import CONTEXT_PATHS
 
-    if leaf.path in CONTEXT_PATHS:
+    if leaf.path in CONTEXT_PATHS or leaf.path == (
+        "forecast",
+        "account_demands_intraday",
+    ):
         # Validate every explicit input before opening any directory or browser.
         resolved = leaf.resolve(values)
         from .account_context import resolve_account_context
@@ -371,6 +374,15 @@ def _offline_selection(args, leaf, variant, context, records):
         ),
         explicit,
     )
+    if variant.projection == "account_demands_intraday":
+        from .account_forecasts import validate_account_query
+        from .account_intraday import validate_query
+
+        validate_account_query(normalized)
+        if "startDate" in normalized or "endDate" in normalized:
+            validate_query(normalized)
+        covered = all(source.get(field) == value for field, value in normalized.items())
+        return (records if covered else [], explicit, covered, requested_window)
     mapping = {entry[0]: entry[1] for entry in variant.filters}
     mapping.update(
         {

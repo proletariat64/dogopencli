@@ -39,6 +39,8 @@ from .access_lists import ACCESS_LISTS
 from .account_capacity import ACCOUNT_CAPACITY, validate_capacity_query
 from .account_forecasts import ACCOUNT_LISTS, ACCOUNT_PATHS, validate_account_query
 from .account_forecasts import PENDING as ACCOUNT_PENDING
+from .account_intraday import INTRADAY
+from .account_intraday import validate_query as validate_intraday_query
 from .account_strategies import ACCOUNT_STRATEGIES
 from .account_strategies import (
     validate_strategy_query as validate_account_strategy_query,
@@ -2543,7 +2545,7 @@ DEFERRED = tuple(item for item in DEFERRED if item.path != (*RULE_STATUS.path, "
 
 LIST_SPECS += ACCESS_LISTS
 DEFERRED += ACCOUNT_PENDING
-LIST_SPECS += ACCOUNT_LISTS
+LIST_SPECS += (*ACCOUNT_LISTS, INTRADAY)
 LIST_SPECS += (ACCOUNT_STRATEGIES,)
 
 
@@ -2665,7 +2667,9 @@ class ListLeaf:
                 request_values["aliasNames"] = sorted(set(request_values["aliasNames"]))
         if variant.projection == "account_strategies":
             validate_account_strategy_query(request_values)
-        if self.path in ACCOUNT_PATHS:
+        if variant.projection == "account_demands_intraday":
+            validate_intraday_query(request_values)
+        if self.path in ACCOUNT_PATHS or self.path == INTRADAY.path:
             validate_account_query(request_values)
         if variant.projection == "funding_demands":
             validate_demand_query(request_values)
