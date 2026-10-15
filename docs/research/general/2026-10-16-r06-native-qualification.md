@@ -1,5 +1,9 @@
 # R06 native inquiry qualification
 
+Observed: 2026-10-16
+Scope: general
+Status: snapshot
+
 Date: 2026-10-16. Scope: issue #191's eight inquiry leaves.
 
 This report records native frontend source inspection and authenticated,
