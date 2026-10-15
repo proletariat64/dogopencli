@@ -72,11 +72,6 @@ jobs:
           llm_extra_body: '{}'
           rule: .opencodereview/rule.json
           background: |
-            Dogopencli is an inquiry-only CLI for one person on one machine.
-            Accepted CI choices: track the official OCR Action at main, use the
-            fixed Kimi Code endpoint, skip exhausted or unknown quota, and fail
-            on authentication, configuration, or network errors. These choices
-            alone are not defects; report concrete failures in their implementation.
             PR context: ${{ fromJSON(steps.context.outputs.result) }}
           route_categories: 'test,style,documentation,maintainability'
           route_severity_below: 'low'
