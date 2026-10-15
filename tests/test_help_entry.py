@@ -41,6 +41,7 @@ def test_python_m_entry_returns_root_json() -> None:
         "liquidity",
         "fx",
         "describe",
+        "prune",
         "auth",
         "login",
         "logout",
