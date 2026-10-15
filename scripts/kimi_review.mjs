@@ -50,6 +50,7 @@ export async function checkKimiQuota(fetchUsage = fetch) {
     redirect: 'error',
   });
   let decision;
+  let unavailableReason = `HTTP ${response.status}`;
   if (response.status === 404) {
     decision = 'unknown';
   } else if (!response.ok) {
@@ -65,11 +66,23 @@ export async function checkKimiQuota(fetchUsage = fetch) {
     let payload;
     try { payload = await response.json(); } catch { payload = null; }
     decision = kimiQuotaDecision(payload);
+    if (decision === 'unknown') {
+      const allowed = new Set(['usage', 'limits', 'usages', 'data', 'result', 'used',
+        'limit', 'remaining', 'detail', 'used_ratio', 'limit_5h', 'limit_7d',
+        'limit_month_total', 'limit_month_code']);
+      const fields = value => value && typeof value === 'object'
+        ? Object.keys(value).filter(key => allowed.has(key)).sort() : [];
+      unavailableReason += `; recognized fields ${JSON.stringify({
+        root: fields(payload), usage: fields(payload?.usage),
+        detail: fields(payload?.limits?.[0]?.detail),
+        data: fields(payload?.data), usages: fields(payload?.usages),
+      })}`;
+    }
   }
   report(decision === 'available' ? 'available' : 'skipped', {
     available: 'Quota available; fallback review can start.',
     exhausted: 'Quota exhausted; no review was started.',
-    unknown: 'Quota unavailable; no review was started.',
+    unknown: `Quota unavailable (${unavailableReason}); no review was started.`,
   }[decision], decision, 'Kimi');
   return decision;
 }
