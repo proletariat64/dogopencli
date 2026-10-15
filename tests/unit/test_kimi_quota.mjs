@@ -63,6 +63,7 @@ test('usage preflight sends only a bounded usage GET, and keeps auth/network err
     assert.equal(calls.length, 1);
     assert.equal(calls[0][0], `${KIMI_BASE_URL}/usages`);
     assert.equal(calls[0][1].headers.Authorization, 'Bearer test-key');
+    assert.equal(calls[0][1].method ?? 'GET', 'GET');
     assert.equal(calls[0][1].body, undefined);
     assert.equal(calls[0][1].redirect, 'error');
     assert.ok(calls[0][1].signal instanceof AbortSignal);
