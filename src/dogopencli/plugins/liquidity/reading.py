@@ -95,6 +95,26 @@ def _public_balance_field(item: spec.ListSpec, field: str) -> str:
 
 
 def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
+    if item.projection in {"account_demands", "account_cashflows", "account_t3"}:
+        from .account_forecasts import CASHFLOW_FIELDS, DEMAND_FIELDS, T3_FIELDS
+
+        names = {
+            "account_demands": DEMAND_FIELDS,
+            "account_cashflows": CASHFLOW_FIELDS,
+            "account_t3": T3_FIELDS,
+        }[item.projection]
+        fields = dict.fromkeys(names, "str")
+        if item.projection == "account_cashflows":
+            fields.update(
+                amount="object",
+                gmtCreate="null",
+                gmtModified="null",
+                bankAccountFlowDateSourceType="null",
+            )
+    if item.projection == "account_strategies":
+        from .account_strategies import FIELDS
+
+        fields = {**dict.fromkeys(FIELDS, "str"), "version": "int"}
     if item.path == ("investment", "interest-rates"):
         from .interest_rates import SOURCE_FIELDS
 
@@ -681,7 +701,15 @@ def _list_description(node: BizNode) -> dict[str, Any]:
             **_source_guide(
                 capability,
                 contract,
-                "2026-10-15"
+                "2026-10-16"
+                if variant.projection
+                in {
+                    "account_demands",
+                    "account_cashflows",
+                    "account_t3",
+                    "account_strategies",
+                }
+                else "2026-10-15"
                 if variant.schema_version == "access-lists-v1"
                 else "2026-10-06"
                 if variant.projection == "rule_status"

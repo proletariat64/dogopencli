@@ -399,6 +399,38 @@ NODES = build_catalog(
             if node.handler not in (None, "cmd_liquidity_unsupported")
             and (node.path[-1] == "list" or node.path == ("fx", "trade"))
         ),
+        BizNode(("prune",), "Prune temporary query caches."),
+        BizNode(("prune", "liquidity"), "Prune R06 liquidity query caches."),
+        BizNode(("prune", "liquidity", "forecast"), "Prune account forecast caches."),
+        BizNode(("prune", "liquidity", "operations"), "Prune account strategy caches."),
+        *(
+            BizNode(
+                ("prune", *node.path[:-1]),
+                "Delete this R06 leaf's temporary cache; idempotent and offline.",
+                handler="cmd_liquidity_unsupported"
+                if node.handler == "cmd_liquidity_unsupported"
+                else "cmd_prune",
+                effects={
+                    "mutates": True,
+                    "network": False,
+                    "browser_required": False,
+                    "destructive": True,
+                },
+            )
+            for node in command_nodes()
+            if node.handler in {"cmd_liquidity_list", "cmd_liquidity_unsupported"}
+            and node.path[-2]
+            in {
+                "account_t0",
+                "account_hours_max",
+                "account_daily_max",
+                "account_demands_intraday",
+                "account_t3",
+                "account_demands",
+                "account_cashflows",
+                "account_strategies",
+            }
+        ),
         BizNode(("refresh", "fx"), "Refresh FX temporary query caches."),
         replace(
             TRADE_NODE,

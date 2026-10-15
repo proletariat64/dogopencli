@@ -21,6 +21,45 @@ from dogopencli.plugins.liquidity.leaves import (
 )
 from dogopencli.transport import OriginMetadata, TransportResponse
 
+
+@pytest.mark.parametrize("bounds", [{"deadline": -1.0}, {"budget_seconds": -1.0}])
+def test_account_collection_obeys_expired_explicit_bounds(bounds):
+    from dogopencli.plugins.liquidity.account_forecasts import ACCOUNT_DEMANDS
+
+    fake = FakeQueryTransport(lambda body: {})
+    with pytest.raises(CliError) as caught:
+        collect_liquidity_scope(
+            LiquidityListCapability(ACCOUNT_DEMANDS), fake, "", **bounds
+        )
+    assert caught.value.code == "TIMEOUT"
+    assert fake.requests == []
+
+
+@pytest.mark.parametrize(
+    ("bounds", "expected_deadline"),
+    [
+        ({}, 1900.0),
+        ({"budget_seconds": 10.0}, 110.0),
+        ({"deadline": 105.0, "budget_seconds": 999.0}, 105.0),
+    ],
+)
+def test_account_collection_keeps_default_and_explicit_budgets(
+    monkeypatch, bounds, expected_deadline
+):
+    from dogopencli.plugins.liquidity import collect as liquidity_collect
+    from dogopencli.plugins.liquidity.account_strategies import ACCOUNT_STRATEGIES
+
+    monkeypatch.setattr(liquidity_collect.time, "monotonic", lambda: 100.0)
+    fake = FakeQueryTransport(
+        lambda body: {"success": True, "data": {"data": [], "totalCount": 0}}
+    )
+    result = collect_liquidity_scope(
+        LiquidityListCapability(ACCOUNT_STRATEGIES), fake, "", **bounds
+    )
+    assert result.complete
+    assert result.deadline == expected_deadline
+
+
 ORIGIN = OriginMetadata(
     backend="cdp",
     simulated=False,

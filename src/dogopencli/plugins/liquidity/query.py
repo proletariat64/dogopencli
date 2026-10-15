@@ -85,6 +85,7 @@ def _emit_window(
         if variant is not None and variant.path == ("cash", "accounts"):
             error.meta = {**meta, **(error.meta or {})}
         raise
+    meta = account_context_metadata(meta, meta.get("query"))
     if variant is not None and variant.path == ("cash", "balances"):
         daily = variant.endpoint == "/balStatisticalQuery.json"
         window = [export_balance_record(record, daily=daily) for record in window]
@@ -164,6 +165,28 @@ def slot_leaf(leaf):
 
 def resolve_online_scope(leaf, args):
     values = provided(args, scope_flags(leaf))
+    from .account_forecasts import CONTEXT_PATHS
+
+    if leaf.path in CONTEXT_PATHS:
+        # Validate every explicit input before opening any directory or browser.
+        resolved = leaf.resolve(values)
+        from .account_context import resolve_account_context
+        from .capability import encode_scope
+
+        context = resolve_account_context(
+            resolved.request_values["aliasName"],
+            resolved.request_values.get("entity"),
+            resolved.request_values.get("bankId"),
+            cached_accounts=_cached_context_accounts,
+            live_accounts=_live_context_accounts,
+            config_file=config_mod.config_path(),
+        )
+        values.update(entity=context.entity, bank=context.bank)
+        resolved = leaf.resolve(values)
+        request = {**resolved.request_values, "__account_context": context.metadata}
+        return replace(
+            resolved, request_values=request, request_scope=encode_scope(request)
+        )
     any_options = [
         key
         for key, value in values.items()
@@ -207,6 +230,65 @@ def resolve_online_scope(leaf, args):
     return resolved
 
 
+def _cached_context_accounts():
+    from ...result_policy import AcquisitionEvidence
+    from ...temporary_query import read_slot, slot_context
+    from .account_context import AccountDirectory
+    from .unified_accounts import validate_cached_accounts
+
+    accounts = list_leaf(("cash", "accounts"))
+    snapshot, records = read_slot(Cache(load_config().cache_path), slot_leaf(accounts))
+    if snapshot is None:
+        return []
+    context = slot_context(snapshot)
+    variant = next(
+        (v for v in accounts.variants if v.endpoint == context.get("variant")), None
+    )
+    if variant is None:
+        raise CliError(INVALID_RESPONSE, "cash account cache contract is invalid")
+    quality = AcquisitionEvidence.from_record(snapshot.acquisition)
+    validate_cached_accounts(records, quality)
+    _validate_cached_rows(accounts, variant, context, records)
+    from ...result_policy import evaluate_result
+
+    meta = quality.meta()
+    meta["warnings"] = list(evaluate_result(quality, mode="cache").warnings)
+    return AccountDirectory(records, meta)
+
+
+def _live_context_accounts():
+    accounts = list_leaf(("cash", "accounts"))
+    resolved = accounts.resolve({})
+    capability = accounts.capability(resolved.spec)
+    with inquiry_session(
+        config_file=config_mod.config_path(), startup_url=capability.page_url
+    ) as session:
+        result = acquire_liquidity_list(session, capability, resolved.request_scope)
+    from ...result_policy import evaluate_result
+    from .account_context import AccountDirectory
+
+    quality = evidence_for(result)
+    meta = quality.meta()
+    meta["warnings"] = list(evaluate_result(quality, mode="live").warnings)
+    return AccountDirectory(result.records, meta)
+
+
+def account_context_metadata(meta, query):
+    """Carry directory provenance and warnings independently of field projection."""
+    context = query.get("__account_context") if isinstance(query, dict) else None
+    if context is not None:
+        meta["account_context"] = context
+        warnings = context.get("warnings", [])
+        meta["warnings"] = [*meta.get("warnings", []), *warnings]
+        for warning in warnings:
+            print(
+                f"warning: {warning['code']}: {warning['message']}; "
+                f"selected={warning.get('selected')}",
+                file=sys.stderr,
+            )
+    return meta
+
+
 def _offline_selection(args, leaf, variant, context, records):
     from .capability import scope_values
 
@@ -222,6 +304,29 @@ def _offline_selection(args, leaf, variant, context, records):
             exit_code=EXIT_USAGE,
         )
     source = context.get("query", {})
+    if variant.projection == "account_strategies":
+        from .account_strategies import strategy_row_matches, validate_strategy_query
+        from .capability import scope_values
+
+        normalized, window = scope_values(variant.scope_options, explicit)
+        validate_strategy_query(normalized)
+        coverage = all(
+            field not in source
+            or set(value if isinstance(value, list) else [value]).issubset(
+                set(
+                    source[field]
+                    if isinstance(source[field], list)
+                    else [source[field]]
+                )
+            )
+            for field, value in normalized.items()
+        )
+        return (
+            [row for row in records if strategy_row_matches(row, normalized)],
+            explicit,
+            coverage,
+            window,
+        )
     selection_meta = context.get("selection")
     if explicit.get("entity") == ["ANY"]:
         if not selection_meta or selection_meta.get("mode") != "ANY":
@@ -275,6 +380,17 @@ def _offline_selection(args, leaf, variant, context, records):
                 "currency": "currency",
             },
             ("forecast", "results"): {"account": "bankAccountAliasName"},
+            ("forecast", "account_t3"): {"account_alias": "aliasName"},
+            ("forecast", "account_cashflows"): {
+                "alias": "bankAccountAliasName",
+                "entity": "entity",
+                "bank": "bankId",
+            },
+            ("forecast", "account_demands"): {
+                "alias": "aliasName",
+                "entity": "entity",
+                "bank": "bankID",
+            },
             ("forecast", "accuracy"): {"account": "bankAccountAliasName"},
             ("operations", "prefunds"): {"status": "status"},
         }.get(leaf.path, {})
@@ -802,7 +918,10 @@ def run_unsupported(args: argparse.Namespace) -> int:
 
     if retired_command(args.command_path):
         raise CliError(UNSUPPORTED_CAPABILITY, retirement_reason(args.command_path))
-    leaf = DEFERRED_BY_PATH.get(args.command_path[1:])
+    path = args.command_path[1:]
+    if args.command_path[0] in {"refresh", "prune"}:
+        path = (*args.command_path[2:], "list")
+    leaf = DEFERRED_BY_PATH.get(path)
     reason = leaf.reason if leaf is not None else "unsupported liquidity leaf"
     raise CliError(
         UNSUPPORTED_CAPABILITY,

@@ -13,7 +13,7 @@ from .cash_balances import selection
 from .collect import acquire_liquidity_list
 from .common import emit, load_config, now
 from .leaves import list_leaf
-from .query import resolve_online_scope, slot_leaf
+from .query import account_context_metadata, resolve_online_scope, slot_leaf
 
 
 def run_refresh_list(args: argparse.Namespace) -> int:
@@ -94,6 +94,7 @@ def run_refresh_list(args: argparse.Namespace) -> int:
         meta["warnings"] = [*meta.get("warnings", []), notice]
     if frozen:
         meta["selection"] = frozen
+    meta = account_context_metadata(meta, resolved.request_values)
     emit(
         {
             "namespace": slot_namespace(slot_leaf(leaf)),

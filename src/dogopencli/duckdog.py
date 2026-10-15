@@ -59,3 +59,67 @@ def resolve_selector(
     # Source collations can consider differently cased IDs equal. Order native
     # strings explicitly so ties never depend on relation scan order.
     return sorted(values)
+
+
+class AccountSourceUnavailable(Exception):
+    """An optional account source is absent, rather than broken."""
+
+
+def read_account_records(*, config_file: Path | None = None) -> list[dict]:
+    """Read only the registered cash-account ownership columns, in source order.
+
+    No database, relation or SQL is accepted from callers. Missing optional
+    configuration/dependency is distinct from failure of configured storage.
+    """
+    from .config import config_path, tomllib
+
+    location = config_file if config_file is not None else config_path()
+    try:
+        document = tomllib.loads(location.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise AccountSourceUnavailable("duckdog is not configured") from error
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise _error("duckdog requires a readable valid configuration") from error
+    if "duckdog" not in document:
+        raise AccountSourceUnavailable("duckdog is not configured")
+    configuration = load_duckdog(location)
+    relation = configuration.selectors.get("liquidity/cash/accounts")
+    if relation is None:
+        raise AccountSourceUnavailable(
+            "duckdog cash accounts selector is not configured"
+        )
+    if not configuration.path.is_file():
+        raise _error("duckdog database is missing; configure an existing database")
+    try:
+        import duckdb
+    except ImportError as error:
+        raise AccountSourceUnavailable(
+            "optional dogopencli[duckdog] is not installed"
+        ) from error
+    try:
+        with duckdb.connect(str(configuration.path), read_only=True) as connection:
+            cursor = connection.execute(f"SELECT * FROM {_quote(relation)} LIMIT 0")
+            available = {column[0] for column in cursor.description}
+            columns = [
+                name for name in ("aliasName", "bankId", "instId") if name in available
+            ]
+            if not columns:
+                raise _error("duckdog cash accounts has no native ownership columns")
+            projection = ", ".join(_quote(name) for name in columns)
+            rows = connection.execute(
+                f"SELECT {projection} FROM {_quote(relation)} LIMIT 100001"
+            ).fetchall()
+    except duckdb.Error as error:
+        raise _error(
+            "duckdog cash accounts cannot be read; check database and relation"
+        ) from error
+    if len(rows) > 100000:
+        raise _error("duckdog cash accounts exceeds the 100000-record read budget")
+    records = []
+    for values in rows:
+        if any(value is not None and not isinstance(value, str) for value in values):
+            raise _error(
+                "duckdog cash accounts contains malformed native ownership fields"
+            )
+        records.append(dict(zip(columns, values, strict=True)))
+    return records

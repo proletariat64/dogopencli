@@ -253,6 +253,10 @@ class LiquidityListCapability:
         """One verified request body for the offset starting at row_start."""
         refuse_retired(self._spec.path)
         values = decode_scope(scope)
+        if self._spec.projection == "account_strategies":
+            from .account_strategies import validate_strategy_query
+
+            validate_strategy_query(values)
         if self._spec.projection == "funding_demands" and (
             row_start != 0 or page_size not in (None, self._spec.page_size)
         ):
@@ -400,6 +404,20 @@ class LiquidityListCapability:
 
     def validate_rows_scope(self, rows: list[dict[str, Any]], scope: str) -> None:
         """Reject out-of-scope rows before live output or publication."""
+        if self._spec.projection == "account_strategies":
+            from .account_strategies import validate_strategy_rows_scope
+
+            validate_strategy_rows_scope(rows, decode_scope(scope))
+        if self._spec.projection in {
+            "account_demands",
+            "account_cashflows",
+            "account_t3",
+        }:
+            from .account_forecasts import validate_account_record_scope
+
+            validate_account_record_scope(
+                self._spec.projection, rows, decode_scope(scope)
+            )
         if self._spec.schema_version == "access-lists-v1":
             from .access_lists import BANK_BLACKLIST, latest_bank_rows
 

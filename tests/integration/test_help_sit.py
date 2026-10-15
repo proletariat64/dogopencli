@@ -21,6 +21,7 @@ ROOT_CHILDREN = [
     "liquidity",
     "fx",
     "describe",
+    "prune",
     "auth",
     "login",
     "logout",

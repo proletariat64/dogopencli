@@ -2,6 +2,17 @@
 
 ## 未发布
 
+规格 #191 / R06：新增 `forecast account_t3`、`forecast account_demands`、
+`forecast account_cashflows` 与 `operations account_strategies` 四个只读列表。
+在线账户及日期显式校验；需求与现金流可依次从已配置 duckdog、现金账户缓存及
+在线目录补齐缺失归属，保留来源、歧义及目录质量。离线不查目录；策略七项条件
+原生下推，不接受 status，保留默认视图中的 Invalid 行和原生版本。
+各叶采用独立临时槽；固定原生页宽、有限预算及空尾页证明与展示窗口分开。
+支持 list/live、refresh 和根 prune；空刷新及硬失败保留旧非空结果。
+`account_t0`、`account_hours_max`、`account_daily_max` 缺独立非空资格化，
+`account_demands_intraday` 缺区间、时区及纳入状态合同，继续可发现但不执行。
+四叶实现不代表整单八叶完成；本地检查、原生研究及生产 CLI UAT 分别记录。
+
 银行黑名单补齐 #168/#176：以 bankId 识别银行，同银行保留 gmtCreate 较晚的完整行，
 同时间冲突及无效时间拒绝。选择发生在本地过滤前；保留原生报数、到达行数和所选银行数，
 原始分页覆盖可证明时允许严格完整结果。新增执行 list/refresh/prune 及独立临时槽；

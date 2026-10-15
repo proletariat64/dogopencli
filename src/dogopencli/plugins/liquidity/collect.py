@@ -36,6 +36,19 @@ def collect_liquidity_scope(
     progress: Callable[[int, int], None] | None = None,
 ) -> CollectedScope:
     """Collect one liquidity scope with its declared pagination style."""
+    if capability.descriptor.projection in {
+        "account_demands",
+        "account_cashflows",
+        "account_t3",
+        "account_strategies",
+    }:
+        from .account_collection import collect_account_list
+
+        if deadline is None and budget_seconds is not None:
+            deadline = time.monotonic() + budget_seconds
+        return collect_account_list(
+            capability, transport, scope, deadline=deadline, progress=progress
+        )
     budget = (
         collect_mod.REFRESH_BUDGET_SECONDS if budget_seconds is None else budget_seconds
     )

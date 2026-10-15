@@ -91,7 +91,8 @@ def test_full_tree_missing_cache_is_success_and_never_creates_files(
     assert "dogopencli payment channel list" in by_path
     assert "dogopencli liquidity cash balances list" in by_path
     unsupported = [leaf for leaf in items if leaf["availability"] == "unsupported"]
-    assert len(unsupported) == 59  # 33 deferred plus 13 retired list/refresh pairs.
+    # 33 deferred, four gated R06 leaves, plus 13 retired list/refresh pairs.
+    assert len(unsupported) == 63
     bank_blacklist = by_path["dogopencli liquidity reference blacklist bank list"]
     assert bank_blacklist["availability"] == "supported"
     assert (

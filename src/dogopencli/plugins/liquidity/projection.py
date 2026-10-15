@@ -1037,6 +1037,14 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
 
 def project_record(name: str, row: dict[str, Any]) -> dict[str, Any]:
     """Project one native row into the named settings/runtime schema."""
+    if name == "account_strategies":
+        from .account_strategies import project_strategy
+
+        return project_strategy(row)
+    if name in {"account_demands", "account_cashflows", "account_t3"}:
+        from .account_forecasts import project_account_record
+
+        return project_account_record(name, row)
     projector = _PROJECTORS.get(name)
     if projector is None:
         raise CliError(INVALID_ARGUMENT, f"unknown projection: {name}")
