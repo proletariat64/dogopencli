@@ -127,6 +127,43 @@ def test_duckdog_first_match_warning_survives_projection_and_offline(setup, run_
     assert len(setup.state.business_requests) == requests
 
 
+@pytest.mark.parametrize("mode", ["live", "cache"])
+@pytest.mark.parametrize("fields", [[], ["--fields", "id"]])
+def test_partial_result_keeps_acquisition_and_account_ambiguity_warnings(
+    setup, run_cli, mode, fields
+):
+    setup.state.business_handler = demands_handler()
+    assert run_cli(["refresh", *ROOT, *EXPLICIT, *DATES])[0] == 0
+    configure_accounts(
+        setup, [("SYN-A", "SYN-E", "SYN-B"), ("SYN-A", "OTHER", "OTHER")]
+    )
+    setup.state.business_handler = lambda payload, index: {
+        "status": 200,
+        "body": {
+            "success": True,
+            "data": {
+                "data": [demand()] if payload["rowStart"] == 0 else [],
+                "totalCount": 2,
+            },
+        },
+    }
+    if mode == "cache":
+        assert run_cli(["refresh", *ROOT, "--alias", "SYN-A", *DATES])[0] == 0
+        (setup.tmp_path / "accounts.duckdb").unlink()
+        setup.state.reachable = False
+    before = setup.cache_path.read_bytes()
+    flags = ["--live", "--alias", "SYN-A", *DATES] if mode == "live" else []
+    code, out, err = run_cli([*ROOT, "list", *flags, *fields])
+    assert code == 0, err
+    result = parse(out)
+    assert result["data"] == ([{"id": "D1"}] if fields else [demand()])
+    assert result["meta"]["complete"] is False
+    for warning in ("INCOMPLETE_RESULT", "ACCOUNT_CONTEXT_MULTIPLE_MATCHES"):
+        assert warning in err
+        assert any(item["code"] == warning for item in result["meta"]["warnings"])
+    assert setup.cache_path.read_bytes() == before
+
+
 def test_cash_cache_precedes_online_directory_and_does_not_publish_live(setup, run_cli):
     row = {**account_row("SYN-A"), "instId": "SYN-E", "bankId": "SYN-B"}
     setup.state.business_handler = accounts_handler([row])

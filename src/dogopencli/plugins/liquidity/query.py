@@ -76,7 +76,6 @@ def _emit_window(
 
         meta.update(metadata(variant))
     try:
-        meta = account_context_metadata(meta, meta.get("query"))
         meta = prepare_result(
             meta,
             require_complete=args.require_complete,
@@ -86,6 +85,7 @@ def _emit_window(
         if variant is not None and variant.path == ("cash", "accounts"):
             error.meta = {**meta, **(error.meta or {})}
         raise
+    meta = account_context_metadata(meta, meta.get("query"))
     if variant is not None and variant.path == ("cash", "balances"):
         daily = variant.endpoint == "/balStatisticalQuery.json"
         window = [export_balance_record(record, daily=daily) for record in window]
@@ -320,7 +320,7 @@ def _offline_selection(args, leaf, variant, context, records):
                 )
             )
             for field, value in normalized.items()
-        ) and all(field in normalized for field in source)
+        )
         return (
             [row for row in records if strategy_row_matches(row, normalized)],
             explicit,

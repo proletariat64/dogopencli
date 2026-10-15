@@ -204,6 +204,33 @@ def test_offline_membership_or_and_and_scope_coverage(setup, run_cli):
     assert len(setup.state.business_requests) == requests
 
 
+@pytest.mark.parametrize(
+    "local_flags",
+    [[], ["--currency", "USD"], ["--operation-strategy", "SELF_BUILD_CASH_POOL"]],
+)
+def test_complete_filtered_snapshot_replays_without_repeating_source_scope(
+    setup, run_cli, local_flags
+):
+    install(setup, [strategy()])
+    code, out, err = run_cli(
+        ["refresh", *ROOT, "--alias", "SYN-A", "--require-complete"]
+    )
+    assert code == 0, err
+    source_scope = parse(out)["meta"]["scope"]
+    before = setup.cache_path.read_bytes()
+    requests = len(setup.state.business_requests)
+    setup.state.reachable = False
+    code, out, err = run_cli([*ROOT, "list", "--require-complete", *local_flags])
+    assert code == 0, err
+    result = parse(out)
+    assert result["data"] == [strategy()]
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["requested_scope_covered"] is True
+    assert result["meta"]["scope"] == source_scope
+    assert len(setup.state.business_requests) == requests
+    assert setup.cache_path.read_bytes() == before
+
+
 def test_filtered_snapshot_does_not_cover_broader_native_scope(setup, run_cli):
     install(setup, [strategy()])
     code, out, err = run_cli(["refresh", *ROOT, "--alias", "SYN-A"])
