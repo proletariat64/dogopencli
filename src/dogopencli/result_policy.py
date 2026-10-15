@@ -10,6 +10,8 @@ from typing import Any
 
 from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
 
+BANK_ROW_OCCURRENCES = "bank_row_occurrences_latest_gmtCreate"
+
 
 @dataclass(frozen=True)
 class AcquisitionEvidence:
@@ -193,7 +195,8 @@ class AcquisitionEvidence:
             )
             or (
                 evidence.scope_complete
-                and evidence.total_semantics != "quote_date_groups"
+                and evidence.total_semantics
+                not in ("quote_date_groups", BANK_ROW_OCCURRENCES)
                 and evidence.reported_total is not None
                 and evidence.collected_total != evidence.reported_total
             )
@@ -203,6 +206,36 @@ class AcquisitionEvidence:
             )
         ):
             raise CliError(INVALID_RESPONSE, "cached acquisition evidence conflicts")
+        if evidence.total_semantics == BANK_ROW_OCCURRENCES:
+            selections = [
+                item
+                for item in attempts
+                if item.get("contract") == "bank-blacklist-latest-gmtCreate-v1"
+            ]
+            if (
+                evidence.reported_total is None
+                or evidence.arrivals is None
+                or evidence.arrivals > evidence.reported_total
+                or evidence.unique_count is None
+                or evidence.duplicate_count is None
+                or evidence.dataset_complete is not evidence.scope_complete
+                or (
+                    evidence.scope_complete
+                    and evidence.arrivals != evidence.reported_total
+                )
+                or len(selections) != 1
+                or type(selections[0].get("raw_rows")) is not int
+                or type(selections[0].get("selected_banks")) is not int
+                or selections[0].get("raw_rows") != evidence.arrivals
+                or selections[0].get("selected_banks") != evidence.collected_total
+                or selections[0].get("raw_coverage_complete")
+                is not evidence.scope_complete
+                or bool(evidence.duplicate_count)
+                != ("BANK_LATEST_CREATED_SELECTED" in evidence.reasons)
+            ):
+                raise CliError(
+                    INVALID_RESPONSE, "cached bank selection evidence conflicts"
+                )
         return evidence
 
     def meta(self) -> dict[str, Any]:
@@ -218,6 +251,12 @@ class AcquisitionEvidence:
             if comparable and self.reported_total
             else None
         )
+        if (
+            self.total_semantics == BANK_ROW_OCCURRENCES
+            and self.reported_total is not None
+        ):
+            missing = max(0, self.reported_total - (self.arrivals or 0))
+            ratio = self.arrivals / self.reported_total if self.reported_total else None
         result = {
             "complete": self.scope_complete,
             "dataset_complete": self.dataset_complete,
@@ -271,12 +310,27 @@ def evaluate_result(
         f" reported {evidence.reported_total}); reasons: {', '.join(reasons)}"
     )
     if incomplete or reasons:
+        warning_code = INCOMPLETE_RESULT
+        warning_message = message
+        if not incomplete:
+            if evidence.total_semantics == BANK_ROW_OCCURRENCES:
+                if evidence.duplicate_count:
+                    warning_code = "BANK_LATEST_CREATED_SELECTED"
+                    warning_message = (
+                        "selected latest gmtCreate per bankId; "
+                        f"{evidence.duplicate_count} additional native bank rows"
+                        " omitted"
+                    )
+                else:
+                    warning_code = reasons[0]
+                    warning_message = "bank acquisition warnings: " + ", ".join(reasons)
+            else:
+                warning_code = "DUPLICATE_ROWS"
+                warning_message = "identical duplicate rows removed"
         warnings = (
             {
-                "code": INCOMPLETE_RESULT if incomplete else "DUPLICATE_ROWS",
-                "message": message
-                if incomplete
-                else "identical duplicate rows removed",
+                "code": warning_code,
+                "message": warning_message,
                 "reason_codes": reasons,
                 "retryable": False,
             },

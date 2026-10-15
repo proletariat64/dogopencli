@@ -1,4 +1,4 @@
-"""Verified access-list settings; bank row identity remains unavailable (#176)."""
+"""Verified access-list settings and user-approved latest-created bank selection."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any
 from ... import collect as collect_mod
 from ...errors import INVALID_RESPONSE, CliError
 from ...jsonutil import canonical
-from ...result_policy import AcquisitionEvidence
-from .spec import ENV_RESULT_FLAG, SETTINGS, TENANT, DeferredLeaf, ListSpec
+from ...result_policy import BANK_ROW_OCCURRENCES, AcquisitionEvidence
+from .spec import ENV_RESULT_FLAG, SETTINGS, TENANT, ListSpec
 
 if TYPE_CHECKING:
     from ...collect import CollectedScope
@@ -22,10 +22,12 @@ _NOTES = (
     "Native row offsets, stable overlap and terminal witnesses establish coverage;"
     " source counts alone do not prove completeness.",
     "Native timestamps and raw fields are preserved; capture time is separate.",
-    "Reported total counts native row occurrences; arrivals and unique"
-    " identities are reported independently, with duplicates incomplete.",
     "An observed empty native DTO tntInstId is preserved as unset;"
     " fixed request tenant binds acquisition scope, never a synthesized row value.",
+)
+_UNIQUE_NOTE = (
+    "Reported total counts native row occurrences; arrivals and unique"
+    " identities are reported independently, with duplicates incomplete."
 )
 
 ENTITY_WHITELIST = ListSpec(
@@ -53,7 +55,7 @@ ENTITY_WHITELIST = ListSpec(
         ("status", "status"),
     ),
     table_columns=("instId", "instName", "instCode", "status", "gmtModified"),
-    notes=_NOTES,
+    notes=(*_NOTES, _UNIQUE_NOTE),
 )
 
 ACCOUNT_BLACKLIST = ListSpec(
@@ -86,19 +88,70 @@ ACCOUNT_BLACKLIST = ListSpec(
         ("status", "status"),
     ),
     table_columns=("aliasName", "instId", "bankId", "currency", "status"),
-    notes=_NOTES,
+    notes=(*_NOTES, _UNIQUE_NOTE),
 )
 
-ACCESS_LISTS = (ENTITY_WHITELIST, ACCOUNT_BLACKLIST)
-ACCESS_PATHS = frozenset(item.path for item in ACCESS_LISTS)
-BANK_BLACKLIST = DeferredLeaf(
-    ("reference", "blacklist", "bank", "list"),
-    SETTINGS,
-    "identity-unproven",
-    "Native bank row/version identity remains unproven: conflicting duplicate"
-    " bankId values cannot identify separate native records. No executable"
-    " inquiry, refresh or prune is available until identity is verified (#176).",
+BANK_BLACKLIST = ListSpec(
+    path=("reference", "blacklist", "bank"),
+    kind=SETTINGS,
+    title="bank blacklist settings, latest-created record per bank",
+    endpoint="/bankFilterConfigQuery.json",
+    method="GET",
+    envelope=ENV_RESULT_FLAG,
+    container=("result", "data"),
+    total=("result", "count"),
+    total_checks=(("count",),),
+    require_inner_success=True,
+    identity=("bankId",),
+    page_size=5000,
+    schema_version="access-lists-v1",
+    vo_field="bankFilterConfigQuery",
+    template={
+        "tntInstId": TENANT,
+        "bankFilterConfigQuery": {
+            "tntInstId": TENANT,
+            "timezone": "GMT+08",
+            "currentArea": "2",
+        },
+    },
+    filters=(("bank_id", "bankId"), ("status", "status")),
+    table_columns=("bankId", "bankName", "bankSwiftCode", "status", "gmtCreate"),
+    notes=(
+        *_NOTES,
+        "User-approved bank identity is bankId. Retain the row with greatest"
+        " native gmtCreate (nonnegative integer epoch milliseconds), before"
+        " local filtering. Conflicting equal-time rows fail; identical ties collapse.",
+        "Native reported total and arrivals count source rows; collected_total"
+        " counts selected banks. Completeness requires raw offset/overlap/terminal"
+        " coverage, not equality between native rows and selected bank count.",
+    ),
 )
+ACCESS_LISTS = (ENTITY_WHITELIST, ACCOUNT_BLACKLIST, BANK_BLACKLIST)
+ACCESS_PATHS = frozenset(item.path for item in ACCESS_LISTS)
+
+
+def latest_bank_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Select by business bank identity, preserving first-bank order and raw rows."""
+    selected: dict[str, dict[str, Any]] = {}
+    seen: dict[tuple[str, int], str] = {}
+    for row in rows:
+        bank = row.get("bankId")
+        created = row.get("gmtCreate")
+        if not isinstance(bank, str) or not bank.strip():
+            raise CliError(INVALID_RESPONSE, "bankId must be a nonempty native string")
+        if type(created) is not int or created < 0:
+            raise CliError(
+                INVALID_RESPONSE,
+                "bank gmtCreate must be nonnegative epoch milliseconds",
+            )
+        key = (bank, created)
+        content = canonical(row)
+        if key in seen and seen[key] != content:
+            raise CliError(INVALID_RESPONSE, "conflicting bank rows share gmtCreate")
+        seen[key] = content
+        if bank not in selected or created > selected[bank]["gmtCreate"]:
+            selected[bank] = row
+    return list(selected.values())
 
 
 def collect_access_list(
@@ -128,6 +181,7 @@ def collect_access_list(
     pages = 0
     offset = 0
     coverage = False
+    bank_selection = capability.descriptor.path == BANK_BLACKLIST.path
 
     def budget_available() -> bool:
         if pages >= collect_mod.MAX_PAGES or time.monotonic() >= deadline:
@@ -179,6 +233,8 @@ def collect_access_list(
         if rows and len(rows) < min(width, expected - offset):
             reasons.append("PAGE_SIZE_CAPPED")
         for row in rows:
+            if bank_selection:
+                continue
             key = capability.identity_key(row)
             content = canonical(row)
             if key in seen:
@@ -220,18 +276,48 @@ def collect_access_list(
         else:
             if budget_available():
                 terminal = fetch(expected, 1000, "terminal-witness")
-                coverage = not terminal and len(arrived) == expected == len(ordered)
+                coverage = (
+                    not terminal
+                    and len(arrived) == expected
+                    and (bank_selection or len(ordered) == expected)
+                )
         break
 
-    evidence = AcquisitionEvidence.for_collection(
-        complete=coverage,
-        reported_total=expected,
-        collected_total=len(ordered),
-        arrivals=len(arrived),
-        total_semantics="occurrences",
-        reasons=tuple(dict.fromkeys(reasons)),
-        attempts=tuple(attempts),
-    )
+    if bank_selection:
+        ordered = latest_bank_rows(arrived)
+        omitted = len(arrived) - len(ordered)
+        if omitted:
+            reasons.append("BANK_LATEST_CREATED_SELECTED")
+        attempts.append(
+            {
+                "contract": "bank-blacklist-latest-gmtCreate-v1",
+                "raw_rows": len(arrived),
+                "selected_banks": len(ordered),
+                "raw_coverage_complete": coverage,
+            }
+        )
+        evidence = AcquisitionEvidence(
+            scope_complete=coverage,
+            dataset_complete=coverage,
+            reported_total=expected,
+            collected_total=len(ordered),
+            arrivals=len(arrived),
+            unique_count=len(ordered),
+            duplicate_count=omitted,
+            total_semantics=BANK_ROW_OCCURRENCES,
+            reasons=tuple(dict.fromkeys(reasons)),
+            attempts=tuple(attempts),
+        )
+    else:
+        evidence = AcquisitionEvidence.for_collection(
+            complete=coverage,
+            reported_total=expected,
+            collected_total=len(ordered),
+            arrivals=len(arrived),
+            total_semantics="occurrences",
+            reasons=tuple(dict.fromkeys(reasons)),
+            attempts=tuple(attempts),
+        )
     return CollectedScope(
         records=ordered,
         complete=evidence.scope_complete,

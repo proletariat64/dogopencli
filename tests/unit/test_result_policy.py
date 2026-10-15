@@ -4,10 +4,60 @@ import pytest
 
 from dogopencli.errors import CliError
 from dogopencli.result_policy import (
+    BANK_ROW_OCCURRENCES,
     AcquisitionEvidence,
     evaluate_result,
     prepare_result,
 )
+
+
+def bank_selection_evidence():
+    return AcquisitionEvidence(
+        scope_complete=True,
+        dataset_complete=True,
+        reported_total=3,
+        arrivals=3,
+        collected_total=2,
+        unique_count=2,
+        duplicate_count=1,
+        total_semantics=BANK_ROW_OCCURRENCES,
+        reasons=("BANK_LATEST_CREATED_SELECTED",),
+        attempts=(
+            {
+                "contract": "bank-blacklist-latest-gmtCreate-v1",
+                "raw_rows": 3,
+                "selected_banks": 2,
+                "raw_coverage_complete": True,
+            },
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"arrivals": 2, "duplicate_count": 0},
+        {"reported_total": 4},
+        {"dataset_complete": False},
+        {"attempts": []},
+        {"reasons": []},
+    ],
+)
+def test_bank_selection_cannot_claim_complete_with_bad_native_evidence(change):
+    record = bank_selection_evidence().record()
+    record.update(change)
+    with pytest.raises(CliError):
+        AcquisitionEvidence.from_record(record)
+
+
+def test_bank_selection_roundtrip_keeps_native_counts_and_honest_warning():
+    evidence = AcquisitionEvidence.from_record(bank_selection_evidence().record())
+    decision = evaluate_result(evidence, mode="refresh", require_complete=True)
+    assert decision.publishable and decision.expose_data
+    assert decision.warnings[0]["code"] == "BANK_LATEST_CREATED_SELECTED"
+    assert "identical" not in decision.warnings[0]["message"]
+    assert evidence.meta()["missing_count"] == 0
+    assert evidence.meta()["coverage_ratio"] == 1
 
 
 def test_safe_shortfall_is_usable_and_publishable_but_strictly_rejected():

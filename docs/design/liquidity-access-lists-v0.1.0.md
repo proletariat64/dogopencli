@@ -1,6 +1,6 @@
 # Liquidity whitelist and blacklist inquiries
 
-Authority: [specification #176](https://github.com/proletariat64/dogopencli/issues/176), [delivery tracker #168](https://github.com/proletariat64/dogopencli/issues/168), ADR 0019 and ADR 0020. This source change enables two lists and keeps the third explicitly unavailable. It does not complete acceptance of the three-list requirement or publish a release.
+Authority: [specification #176](https://github.com/proletariat64/dogopencli/issues/176), [delivery tracker #168](https://github.com/proletariat64/dogopencli/issues/168), ADR 0019 and ADR 0020. On 2026-10-15 the user confirmed bank identity as bankId with the greatest native gmtCreate selected. All three lists are executable in this source revision; production acceptance, merge and release remain distinct gates.
 
 ## Commands and identity
 
@@ -8,11 +8,13 @@ Authority: [specification #176](https://github.com/proletariat64/dogopencli/issu
 | --- | --- | --- | --- |
 | `liquidity reference whitelist entity list` | Executable | Nonempty string `instId` | settings |
 | `liquidity reference blacklist account list` | Executable | Nonempty string `aliasName` | settings |
-| `liquidity reference blacklist bank list` | Unavailable: native row/version identity remains unproven | Unresolved | settings |
+| `liquidity reference blacklist bank list` | Executable | bankId; select greatest gmtCreate | settings |
 
 These settings sources are separate from the entity directory, bank directory and composite cash-account list. They use independent named HTTP GET inquiries; no detail, Edit, arbitrary endpoint or JavaScript command is exposed. A list's `id` field is not automatically its native identity. Production observations showed repeated placeholder integer IDs on the entity and account responses. The verified identities above are native object selectors and were checked across the complete same-run records and overlapping pages.
 
-The bank response contained duplicate `bankId` values with differing creation times. A creation timestamp does not establish a version identity. The bank path remains discoverable through help, describe and snapshot inventory, but refuses execution without opening Chrome or changing cache. It has no executable refresh or prune. Enabling it requires a native identity/version contract and independent production acceptance; concatenating a display code with a timestamp is not sufficient proof.
+The bank response contained repeated bankId values with differing creation times. The user-approved business projection selects one complete row per bankId, using the greatest gmtCreate before local filters. It does not claim a native row/version identity or concatenate timestamps into IDs. gmtCreate must be a nonnegative integer epoch-millisecond value; missing, null, boolean, string and negative values fail. All equal-time conflicting content fails, including older ties hidden by a later row. Identical ties collapse. The first observed order of banks remains stable; gmtModified never decides the winner.
+
+Bank reported_total and arrivals retain native row counts; collected_total, unique_count and returned rows refer to selected banks. Additional rows are recorded in duplicate_count and BANK_LATEST_CREATED_SELECTED warns without labelling differing timestamps identical. The bank_row_occurrences_latest_gmtCreate evidence contains raw and selected counts plus the named bank-blacklist-latest-gmtCreate-v1 selection contract. Raw page overlap and terminal witnesses remain mandatory for complete; selecting fewer banks is not a count shortfall when every native row is covered. Incomplete raw acquisition remains incomplete and strict queries reject it. Cached evidence validates the distinction and replays without querying or reselecting source history.
 
 ## Acquisition and filters
 
@@ -30,6 +32,7 @@ All supported filters are exact local matches after acquisition. They do not cha
 | --- | --- |
 | Entity whitelist | `--entity` / `instId`; `--financial-code` / `instCode`; `--status` / `status` |
 | Account blacklist | `--entity` / `instId`; `--bank-id` / `bankId`; `--account-alias` / `aliasName`; `--status` / `status` |
+| Bank blacklist | `--bank-id` / `bankId`; `--status` / selected row's `status` |
 
 Default output retains all statuses, including VALID and INVALID. Status values do not establish whether a configuration is active. Unsupported filters are rejected before browser work. JSON preserves native types, nulls, empty strings, zero values, nested structures and source timestamps. Capture time is separate from modification time.
 
@@ -52,4 +55,4 @@ Each executable leaf owns one temporary SQLite slot. Explicit nonempty refresh a
 
 Native verification used a new dedicated profile and permitted loopback CDP port in the 91xx range, with human SSO and automatic headless handoff. Both page sizes were tested independently. A complete 1000-row pagination run matched the 5000-row response for entity and account sources; small offset-one and offset-ten windows matched the corresponding slices. Both sources retained VALID and INVALID rows. These are dated observations, not permanent totals or guarantees that future scopes cannot change.
 
-Raw evidence, native identifiers, internal page URLs and authentication material remain private. Public CLI production UAT, local synthetic tests and independent code review must be reported separately. Tracker #168 stays open while the bank identity gate remains unresolved. No three-leaf acceptance or release is claimed.
+Raw evidence, native identifiers, internal page URLs and authentication material remain private. Public CLI production UAT, local synthetic tests and independent code review must be reported separately. The original two-leaf delivery was PR #186; its bank identity gate is superseded by the user's explicit selection rule, not retroactively marked passed. Independent bank execution/lifecycle UAT is required before claiming three-leaf acceptance or closing #168/#176. No release is implied.

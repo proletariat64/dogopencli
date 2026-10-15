@@ -35,7 +35,7 @@ from ...helpspec import (
     scope_modes,
     variant_modes,
 )
-from .access_lists import ACCESS_LISTS, BANK_BLACKLIST
+from .access_lists import ACCESS_LISTS
 from .account_capacity import ACCOUNT_CAPACITY, validate_capacity_query
 from .capability import (
     LiquidityDetailCapability,
@@ -2536,7 +2536,6 @@ LIST_SPECS += (RULE_STATUS,)
 DEFERRED = tuple(item for item in DEFERRED if item.path != (*RULE_STATUS.path, "list"))
 
 LIST_SPECS += ACCESS_LISTS
-DEFERRED += (BANK_BLACKLIST,)
 
 
 def _merged_options(variants: tuple[ListSpec, ...]) -> tuple[ScopeOption, ...]:

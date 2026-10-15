@@ -6,7 +6,7 @@ Samples are not
 complete schemas, validation assertions, or nullability guarantees.
 """
 
-from .access_lists import ACCOUNT_BLACKLIST, ENTITY_WHITELIST
+from .access_lists import ACCOUNT_BLACKLIST, BANK_BLACKLIST, ENTITY_WHITELIST
 from .account_capacity import ACCOUNT_CAPACITY
 from .account_capacity import SAMPLED_FIELDS as CAPACITY_FIELDS
 from .decision_list import DECISIONS
@@ -3325,4 +3325,22 @@ SAMPLED_FIELDS[ACCOUNT_BLACKLIST.name] = {
         "str",
     ),
     **dict.fromkeys(_ACCESS_INTS, "int"),
+}
+SAMPLED_FIELDS[BANK_BLACKLIST.name] = {
+    **dict.fromkeys(
+        (
+            "bankId",
+            "bankName",
+            "bankSwiftCode",
+            "cityCode",
+            "country",
+            "processId",
+            "processStatus",
+            "status",
+            "timezone",
+            "tntInstId",
+        ),
+        "str",
+    ),
+    **dict.fromkeys((field for field in _ACCESS_INTS if field != "id"), "int"),
 }

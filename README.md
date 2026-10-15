@@ -337,7 +337,7 @@ Ledger 依据业务确认未使用，不以来源时间久远为理由。已有�
 | `reference entities` | `list` |
 | `reference whitelist entity` | `list`（settings，独立临时槽） |
 | `reference blacklist account` | `list`（settings，独立临时槽） |
-| `reference blacklist bank` | `list` 不可执行：原生行／版本身份未验证（#176） |
+| `reference blacklist bank` | `list`（settings；同 bankId 保留 gmtCreate 较晚记录，独立临时槽） |
 | `risk metrics` | `list` |
 | `risk sla` | `get` |
 | `risk thresholds` | `list`, `get` |
@@ -838,8 +838,12 @@ JSON 业务结果使用 `data`、`meta`、`error`。先检查退出码和 `error
 默认保留 VALID/INVALID 和原生字段；过滤仅为采集后的本地精确匹配。
 原生 5000／1000 页宽与输出 limit 分开，完整性检查保留分页边界及终止证据。
 
-`liquidity reference blacklist bank list` 仅可发现，不执行：原生 bankId 出现创建时间不同的
-重复行，尚无已证明的行／版本身份；不以时间拼接身份。#168 继续开放，不宣称三叶完整验收。
+`liquidity reference blacklist bank list` 按用户确认以 `bankId` 识别银行，同银行保留
+原生 `gmtCreate` 较晚的完整记录，先选择再应用本地 `--bank-id` / `--status` 过滤。
+同时间但内容冲突、缺失或无效创建时间明确失败；完全相同的同时间行可归并。
+原生报数和 arrivals 表示来源行，collected_total 表示所选银行；只有原始分页、边界与
+终止覆盖验证通过才 complete。live 不写槽，refresh / 离线读取 / prune 使用独立临时槽。
+生产验收与代码合并分别记录，#168 的完成不以代码存在或历史样本代替。
 来源、字段、过滤、分页、独立临时槽及继续条件见[契约指南](docs/design/liquidity-access-lists-v0.1.0.md)。
 
 ## 配置与本地会话
