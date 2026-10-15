@@ -116,16 +116,18 @@ export async function runReview(command = 'qodercli', {
   const diagnostics = [stderr, ...errors].join('\n');
   if (code === 0 && errors.length === 0 && (provider !== 'Kimi' || assistantOutput)) {
     if (reportPath) {
+      let review;
       try {
-        writeFileSync(reportPath, JSON.stringify(parseReview(finalText)), { mode: 0o600 });
+        review = parseReview(finalText);
       } catch (error) {
         // Report format only: no model response, source, tool payload or secret.
         const text = finalText.trim();
         const format = text.startsWith('{') ? 'object' : text.startsWith('```')
           ? 'fence' : text ? 'prose' : 'empty';
         const fences = (text.match(/^```(?:json)?\s*$/gmi) || []).length;
-        throw new Error(`${error.message}; final format=${format}, characters=${text.length}, fences=${fences}`);
+        throw new Error(`${error.message}; final format=${format}, characters=${text.length}, fences=${fences}`, { cause: error });
       }
+      writeFileSync(reportPath, JSON.stringify(review), { mode: 0o600 });
     }
     report('completed', 'Review analysis completed; publishing is a separate workflow step.', 'completed', provider);
   } else if (isQuotaError(diagnostics)) {
