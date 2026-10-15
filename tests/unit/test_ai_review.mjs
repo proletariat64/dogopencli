@@ -117,6 +117,7 @@ test('both CLI protocols produce the same validated report and reject prose or e
     writeFileSync(command, '#!/usr/bin/env node\nconsole.log(JSON.stringify({role:"assistant",content:"Looks good"}));', { mode: 0o700 });
     await assert.rejects(runReview(command, { provider: 'Kimi', prompt: 'p', reportPath }), /valid JSON/);
     assert.throws(() => readFileSync(reportPath), /ENOENT/);
+    assert.throws(() => readFileSync(`${reportPath}.response.txt`), /ENOENT/);
     writeFileSync(command, '#!/usr/bin/env node\n', { mode: 0o700 });
     await assert.rejects(runReview(command, { provider: 'Qoder', prompt: 'p', reportPath }), /valid JSON/);
   } finally { rmSync(dir, { recursive: true, force: true }); }

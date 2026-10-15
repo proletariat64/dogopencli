@@ -115,7 +115,18 @@ export async function runReview(command = 'qodercli', {
   if (pending) readLine(pending);
   const diagnostics = [stderr, ...errors].join('\n');
   if (code === 0 && errors.length === 0 && (provider !== 'Kimi' || assistantOutput)) {
-    if (reportPath) writeFileSync(reportPath, JSON.stringify(parseReview(finalText)), { mode: 0o600 });
+    if (reportPath) {
+      try {
+        writeFileSync(reportPath, JSON.stringify(parseReview(finalText)), { mode: 0o600 });
+      } catch (error) {
+        // Report format only: no model response, source, tool payload or secret.
+        const text = finalText.trim();
+        const format = text.startsWith('{') ? 'object' : text.startsWith('```')
+          ? 'fence' : text ? 'prose' : 'empty';
+        const fences = (text.match(/^```(?:json)?\s*$/gmi) || []).length;
+        throw new Error(`${error.message}; final format=${format}, characters=${text.length}, fences=${fences}`);
+      }
+    }
     report('completed', 'Review analysis completed; publishing is a separate workflow step.', 'completed', provider);
   } else if (isQuotaError(diagnostics)) {
     report('skipped', 'Credits exhausted during review; review was not completed.', 'exhausted', provider);
