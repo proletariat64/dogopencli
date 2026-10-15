@@ -82,6 +82,7 @@ test('runner skips quota failures, rejects config failures and detects zero-exit
     fake('console.error("insufficient credits"); process.exitCode = 1;');
     await runReview(executable);
     assert.match(readFileSync(process.env.GITHUB_OUTPUT, 'utf8'), /status=skipped/);
+    assert.match(readFileSync(process.env.GITHUB_OUTPUT, 'utf8'), /quota_state=exhausted/);
     assert.match(readFileSync(process.env.GITHUB_STEP_SUMMARY, 'utf8'), /not completed/);
     fake('console.error("no valid model config found"); process.exitCode = 1;');
     await assert.rejects(runReview(executable), /no valid model config found/);
@@ -100,6 +101,33 @@ test('runner skips quota failures, rejects config failures and detects zero-exit
     })) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('preflight exposes exhaustion separately from unknown quota for fallback routing', async t => {
+  t.mock.method(console, 'log', () => {});
+  const dir = mkdtempSync(join(tmpdir(), 'qoder-routing-'));
+  const oldOutput = process.env.GITHUB_OUTPUT;
+  process.env.GITHUB_OUTPUT = join(dir, 'output');
+  try {
+    for (const [usage, expected, run] of [
+      [{ isQuotaExceeded: true }, 'exhausted', false],
+      [{}, 'unknown', false],
+      [{ isQuotaExceeded: false }, 'available', true],
+    ]) {
+      writeFileSync(process.env.GITHUB_OUTPUT, '');
+      await checkQuota({
+        accessTokenFromEnv: () => ({}),
+        query: () => ({ initializationResult: async () => {},
+          getUsageInfo: async () => usage, close: async () => {} }),
+      });
+      const output = readFileSync(process.env.GITHUB_OUTPUT, 'utf8');
+      assert.ok(output.includes(`quota_state=${expected}\n`));
+      assert.ok(output.includes(`run_review=${run}\n`));
+    }
+  } finally {
+    if (oldOutput === undefined) delete process.env.GITHUB_OUTPUT; else process.env.GITHUB_OUTPUT = oldOutput;
     rmSync(dir, { recursive: true, force: true });
   }
 });
