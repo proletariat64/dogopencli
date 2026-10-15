@@ -265,6 +265,7 @@ CASHFLOW_FIELDS = (
     "expectValueDate",
     "expectValueDateTime",
     "expectValueTime",
+    "fundDirection",
     "originalBizNo",
     "gmtCreate",
     "gmtCreateStr",

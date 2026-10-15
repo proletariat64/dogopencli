@@ -55,7 +55,12 @@ def listing(rows):
             "status": 200,
             "body": {
                 "success": True,
-                "data": {"data": rows[start : start + size], "totalCount": len(rows)},
+                "data": {
+                    "data": rows[start : start + size],
+                    "totalCount": len(rows),
+                    "rowStart": start,
+                    "pageSize": size,
+                },
             },
         }
 
@@ -191,6 +196,7 @@ def test_cashflow_retains_real_money_and_time_fields(setup, run_cli):
         "expectValueDateTime": "",
         "currency": "USD",
         "gmtCreate": None,
+        "fundDirection": "inflow",
         "gmtCreateStr": "2026-10-12 11:00:00",
         "amountStr": "10.1200",
         "amount": {"amount": 10, "cent": 1000, "currency": "USD"},
@@ -202,6 +208,83 @@ def test_cashflow_retains_real_money_and_time_fields(setup, run_cli):
     assert code == 0, err
     assert parse(out)["data"] == [row]
     assert "receivedTime" not in parse(out)["data"][0]
+    assert (
+        run_cli(["refresh", "liquidity", "forecast", "account_cashflows", *SCOPE])[0]
+        == 0
+    )
+    setup.state.reachable = False
+    code, out, err = run_cli(["liquidity", "forecast", "account_cashflows", "list"])
+    assert code == 0, err
+    assert parse(out)["data"] == [row]
+
+
+@pytest.mark.parametrize(
+    "leaf", ["account_t3", "account_cashflows", "account_strategies"]
+)
+@pytest.mark.parametrize("terminal", [False, True])
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("rowStart", 999), ("pageSize", 999), ("rowStart", True), ("pageSize", "5000")],
+)
+def test_native_paging_echo_conflicts_are_hard_errors(
+    setup, run_cli, leaf, terminal, field, value
+):
+    row = {
+        "aliasName": "SYN-A",
+        "bankAccountAliasName": "SYN-A",
+        "entity": "SYN-E",
+        "bankId": "SYN-B",
+        "currency": "USD",
+        "version": 1,
+        "forecastDate": "20261012",
+        "expectValueDate": "20261012",
+        "expectValueTime": "12:00:00",
+        "fundActionType": "PAYMENT",
+        "dateFlag": "T3",
+        "bankAccountFlowDateSourceTypeStr": "SETTLE_INSTRUCTION",
+        "originalBizNo": "BIZ-1",
+    }
+
+    def answer(payload, index):
+        response = listing([row])(payload, index)
+        data = response["body"]["data"]
+        data.update(rowStart=payload["rowStart"], pageSize=payload["pageSize"])
+        if bool(payload["rowStart"]) == terminal:
+            data[field] = value
+        return response
+
+    setup.state.business_handler = answer
+    if leaf == "account_strategies":
+        command = ["refresh", "liquidity", "operations", leaf]
+    elif leaf == "account_t3":
+        command = [
+            "refresh",
+            "liquidity",
+            "forecast",
+            leaf,
+            "--account-alias",
+            "SYN-A",
+            *SCOPE[-4:],
+        ]
+    else:
+        command = ["refresh", "liquidity", "forecast", leaf, *SCOPE]
+    code, out, _ = run_cli(command)
+    assert code == 1
+    assert parse(out)["error"]["code"] == "INVALID_RESPONSE"
+    assert not setup.cache_path.exists()
+
+
+def test_demands_native_zero_offset_echo_remains_supported(setup, run_cli):
+    def answer(payload, index):
+        response = listing([demand(1)])(payload, index)
+        response["body"]["data"].update(rowStart=0, pageSize=5000)
+        return response
+
+    setup.state.business_handler = answer
+    code, out, err = run_cli(["refresh", *ROOT, *SCOPE, "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["meta"]["complete"] is True
+    assert [p["rowStart"] for p in setup.state.business_requests] == [0, 1]
 
 
 @pytest.mark.parametrize(

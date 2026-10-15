@@ -5,6 +5,7 @@ import time
 from ... import collect as shared
 from ...collect import CollectedScope
 from ...errors import INVALID_RESPONSE, CliError
+from ...jsonutil import parse
 from ...result_policy import AcquisitionEvidence
 from .collect import _merge_page
 
@@ -26,6 +27,26 @@ def collect_account_list(capability, transport, scope, *, deadline=None, progres
             capability, transport, capability.page_body(scope, start), deadline
         )
         rows, reported = capability.parse_rows(response.body)
+        paging = parse(response.body)["data"]
+        for field, expected in (("rowStart", start), ("pageSize", size)):
+            if field not in paging:
+                continue
+            actual = paging[field]
+            # D01 alone echoes zero even on later pages and its terminal probe.
+            allowed = {expected}
+            if (
+                field == "rowStart"
+                and capability.descriptor.projection == "account_demands"
+            ):
+                allowed.add(0)
+            if (
+                isinstance(actual, bool)
+                or not isinstance(actual, int)
+                or actual not in allowed
+            ):
+                raise CliError(
+                    INVALID_RESPONSE, f"native {field} contradicts account page"
+                )
         capability.validate_rows_scope(rows, scope)
         if reported is None:
             raise CliError(INVALID_RESPONSE, "account inquiry requires reported total")
