@@ -404,6 +404,10 @@ class LiquidityListCapability:
 
     def validate_rows_scope(self, rows: list[dict[str, Any]], scope: str) -> None:
         """Reject out-of-scope rows before live output or publication."""
+        if self._spec.projection == "account_demands_intraday":
+            from .account_intraday import validate_rows
+
+            validate_rows(rows, decode_scope(scope))
         if self._spec.projection == "account_strategies":
             from .account_strategies import validate_strategy_rows_scope
 

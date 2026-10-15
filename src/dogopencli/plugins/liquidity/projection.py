@@ -1037,6 +1037,10 @@ _PROJECTORS: dict[str, Callable[[Any], dict[str, Any]]] = {
 
 def project_record(name: str, row: dict[str, Any]) -> dict[str, Any]:
     """Project one native row into the named settings/runtime schema."""
+    if name == "account_demands_intraday":
+        from .account_intraday import project
+
+        return project(row)
     if name == "account_strategies":
         from .account_strategies import project_strategy
 

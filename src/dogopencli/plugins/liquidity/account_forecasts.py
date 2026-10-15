@@ -332,11 +332,4 @@ PENDING = (
         "native-qualification-pending",
         "R06 F04: independent nonempty schema, identity and pagination unproved.",
     ),
-    DeferredLeaf(
-        ("forecast", "account_demands_intraday", "list"),
-        RUNTIMES,
-        "native-qualification-pending",
-        "R06 D03: interval edges, timezone, included statuses"
-        " and missing-slot rules unproved.",
-    ),
 )
