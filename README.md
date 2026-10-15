@@ -18,7 +18,7 @@ WSL 用户应使用 Linux 磁盘目录。
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install ./dogopencli-0.4.1-py3-none-any.whl
+python -m pip install ./dogopencli-0.4.2-py3-none-any.whl
 dogopencli --version
 ```
 
@@ -950,6 +950,25 @@ rtk proxy make test
 rtk proxy make lint
 rtk proxy make doc-guard test-doc-guard
 ```
+
+bootstrap 最后更新当前工作树的 code-review-graph 索引（首次自动构建），
+并启动独立的 headless Chrome。需要已安装 `rtk`、`code-review-graph` 和
+`google-chrome`（可用 `DOGOPENCLI_CHROME_BIN` 指定可执行文件）。Chrome
+保留默认沙箱与 Origin 限制，使用 OS 分配的空闲 loopback 端口，排除
+9330–9340。profile、日志、配置和查询缓存均位于被 Git 忽略的
+`tmp/bootstrap-browser/`，不复制其他 profile 或 Cookie。重复执行复用经过
+profile 归属验证的浏览器，保留当前模式和标签页；端口冲突则失败，不抢占。
+
+在当前 shell 激活隔离配置后再执行认证或查询（make 无法修改父 shell 环境）：
+
+```bash
+source tmp/bootstrap-browser/env.sh
+rtk proxy .venv/bin/dogopencli login --domain liquidity
+rtk proxy .venv/bin/dogopencli auth check --domain liquidity
+```
+
+bootstrap 仅证明 Chrome/CDP 可用，不代表已登录。人工 SSO 由 `login`
+完成；全局配置和已有浏览器会话保留。移除工作树前应先关闭其专用 Chrome。
 
 测试使用缩短的浏览器轮询间隔，生产探测仍使用 0.25 秒间隔；
 验证稳定窗口的测试显式设置其窗口和时钟。`make test` 与 CI 输出最慢的
