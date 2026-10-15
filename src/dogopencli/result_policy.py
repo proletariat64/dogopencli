@@ -310,27 +310,27 @@ def evaluate_result(
         f" reported {evidence.reported_total}); reasons: {', '.join(reasons)}"
     )
     if incomplete or reasons:
-        bank_selection = evidence.total_semantics == BANK_ROW_OCCURRENCES
-        selected_duplicates = bank_selection and bool(evidence.duplicate_count)
+        warning_code = INCOMPLETE_RESULT
+        warning_message = message
+        if not incomplete:
+            if evidence.total_semantics == BANK_ROW_OCCURRENCES:
+                if evidence.duplicate_count:
+                    warning_code = "BANK_LATEST_CREATED_SELECTED"
+                    warning_message = (
+                        "selected latest gmtCreate per bankId; "
+                        f"{evidence.duplicate_count} additional native bank rows"
+                        " omitted"
+                    )
+                else:
+                    warning_code = reasons[0]
+                    warning_message = "bank acquisition warnings: " + ", ".join(reasons)
+            else:
+                warning_code = "DUPLICATE_ROWS"
+                warning_message = "identical duplicate rows removed"
         warnings = (
             {
-                "code": INCOMPLETE_RESULT
-                if incomplete
-                else "BANK_LATEST_CREATED_SELECTED"
-                if selected_duplicates
-                else "ACQUISITION_WARNING"
-                if bank_selection
-                else "DUPLICATE_ROWS",
-                "message": message
-                if incomplete
-                else (
-                    "selected latest gmtCreate per bankId; "
-                    f"{evidence.duplicate_count} additional native bank rows omitted"
-                )
-                if selected_duplicates
-                else "bank acquisition warnings: " + ", ".join(reasons)
-                if bank_selection
-                else "identical duplicate rows removed",
+                "code": warning_code,
+                "message": warning_message,
                 "reason_codes": reasons,
                 "retryable": False,
             },

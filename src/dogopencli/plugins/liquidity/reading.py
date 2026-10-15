@@ -110,9 +110,10 @@ def _list_schema(item: spec.ListSpec, fields: dict[str, str]) -> dict[str, Any]:
             "gmtModified": "Native modification timestamp in epoch milliseconds;"
             " not capture time.",
         }
+        if item.path == ("reference", "blacklist", "bank"):
+            del meanings["id"]
         for field, meaning in meanings.items():
-            if field in properties:
-                properties[field]["description"] = meaning
+            properties[field]["description"] = meaning
         for field in item.identity:
             properties[field]["description"] = "Verified nonempty native row identity."
         if item.path == ("reference", "blacklist", "bank"):

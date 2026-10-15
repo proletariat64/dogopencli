@@ -257,6 +257,22 @@ def test_http_and_business_failures_never_retry_as_size_fallback(
     assert not setup.cache_path.exists()
 
 
+@pytest.mark.parametrize("path", [("whitelist", "entity"), ("blacklist", "account")])
+@pytest.mark.parametrize("missing", ["id", "gmtModified"])
+def test_access_describe_does_not_hide_missing_native_field_evidence(
+    run_cli, monkeypatch, path, missing
+):
+    from dogopencli.plugins.liquidity import reading
+
+    name = ".".join(("liquidity", "reference", *path, "list"))
+    fields = dict(reading.SAMPLED_FIELDS[name])
+    del fields[missing]
+    monkeypatch.setitem(reading.SAMPLED_FIELDS, name, fields)
+    code, out, err = run_cli(["describe", "liquidity", "reference", *path, "list"])
+    assert code == 1, (out, err)
+    assert "data_schema" not in parse(out)
+
+
 def test_access_describe_has_native_fields_identity_and_current_proof(setup, run_cli):
     code, out, err = run_cli(
         ["describe", "liquidity", "reference", "blacklist", "account", "list"]

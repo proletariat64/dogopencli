@@ -89,7 +89,36 @@ def test_bank_latest_across_pages_and_identical_ties(setup, run_cli):
     ] == [0, 0, 1000, 1, 999, 1003]
 
 
-@pytest.mark.parametrize("created", [None, True, "20", -1, 20.5])
+def test_bank_capped_page_without_duplicates_keeps_native_warning_offline(
+    setup, run_cli
+):
+    rows = [bank(f"B{i}", 10) for i in range(1001)]
+
+    def answer(payload, index):
+        vo = json.loads(payload[FIELD])
+        start = vo["rowStart"]
+        return access_page(rows[start : start + min(vo["pageSize"], 1000)], len(rows))
+
+    setup.state.business_handler = answer
+    code, out, err = run_cli(["refresh", *ROOT, "--require-complete"])
+    assert code == 0, err
+    refreshed = parse(out)["meta"]
+    assert refreshed["complete"] is True and refreshed["published"] is True
+    assert refreshed["reported_total"] == refreshed["collected_total"] == 1001
+    assert refreshed["acquisition"]["duplicate_count"] == 0
+    warning = refreshed["warnings"][0]
+    assert warning["code"] == "PAGE_SIZE_CAPPED"
+    assert warning["reason_codes"] == ["PAGE_SIZE_CAPPED"]
+    assert "duplicate" not in warning["message"]
+    setup.state.running = False
+    requests = len(setup.state.transports)
+    code, out, err = run_cli([*ROOT, "list", "--require-complete"])
+    assert code == 0, err
+    assert parse(out)["meta"]["warnings"] == refreshed["warnings"]
+    assert len(setup.state.transports) == requests
+
+
+@pytest.mark.parametrize("created", [None, True, "20", -1, 20.5, 1760000000000.0])
 def test_bank_invalid_creation_is_hard_failure(setup, run_cli, created):
     source_rows(setup, {FIELD: [bank("B1", 10), bank("B1", created)]})
     code, out, err = run_cli(["refresh", *ROOT])
