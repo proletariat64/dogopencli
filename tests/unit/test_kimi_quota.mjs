@@ -48,7 +48,10 @@ test('current quota windows take precedence over legacy remaining-only compatibi
 });
 
 test('usage preflight sends only a bounded usage GET, and keeps auth/network errors red', async t => {
-  t.mock.method(console, 'log', () => {});
+  const logs = [];
+  t.mock.method(console, 'log', (...args) => {
+    logs.push(args.join(' '));
+  });
   const oldKey = process.env.KIMI_API_KEY;
   process.env.KIMI_API_KEY = 'test-key';
   try {
