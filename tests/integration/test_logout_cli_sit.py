@@ -198,6 +198,27 @@ def test_logout_inconclusive_probe_is_service_failure(run_cli, logout_setup):
     assert error["retryable"] is True
 
 
+@pytest.mark.parametrize("unreachable_before_clear", [False, True])
+def test_logout_invalidates_auth_only_after_reaching_cookie_clear(
+    run_cli, logout_setup, unreachable_before_clear
+):
+    code, _, _ = invoke(
+        run_cli, [*logout_setup.argv, "auth", "check", "--domain", "payment"]
+    )
+    assert code == 0
+    logout_setup.state.running = not unreachable_before_clear
+    logout_setup.state.href = "https://unexpected.example/"
+    code, value, _ = invoke(run_cli, [*logout_setup.argv, "logout"])
+    assert code == 1
+    assert value["error"]["code"] == (
+        "browser_unavailable" if unreachable_before_clear else "service_failure"
+    )
+    _, output, _ = run_cli([*logout_setup.argv, "domain", "show", "payment"])
+    outcome = json.loads(output)["result"]["auth"]["outcome"]
+    assert outcome == ("authenticated" if unreachable_before_clear else "unknown")
+    assert bool(logout_setup.state.deleted_cookies) is not unreachable_before_clear
+
+
 # --- CDP unavailable / clearing failure: explicit, cookie store untouched -----
 
 

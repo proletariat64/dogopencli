@@ -26,6 +26,7 @@ browser profile is accessed, and repeated logout is idempotent success when
 CDP is available and verification passes.
 """
 
+from collections.abc import Callable
 from typing import Any
 
 from . import launcher
@@ -74,20 +75,30 @@ SCOPE_NOTE = (
 )
 
 
-def logout(environment: BrowserEnvironment, *, timeout: float = 15.0) -> dict[str, Any]:
+def logout(
+    environment: BrowserEnvironment,
+    *,
+    timeout: float = 15.0,
+    before_clear: Callable[[], None] | None = None,
+) -> dict[str, Any]:
     """Clear the dedicated local authentication and return a verified verdict."""
     login_lock = acquire_login_lock(environment.profile)
     try:
         control = acquire_browser_control(environment.profile, shared=False)
         try:
-            return _clear(environment, timeout=timeout)
+            return _clear(environment, timeout=timeout, before_clear=before_clear)
         finally:
             control.release()
     finally:
         login_lock.release()
 
 
-def _clear(environment: BrowserEnvironment, *, timeout: float) -> dict[str, Any]:
+def _clear(
+    environment: BrowserEnvironment,
+    *,
+    timeout: float,
+    before_clear: Callable[[], None] | None = None,
+) -> dict[str, Any]:
     transport = make_transport(environment.cdp_url)
     try:
         version = transport.version()
@@ -114,6 +125,8 @@ def _clear(environment: BrowserEnvironment, *, timeout: float) -> dict[str, Any]
         launcher.require_profile(environment)
     except launcher.LauncherError as exc:
         raise AuthError(BROWSER_UNAVAILABLE, str(exc)) from exc
+    if before_clear is not None:
+        before_clear()
     try:
         deleted = sum(
             delete_domain_cookies(transport, suffix, timeout=timeout)

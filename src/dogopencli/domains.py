@@ -308,17 +308,7 @@ class DomainService:
 
     def require_execution(self, path: tuple[str, ...]) -> tuple[str, str] | None:
         """Take one eligibility snapshot before entering the public leaf handler."""
-        owner = None
-        for domain in plugins.domain_plugins():
-            for leaf in domain.leaves:
-                if any(
-                    node.path == path
-                    for node in (*leaf.commands, *leaf.refresh_commands)
-                ):
-                    owner = (domain.id, leaf.id)
-                    break
-            if owner is not None:
-                break
+        owner = execution_owner(path)
         if owner is None:
             return None
         domain_id, leaf_id = owner
@@ -348,3 +338,14 @@ class DomainService:
         if not selected:
             raise CliError("DOMAIN_SELECTION_ERROR", "No enabled domains selected")
         return tuple(declarations[key] for key in selected)
+
+
+def execution_owner(path: tuple[str, ...]) -> tuple[str, str] | None:
+    """Resolve registered business ownership without inspecting configuration."""
+    for domain in plugins.domain_plugins():
+        for leaf in domain.leaves:
+            if any(
+                node.path == path for node in (*leaf.commands, *leaf.refresh_commands)
+            ):
+                return domain.id, leaf.id
+    return None

@@ -81,14 +81,18 @@ def dispatch(spec: CommandSpec, args: argparse.Namespace) -> Result:
             )
         )
     if spec.handler == "logout":
-        result = logout(environment)
-        try:
-            service.invalidate_auth()
-        except config_mod.CliError:
-            print(
-                "warning: DOMAIN_STATE_ERROR: auth observations were not invalidated",
-                file=sys.stderr,
-            )
+
+        def invalidate_observations() -> None:
+            try:
+                service.invalidate_auth()
+            except config_mod.CliError:
+                print(
+                    "warning: DOMAIN_STATE_ERROR: auth observations "
+                    "were not invalidated",
+                    file=sys.stderr,
+                )
+
+        result = logout(environment, before_clear=invalidate_observations)
         return Result(result)
     raise invalid(f"Unknown auth action: {spec.handler}")
 

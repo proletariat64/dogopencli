@@ -35,6 +35,13 @@ def test_failed_query_records_operation_error_and_preserves_auth_unknown(
     assert domain["auth"]["outcome"] == "unknown"
 
 
+def test_describe_remains_independent_of_invalid_config(run_cli, monkeypatch):
+    monkeypatch.setenv("DOGOPENCLI_CONFIG", "")
+    code, output, error = run_cli(["describe", "payment", "channel", "list"])
+    assert code == 0, error
+    assert json.loads(output)["describe_version"] == 1
+
+
 @pytest.mark.parametrize("format", ["json", "table"])
 def test_usable_incomplete_result_records_warning_independent_of_rendering(
     run_cli, config_factory, dataset_factory, sample_channel_rows, format

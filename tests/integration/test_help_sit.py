@@ -325,23 +325,24 @@ def test_sla_get_contract(run_cli):
 def test_query_leaf_effects(run_cli, path):
     doc = help_json(run_cli, ["help", *path])
     if path[-1] == "get":
+        assert doc["effects"]["mutates"] is True
         assert doc["effects"]["network"] is True
         assert doc["effects"]["browser_required"] is True
         assert doc.get("effects_variants", []) == []
         return
     assert doc["effects"] == {
-        "mutates": False,
+        "mutates": True,
         "network": False,
         "browser_required": False,
         "destructive": False,
     }
     variants = doc["effects_variants"]
-    cache_init = [v for v in variants if v["effects"]["mutates"] is True]
     live = [v for v in variants if "--live" in v["when"]]
-    assert cache_init == []
+    # Local observations are written; query-cache initialization is still absent.
+    assert len(variants) == 1
     assert len(live) == 1
     assert live[0]["effects"] == {
-        "mutates": False,
+        "mutates": True,
         "network": True,
         "browser_required": True,
         "destructive": False,

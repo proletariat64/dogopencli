@@ -50,6 +50,7 @@ class CommandSpec:
     examples: tuple[str, ...] = ()
     next: tuple[str, ...] = ()
     handler: str | None = None
+    constraints: tuple[str, ...] = ()
 
     @property
     def command(self) -> str:
@@ -131,7 +132,7 @@ COMMANDS = (
             ),
         ),
         effects={
-            "mutates": False,
+            "mutates": True,
             "network": True,
             "browser_required": True,
             "destructive": False,
@@ -143,6 +144,10 @@ COMMANDS = (
         ),
         next=("dogopencli help login", "dogopencli help payment"),
         handler="auth.check",
+        constraints=(
+            "Writes local domain auth observations; never mutates production "
+            "business configuration or recovers the browser session.",
+        ),
     ),
     CommandSpec(
         ("login",),
@@ -277,7 +282,10 @@ def document(spec: CommandSpec) -> dict[str, Any]:
         "summary": spec.summary,
         "arguments": [],
         "options": [_describe(a) for a in (*spec.options, *GLOBALS)],
-        "constraints": ["--verbose and --quiet are mutually exclusive."],
+        "constraints": [
+            "--verbose and --quiet are mutually exclusive.",
+            *spec.constraints,
+        ],
         "effects": spec.effects,
         "output": {
             "default_format": "json",

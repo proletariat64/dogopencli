@@ -52,9 +52,10 @@ roots, missing parents, invalid ownership, missing execution bindings and
 inconsistent cache ownership before publishing a replacement registry.
 
 Query paths belong under the domain ID. Shared refresh, describe and prune
-projections retain the same domain and leaf owner. Declare executable parents
-explicitly; child lists are derived. Declare refresh order when it differs from
-query order.
+projections retain the same domain and leaf owner. Groups declare navigation
+only. Register executable parents as leaf commands or refresh commands so the
+execution gate and observations have an explicit owner; child lists are derived.
+Declare refresh order when it differs from query order.
 
 Remove a component by omitting it from the next registration set. Its inventory,
 auth selection and catalog contributions disappear together. Registration
@@ -75,6 +76,15 @@ before cache access, browser work or handler invocation. Disabling a domain
 preserves leaf settings, cached data and historical outcomes. Already-started
 queries finish; subsequent executions see the change.
 
+Machine-readable help counts local writes as mutations. Enabled leaf commands
+declare `mutates: true` because execution persists an observation, including
+cached replay, get and live queries. This does not authorize production writes
+or change query-cache publication rules. Auth check likewise records a local
+auth observation. Domain enable/disable changes local settings; GUI declares
+both those local writes and its localhost HTTP server. Inventory, help and
+describe remain offline and nonmutating; disabled leaves have no execution
+effects.
+
 Record only actual completed leaf execution. Success and warning exit 0; failure
 exits nonzero with a stable error code. A warning represents a structured caveat
 already reported by the leaf, not terminal-text matching or a new judgment by
@@ -88,6 +98,9 @@ handler do not update execution observations. Domain auth observations are
 separate and updated by explicit login/auth checks. A cached query does not
 prove current authentication. Observation-save failure must be visible without
 changing the business result; a setting change succeeds only after durable save.
+Logout invalidates recorded authentication before cookie clearing begins,
+including when clearing or its verification subsequently fails. A pre-clearing
+browser or lock failure preserves the last verified observation.
 
 Cache ownership stays with existing leaves. The domain interface does not
 change query cache retention or make get/live calls publish caches. Declare
