@@ -2801,7 +2801,9 @@ def internal_detail_leaf(path: tuple[str, ...]) -> DetailLeaf:
 LIST_LEAVES, DETAIL_LEAVES = _build_registry()
 # Keep historical descriptors only for legacy option parsing and evidence.
 
-RETIRED_LEAVES = {path: LIST_LEAVES.pop(path) for path in RETIRED_PATHS}
+RETIRED_LEAVES = {
+    path: LIST_LEAVES.pop(path) for path in tuple(LIST_LEAVES) if path in RETIRED_PATHS
+}
 LIST_SPECS = tuple(item for item in LIST_SPECS if item.path not in RETIRED_PATHS)
 DEFERRED_BY_PATH = {leaf.path: leaf for leaf in DEFERRED}
 
