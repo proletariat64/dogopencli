@@ -5,6 +5,7 @@ repair or deletion of DuckDB data. Ownership records survive folder removal.
 """
 
 import fcntl
+import hashlib
 import importlib.util
 import json
 import os
@@ -220,6 +221,7 @@ class Leaf:
     path: Path
     manifest: dict
     adapter: Any
+    adapter_sha256: str
 
     @property
     def id(self) -> str:
@@ -318,7 +320,9 @@ class Registry:
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         try:
-            exec(compile(location.read_bytes(), str(location), "exec"), module.__dict__)
+            source = location.read_bytes()
+            adapter_sha256 = hashlib.sha256(source).hexdigest()
+            exec(compile(source, str(location), "exec"), module.__dict__)
             adapter = getattr(module, attribute)
             required = {"get", "capability"} if "get" in value["operations"] else set()
             if "list" in value["operations"]:
@@ -327,7 +331,9 @@ class Registry:
                 raise _invalid("adapter does not implement declared operations")
         finally:
             sys.modules.pop(module_name, None)
-        return Leaf(value["domain"], value["name"], folder, value, adapter)
+        return Leaf(
+            value["domain"], value["name"], folder, value, adapter, adapter_sha256
+        )
 
     def _storage(self, leaf: Leaf, state: sqlite3.Connection) -> None:
         if "list" not in leaf.manifest["operations"]:

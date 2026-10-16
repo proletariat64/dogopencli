@@ -383,3 +383,29 @@ def test_identical_numeric_parameter_roundtrip_keeps_coverage(run_cli, pilots):
     )
     assert code == 0
     assert json.loads(out)["meta"]["complete"] is True
+
+
+def test_cache_fingerprint_uses_the_adapter_bytes_that_were_loaded(run_cli, pilots):
+    import os
+
+    root = Path(os.environ["DOGOPENCLI_CONFIG"]).parent
+    source = root / "plugins/payment/sla.baselines/adapter.py"
+    source.write_text(
+        source.read_text()
+        + """
+_original_capability = Adapter.capability
+def replace_source_after_loading(self, parameters):
+    from pathlib import Path
+    source = Path(__file__)
+    source.write_text(source.read_text().replace('# revision-one', '# revision-two'))
+    return _original_capability(self, parameters)
+Adapter.capability = replace_source_after_loading
+# revision-one
+"""
+    )
+    pilots.business_script.append(page([{"id": "loaded-before-replacement"}]))
+    code, output, _ = run_cli(["payment", "refresh", "sla.baselines"])
+    assert code == 0 and json.loads(output)["meta"]["published"]
+    code, output, _ = run_cli(["payment", "list", "sla.baselines"])
+    assert code == 1
+    assert json.loads(output)["error"]["code"] == "CACHE_CONTRACT_CHANGED"

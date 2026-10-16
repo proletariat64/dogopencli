@@ -97,14 +97,11 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
         ]
         for name, operation in leaf.manifest["operations"].items()
     }
-    filename = leaf.manifest["adapter"].split(":")[0]
     context = {
         "identity": leaf.manifest["identity"],
         "operations": operations,
         "adapter_binding": leaf.manifest["adapter"],
-        "adapter_sha256": hashlib.sha256(
-            (leaf.path / filename).read_bytes()
-        ).hexdigest(),
+        "adapter_sha256": leaf.adapter_sha256,
         "capability": capability.name,
         "native_contract": basic(asdict(capability.contract)),
     }

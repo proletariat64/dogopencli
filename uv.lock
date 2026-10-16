@@ -29,6 +29,7 @@ name = "dogopencli"
 version = "0.4.3"
 source = { editable = "." }
 dependencies = [
+    { name = "duckdb" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "websocket-client" },
 ]
@@ -45,6 +46,7 @@ duckdog = [
 
 [package.metadata]
 requires-dist = [
+    { name = "duckdb", specifier = ">=1.1" },
     { name = "duckdb", marker = "extra == 'duckdog'", specifier = ">=1.1" },
     { name = "jsonschema", marker = "extra == 'dev'", specifier = ">=4.18" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
