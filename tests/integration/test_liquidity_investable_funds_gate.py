@@ -63,7 +63,7 @@ def test_investable_funds_list_refuses_without_reading_or_replacing_cache(
     envelope = parse(out)
     assert code == 1
     assert envelope["data"] is None
-    assert envelope["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+    assert envelope["error"]["code"] == "LEAF_DISABLED"
     assert envelope["error"]["retryable"] is False
     assert cache.read_bytes() == before
 
@@ -86,6 +86,6 @@ def test_unreleased_investable_funds_live_refresh_and_get_cannot_execute(
     assert envelope["data"] is None
     assert envelope["error"]["code"] in (
         "INVALID_ARGUMENT",
-        "UNSUPPORTED_CAPABILITY",
+        "LEAF_DISABLED",
     )
     assert cache.read_bytes() == before

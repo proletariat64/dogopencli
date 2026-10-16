@@ -28,9 +28,8 @@ def test_retired_lists_refuse_without_cache_or_browser(
     code, out, _ = run_cli(command)
     result = parse(out)
     assert code == 1
-    assert result["error"]["code"] == "UNSUPPORTED_CAPABILITY"
-    assert "retired" in result["error"]["message"]
-    assert "#164" in result["error"]["message"]
+    assert result["error"]["code"] == "LEAF_DISABLED"
+    assert result["error"]["message"].startswith("Leaf is disabled:")
     assert result["data"] is None
     assert not setup.state.transports
     assert not setup.state.business_requests
@@ -47,7 +46,10 @@ def test_discovery_reports_retirement_without_executable_schema(
     for discovery in ("help", "describe"):
         code, out, err = run_cli([discovery, *path])
         assert code == 0, err
-        assert "retired" in out and "#164" in out
+        if discovery == "describe":
+            assert "retired" in out and "#164" in out
+        else:
+            assert "Disabled" in out
         if discovery == "describe":
             result = parse(out)
             assert result["read_guide"]["release_status"] == "retired"
@@ -55,7 +57,7 @@ def test_discovery_reports_retirement_without_executable_schema(
     code, out, err = run_cli(["snapshot", *path, "--format", "json"])
     assert code == 0, err
     assert '"availability":"unsupported"' in out.replace(" ", "")
-    assert "retired" in out
+    assert parse(out)["tree"]["reason"] is None
     assert not setup.state.transports
     assert not setup.cache_path.exists()
 
@@ -109,10 +111,10 @@ def test_legacy_options_refuse_and_preserve_populated_history(setup, run_cli, re
         code, out, err = run_cli(command)
         assert code == 1
         if "table" in command:
-            assert "UNSUPPORTED_CAPABILITY" in err and "retired" in err
+            assert "LEAF_DISABLED" in err and "disabled" in err
             assert not out
         else:
-            assert parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+            assert parse(out)["error"]["code"] == "LEAF_DISABLED"
         assert setup.cache_path.read_bytes() == before
     code, _, _ = run_cli([*root, "prune"])
     assert code == 2  # prune compatibility choice: removed, never deletes history.
@@ -136,7 +138,7 @@ def test_refusal_never_loads_acquisition_config(setup, run_cli, monkeypatch):
         ):
             code, out, _ = run_cli(command)
             assert code == 1
-            assert parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+            assert parse(out)["error"]["code"] == "LEAF_DISABLED"
 
 
 @pytest.mark.parametrize("resource", RESOURCES)
@@ -208,5 +210,5 @@ def test_unrelated_active_list_and_shared_contract_remain_allowed(setup, run_cli
 def test_deferred_pricing_gets_stay_unavailable(setup, run_cli, resource):
     code, out, _ = run_cli(["liquidity", "pricing", resource, "get"])
     assert code == 1
-    assert parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+    assert parse(out)["error"]["code"] == "LEAF_DISABLED"
     assert not setup.state.transports

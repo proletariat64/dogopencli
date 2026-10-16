@@ -122,7 +122,7 @@ def test_operations_query_does_not_bypass_missing_native_evidence(
     result = parse(out)
     assert code == 1, err
     assert result["data"] is None
-    assert result["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+    assert result["error"]["code"] == "LEAF_DISABLED"
     assert setup.state.transports == []
     assert setup.state.business_requests == []
     assert not setup.cache_path.exists()
@@ -139,7 +139,7 @@ def test_operations_blocker_is_discoverable_without_business_environment(
     assert help_code == 0, help_err
     help_doc = parse(help_out)
     assert help_doc["kind"] == "runtimes"
-    assert "Unsupported" in help_doc["summary"]
+    assert help_doc["summary"] == "Disabled inquiry."
     assert all(value is False for value in help_doc["effects"].values())
 
     code, out, err = run_cli(["describe", "liquidity", "operations", resource, "list"])
@@ -166,7 +166,7 @@ def test_operations_no_refresh_or_get_is_enabled_by_discovery(setup, run_cli, re
         assert result["data"] is None
         assert result["error"]["code"] in {
             "INVALID_ARGUMENT",
-            "UNSUPPORTED_CAPABILITY",
+            "LEAF_DISABLED",
         }
     assert setup.state.transports == []
     assert setup.state.business_requests == []
@@ -188,7 +188,7 @@ def test_swap_unbounded_default_and_get_remain_non_executing(setup, run_cli):
         (
             ["liquidity", "operations", "swaps", "get"],
             1,
-            "UNSUPPORTED_CAPABILITY",
+            "LEAF_DISABLED",
         ),
     ):
         code, out, _ = run_cli(argv)
