@@ -2,6 +2,13 @@
 
 from .helpspec import NO_EFFECTS, BizNode
 
+DOMAIN_OUTPUT = {
+    "default_format": "json",
+    "formats": ["json", "text"],
+    "help_default_format": "json",
+    "help_formats": ["json", "text"],
+}
+
 GUI_DECLARATION = BizNode(
     ("gui",),
     "Serve domain status and controls on localhost.",
@@ -19,12 +26,14 @@ DECLARATIONS = (
         ("domain",),
         "Inspect and control registered domains offline.",
         handler="cmd_domain_management",
+        output=DOMAIN_OUTPUT,
     ),
     *(
         BizNode(
             ("domain", action),
             summary,
             handler="cmd_domain_management",
+            output=DOMAIN_OUTPUT,
             effects={**NO_EFFECTS, "mutates": action in {"enable", "disable"}},
             constraints=(
                 "Changes local execution settings only; never mutates production "

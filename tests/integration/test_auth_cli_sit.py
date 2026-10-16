@@ -354,6 +354,40 @@ def test_login_default_timeout_is_600_seconds(run_cli, auth_setup):
     assert option["type"] == "positive"
 
 
+@pytest.mark.parametrize("phase", ["before_domain", "before_probe"])
+def test_unverified_login_deadline_does_not_record_missing_auth(
+    run_cli, auth_setup, monkeypatch, phase
+):
+    from fake_cdp import FakeTransport
+
+    from dogopencli.auth import domains as auth_domains
+
+    clock = [0.0]
+    monkeypatch.setattr(login_mod, "monotonic", lambda: clock[0])
+    if phase == "before_domain":
+        readings = iter((0.0, 1.0))
+        monkeypatch.setattr(auth_domains, "monotonic", lambda: next(readings, 1.0))
+    else:
+        monkeypatch.setattr(auth_domains, "monotonic", lambda: clock[0])
+
+        class SlowVersion(FakeTransport):
+            def version(self, *, timeout=None):
+                result = super().version(timeout=timeout)
+                clock[0] = 1.0
+                return result
+
+        cdp.set_transport_factory(lambda url: SlowVersion(auth_setup.state))
+    code, value, _ = invoke(
+        run_cli,
+        [*auth_setup.argv, "login", "--domain", "payment", "--timeout-seconds", "0.01"],
+    )
+    assert code == 1
+    assert value["error"]["code"] == "service_failure"
+    assert value["error"]["details"]["domains"][0]["authenticated"] is None
+    _, output, _ = run_cli([*auth_setup.argv, "domain", "show", "payment"])
+    assert json.loads(output)["result"]["auth"]["outcome"] != "unauthenticated"
+
+
 def test_login_timeout_preserves_headed_chrome(
     run_cli, auth_setup, fast_clock, monkeypatch
 ):
@@ -760,6 +794,37 @@ def test_verbose_and_quiet_channels(run_cli, auth_setup):
     )
     assert code == 0
     assert err == ""
+
+
+@pytest.mark.parametrize(
+    "command", [["auth", "check", "--domain", "payment"], ["logout"]]
+)
+def test_quiet_keeps_sanitized_auth_persistence_warning(
+    run_cli, auth_setup, monkeypatch, command
+):
+    from dogopencli.domains import DomainService
+    from dogopencli.errors import CliError
+
+    assert (
+        invoke(run_cli, [*auth_setup.argv, "auth", "check", "--domain", "payment"])[0]
+        == 0
+    )
+    if command == ["logout"]:
+        auth_setup.state.href = SSO_URL
+
+    def fail_save(*args, **kwargs):
+        raise CliError("DOMAIN_STATE_ERROR", "private storage details")
+
+    monkeypatch.setattr(
+        DomainService,
+        "invalidate_auth" if command == ["logout"] else "record_auth",
+        fail_save,
+    )
+    code, result, error = invoke(run_cli, [*auth_setup.argv, "--quiet", *command])
+    assert code == 0
+    assert result["result"]["authenticated"] is (command != ["logout"])
+    assert "DOMAIN_STATE_ERROR" in error
+    assert "private storage details" not in error
 
 
 def test_no_color_accepted(run_cli, auth_setup):

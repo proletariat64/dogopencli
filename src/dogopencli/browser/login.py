@@ -92,7 +92,7 @@ def restore_authentication(
     headless = _ensure_headless(environment)
     remaining = deadline - monotonic()
     if remaining <= 0:
-        raise AuthError(AUTH_REQUIRED, "login deadline reached before verification")
+        raise AuthError(SERVICE_FAILURE, "login deadline reached before verification")
     if not headless:
         return _human_login(environment, timeout_seconds=remaining, resume=True)
     try:

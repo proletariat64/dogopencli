@@ -20,6 +20,8 @@ from .plugins import get_description
 
 def description_nodes(queries: Iterable[BizNode]) -> Iterable[BizNode]:
     """Attach discovery and mirror registered query paths under describe."""
+    queries = tuple(queries)
+    executable_paths = {("describe", *query.path) for query in queries}
     groups: set[tuple[str, ...]] = set()
     for query in queries:
         path = ("describe", *query.path)
@@ -27,7 +29,7 @@ def description_nodes(queries: Iterable[BizNode]) -> Iterable[BizNode]:
         yield replace(query, next=(*query.next, command))
         for length in range(1, len(path)):
             prefix = path[:length]
-            if prefix not in groups:
+            if prefix not in groups and prefix not in executable_paths:
                 groups.add(prefix)
                 yield BizNode(prefix, "Discover offline business data descriptions.")
         yield BizNode(

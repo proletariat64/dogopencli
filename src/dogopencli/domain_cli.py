@@ -18,28 +18,24 @@ class _Parser(argparse.ArgumentParser):
 def main(argv: list[str]) -> int:
     parser = _Parser(prog="dogopencli domain", allow_abbrev=False, add_help=False)
     parser.add_argument(
-        "action", choices=("list", "show", "leaves", "enable", "disable")
+        "action", nargs="?", choices=("list", "show", "leaves", "enable", "disable")
     )
     parser.add_argument("domain", nargs="?")
     parser.add_argument("--config-dir")
     parser.add_argument("--format", choices=("json", "text"), default="json")
+    parser.add_argument("--help", "-h", action="store_true")
     format = "json"
     command = "domain"
     try:
-        if not argv or "--help" in argv or "-h" in argv:
+        args = parser.parse_args(argv)
+        format = args.format
+        if args.help or args.action is None:
             from .catalog import NODES
             from .helpspec import document, render_text
 
-            action = next(
-                (
-                    word
-                    for word in argv
-                    if word in {"list", "show", "leaves", "enable", "disable"}
-                ),
-                None,
-            )
+            action = args.action
             path = ("domain", action) if action else ("domain",)
-            if "text" in argv:
+            if format == "text":
                 print(render_text(NODES[path]), end="")
             else:
                 value = document(NODES[path])
@@ -50,8 +46,6 @@ def main(argv: list[str]) -> int:
                 )
                 print(json.dumps(value))
             return 0
-        args = parser.parse_args(argv)
-        format = args.format
         command = "domain " + args.action
         service = DomainService(config.config_path(args.config_dir))
         if args.action != "list" and args.domain is None:

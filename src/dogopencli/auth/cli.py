@@ -15,7 +15,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from .. import __version__
 from .. import config as config_mod
@@ -67,7 +67,12 @@ def resolve_config_dir(explicit: str | None) -> Path:
         raise invalid(str(exc)) from exc
 
 
-def dispatch(spec: CommandSpec, args: argparse.Namespace) -> Result:
+def dispatch(
+    spec: CommandSpec,
+    args: argparse.Namespace,
+    *,
+    warning_stream: TextIO | None = None,
+) -> Result:
     environment = environment_mod.resolve_environment(config_file=args.config_file)
     service = DomainService(config_file=args.config_file)
     if spec.handler in {"login", "auth.check"}:
@@ -78,6 +83,7 @@ def dispatch(spec: CommandSpec, args: argparse.Namespace) -> Result:
                 args.domain,
                 recover=spec.handler == "login",
                 timeout_seconds=getattr(args, "timeout_seconds", 600.0),
+                warning_stream=warning_stream,
             )
         )
     if spec.handler == "logout":
@@ -89,7 +95,7 @@ def dispatch(spec: CommandSpec, args: argparse.Namespace) -> Result:
                 print(
                     "warning: DOMAIN_STATE_ERROR: auth observations "
                     "were not invalidated",
-                    file=sys.stderr,
+                    file=warning_stream if warning_stream is not None else sys.stderr,
                 )
 
         result = logout(environment, before_clear=invalidate_observations)
@@ -152,6 +158,7 @@ def error_dict(exc: Exception, command: str) -> dict[str, Any]:
 
 
 def main(argv: list[str], command_hint: str | None = None) -> int:
+    warning_stream = sys.stderr
     values = list(argv)
     hint = SPECS.get((command_hint,)) if command_hint else None
     spec = hint if hint is not None else SPECS[()]
@@ -189,9 +196,9 @@ def main(argv: list[str], command_hint: str | None = None) -> int:
             sys.stderr.write(f"dogopencli: {spec.command}; config={args.config_dir}\n")
         if args.quiet:
             with open(os.devnull, "w") as sink, contextlib.redirect_stderr(sink):
-                result = dispatch(spec, args)
+                result = dispatch(spec, args, warning_stream=warning_stream)
         else:
-            result = dispatch(spec, args)
+            result = dispatch(spec, args, warning_stream=warning_stream)
         emit(spec.command, result, None, format)
         return result.exit_code
     except (AuthError, OSError, ValueError) as exc:

@@ -127,6 +127,7 @@ def test_cross_origin_and_rebound_host_cannot_access_gui(running_gui):
             url, "/api/domains/payment", {"enabled": False}, Origin="https://evil.test"
         )
     assert failure.value.code == 403
+
     with pytest.raises(HTTPError) as failure:
         urlopen(Request(url + "/api/domains", headers={"Host": "evil.test"}))
     assert failure.value.code == 403
@@ -139,6 +140,38 @@ def test_cross_origin_and_rebound_host_cannot_access_gui(running_gui):
             )
         )
     assert failure.value.code == 403
+
+
+def test_default_http_port_accepts_normalized_loopback_host_and_origin(monkeypatch):
+    server = gui.create_server(DomainInventory())
+    url = f"http://127.0.0.1:{server.server_port}"
+    # Inject standard-library bound-port metadata while using an unprivileged socket.
+    monkeypatch.setattr(server, "server_address", ("127.0.0.1", 80))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        for host in ("127.0.0.1", "localhost", "127.0.0.1:80", "localhost:80"):
+            origin = f"http://{host.removesuffix(':80')}"
+            request = Request(url, headers={"Host": host, "Origin": origin})
+            with urlopen(request) as response:
+                page = response.read().decode()
+            token = re.search(r"const token='([^']+)'", page)[1]
+            request = Request(
+                url + "/api/domains/payment",
+                data=b'{"enabled": false}',
+                headers={
+                    "Host": host,
+                    "Origin": origin,
+                    "Content-Type": "application/json",
+                    "X-Dogopencli-Token": token,
+                },
+            )
+            with urlopen(request) as response:
+                assert json.load(response)["domain"]["enabled"] is False
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
 
 
 def test_failed_save_reports_error_and_preserves_state():
