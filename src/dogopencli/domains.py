@@ -6,8 +6,10 @@ business query cache. Reading a new scope does not create directories or a DB.
 
 import contextlib
 import json
+import os
 import re
 import sqlite3
+import tempfile
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,7 +80,10 @@ class DomainService:
                 settings = dict(
                     database.execute("SELECT domain_id, enabled FROM settings")
                 )
-                if any(value not in (0, 1) for value in settings.values()):
+                if any(
+                    type(value) is not int or value not in (0, 1)
+                    for value in settings.values()
+                ):
                     raise ValueError("invalid enabled state")
                 executions = {
                     (domain, leaf): self._decode(record, execution=True)
@@ -106,33 +111,16 @@ class DomainService:
     def _write(self) -> Iterator[sqlite3.Connection]:
         try:
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
+            self._initialize()
             with contextlib.closing(
-                sqlite3.connect(self.state_path, timeout=5)
+                sqlite3.connect(
+                    self.state_path.as_uri() + "?mode=rw", uri=True, timeout=5
+                )
             ) as database:
                 database.execute("BEGIN IMMEDIATE")
                 try:
-                    version = database.execute("PRAGMA user_version").fetchone()[0]
-                    if version not in (0, 1):
+                    if database.execute("PRAGMA user_version").fetchone()[0] != 1:
                         raise ValueError("unsupported schema")
-                    if version == 0:
-                        # An existing unrelated SQLite file must never be adopted.
-                        if database.execute(
-                            "SELECT name FROM sqlite_master WHERE type='table'"
-                        ).fetchone():
-                            raise ValueError("unrecognized schema")
-                        database.execute(
-                            "CREATE TABLE settings (domain_id TEXT PRIMARY KEY, "
-                            "enabled INTEGER NOT NULL CHECK(enabled IN (0,1)))"
-                        )
-                        database.execute(
-                            "CREATE TABLE executions (domain_id TEXT, leaf_id TEXT, "
-                            "record TEXT NOT NULL, PRIMARY KEY(domain_id, leaf_id))"
-                        )
-                        database.execute(
-                            "CREATE TABLE auth (domain_id TEXT PRIMARY KEY, "
-                            "record TEXT NOT NULL)"
-                        )
-                        database.execute("PRAGMA user_version=1")
                     yield database
                     database.commit()
                 except BaseException:
@@ -140,6 +128,38 @@ class DomainService:
                     raise
         except (OSError, sqlite3.Error, ValueError) as exc:
             raise CliError("DOMAIN_STATE_ERROR", "Cannot persist domain state") from exc
+
+    def _initialize(self) -> None:
+        """Publish a complete empty schema atomically before any reader sees it."""
+        if self.state_path.exists():
+            return
+        with tempfile.NamedTemporaryFile(
+            dir=self.state_path.parent, prefix=".domain-state-", delete=False
+        ) as temporary:
+            staging = Path(temporary.name)
+        try:
+            with contextlib.closing(sqlite3.connect(staging)) as database:
+                with database:
+                    database.execute(
+                        "CREATE TABLE settings (domain_id TEXT PRIMARY KEY, "
+                        "enabled INTEGER NOT NULL CHECK(enabled IN (0,1)))"
+                    )
+                    database.execute(
+                        "CREATE TABLE executions (domain_id TEXT, leaf_id TEXT, "
+                        "record TEXT NOT NULL, PRIMARY KEY(domain_id, leaf_id))"
+                    )
+                    database.execute(
+                        "CREATE TABLE auth (domain_id TEXT PRIMARY KEY, "
+                        "record TEXT NOT NULL)"
+                    )
+                    database.execute("PRAGMA user_version=1")
+            try:
+                os.link(staging, self.state_path)
+            except FileExistsError:
+                # A concurrent writer already published its complete schema.
+                pass
+        finally:
+            staging.unlink(missing_ok=True)
 
     def set_enabled(self, domain_id: str, enabled: bool) -> dict[str, Any]:
         self.inventory(domain_id)
@@ -163,7 +183,8 @@ class DomainService:
         )
         if (
             not isinstance(value, dict)
-            or value.get("outcome") not in outcomes
+            or not isinstance(value.get("outcome"), str)
+            or value["outcome"] not in outcomes
             or "updated_at" not in value
         ):
             raise ValueError("invalid observation")
@@ -208,7 +229,11 @@ class DomainService:
         domain = self.inventory(domain_id)[0]
         if not any(leaf["id"] == leaf_id for leaf in domain["leaves"]):
             raise CliError("LEAF_NOT_FOUND", "Unknown registered leaf")
-        if outcome not in {"success", "warning", "failed"}:
+        if not isinstance(outcome, str) or outcome not in {
+            "success",
+            "warning",
+            "failed",
+        }:
             raise CliError("INVALID_ARGUMENT", "Invalid execution outcome", exit_code=2)
         if not isinstance(operation, str) or operation not in {
             "list",
@@ -268,10 +293,11 @@ class DomainService:
     def invalidate_auth(self) -> None:
         if not self.state_path.exists():
             return
-        _, _, auth = self._read()
+        self._read()
         with self._write() as database:
-            for domain_id, verdict in auth.items():
-                if verdict["outcome"] == "authenticated":
+            rows = list(database.execute("SELECT domain_id, record FROM auth"))
+            for domain_id, raw in rows:
+                if self._decode(raw, execution=False)["outcome"] == "authenticated":
                     database.execute(
                         "UPDATE auth SET record=? WHERE domain_id=?",
                         (
