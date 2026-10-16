@@ -127,6 +127,31 @@ def test_duckdog_first_match_warning_survives_projection_and_offline(setup, run_
     assert len(setup.state.business_requests) == requests
 
 
+@pytest.mark.parametrize("format", ["json", "table"])
+def test_final_account_context_warning_is_recorded_for_query_and_refresh(
+    setup, run_cli, format
+):
+    configure_accounts(
+        setup, [("SYN-A", "SYN-E", "SYN-B"), ("SYN-A", "OTHER", "OTHER")]
+    )
+    setup.state.business_handler = demands_handler()
+    for command, operation in (
+        (["refresh", *ROOT, "--alias", "SYN-A", *DATES], "refresh"),
+        ([*ROOT, "list"], "list"),
+    ):
+        code, _, error = run_cli([*command, "--format", format])
+        assert code == 0, error
+        assert "ACCOUNT_CONTEXT_MULTIPLE_MATCHES" in error
+        _, output, _ = run_cli(["domain", "leaves", "liquidity"])
+        leaf = next(
+            row
+            for row in parse(output)["result"]
+            if row["id"] == "liquidity.forecast.account_demands.list"
+        )
+        assert leaf["last_execution"]["outcome"] == "warning"
+        assert leaf["last_execution"]["operation"] == operation
+
+
 @pytest.mark.parametrize("mode", ["live", "cache"])
 @pytest.mark.parametrize("fields", [[], ["--fields", "id"]])
 def test_partial_result_keeps_acquisition_and_account_ambiguity_warnings(

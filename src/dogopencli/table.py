@@ -8,6 +8,7 @@ layout is intentionally simple and stable for scripts to scan.
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from .execution import observe_result
 from .jsonutil import canonical
 
 _META_GROUPS = (
@@ -34,6 +35,7 @@ def render_table(
     columns: Sequence[str],
     meta: Mapping[str, Any],
 ) -> str:
+    observe_result(dict(meta))
     lines: list[str] = []
     for group in _META_GROUPS:
         lines.append("  ".join(f"{key}: {_text(meta.get(key))}" for key in group))

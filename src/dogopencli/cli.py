@@ -33,6 +33,8 @@ from .errors import (
     TIMEOUT,
     CliError,
 )
+from .execution import invoke_leaf, observe_result
+from .handler_contract import core_handler, validate_core_handlers
 from .helpspec import BizNode, OptionSpec, add_options
 from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
@@ -107,10 +109,12 @@ def _emit(data: Any, meta: Any, error: Any = None, *, prepared: bool = False) ->
             meta = {**meta, "published": data["published"]}
         meta = prepare_result(meta)
     envelope = {"data": data, "error": error, "meta": meta}
+    observe_result(meta, error)
     sys.stdout.write(canonical(envelope) + "\n")
 
 
 def _emit_error(error: CliError, output_format: str = "json") -> int:
+    observe_result(None, {"code": error.code})
     if output_format == "table":
         print(f"error: {error.code}: {error.message}", file=sys.stderr)
         return error.exit_code
@@ -1704,11 +1708,13 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
     # business_entry only routes executable nodes, so handler is bound.
     if node.handler is None:
         return _emit_error(_argument_error("command is not executable"))
-    handler = globals()[node.handler]
+    from .plugins import handler_for
+
     try:
+        handler = handler_for(node.handler) or core_handler(node.handler, globals())
         if node.path[:1] == ("refresh",):
             display_options(args)
-        return handler(args)
+        return invoke_leaf(node.path, lambda: handler(args))
     except CliError as error:
         if node.path[0] == "refresh" and error.meta is None:
             error.meta = {"published": False}
@@ -1735,9 +1741,38 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
         )
 
 
+def cmd_domain_management(args: argparse.Namespace) -> int:
+    from .domain_cli import main as domain_main
+
+    return domain_main(args.tokens)
+
+
+def cmd_gui(args: argparse.Namespace) -> int:
+    from .gui import main as gui_main
+
+    return gui_main(args.tokens)
+
+
+validate_core_handlers(globals())
+
+
 def main(argv: list[str] | None = None) -> int:
     values = list(sys.argv[1:] if argv is None else argv)
     word, index = leading_command(values)
+    if word in {"domain", "gui"}:
+        management_main = cmd_domain_management if word == "domain" else cmd_gui
+        return management_main(
+            argparse.Namespace(tokens=values[:index] + values[index + 1 :])
+        )
+    if word == "help" and len(values) > index + 1:
+        target = values[index + 1]
+        if target in {"domain", "gui"}:
+            management_main = cmd_domain_management if target == "domain" else cmd_gui
+            return management_main(
+                argparse.Namespace(
+                    tokens=[*values[:index], *values[index + 2 :], "--help"]
+                )
+            )
     command_words = values[index:]
     if word in {"help", "describe", "snapshot", "refresh", "prune"}:
         command_words = command_words[1:]

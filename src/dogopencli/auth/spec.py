@@ -50,6 +50,7 @@ class CommandSpec:
     examples: tuple[str, ...] = ()
     next: tuple[str, ...] = ()
     handler: str | None = None
+    constraints: tuple[str, ...] = ()
 
     @property
     def command(self) -> str:
@@ -126,24 +127,32 @@ COMMANDS = (
         options=(
             _option(
                 "domain",
-                "Application domain to probe; the verdict applies to this domain only.",
-                choices=("payment", "liquidity", "fx"),
-                default="payment",
+                "Domain to probe; repeat for a subset, omit for all enabled domains.",
+                kind="append",
             ),
         ),
         effects={
-            "mutates": False,
+            "mutates": True,
             "network": True,
             "browser_required": True,
             "destructive": False,
         },
-        errors=("auth_required", "browser_unavailable", "service_failure"),
+        errors=(
+            "auth_required",
+            "browser_unavailable",
+            "browser_busy",
+            "service_failure",
+        ),
         examples=(
             "dogopencli auth check",
             "dogopencli auth check --domain liquidity --format text",
         ),
         next=("dogopencli help login", "dogopencli help payment"),
         handler="auth.check",
+        constraints=(
+            "Writes local domain auth observations; never mutates production "
+            "business configuration or recovers the browser session.",
+        ),
     ),
     CommandSpec(
         ("login",),
@@ -154,9 +163,8 @@ COMMANDS = (
         options=(
             _option(
                 "domain",
-                "Application domain to restore in the dedicated profile.",
-                choices=("payment", "liquidity", "fx"),
-                default="payment",
+                "Domain to restore; repeat for a subset, omit for all enabled domains.",
+                kind="append",
             ),
             TIMEOUT_SECONDS,
         ),
@@ -232,6 +240,8 @@ def _add_argument(parser: argparse.ArgumentParser, spec: ArgumentSpec) -> None:
         kwargs["default"] = bool(spec.default)
     elif spec.kind == "positive":
         kwargs["type"] = _positive
+    elif spec.kind == "append":
+        kwargs["action"] = "append"
     if spec.choices:
         kwargs["choices"] = spec.choices
     parser.add_argument(*spec.flags, **kwargs)
@@ -263,6 +273,10 @@ def _describe(argument: ArgumentSpec) -> dict[str, Any]:
         value["flags"] = list(argument.flags)
     if argument.choices:
         value["choices"] = list(argument.choices)
+    if argument.name == "domain":
+        from ..plugins import domain_plugins
+
+        value["choices"] = [domain.id for domain in domain_plugins()]
     return value
 
 
@@ -273,7 +287,10 @@ def document(spec: CommandSpec) -> dict[str, Any]:
         "summary": spec.summary,
         "arguments": [],
         "options": [_describe(a) for a in (*spec.options, *GLOBALS)],
-        "constraints": ["--verbose and --quiet are mutually exclusive."],
+        "constraints": [
+            "--verbose and --quiet are mutually exclusive.",
+            *spec.constraints,
+        ],
         "effects": spec.effects,
         "output": {
             "default_format": "json",

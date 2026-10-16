@@ -6,8 +6,8 @@ not carry domain knowledge; new capabilities register here without
 modifying the core layers.
 """
 
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 
 from ..helpspec import BizNode
@@ -187,6 +187,337 @@ class ScopeCollector(Protocol[_CollectedCapability]):
     ) -> "CollectedScope": ...
 
 
+@dataclass(frozen=True)
+class DomainAuthPolicy:
+    """Domain declarations consumed by the shared browser lifecycle."""
+
+    preserve_headed: bool = False
+    document_completion: bool = False
+    bounded_handoff: bool = False
+    probe: Callable[..., Any] | None = None
+
+
+@dataclass(frozen=True)
+class LeafRegistration:
+    """One stable leaf identity and its public operation contributions."""
+
+    id: str
+    capability: NamedCapability
+    commands: tuple[BizNode, ...] = ()
+    refresh_commands: tuple[BizNode, ...] = ()
+    groups: tuple[BizNode, ...] = ()
+    enabled: bool = True
+    description: Callable[[BizNode], dict[str, Any]] | None = None
+    collector: ScopeCollector[Any] | None = None
+    refresh_hint: Callable[..., str] | None = None
+    prune_commands: tuple[BizNode, ...] = ()
+    operations: tuple[tuple[tuple[str, ...], str], ...] = ()
+    cache_paths: tuple[tuple[str, ...], ...] = ()
+    describe_refresh: bool = False
+
+
+class DomainPlugin(Protocol):
+    """Business domain integration contract; shared portal URLs are valid."""
+
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def entry_point(self) -> str: ...
+
+    @property
+    def leaves(self) -> tuple[LeafRegistration, ...]: ...
+
+    @property
+    def groups(self) -> tuple[BizNode, ...]: ...
+
+    @property
+    def auth(self) -> DomainAuthPolicy: ...
+
+    @property
+    def refresh_order(self) -> tuple[str, ...]: ...
+
+    @property
+    def navigation_order(self) -> int: ...
+
+    @property
+    def handlers(self) -> Mapping[str, Callable[..., int]]: ...
+
+
+@dataclass(frozen=True)
+class DomainComponent:
+    """Static implementation of the domain interface used by built-ins."""
+
+    id: str
+    entry_point: str
+    leaves: tuple[LeafRegistration, ...]
+    groups: tuple[BizNode, ...] = ()
+    auth: DomainAuthPolicy = DomainAuthPolicy()
+    refresh_order: tuple[str, ...] = ()
+    navigation_order: int = 0
+    handlers: Mapping[str, Callable[..., int]] = field(default_factory=dict)
+
+
+def leaf_registration(
+    capability: NamedCapability,
+    *,
+    commands: tuple[BizNode, ...] = (),
+    refresh_commands: tuple[BizNode, ...] = (),
+    groups: tuple[BizNode, ...] = (),
+    enabled: bool = True,
+    description: Callable[[BizNode], dict[str, Any]] | None = None,
+    collector: ScopeCollector[Any] | None = None,
+    refresh_hint: Callable[..., str] | None = None,
+) -> LeafRegistration:
+    """Adapt the existing leaf protocol into explicit operation metadata."""
+    commands = tuple(
+        replace(
+            node,
+            options=tuple(
+                option for option in node.options if option.name != "require_fresh"
+            ),
+            effects={
+                "mutates": False,
+                "network": True,
+                "browser_required": True,
+                "destructive": False,
+            },
+            effects_variants=(),
+            summary="Online native detail inquiry; never reads or writes query cache.",
+        )
+        if node.path[-1] == "get" and enabled
+        else node
+        for node in commands
+    )
+    if not enabled:
+        commands = tuple(
+            replace(node, summary="Disabled inquiry.") for node in commands
+        )
+        refresh_commands = tuple(
+            replace(node, summary="Disabled refresh.") for node in refresh_commands
+        )
+    operations = tuple(
+        (node.path, "get" if node.path[-1] == "get" else "list") for node in commands
+    ) + tuple((node.path, "refresh") for node in refresh_commands)
+    cache_paths = tuple(
+        node.path
+        for node in (*commands, *refresh_commands)
+        if enabled
+        and getattr(capability, "cache_enabled", True)
+        and node.path[-1] != "get"
+    )
+    prune_commands = tuple(
+        BizNode(
+            (*node.path[:-1], "prune")
+            if node.path[-1] == "list"
+            else (*node.path, "prune"),
+            "Delete this leaf's temporary query cache; idempotent and offline.",
+            handler="cmd_prune",
+            effects={
+                "mutates": True,
+                "network": False,
+                "browser_required": False,
+                "destructive": True,
+            },
+        )
+        for node in commands
+        if node.path in cache_paths and node.path[-1] in ("list", "trade")
+    )
+    return LeafRegistration(
+        id=capability.name,
+        capability=capability,
+        commands=commands,
+        refresh_commands=refresh_commands,
+        groups=groups,
+        enabled=enabled,
+        description=description,
+        collector=collector,
+        refresh_hint=refresh_hint,
+        prune_commands=prune_commands,
+        operations=operations,
+        cache_paths=cache_paths,
+        describe_refresh=not enabled,
+    )
+
+
+_DOMAINS: tuple[DomainPlugin, ...] = ()
+
+
+def domain_plugins() -> tuple[DomainPlugin, ...]:
+    """Return ordered installed domain declarations without external work."""
+    return _DOMAINS
+
+
+def handler_for(name: str) -> Callable[..., int] | None:
+    """Resolve a domain binding; validation reserves core execution names."""
+    return next(
+        (domain.handlers[name] for domain in _DOMAINS if name in domain.handlers), None
+    )
+
+
+def validate_domains(domains: tuple[DomainPlugin, ...]) -> None:
+    """Reject invalid whole contributions before registry publication."""
+    from ..auth.spec import SPECS
+    from ..handler_contract import CORE_HANDLER_NAMES
+
+    domain_ids: set[str] = set()
+    leaf_ids: set[str] = set()
+    handler_names: set[str] = set()
+    paths: set[tuple[str, ...]] = set()
+    group_paths: set[tuple[str, ...]] = set()
+    reserved = {
+        "auth",
+        "login",
+        "logout",
+        "help",
+        "snapshot",
+        "domain",
+        "gui",
+        "refresh",
+        "describe",
+        "prune",
+    }
+    for domain in domains:
+        if (
+            not domain.id
+            or not domain.id.isidentifier()
+            or domain.id in reserved
+            or domain.id in domain_ids
+        ):
+            raise ValueError(f"invalid or duplicate domain ID: {domain.id}")
+        domain_ids.add(domain.id)
+        for name, callback in domain.handlers.items():
+            if (
+                not isinstance(name, str)
+                or not name.isidentifier()
+                or not callable(callback)
+                or name in handler_names
+                or name in CORE_HANDLER_NAMES
+            ):
+                raise ValueError(f"invalid or duplicate handler binding: {name}")
+            handler_names.add(name)
+        if not domain.entry_point.startswith("https://"):
+            raise ValueError(f"invalid domain entry point: {domain.id}")
+        owned_ids = {leaf.id for leaf in domain.leaves}
+        if (
+            len(set(domain.refresh_order)) != len(domain.refresh_order)
+            or set(domain.refresh_order) - owned_ids
+        ):
+            raise ValueError(f"invalid refresh order: {domain.id}")
+        declarations = list(domain.groups)
+        if any(node.handler is not None for node in domain.groups):
+            raise ValueError("executable groups must be registered as leaf operations")
+        for leaf in domain.leaves:
+            if not leaf.id or leaf.id != leaf.capability.name or leaf.id in leaf_ids:
+                raise ValueError(f"invalid or duplicate leaf ID: {leaf.id}")
+            leaf_ids.add(leaf.id)
+            if any(node.handler is not None for node in leaf.groups):
+                raise ValueError(
+                    "executable groups must be registered as leaf operations"
+                )
+            if type(leaf.enabled) is not bool:
+                raise ValueError(f"invalid enabled state: {leaf.id}")
+            executable = (*leaf.commands, *leaf.refresh_commands, *leaf.prune_commands)
+            if any(node.handler is None for node in executable):
+                raise ValueError(f"missing executable binding: {leaf.id}")
+            operation_paths = {
+                node.path for node in (*leaf.commands, *leaf.refresh_commands)
+            }
+            refresh_paths = {node.path for node in leaf.refresh_commands}
+            seen_operations: set[tuple[str, ...]] = set()
+            for path, operation in leaf.operations:
+                if (
+                    path not in operation_paths
+                    or path in seen_operations
+                    or operation
+                    not in (("refresh",) if path in refresh_paths else ("list", "get"))
+                ):
+                    raise ValueError(f"invalid operation binding: {leaf.id}")
+                seen_operations.add(path)
+            if seen_operations != operation_paths:
+                raise ValueError(f"missing operation binding: {leaf.id}")
+            if set(leaf.cache_paths) - operation_paths or any(
+                node.cache_capability not in (None, leaf.id) for node in executable
+            ):
+                raise ValueError(f"inconsistent cache binding: {leaf.id}")
+            declarations.extend((*leaf.groups, *executable))
+        for node in declarations:
+            if node.children:
+                raise ValueError(f"children must be derived: {node.path}")
+            if node.handler is not None and (
+                not isinstance(node.handler, str)
+                or node.handler not in CORE_HANDLER_NAMES | domain.handlers.keys()
+            ):
+                raise ValueError(f"missing executable handler binding: {node.path}")
+            owner = (
+                node.path[1:2]
+                if node.path[:1] in (("refresh",), ("prune",))
+                else node.path[:1]
+            )
+            if owner != (domain.id,):
+                raise ValueError(f"invalid domain ownership: {node.path}")
+            if node.path in paths or node.path in SPECS:
+                raise ValueError(f"duplicate command path: {node.path}")
+            paths.add(node.path)
+            if node.handler is None:
+                group_paths.add(node.path)
+    parents = paths | {(), ("refresh",), ("prune",)}
+    for path in paths:
+        if path[:-1] not in parents:
+            raise ValueError(f"missing parent for command: {path}")
+    parent_paths = {path[:-1] for path in paths}
+    for path in group_paths:
+        if path not in parent_paths:
+            raise ValueError(f"command must be either group or executable: {path}")
+
+
+def register_domains(domains: tuple[DomainPlugin, ...]) -> None:
+    """Publish one validated replacement set atomically; dormant state survives."""
+    global _DOMAINS
+    validate_domains(domains)
+    registry = {}
+    collectors = {}
+    hints = {}
+    commands = {}
+    refreshes = {}
+    groups = {}
+    descriptions = {}
+    for domain in domains:
+        groups[domain.id] = domain.groups
+        for leaf in domain.leaves:
+            registry[leaf.id] = leaf.capability
+            commands[leaf.id] = leaf.commands
+            groups[leaf.id] = leaf.groups
+            if leaf.collector is not None:
+                collectors[leaf.id] = leaf.collector
+            if leaf.refresh_hint is not None:
+                hints[leaf.id] = leaf.refresh_hint
+            if leaf.description is not None:
+                for node in (*leaf.commands, *leaf.refresh_commands):
+                    descriptions[node.path] = leaf.description
+        by_id = {leaf.id: leaf for leaf in domain.leaves}
+        for name in (
+            *domain.refresh_order,
+            *(name for name in by_id if name not in domain.refresh_order),
+        ):
+            refreshes[name] = by_id[name].refresh_commands
+    _REGISTRY.clear()
+    _REGISTRY.update(registry)
+    _COLLECTORS.clear()
+    _COLLECTORS.update(collectors)
+    _REFRESH_HINTS.clear()
+    _REFRESH_HINTS.update(hints)
+    _COMMANDS.clear()
+    _COMMANDS.update(commands)
+    _REFRESH_COMMANDS.clear()
+    _REFRESH_COMMANDS.update(refreshes)
+    _GROUPS.clear()
+    _GROUPS.update(groups)
+    _DESCRIPTIONS.clear()
+    _DESCRIPTIONS.update(descriptions)
+    _DOMAINS = domains
+
+
 _REGISTRY: dict[str, NamedCapability] = {}
 # Registration checks each callback against its capability type. Lookup is by
 # capability name, while invocation always uses the caller's bound instance.
@@ -281,221 +612,12 @@ def get_capability(name: str) -> Capability:
 
 
 def _load_builtins() -> None:
-    from .collection.account_isolation import (
-        ACCOUNT_ISOLATION,
-    )
-    from .collection.account_isolation import (
-        GROUP_NODE as isolation_group,
-    )
-    from .collection.account_isolation import (
-        LIST_NODE as isolation_list,
-    )
-    from .collection.account_isolation import (
-        REFRESH_NODE as isolation_refresh,
-    )
-    from .collection.account_isolation_reading import (
-        description as isolation_description,
-    )
-    from .collection.cost import COLLECTION_COST_CAPABILITY, COLLECTION_COST_LIST_NODE
-    from .collection.cost import REFRESH_NODE as cost_refresh
-    from .collection.network_config import (
-        CAPABILITIES,
-        group_node,
-        list_node,
-        refresh_node,
-    )
-    from .collection.network_reading import description as network_description
-    from .collection.reading import description as collection_description
-    from .collection.sla import (
-        COLLECTION_SLA,
-        COLLECTION_SLA_GET_NODE,
-        COLLECTION_SLA_LIST_NODE,
-    )
-    from .collection.sla import REFRESH_NODE as sla_refresh
-    from .collection.sla_reading import description as sla_description
-    from .collection.va_capacity import (
-        COLLECTION_VA_CAPACITY,
-        COLLECTION_VA_CAPACITY_LIST_NODE,
-    )
-    from .collection.va_capacity import REFRESH_NODE as capacity_refresh
-    from .collection.va_capacity_reading import (
-        description as va_capacity_description,
-    )
-    from .collection.va_rule import (
-        COLLECTION_VA_RULE_GET_NODE,
-        COLLECTION_VA_RULE_LIST_NODE,
-        COLLECTION_VA_RULES,
-    )
-    from .collection.va_rule import REFRESH_NODE as va_refresh
-    from .collection.va_rule_reading import description as va_rule_description
-    from .payment import (
-        ptr,
-        ptr_orders,
-        ptr_orders_reading,
-        ptr_reading,
-        rules,
-        rules_reading,
-    )
-    from .payment.channel import CHANNEL_CAPABILITY, CHANNEL_LIST_NODE
-    from .payment.cost import COST_CAPABILITY, COST_LIST_NODE
-    from .payment.reading import description
-    from .payment.sla import SLA_CAPABILITY, SLA_GET_NODE, SLA_LIST_NODE
+    from .collection.domain import component as collection
+    from .fx.domain import component as fx
+    from .liquidity.domain import component as liquidity
+    from .payment.domain import component as payment
 
-    register(
-        ptr.CASES,
-        commands=(ptr_reading.LIST_NODE,),
-        refresh_commands=(ptr_reading.REFRESH_NODE,),
-        groups=ptr_reading.GROUPS,
-        description=ptr_reading.description,
-        collector=ptr.collect_stable,
-    )
-
-    register(
-        ptr_orders.ORDERS,
-        commands=(ptr_orders_reading.LIST_NODE,),
-        refresh_commands=(ptr_orders_reading.REFRESH_NODE,),
-        groups=ptr_orders_reading.GROUPS,
-        description=ptr_orders_reading.description,
-        collector=ptr_orders.collect_stable,
-        refresh_hint=lambda capability: capability.refresh_command,
-    )
-
-    for rule_cap in rules.CAPABILITIES:
-        register(
-            rule_cap,
-            commands=(rules_reading.list_node(rule_cap),),
-            refresh_commands=(rules_reading.refresh_node(rule_cap),),
-            groups=rules_reading.groups(rule_cap),
-            description=rules_reading.description,
-        )
-
-    # Refresh navigation predates query discovery and has a different order.
-    # Reserve its slots so moving declarations does not reorder public help.
-    for capability in (
-        *CAPABILITIES,
-        COLLECTION_COST_CAPABILITY,
-        COLLECTION_SLA,
-        COLLECTION_VA_RULES,
-        COLLECTION_VA_CAPACITY,
-    ):
-        _REFRESH_COMMANDS[capability.name] = ()
-
-    for capability in CAPABILITIES:
-        register(
-            capability,
-            commands=(list_node(capability),),
-            refresh_commands=(refresh_node(capability),),
-            groups=(group_node(capability),),
-            description=network_description,
-        )
-    register(
-        COLLECTION_SLA,
-        commands=(COLLECTION_SLA_LIST_NODE, COLLECTION_SLA_GET_NODE),
-        refresh_commands=(sla_refresh,),
-        description=sla_description,
-    )
-    register(
-        COLLECTION_VA_RULES,
-        commands=(COLLECTION_VA_RULE_LIST_NODE, COLLECTION_VA_RULE_GET_NODE),
-        refresh_commands=(va_refresh,),
-        description=va_rule_description,
-    )
-    register(
-        COLLECTION_VA_CAPACITY,
-        commands=(COLLECTION_VA_CAPACITY_LIST_NODE,),
-        refresh_commands=(capacity_refresh,),
-        description=va_capacity_description,
-    )
-    register(
-        COLLECTION_COST_CAPABILITY,
-        commands=(COLLECTION_COST_LIST_NODE,),
-        refresh_commands=(cost_refresh,),
-        description=collection_description,
-    )
-    register(CHANNEL_CAPABILITY, commands=(CHANNEL_LIST_NODE,), description=description)
-    register(COST_CAPABILITY, commands=(COST_LIST_NODE,), description=description)
-    register(
-        SLA_CAPABILITY, commands=(SLA_LIST_NODE, SLA_GET_NODE), description=description
-    )
-
-    register(
-        ACCOUNT_ISOLATION,
-        commands=(isolation_list,),
-        refresh_commands=(isolation_refresh,),
-        groups=(isolation_group,),
-        description=isolation_description,
-    )
-
-    from .liquidity import leaves as liquidity_leaves
-    from .liquidity import reading as liquidity_reading
-
-    # Peer liquidity plugin (ADR 0015): verified leaves plus deferred
-    # discovery; the liquidity origin/auth routing lives in the capability.
-    for leaf in liquidity_leaves.LIST_LEAVES.values():
-        register(
-            leaf.capability(leaf.variants[0]),
-            commands=(liquidity_leaves.list_query_node(leaf),),
-            refresh_commands=(liquidity_leaves.refresh_list_node(leaf),),
-            groups=(),
-            description=liquidity_reading.description,
-        )
-    for leaf in liquidity_leaves.DETAIL_LEAVES.values():
-        register(
-            leaf.capability,
-            commands=(liquidity_leaves.detail_query_node(leaf),),
-            refresh_commands=(),
-            groups=(),
-            description=liquidity_reading.description,
-        )
-    for leaf in liquidity_leaves.RETIRED_LEAVES.values():
-        query, refresh = liquidity_leaves.retired_nodes(leaf)
-        handle = liquidity_leaves.UnsupportedLeafHandle(query)
-        handle.cache_enabled = False
-        register(
-            handle,
-            commands=(query,),
-            refresh_commands=(refresh,),
-            description=liquidity_reading.description,
-        )
-    for leaf in liquidity_leaves.INTERNAL_LIST_LEAVES.values():
-        register(leaf.capability(leaf.variants[0]))
-    for leaf in liquidity_leaves.INTERNAL_DETAIL_LEAVES.values():
-        register(leaf.capability)
-    from dataclasses import replace
-
-    for deferred in liquidity_leaves.DEFERRED:
-        node = liquidity_leaves.unsupported_node(deferred)
-        register(
-            liquidity_leaves.UnsupportedLeafHandle(node),
-            commands=(node,),
-            refresh_commands=(
-                replace(node, path=("refresh", "liquidity", *deferred.path[:-1])),
-            )
-            if deferred in liquidity_leaves.ACCOUNT_PENDING
-            else (),
-            groups=(),
-            description=liquidity_reading.description,
-        )
-    refresh_paths = [
-        node.path
-        for node in refresh_nodes()
-        if node.path[:2] == ("refresh", "liquidity")
-    ]
-    _GROUPS["liquidity"] = tuple(
-        node
-        for node in liquidity_leaves.group_nodes()
-        if node.path[:1] != ("refresh",)
-        or any(path[: len(node.path)] == node.path for path in refresh_paths)
-    )
-
-    from .fx.trade import FX_TRADE, TRADE_NODE
-    from .fx.trade import description as fx_description
-
-    register(
-        FX_TRADE,
-        commands=(TRADE_NODE,),
-        description=fx_description,
-    )
+    register_domains((payment(), collection(), fx(), liquidity()))
 
 
 _load_builtins()

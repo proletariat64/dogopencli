@@ -566,7 +566,7 @@ def test_retired_settings_preserve_active_shared_runtime_cache(setup, run_cli):
     ):
         code, out, _ = run_cli(command)
         assert code == 1
-        assert parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+        assert parse(out)["error"]["code"] == "LEAF_DISABLED"
         assert setup.cache_path.read_bytes() == before
         assert len(setup.state.business_requests) == requests
     code, out, _ = run_cli(["liquidity", "cash", "group-balances", "list"])

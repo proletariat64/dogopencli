@@ -10,7 +10,19 @@ from dogopencli.helpspec import BizNode
 from dogopencli.plugins import command_nodes
 
 
-def test_every_executable_is_discoverable_and_dispatches(run_cli, monkeypatch):
+def test_every_executable_is_discoverable_and_dispatches(
+    run_cli, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("DOGOPENCLI_CONFIG", str(tmp_path / "config.toml"))
+    from dogopencli.plugins import domain_plugins
+
+    disabled_paths = {
+        node.path
+        for domain in domain_plugins()
+        for leaf in domain.leaves
+        if not leaf.enabled
+        for node in (*leaf.commands, *leaf.refresh_commands)
+    }
     leaves = [node for node in NODES.values() if node.handler]
     assert all(
         NODES[node.path].handler == node.handler
@@ -24,6 +36,8 @@ def test_every_executable_is_discoverable_and_dispatches(run_cli, monkeypatch):
         for node in command_nodes()
     )
     for node in leaves:
+        if node.path in disabled_paths:
+            continue
         handler = node.handler
         assert handler is not None
         assert callable(getattr(cli, handler))

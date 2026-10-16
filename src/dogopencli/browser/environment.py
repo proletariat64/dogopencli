@@ -9,8 +9,10 @@ and tests.
 """
 
 import os
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from .. import config as config_mod
@@ -33,11 +35,31 @@ LIQUIDITY_ORIGIN = "https://iliquidity.alipay.com"
 
 #: Selectable auth-check domains; each verdict names the domain checked.
 FX_STARTUP_URL = "https://app-ipay-qk.alipay.com/ifxriskweb/RiskStandardTrade"
-STARTUP_URLS = {
-    "payment": PAYMENT_STARTUP_URL,
-    "liquidity": LIQUIDITY_STARTUP_URL,
-    "fx": FX_STARTUP_URL,
-}
+
+
+class DomainEntryPoints(Mapping[str, str]):
+    """Compatibility view of entry points owned by registered components."""
+
+    def __getitem__(self, domain_id: str) -> str:
+        from ..plugins import domain_plugins
+
+        for domain in domain_plugins():
+            if domain.id == domain_id:
+                return domain.entry_point
+        raise KeyError(domain_id)
+
+    def __iter__(self) -> Iterator[str]:
+        from ..plugins import domain_plugins
+
+        return iter(domain.id for domain in domain_plugins())
+
+    def __len__(self) -> int:
+        from ..plugins import domain_plugins
+
+        return len(domain_plugins())
+
+
+STARTUP_URLS = DomainEntryPoints()
 
 DEFAULT_CDP_URL = "http://127.0.0.1:9222"
 DEFAULT_CHROME_BIN = "google-chrome"
@@ -58,6 +80,25 @@ class BrowserEnvironment:
     startup_url: str
     chrome_bin: str
     log_path: Path
+    domain_id: str | None = None
+    auth_policy: Any = None
+
+
+def authentication_policy(environment: BrowserEnvironment) -> Any:
+    """Resolve declared behavior for legacy callers without an explicit policy."""
+    if environment.auth_policy is not None:
+        return environment.auth_policy
+    from ..plugins import DomainAuthPolicy, domain_plugins
+
+    for domain in domain_plugins():
+        if (
+            environment.domain_id is not None and domain.id == environment.domain_id
+        ) or (
+            environment.domain_id is None
+            and domain.entry_point == environment.startup_url
+        ):
+            return domain.auth
+    return DomainAuthPolicy()
 
 
 def default_profile() -> Path:

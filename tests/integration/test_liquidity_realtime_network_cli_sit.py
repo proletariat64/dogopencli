@@ -277,7 +277,7 @@ def test_discovery_snapshot_and_unrelated_guards_stay_offline(setup, run_cli):
         ["liquidity", "rules", "monitoring", "list"],
     ):
         code, out, _ = run_cli(path)
-        assert code == 1 and parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+        assert code == 1 and parse(out)["error"]["code"] == "LEAF_DISABLED"
     assert setup.state.transports == []
 
 

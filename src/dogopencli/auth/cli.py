@@ -14,9 +14,8 @@ import contextlib
 import json
 import os
 import sys
-from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from .. import __version__
 from .. import config as config_mod
@@ -33,9 +32,9 @@ from ..browser.errors import (
     AuthError,
     invalid,
 )
-from ..browser.login import login
 from ..browser.logout import logout
-from ..browser.probe import check_authentication
+from ..domains import DomainService
+from .domains import authenticate_domains
 from .output import Result, emit
 from .spec import (
     SPECS,
@@ -68,27 +67,39 @@ def resolve_config_dir(explicit: str | None) -> Path:
         raise invalid(str(exc)) from exc
 
 
-def dispatch(spec: CommandSpec, args: argparse.Namespace) -> Result:
-    domain = getattr(args, "domain", None) or "payment"
-    startup_url = environment_mod.STARTUP_URLS[domain]
-    try:
-        environment = environment_mod.resolve_environment(config_file=args.config_file)
-        if spec.handler in {"login", "auth.check"}:
-            environment = replace(environment, startup_url=startup_url)
-        if spec.handler == "auth.check":
-            return Result(check_authentication(environment))
-        if spec.handler == "login":
-            return Result(login(environment, timeout_seconds=args.timeout_seconds))
-    except AuthError as exc:
-        if spec.handler in {"login", "auth.check"}:
-            exc.details = {**exc.details, "domain": domain, "startup_url": startup_url}
-            if domain != "payment":
-                exc.message = exc.message.replace(
-                    "dogopencli login", f"dogopencli login --domain {domain}"
-                )
-        raise
+def dispatch(
+    spec: CommandSpec,
+    args: argparse.Namespace,
+    *,
+    warning_stream: TextIO | None = None,
+) -> Result:
+    environment = environment_mod.resolve_environment(config_file=args.config_file)
+    service = DomainService(config_file=args.config_file)
+    if spec.handler in {"login", "auth.check"}:
+        return Result(
+            authenticate_domains(
+                environment,
+                service,
+                args.domain,
+                recover=spec.handler == "login",
+                timeout_seconds=getattr(args, "timeout_seconds", 600.0),
+                warning_stream=warning_stream,
+            )
+        )
     if spec.handler == "logout":
-        return Result(logout(environment))
+
+        def invalidate_observations() -> None:
+            try:
+                service.invalidate_auth()
+            except config_mod.CliError:
+                print(
+                    "warning: DOMAIN_STATE_ERROR: auth observations "
+                    "were not invalidated",
+                    file=warning_stream if warning_stream is not None else sys.stderr,
+                )
+
+        result = logout(environment, before_clear=invalidate_observations)
+        return Result(result)
     raise invalid(f"Unknown auth action: {spec.handler}")
 
 
@@ -147,6 +158,7 @@ def error_dict(exc: Exception, command: str) -> dict[str, Any]:
 
 
 def main(argv: list[str], command_hint: str | None = None) -> int:
+    warning_stream = sys.stderr
     values = list(argv)
     hint = SPECS.get((command_hint,)) if command_hint else None
     spec = hint if hint is not None else SPECS[()]
@@ -175,12 +187,6 @@ def main(argv: list[str], command_hint: str | None = None) -> int:
             )
             return 0
         args = leaf_parser(spec).parse_args(remainder, namespace=global_args)
-        if spec.handler in {"login", "auth.check"}:
-            domain = args.domain
-            domain_context = {
-                "domain": domain,
-                "startup_url": environment_mod.STARTUP_URLS[domain],
-            }
         try:
             args.config_file = config_mod.config_path(args.config_dir)
         except config_mod.CliError as exc:
@@ -190,16 +196,17 @@ def main(argv: list[str], command_hint: str | None = None) -> int:
             sys.stderr.write(f"dogopencli: {spec.command}; config={args.config_dir}\n")
         if args.quiet:
             with open(os.devnull, "w") as sink, contextlib.redirect_stderr(sink):
-                result = dispatch(spec, args)
+                result = dispatch(spec, args, warning_stream=warning_stream)
         else:
-            result = dispatch(spec, args)
+            result = dispatch(spec, args, warning_stream=warning_stream)
         emit(spec.command, result, None, format)
         return result.exit_code
     except (AuthError, OSError, ValueError) as exc:
         error = error_dict(exc, spec.command)
         error["details"] = {**error["details"], **domain_context}
-        emit(spec.command, Result(exit_code=1), error, format)
-        return 1
+        code = 130 if isinstance(exc, AuthError) and exc.code == "interrupted" else 1
+        emit(spec.command, Result(exit_code=code), error, format)
+        return code
     except KeyboardInterrupt:
         error = error_dict(
             AuthError("interrupted", "Command interrupted"), spec.command

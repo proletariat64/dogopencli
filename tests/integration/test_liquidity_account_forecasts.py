@@ -302,7 +302,9 @@ def test_unqualified_sources_are_discoverable_but_never_execute(setup, run_cli, 
     for command in ([*root, "list"], ["refresh", *root], ["prune", *root]):
         code, out, _ = run_cli(command)
         assert code == 1
-        assert parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+        assert parse(out)["error"]["code"] == (
+            "UNSUPPORTED_CAPABILITY" if command[0] == "prune" else "LEAF_DISABLED"
+        )
     assert setup.state.transports == []
     assert not setup.cache_path.exists()
 

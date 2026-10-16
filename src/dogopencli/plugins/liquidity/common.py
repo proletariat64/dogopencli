@@ -7,6 +7,7 @@ from typing import Any
 
 from ... import config as config_mod
 from ...errors import CONFIG_ERROR, EXIT_USAGE, CliError
+from ...execution import observe_result
 from ...jsonutil import canonical
 from .leaves import DetailLeaf, ListLeaf
 
@@ -16,6 +17,7 @@ def now() -> datetime:
 
 
 def emit(data: Any, meta: Any, error: Any = None) -> None:
+    observe_result(meta, error)
     sys.stdout.write(canonical({"data": data, "error": error, "meta": meta}) + "\n")
 
 

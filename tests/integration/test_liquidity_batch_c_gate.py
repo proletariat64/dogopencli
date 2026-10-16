@@ -53,7 +53,7 @@ def test_batch_c_discovery_explains_first_release_evidence(
         assert document["errors"] == ["UNSUPPORTED_CAPABILITY"]
         assert document["effects"]["network"] is False
         assert document["effects"]["browser_required"] is False
-        reason = document["summary"]
+        assert document["summary"] == "Disabled inquiry."
     else:
         guide = document["read_guide"]
         assert guide["kind"] == "runtimes"
@@ -68,8 +68,9 @@ def test_batch_c_discovery_explains_first_release_evidence(
         )
         assert not document["data_schema"].get("properties")
         reason = guide["reason"]
-    for term in (*missing, "#89", "non-empty", "complete", "UAT"):
-        assert term in reason
+    if command == "describe":
+        for term in (*missing, "#89", "non-empty", "complete", "UAT"):
+            assert term in reason
     assert cache.read_bytes() == before
 
 
@@ -91,11 +92,11 @@ def test_batch_c_refuses_execution_and_preserves_previous_cache(
     assert code in (1, 2)
     assert document["data"] is None
     if mode == "cached":
-        assert document["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+        assert document["error"]["code"] == "LEAF_DISABLED"
         assert document["error"]["retryable"] is False
     else:
         assert document["error"]["code"] in (
             "INVALID_ARGUMENT",
-            "UNSUPPORTED_CAPABILITY",
+            "LEAF_DISABLED",
         )
     assert cache.read_bytes() == before

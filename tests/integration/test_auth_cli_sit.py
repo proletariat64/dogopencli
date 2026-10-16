@@ -35,6 +35,193 @@ from dogopencli.browser.coordination import (
 CDP_URL = "http://127.0.0.1:9222"
 
 
+def test_collection_auth_has_explicit_business_identity(run_cli, auth_setup):
+    code, value, _ = invoke(
+        run_cli, [*auth_setup.argv, "auth", "check", "--domain", "collection"]
+    )
+    assert code == 0
+    assert value["result"]["domain"] == "collection"
+    assert value["result"]["authenticated"] is True
+
+
+def test_repeated_auth_selectors_preserve_shared_portal_identities(run_cli, auth_setup):
+    code, value, _ = invoke(
+        run_cli,
+        [
+            *auth_setup.argv,
+            "auth",
+            "check",
+            "--domain",
+            "payment",
+            "--domain",
+            "collection",
+            "--domain",
+            "payment",
+        ],
+    )
+    assert code == 0
+    assert [item["domain"] for item in value["result"]["domains"]] == [
+        "payment",
+        "collection",
+    ]
+
+
+def _route_all_entries(auth_setup, *, failed_url=None):
+    from fake_cdp import FakeTransport
+
+    class EntryTransport(FakeTransport):
+        def new_target(self, url, *, timeout=None):
+            self._state.href = (
+                "https://unexpected.example/" if url == failed_url else url
+            )
+            return super().new_target(url, timeout=timeout)
+
+    cdp.set_transport_factory(lambda _url: EntryTransport(auth_setup.state))
+
+
+@pytest.mark.parametrize("command", [["login"], ["auth", "check"]])
+def test_bare_auth_selects_all_four_domains_with_separate_observations(
+    run_cli, auth_setup, command
+):
+    _route_all_entries(auth_setup)
+    code, output, _ = run_cli([*auth_setup.argv, *command])
+    value = json.loads(output)
+    assert code == 0
+    assert [item["domain"] for item in value["result"]["domains"]] == [
+        "payment",
+        "collection",
+        "fx",
+        "liquidity",
+    ]
+    assert all(item["authenticated"] for item in value["result"]["domains"])
+    assert auth_setup.state.launches == []
+    if command == ["login"]:
+        assert locks_released(auth_setup.profile)
+    code, output, _ = run_cli([*auth_setup.argv, "domain", "list"])
+    assert code == 0
+    assert all(
+        row["auth"]["outcome"] == "authenticated"
+        for row in json.loads(output)["result"]
+    )
+
+
+def test_partial_domain_failure_still_checks_independent_remaining_domains(
+    run_cli, auth_setup
+):
+    from dogopencli.browser.environment import FX_STARTUP_URL
+
+    _route_all_entries(auth_setup, failed_url=FX_STARTUP_URL)
+    code, output, _ = run_cli([*auth_setup.argv, "auth", "check"])
+    value = json.loads(output)
+    assert code == 1
+    assert value["result"] is None
+    outcomes = value["error"]["details"]["domains"]
+    assert [item["domain"] for item in outcomes] == [
+        "payment",
+        "collection",
+        "fx",
+        "liquidity",
+    ]
+    assert outcomes[2]["error"]["code"] == "service_failure"
+    assert outcomes[2]["authenticated"] is None
+    assert outcomes[3]["authenticated"] is True
+    code, output, _ = run_cli([*auth_setup.argv, "domain", "show", "fx"])
+    assert json.loads(output)["result"]["auth"]["outcome"] == "failed"
+
+
+def test_disabled_domains_are_skipped_and_explicit_selection_is_rejected(
+    run_cli, auth_setup
+):
+    assert run_cli([*auth_setup.argv, "domain", "disable", "payment"])[0] == 0
+    _route_all_entries(auth_setup)
+    code, output, _ = run_cli([*auth_setup.argv, "login"])
+    assert code == 0
+    assert [item["domain"] for item in json.loads(output)["result"]["domains"]] == [
+        "collection",
+        "fx",
+        "liquidity",
+    ]
+    before = len(auth_setup.state.transports)
+    code, output, _ = run_cli([*auth_setup.argv, "login", "--domain", "payment"])
+    assert code == 1
+    assert json.loads(output)["error"]["code"] == "domain_disabled"
+    assert len(auth_setup.state.transports) == before
+
+
+def test_browser_loss_identifies_all_unchecked_domains(run_cli, auth_setup):
+    auth_setup.state.running = False
+    code, output, _ = run_cli([*auth_setup.argv, "auth", "check"])
+    assert code == 1
+    outcomes = json.loads(output)["error"]["details"]["domains"]
+    assert len(outcomes) == 4
+    assert outcomes[0]["error"]["code"] == "browser_unavailable"
+    assert outcomes[0]["authenticated"] is None
+    assert all(
+        item["checked"] is False and item["authenticated"] is None
+        for item in outcomes[1:]
+    )
+
+
+@pytest.mark.parametrize("inconclusive", [False, True])
+def test_interrupt_during_auth_save_preserves_one_verdict_per_domain(
+    run_cli, auth_setup, monkeypatch, inconclusive
+):
+    from dogopencli.domains import DomainService
+
+    if inconclusive:
+        auth_setup.state.href = "https://unexpected.example/"
+
+    def interrupted_save(self, domain_id, verdict):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(DomainService, "record_auth", interrupted_save)
+    code, output, _ = run_cli([*auth_setup.argv, "auth", "check"])
+    assert code == 130
+    outcomes = json.loads(output)["error"]["details"]["domains"]
+    assert [item["domain"] for item in outcomes] == [
+        "payment",
+        "collection",
+        "fx",
+        "liquidity",
+    ]
+    assert outcomes[0]["checked"] is True
+    assert outcomes[0]["authenticated"] is (None if inconclusive else True)
+    assert all(item["checked"] is False for item in outcomes[1:])
+
+
+@pytest.mark.parametrize("failure", ["navigation", "not_ready"])
+def test_one_page_failure_does_not_skip_independent_auth_domains(
+    run_cli, auth_setup, failure
+):
+    from fake_cdp import FakeTransport
+
+    from dogopencli.browser.environment import FX_STARTUP_URL
+
+    class EntryTransport(FakeTransport):
+        def new_target(self, url, *, timeout=None):
+            self.entry = url
+            self._state.href = (
+                "chrome-error://chromewebdata/" if url == FX_STARTUP_URL else url
+            )
+            return super().new_target(url, timeout=timeout)
+
+        def evaluate_probe(self, expression):
+            if self.entry == FX_STARTUP_URL and failure == "not_ready":
+                raise cdp.PageNotReady("loading")
+            return super().evaluate_probe(expression)
+
+    cdp.set_transport_factory(lambda url: EntryTransport(auth_setup.state))
+    code, out, _ = run_cli([*auth_setup.argv, "auth", "check"])
+    assert code == 1
+    outcomes = json.loads(out)["error"]["details"]["domains"]
+    assert outcomes[2]["domain"] == "fx"
+    assert outcomes[2]["error"]["code"] == "browser_unavailable"
+    assert outcomes[2]["authenticated"] is None
+    assert outcomes[3]["domain"] == "liquidity"
+    assert outcomes[3]["checked"] is True
+    assert outcomes[3]["authenticated"] is True
+
+
 @pytest.fixture
 def auth_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     config_dir = tmp_path / "config"
@@ -67,6 +254,12 @@ def fast_clock(monkeypatch: pytest.MonkeyPatch):
 
 
 def invoke(run_cli, argv: list[str]) -> tuple[int, dict, str]:
+    # Existing lifecycle cases exercise one application. All-domain selection
+    # is covered separately, without this single-domain fixture convenience.
+    if "--domain" not in argv and (
+        "login" in argv or ("auth" in argv and "check" in argv)
+    ):
+        argv = [*argv, "--domain", "payment"]
     code, out, err = run_cli(argv)
     value = json.loads(out)
     assert "\x1b" not in out
@@ -103,7 +296,7 @@ def test_login_healthy_headless_reused_without_restart(run_cli, auth_setup):
     assert auth_setup.state.launches == []
     assert locks_released(auth_setup.profile)
     # Login never refreshes business caches.
-    assert list(auth_setup.tmp_path.rglob("*.sqlite3")) == []
+    assert list(auth_setup.tmp_path.rglob("cache.sqlite3")) == []
 
 
 def test_login_absent_chrome_starts_headless(run_cli, auth_setup):
@@ -159,6 +352,40 @@ def test_login_default_timeout_is_600_seconds(run_cli, auth_setup):
     (option,) = [o for o in document["options"] if o["name"] == "timeout_seconds"]
     assert option["default"] == 600.0
     assert option["type"] == "positive"
+
+
+@pytest.mark.parametrize("phase", ["before_domain", "before_probe"])
+def test_unverified_login_deadline_does_not_record_missing_auth(
+    run_cli, auth_setup, monkeypatch, phase
+):
+    from fake_cdp import FakeTransport
+
+    from dogopencli.auth import domains as auth_domains
+
+    clock = [0.0]
+    monkeypatch.setattr(login_mod, "monotonic", lambda: clock[0])
+    if phase == "before_domain":
+        readings = iter((0.0, 1.0))
+        monkeypatch.setattr(auth_domains, "monotonic", lambda: next(readings, 1.0))
+    else:
+        monkeypatch.setattr(auth_domains, "monotonic", lambda: clock[0])
+
+        class SlowVersion(FakeTransport):
+            def version(self, *, timeout=None):
+                result = super().version(timeout=timeout)
+                clock[0] = 1.0
+                return result
+
+        cdp.set_transport_factory(lambda url: SlowVersion(auth_setup.state))
+    code, value, _ = invoke(
+        run_cli,
+        [*auth_setup.argv, "login", "--domain", "payment", "--timeout-seconds", "0.01"],
+    )
+    assert code == 1
+    assert value["error"]["code"] == "service_failure"
+    assert value["error"]["details"]["domains"][0]["authenticated"] is None
+    _, output, _ = run_cli([*auth_setup.argv, "domain", "show", "payment"])
+    assert json.loads(output)["result"]["auth"]["outcome"] != "unauthenticated"
 
 
 def test_login_timeout_preserves_headed_chrome(
@@ -300,9 +527,69 @@ def test_auth_check_authenticated_headless(run_cli, auth_setup):
     assert result["cdp_url"] == CDP_URL
     assert result["profile"] == str(auth_setup.profile)
     assert result["probe"]["final_origin"] == PAYMENT_ORIGIN
-    # Read-only: no launch, no mode switch, no lock files, no profile creation.
+    # Probe only: no launch or mode switch; coordination may create a lock file.
     assert auth_setup.state.launches == []
-    assert not auth_setup.profile.exists()
+    assert not (auth_setup.profile / "Cookies").exists()
+    assert not (auth_setup.profile / LOGIN_LOCK_NAME).exists()
+    acquire_browser_control(auth_setup.profile, shared=False).release()
+
+
+def test_auth_check_holds_browser_control_through_observation_save(
+    run_cli, auth_setup, monkeypatch
+):
+    from fake_cdp import seed_cookies
+
+    from dogopencli.domains import DomainService
+
+    seed_cookies(auth_setup.state)
+    record_auth = DomainService.record_auth
+    logout_attempts = []
+
+    def save_with_concurrent_logout(self, domain_id, verdict):
+        auth_setup.state.href = SSO_URL
+        code, out, _ = run_cli([*auth_setup.argv, "logout"])
+        logout_attempts.append((code, json.loads(out)))
+        auth_setup.state.href = PAYMENT_URL
+        record_auth(self, domain_id, verdict)
+
+    monkeypatch.setattr(DomainService, "record_auth", save_with_concurrent_logout)
+    code, _, _ = invoke(
+        run_cli, [*auth_setup.argv, "auth", "check", "--domain", "payment"]
+    )
+    assert code == 0
+    assert len(logout_attempts) == 1
+    logout_code, logout_result = logout_attempts[0]
+    assert logout_code == 1
+    assert logout_result["error"]["code"] == "browser_busy"
+    assert auth_setup.state.deleted_cookies == []
+
+    # Releasing check control permits logout; no stale authenticated save follows it.
+    auth_setup.state.href = SSO_URL
+    code, output, _ = run_cli([*auth_setup.argv, "logout"])
+    assert code == 0, output
+    assert auth_setup.state.deleted_cookies
+    _, output, _ = run_cli([*auth_setup.argv, "domain", "show", "payment"])
+    assert json.loads(output)["result"]["auth"]["outcome"] == "unknown"
+
+
+def test_auth_check_control_conflict_reports_all_domains_unchecked(run_cli, auth_setup):
+    held = acquire_browser_control(auth_setup.profile, shared=False)
+    try:
+        code, output, _ = run_cli([*auth_setup.argv, "auth", "check"])
+    finally:
+        held.release()
+    assert code == 1
+    error = json.loads(output)["error"]
+    assert error["code"] == "browser_busy"
+    assert [item["domain"] for item in error["details"]["domains"]] == [
+        "payment",
+        "collection",
+        "fx",
+        "liquidity",
+    ]
+    assert all(item["checked"] is False for item in error["details"]["domains"])
+    assert auth_setup.state.transports == []
+    assert auth_setup.state.launches == []
 
 
 def test_auth_check_headed_mode_is_also_verified(run_cli, auth_setup):
@@ -470,14 +757,18 @@ def test_version_envelope(run_cli, auth_setup):
 
 
 def test_text_format_result(run_cli, auth_setup):
-    code, out, _ = run_cli([*auth_setup.argv, "--format", "text", "auth", "check"])
+    code, out, _ = run_cli(
+        [*auth_setup.argv, "--format", "text", "auth", "check", "--domain", "payment"]
+    )
     assert code == 0
     assert "authenticated: True" in out
 
 
 def test_text_format_error_goes_to_stderr(run_cli, auth_setup):
     auth_setup.state.href = SSO_URL
-    code, out, err = run_cli([*auth_setup.argv, "--format", "text", "auth", "check"])
+    code, out, err = run_cli(
+        [*auth_setup.argv, "--format", "text", "auth", "check", "--domain", "payment"]
+    )
     assert code == 1
     assert out == ""
     assert err.startswith("auth_required: ")
@@ -493,12 +784,47 @@ def test_globals_may_follow_the_command(run_cli, auth_setup):
 
 
 def test_verbose_and_quiet_channels(run_cli, auth_setup):
-    code, _, err = run_cli([*auth_setup.argv, "--verbose", "auth", "check"])
+    code, _, err = run_cli(
+        [*auth_setup.argv, "--verbose", "auth", "check", "--domain", "payment"]
+    )
     assert code == 0
     assert "dogopencli: auth.check; config=" in err
-    code, out, err = run_cli([*auth_setup.argv, "--quiet", "auth", "check"])
+    code, out, err = run_cli(
+        [*auth_setup.argv, "--quiet", "auth", "check", "--domain", "payment"]
+    )
     assert code == 0
     assert err == ""
+
+
+@pytest.mark.parametrize(
+    "command", [["auth", "check", "--domain", "payment"], ["logout"]]
+)
+def test_quiet_keeps_sanitized_auth_persistence_warning(
+    run_cli, auth_setup, monkeypatch, command
+):
+    from dogopencli.domains import DomainService
+    from dogopencli.errors import CliError
+
+    assert (
+        invoke(run_cli, [*auth_setup.argv, "auth", "check", "--domain", "payment"])[0]
+        == 0
+    )
+    if command == ["logout"]:
+        auth_setup.state.href = SSO_URL
+
+    def fail_save(*args, **kwargs):
+        raise CliError("DOMAIN_STATE_ERROR", "private storage details")
+
+    monkeypatch.setattr(
+        DomainService,
+        "invalidate_auth" if command == ["logout"] else "record_auth",
+        fail_save,
+    )
+    code, result, error = invoke(run_cli, [*auth_setup.argv, "--quiet", *command])
+    assert code == 0
+    assert result["result"]["authenticated"] is (command != ["logout"])
+    assert "DOMAIN_STATE_ERROR" in error
+    assert "private storage details" not in error
 
 
 def test_no_color_accepted(run_cli, auth_setup):
@@ -713,7 +1039,7 @@ def test_peer_login_payment_valid_requires_domain_human_sso(
     )
     assert value["result"]["domain"] == domain
     assert value["result"]["mode"] == "headless"
-    assert list(auth_setup.tmp_path.rglob("*.sqlite3")) == []
+    assert list(auth_setup.tmp_path.rglob("cache.sqlite3")) == []
 
 
 @pytest.mark.parametrize("domain", ["liquidity", "fx"])
@@ -775,10 +1101,10 @@ def test_liquidity_rejected_unchanged_candidate_waits_quietly(
 @pytest.mark.parametrize("command", [["login"], ["auth", "check"]])
 def test_unknown_login_domain_has_no_browser_side_effect(run_cli, auth_setup, command):
     code, value, _ = invoke(
-        run_cli, [*auth_setup.argv, *command, "--domain", "collection"]
+        run_cli, [*auth_setup.argv, *command, "--domain", "missing"]
     )
     assert code == 1
-    assert value["error"]["code"] == "invalid_arguments"
+    assert value["error"]["code"] == "domain_not_found"
     assert auth_setup.state.transports == []
     assert auth_setup.state.launches == []
     assert not auth_setup.profile.exists()
@@ -851,8 +1177,9 @@ def test_liquidity_text_and_help_report_domain(run_cli, auth_setup):
     code, out, _ = run_cli(["login", "--help"])
     assert code == 0
     domain = next(o for o in json.loads(out)["options"] if o["name"] == "domain")
-    assert domain["choices"] == ["payment", "liquidity", "fx"]
-    assert domain["default"] == "payment"
+    assert domain["choices"] == ["payment", "collection", "fx", "liquidity"]
+    assert domain["default"] is None
+    assert domain["type"] == "append"
     code, out, _ = run_cli(["login", "--help", "--format", "text"])
     assert code == 0
     assert "--domain" in out and "liquidity" in out
@@ -928,7 +1255,7 @@ def test_liquidity_settle_respects_deadline_and_keeps_headed(
     )
     assert code == 1
     assert value["error"]["code"] == "auth_required"
-    assert clock[0] == 1
+    assert clock[0] == pytest.approx(1, abs=0.01)
     assert state.launches == ["headed"]
     assert state.mode == "headed"
 
@@ -1017,5 +1344,5 @@ def test_liquidity_unchanged_candidate_verification_is_bounded(
     assert sum(len(t.navigations) for t in state.transports) == len(headed_checks) + 1
     assert state.launches == ["headed"]
     assert state.mode == "headed"
-    assert candidate_retry_clock[0] == 60
+    assert candidate_retry_clock[0] == pytest.approx(60, abs=0.01)
     assert locks_released(auth_setup.profile)

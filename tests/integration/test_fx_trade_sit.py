@@ -70,7 +70,8 @@ def fx_browser(tmp_path, monkeypatch):
     cdp.set_transport_factory(None)
     assert all(len(t.closed) == len(t.created) for t in state.transports)
     if not getattr(state, "allows_cache", False):
-        assert not list(tmp_path.rglob("*.sqlite3"))
+        # Execution observations are separate from the business query cache.
+        assert not (tmp_path / "query.sqlite3").exists()
 
 
 def test_fx_scope_wire_precision_and_projection(run_cli, fx_browser, envelope):
