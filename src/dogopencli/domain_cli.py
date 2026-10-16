@@ -8,6 +8,8 @@ from . import config
 from .auth.output import Result, emit
 from .domains import DomainService
 from .errors import CliError
+from .helpspec import add_options
+from .management import DOMAIN_ARGUMENT, DOMAIN_OPTIONS
 
 
 class _Parser(argparse.ArgumentParser):
@@ -20,9 +22,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "action", nargs="?", choices=("list", "show", "leaves", "enable", "disable")
     )
-    parser.add_argument("domain", nargs="?")
-    parser.add_argument("--config-dir")
-    parser.add_argument("--format", choices=("json", "text"), default="json")
+    parser.add_argument(DOMAIN_ARGUMENT["name"], nargs="?")
+    add_options(parser, DOMAIN_OPTIONS)
     parser.add_argument("--help", "-h", action="store_true")
     format = "json"
     command = "domain"
@@ -38,13 +39,7 @@ def main(argv: list[str]) -> int:
             if format == "text":
                 print(render_text(NODES[path]), end="")
             else:
-                value = document(NODES[path])
-                value["arguments"] = (
-                    []
-                    if action in {None, "list"}
-                    else [{"name": "domain", "required": True, "type": "str"}]
-                )
-                print(json.dumps(value))
+                print(json.dumps(document(NODES[path])))
             return 0
         command = "domain " + args.action
         service = DomainService(config.config_path(args.config_dir))

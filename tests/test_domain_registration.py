@@ -33,6 +33,55 @@ def test_every_refresh_has_explicit_operation_and_cache_ownership():
                     assert node.path in leaf.cache_paths
 
 
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "missing_query",
+        "missing_refresh",
+        "unsupported",
+        "duplicate",
+        "extra",
+        "wrong_kind",
+    ],
+)
+def test_invalid_operation_mapping_is_rejected_before_registry_publication(defect):
+    installed = plugins.domain_plugins()
+    domain = installed[0]
+    leaf = next(
+        leaf for leaf in domain.leaves if leaf.commands and leaf.refresh_commands
+    )
+    operations = leaf.operations
+    query_path = leaf.commands[0].path
+    refresh_path = leaf.refresh_commands[0].path
+    if defect == "missing_query":
+        operations = tuple(entry for entry in operations if entry[0] != query_path)
+    elif defect == "missing_refresh":
+        operations = tuple(entry for entry in operations if entry[0] != refresh_path)
+    elif defect == "unsupported":
+        operations = tuple((path, "run") for path, _ in operations)
+    elif defect == "duplicate":
+        operations = (*operations, operations[0])
+    elif defect == "extra":
+        operations = (*operations, ((domain.id, "unregistered"), "list"))
+    else:
+        operations = tuple(
+            (path, "list" if path == refresh_path else operation)
+            for path, operation in operations
+        )
+    broken = replace(leaf, operations=operations)
+    invalid = replace(
+        domain,
+        leaves=tuple(broken if item.id == leaf.id else item for item in domain.leaves),
+    )
+    commands = plugins.command_nodes()
+    capability = plugins.get_capability(leaf.id)
+    with pytest.raises(ValueError, match="operation"):
+        plugins.register_domains((invalid, *installed[1:]))
+    assert plugins.domain_plugins() == installed
+    assert plugins.command_nodes() == commands
+    assert plugins.get_capability(leaf.id) is capability
+
+
 def test_sample_domain_supplies_execution_binding_without_core_changes(monkeypatch):
     from types import SimpleNamespace
 

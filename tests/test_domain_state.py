@@ -9,6 +9,41 @@ from dogopencli import plugins
 
 
 @pytest.mark.parametrize(
+    "action", [None, "list", "show", "leaves", "enable", "disable"]
+)
+@pytest.mark.parametrize("format", ["json", "text"])
+@pytest.mark.parametrize("entrance", ["direct", "help"])
+def test_domain_help_describes_inputs_in_both_formats(
+    run_cli, monkeypatch, action, format, entrance
+):
+    monkeypatch.setenv("DOGOPENCLI_CONFIG", "")
+    path = ["domain", *([action] if action else [])]
+    arguments = [*path, "--help"] if entrance == "direct" else ["help", *path]
+    code, output, error = run_cli([*arguments, "--format", format])
+    assert code == 0, error
+    requires_domain = action in {"show", "leaves", "enable", "disable"}
+    if format == "json":
+        document = json.loads(output)
+        options = {option["name"]: option for option in document["options"]}
+        assert options["config_dir"]["flags"] == ["--config-dir"]
+        assert options["format"]["choices"] == ["json", "text"]
+        assert options["format"]["default"] == "json"
+        assert bool(document["arguments"]) is requires_domain
+        if requires_domain:
+            assert document["arguments"][0]["name"] == "domain"
+            assert document["arguments"][0]["required"] is True
+    else:
+        assert "--config-dir" in output
+        assert "--format" in output
+        assert ("Arguments:" in output) is requires_domain
+        if requires_domain:
+            assert "domain" in output.split("Arguments:", 1)[1].split("Options:", 1)[0]
+            assert (
+                "required" in output.split("Arguments:", 1)[1].split("Options:", 1)[0]
+            )
+
+
+@pytest.mark.parametrize(
     "arguments,format,command",
     [
         (["list", "--help", "--format=text"], "text", "dogopencli domain list"),

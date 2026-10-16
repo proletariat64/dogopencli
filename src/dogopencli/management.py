@@ -1,6 +1,20 @@
 """Local management declarations, independent of business domain identities."""
 
-from .helpspec import NO_EFFECTS, BizNode
+from .helpspec import NO_EFFECTS, BizNode, opt
+
+DOMAIN_ARGUMENT = {
+    "name": "domain",
+    "summary": "Registered domain ID.",
+    "type": "str",
+    "required": True,
+}
+DOMAIN_OPTIONS = (
+    opt(
+        "config_dir",
+        "Directory containing the shared configuration and domain settings.",
+    ),
+    opt("format", "Output format.", default="json", choices=("json", "text")),
+)
 
 DOMAIN_OUTPUT = {
     "default_format": "json",
@@ -27,6 +41,7 @@ DECLARATIONS = (
         "Inspect and control registered domains offline.",
         handler="cmd_domain_management",
         output=DOMAIN_OUTPUT,
+        options=DOMAIN_OPTIONS,
     ),
     *(
         BizNode(
@@ -34,6 +49,8 @@ DECLARATIONS = (
             summary,
             handler="cmd_domain_management",
             output=DOMAIN_OUTPUT,
+            options=DOMAIN_OPTIONS,
+            arguments=() if action == "list" else (DOMAIN_ARGUMENT,),
             effects={**NO_EFFECTS, "mutates": action in {"enable", "disable"}},
             constraints=(
                 "Changes local execution settings only; never mutates production "

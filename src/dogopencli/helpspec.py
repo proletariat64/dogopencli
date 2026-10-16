@@ -282,6 +282,8 @@ class BizNode:
     # Optional explicit cache owner for shared refresh controls registered
     # outside a domain plugin. This is an internal discovery association.
     cache_capability: str | None = None
+    # Positional input metadata for commands with their own parser (management).
+    arguments: tuple[dict[str, Any], ...] = ()
 
 
 # Shared query options (declared once, reused by every query leaf).
@@ -506,7 +508,7 @@ def document(node: BizNode) -> dict[str, Any]:
     doc["summary"] = node.summary
     if node.kind is not None:
         doc["kind"] = node.kind
-    doc["arguments"] = []
+    doc["arguments"] = [dict(argument) for argument in node.arguments]
     doc["options"] = [_describe(option) for option in node.options]
     doc["constraints"] = list(node.constraints)
     doc["effects"] = dict(node.effects)
@@ -533,6 +535,11 @@ def render_text(node: BizNode) -> str:
         lines.append("Children:")
         for entry in doc["children"]:
             lines.append(f"  {entry['name']}  {entry['summary']}")
+    if doc["arguments"]:
+        lines.append("Arguments:")
+        for entry in doc["arguments"]:
+            suffix = " [required]" if entry.get("required") else ""
+            lines.append(f"  {entry['name']}  {entry.get('summary', '')}{suffix}")
     if doc["options"]:
         lines.append("Options:")
         for entry in doc["options"]:

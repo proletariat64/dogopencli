@@ -423,6 +423,19 @@ def validate_domains(domains: tuple[DomainPlugin, ...]) -> None:
             operation_paths = {
                 node.path for node in (*leaf.commands, *leaf.refresh_commands)
             }
+            refresh_paths = {node.path for node in leaf.refresh_commands}
+            seen_operations: set[tuple[str, ...]] = set()
+            for path, operation in leaf.operations:
+                if (
+                    path not in operation_paths
+                    or path in seen_operations
+                    or operation
+                    not in (("refresh",) if path in refresh_paths else ("list", "get"))
+                ):
+                    raise ValueError(f"invalid operation binding: {leaf.id}")
+                seen_operations.add(path)
+            if seen_operations != operation_paths:
+                raise ValueError(f"missing operation binding: {leaf.id}")
             if set(leaf.cache_paths) - operation_paths or any(
                 node.cache_capability not in (None, leaf.id) for node in executable
             ):
