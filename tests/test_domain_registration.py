@@ -100,3 +100,17 @@ def test_domain_contributions_are_validated_before_assembly(defect):
     )
     with pytest.raises(ValueError):
         build_domain_catalog((invalid,))
+
+
+def test_inquiry_operations_use_shared_list_get_vocabulary():
+    from types import SimpleNamespace
+
+    from dogopencli.helpspec import BizNode
+
+    registration = plugins.leaf_registration(
+        SimpleNamespace(name="sample.rows"),
+        commands=(
+            BizNode(("sample", "trade"), "Trade query.", handler="sample_trade"),
+        ),
+    )
+    assert registration.operations == ((("sample", "trade"), "list"),)

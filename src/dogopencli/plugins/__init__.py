@@ -296,9 +296,9 @@ def leaf_registration(
         refresh_commands = tuple(
             replace(node, summary="Disabled refresh.") for node in refresh_commands
         )
-    operations = tuple((node.path, node.path[-1]) for node in commands) + tuple(
-        (node.path, "refresh") for node in refresh_commands
-    )
+    operations = tuple(
+        (node.path, "get" if node.path[-1] == "get" else "list") for node in commands
+    ) + tuple((node.path, "refresh") for node in refresh_commands)
     cache_paths = tuple(
         node.path
         for node in (*commands, *refresh_commands)
