@@ -59,13 +59,18 @@ def test_missing_read_and_prune_do_not_initialize_storage(tmp_path):
 
 def test_enabled_list_catalog_has_uniform_display_and_prune():
     from dogopencli.catalog import NODES
+    from dogopencli.plugins import domain_plugins
+
+    cache_paths = {
+        path
+        for domain in domain_plugins()
+        for leaf in domain.leaves
+        if leaf.enabled
+        for path in leaf.cache_paths
+    }
 
     for path, node in NODES.items():
-        if node.handler in (None, "cmd_liquidity_unsupported") or path[0] in (
-            "refresh",
-            "describe",
-            "auth",
-        ):
+        if path not in cache_paths or path[:1] == ("refresh",):
             continue
         if path[-1] != "list" and path != ("fx", "trade"):
             continue
@@ -82,15 +87,18 @@ def test_public_help_inventory_declares_uniform_list_operations(capsys):
 
     from dogopencli.catalog import NODES
     from dogopencli.cli import main
-    from dogopencli.plugins import cache_bindings
+    from dogopencli.plugins import cache_bindings, domain_plugins
 
     bindings = cache_bindings()
-    for path, node in NODES.items():
-        if node.handler in (None, "cmd_liquidity_unsupported") or path[0] in (
-            "refresh",
-            "describe",
-            "auth",
-        ):
+    cache_paths = {
+        path
+        for domain in domain_plugins()
+        for leaf in domain.leaves
+        if leaf.enabled
+        for path in leaf.cache_paths
+    }
+    for path in NODES:
+        if path not in cache_paths or path[:1] == ("refresh",):
             continue
         if path[-1] != "list" and path != ("fx", "trade"):
             continue

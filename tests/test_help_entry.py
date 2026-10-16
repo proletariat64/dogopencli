@@ -35,6 +35,8 @@ def test_python_m_entry_returns_root_json() -> None:
     assert doc["command"] == "dogopencli"
     assert [child["name"] for child in doc["children"]] == [
         "snapshot",
+        "domain",
+        "gui",
         "payment",
         "refresh",
         "collection",

@@ -19,6 +19,13 @@ shared browser primitives. Never start a separate browser, extract cookies or
 send unrestricted requests from a domain adapter. Sharing an entry URL does not
 share a domain auth verdict.
 
+The probe callback accepts a `BrowserEnvironment` and keyword-only `timeout`
+in seconds. Its environment contains the selected `domain_id`, entry URL and
+auth policy. Return the shared authenticated verdict, including the verified
+browser `mode`; raise the existing `AuthError` for failures. Shared orchestration
+calls the probe and persists the domain observation. Do not give the callback
+a separate transport/domain-ID signature or bypass shared orchestration.
+
 Each `LeafRegistration` declares its capability, enabled default, command nodes,
 refresh nodes, descriptions and any collector or refresh hint. Use
 `leaf_registration` for the existing capability conventions. Its operation
@@ -110,10 +117,12 @@ PYTHONPATH=src python examples/domain_component.py
 ```
 
 The sample registers two synthetic domains with a shared example URL, assembles
-their catalogs, obtains independent fake auth verdicts and queries fake records.
+their catalogs, obtains independent fake auth verdicts through the real shared
+`authenticate_domains` orchestration and queries fake records.
 It removes one domain and proves that the peer remains. It restores the original
 registry before returning. It never contacts production, opens Chrome or writes
-user settings. The component declares its execution callback through the same
+user settings; its observation store exists only in a temporary directory.
+The component declares its execution callback through the same
 `handlers` mapping that core dispatch uses. The demonstration resolves and runs
 that registered callback with synthetic input. The sample remains outside the
 production registration set.

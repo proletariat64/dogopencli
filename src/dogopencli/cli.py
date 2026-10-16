@@ -34,6 +34,7 @@ from .errors import (
     CliError,
 )
 from .execution import invoke_leaf, observe_result
+from .handler_contract import core_handler, validate_core_handlers
 from .helpspec import BizNode, OptionSpec, add_options
 from .helptree import business_entry, help_main, leading_command
 from .inquiry import inquiry_session
@@ -1709,8 +1710,8 @@ def _execute(node: BizNode, values: list[str], word_indices: set[int]) -> int:
         return _emit_error(_argument_error("command is not executable"))
     from .plugins import handler_for
 
-    handler = handler_for(node.handler) or globals()[node.handler]
     try:
+        handler = handler_for(node.handler) or core_handler(node.handler, globals())
         if node.path[:1] == ("refresh",):
             display_options(args)
         return invoke_leaf(node.path, lambda: handler(args))
@@ -1750,6 +1751,9 @@ def cmd_gui(args: argparse.Namespace) -> int:
     from .gui import main as gui_main
 
     return gui_main(args.tokens)
+
+
+validate_core_handlers(globals())
 
 
 def main(argv: list[str] | None = None) -> int:
