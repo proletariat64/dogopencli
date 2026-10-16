@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "tomli>=2.0; python_version < '3.11'",
     "websocket-client>=1.7",
+    "duckdb>=1.1",
 ]
 
 [project.optional-dependencies]
@@ -45,3 +46,6 @@ select = ["E", "F", "I", "UP", "B"]
 "tests/test_prepare_channel_snapshot.py" = ["E741"]
 # Generated sampled-field evidence: native field names exceed the limit.
 "src/dogopencli/plugins/liquidity/fields.py" = ["E501"]
+
+[tool.setuptools.package-data]
+"dogopencli" = ["leaf_packages/*/*/*.json", "leaf_packages/*/*/adapter.py"]

@@ -1,0 +1,242 @@
+{
+  "domain": "fx",
+  "name": "trade",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Native individual FX trades from RiskStandardTrade.",
+      "parameters": [
+        {
+          "name": "bcode",
+          "type": "string",
+          "required": false,
+          "description": "Native P5 BCode.",
+          "multiple": true
+        },
+        {
+          "name": "trade-id",
+          "type": "string",
+          "required": false,
+          "description": "Native trade lookup identifier; stable record identity remains unproven.",
+          "multiple": true
+        },
+        {
+          "name": "symbol",
+          "type": "string",
+          "required": false,
+          "description": "Currency pair, for example USD/PHP.",
+          "multiple": true
+        },
+        {
+          "name": "transaction-type",
+          "type": "string",
+          "required": false,
+          "description": "Native transaction type.",
+          "multiple": true
+        },
+        {
+          "name": "customer-id",
+          "type": "string",
+          "required": false,
+          "description": "Native customer identifier.",
+          "multiple": true
+        },
+        {
+          "name": "account-id",
+          "type": "string",
+          "required": false,
+          "description": "Native subcustomer identifier.",
+          "multiple": true
+        },
+        {
+          "name": "scene",
+          "type": "string",
+          "required": false,
+          "description": "Native quote operation scene."
+        },
+        {
+          "name": "fulfilled",
+          "type": "string",
+          "required": false,
+          "description": "1 means fulfilled; 0 means overdue.",
+          "choices": [
+            "0",
+            "1"
+          ]
+        },
+        {
+          "name": "transact-from",
+          "type": "string",
+          "required": false,
+          "description": "Inclusive YYYY-MM-DD in UTC+08 or explicit-offset ISO instant."
+        },
+        {
+          "name": "transact-to",
+          "type": "string",
+          "required": false,
+          "description": "Inclusive bound paired with transact-from. Omitted ID and dates uses the previous complete UTC+08 day."
+        }
+      ]
+    }
+  },
+  "summary": "Native individual FX trades from RiskStandardTrade.",
+  "purpose": "Native individual FX trades from RiskStandardTrade.",
+  "fields": [
+    {
+      "name": "uniqueId",
+      "type": "string",
+      "meaning": "Native trade lookup identifier; uniqueness as a record identity is unproven.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "bizOperationScene",
+      "type": "string",
+      "meaning": "Native business operation scene.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "outBizNo",
+      "type": "string",
+      "meaning": "Native external business reference; no uniqueness guarantee.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "profileId",
+      "type": "string",
+      "meaning": "Native profile reference; no record identity guarantee.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "clientBookId",
+      "type": "string",
+      "meaning": "Native client book reference.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "clientPnlType",
+      "type": "string",
+      "meaning": "Native client PnL classification; code meanings are not mapped locally.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "p5TimeOverDue",
+      "type": "boolean",
+      "meaning": "Native P5 timing flag, preserved without deriving an additional business status.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "transactTime",
+      "type": "string",
+      "meaning": "Native transaction time representation, preserved without timezone conversion.",
+      "unit": "native timestamp text"
+    },
+    {
+      "name": "tradeAdviceAcceptTime",
+      "type": "string",
+      "meaning": "Native trade-advice acceptance time representation.",
+      "unit": "native timestamp text"
+    },
+    {
+      "name": "riskAcceptTime",
+      "type": "string",
+      "meaning": "Native risk acceptance time representation.",
+      "unit": "native timestamp text"
+    },
+    {
+      "name": "quoteSymbol",
+      "type": "object",
+      "meaning": "Native quote-symbol object; nested content is preserved.",
+      "unit": "native representation"
+    },
+    {
+      "name": "transactionType",
+      "type": "object",
+      "meaning": "Native transaction-type object; codes are not remapped locally.",
+      "unit": "native representation"
+    },
+    {
+      "name": "side",
+      "type": "object",
+      "meaning": "Native trade-side object; codes are not remapped locally.",
+      "unit": "native representation"
+    },
+    {
+      "name": "quoteDirection",
+      "type": "object",
+      "meaning": "Native quote-direction object; codes are not remapped locally.",
+      "unit": "native representation"
+    },
+    {
+      "name": "transactionCcy",
+      "type": "object",
+      "meaning": "Native transaction-currency object.",
+      "unit": "native currency object"
+    },
+    {
+      "name": "contraCcy",
+      "type": "object",
+      "meaning": "Native contra-currency object.",
+      "unit": "native currency object"
+    },
+    {
+      "name": "transactionAmountQuantity",
+      "type": "object",
+      "meaning": "Native transaction amount structure; precision and nested units are preserved.",
+      "unit": "as declared by native object"
+    },
+    {
+      "name": "contraAmountQuantity",
+      "type": "object",
+      "meaning": "Native contra amount structure; precision and nested units are preserved.",
+      "unit": "as declared by native object"
+    },
+    {
+      "name": "pnlCcy",
+      "type": "object",
+      "meaning": "Native PnL currency object.",
+      "unit": "native currency object"
+    },
+    {
+      "name": "pnlAmountQuantity",
+      "type": "object",
+      "meaning": "Native PnL amount structure; no local PnL calculation is performed.",
+      "unit": "as declared by native object"
+    },
+    {
+      "name": "pnlRatio",
+      "type": "object",
+      "meaning": "Native PnL ratio structure; no scale or percentage conversion is inferred.",
+      "unit": "as declared by native object"
+    },
+    {
+      "name": "p4",
+      "type": "object",
+      "meaning": "Native P4 structure; its nested contract is not interpreted locally.",
+      "unit": "native representation"
+    },
+    {
+      "name": "p5",
+      "type": "object",
+      "meaning": "Native P5 structure; its nested contract is not interpreted locally.",
+      "unit": "native representation"
+    }
+  ],
+  "identity": [],
+  "identity_description": "Stable record identity has not been established.",
+  "limitations": [
+    "Individual records, not TradeBatch aggregates.",
+    "Identity and native total semantics remain unproven; complete=false and strict completeness rejects.",
+    "Business filters are online only; cached mappings are unverified.",
+    "Acquisition is bounded to 100 pages and 120 seconds.",
+    "Field types describe verified native representations; fields may be absent or null, unknown fields are preserved, and documentation never coerces records."
+  ],
+  "examples": [
+    {
+      "title": "Query live",
+      "command": "dogopencli fx list trade --live --transact-from 2026-10-03 --transact-to 2026-10-03 --bcode BCODE --scene 'A+前报价' --symbol USD/PHP --transaction-type SALE --fulfilled 1"
+    }
+  ],
+  "dataset": {
+    "relation": "fx_trade"
+  }
+}

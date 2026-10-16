@@ -91,19 +91,22 @@ def test_auth_failure_maps_error_and_releases_lease(session_setup):
 @pytest.mark.parametrize(
     "argv",
     [
-        ["refresh", "payment", "channel"],
-        ["refresh", "payment", "cost"],
-        ["refresh", "payment", "sla"],
-        ["payment", "channel", "list", "--live"],
-        ["payment", "cost", "list", "--live"],
-        ["payment", "sla", "baselines", "list", "--live"],
-        ["payment", "sla", "baselines", "get", "--id", "1", "--live"],
+        ["payment", "refresh", "sla.baselines"],
+        ["payment", "list", "sla.baselines", "--live"],
+        ["payment", "get", "sla.baselines", "1"],
     ],
 )
 def test_public_queries_hold_lease_until_fetch_finishes(
     session_setup, monkeypatch, run_cli, argv
 ):
     config, profile, state = session_setup
+    import shutil
+    from pathlib import Path
+
+    source = (
+        Path(__file__).parents[2] / "src/dogopencli/leaf_packages/payment/sla.baselines"
+    )
+    shutil.copytree(source, config.parent / "plugins/payment/sla.baselines")
     with config.open("a") as stream:
         for source in ("channel", "cost", "sla"):
             stream.write(f'\n[sources.payment_{source}]\nkind = "cdp"\n')

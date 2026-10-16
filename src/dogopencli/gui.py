@@ -7,7 +7,7 @@ import json
 import secrets
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from .config import config_path
 from .errors import CliError
@@ -20,9 +20,18 @@ _PAGE = """<!doctype html>
 padding:0 1rem;background:#f7f8fa;color:#17202a}article{background:white;
 border:1px solid #dce1e6;border-radius:8px;padding:1rem;margin:1rem 0}
 button{padding:.5rem 1rem;cursor:pointer}li{margin:.4rem 0}
+label{display:block;margin:.6rem 0}
+input,textarea{display:block;width:95%;padding:.4rem}
+fieldset{margin:.6rem 0;border:1px solid #dce1e6}pre{white-space:pre-wrap}
 .error{color:#a21616}small{color:#465565}h2{margin-top:0}</style>
 <h1>Domains</h1><p>Local execution settings and recorded status.</p>
 <p id="error" class="error" role="alert"></p><main id="domains"></main>
+<article id="editor" hidden><h2 id="editor-title">Leaf documentation</h2>
+<p>Technical declarations are read-only. Save applies on the next CLI invocation.</p>
+<form id="documentation-form"></form><button id="preview" type="button">Preview</button>
+<button id="save" type="button">Save</button>
+<button id="reload" type="button">Reload</button>
+<p id="editor-status" role="status"></p><pre id="documentation-preview"></pre></article>
 <script nonce="NONCE">
 const token='TOKEN';
 const root=document.getElementById('domains');
@@ -51,11 +60,94 @@ body:JSON.stringify({enabled:!domain.enabled})});await load();
 button.disabled=false;}};
 text(card,'h3','Registered leaves');const list=document.createElement('ul');
 card.append(list);for(const leaf of domain.leaves){
-const last=leaf.last_execution||{};text(list,'li',leaf.id+' — '+
+const last=leaf.last_execution||{};const entry=text(list,'li',leaf.id+' — '+
 (leaf.enabled?'enabled':'disabled')+' — '+(last.outcome||'unknown')+
-(last.updated_at?' — '+last.updated_at:''));}
+(last.updated_at?' — '+last.updated_at:''));
+if(!leaf.diagnostic){const edit=text(entry,'button','Edit documentation');
+edit.type='button';edit.onclick=()=>openEditor(domain.id,leaf.name||leaf.id.slice(domain.id.length+1));}}
 if(!domain.leaves.length)text(card,'small','No registered leaves');
+for(const diagnostic of domain.diagnostics||[]){
+text(card,'p',diagnostic.id+': '+diagnostic.code+' — '+diagnostic.message);}
 }}catch(problem){error.textContent='Unable to load domains: '+problem.message;}}
+let editing=null;
+let editorGeneration=0;
+let editorBusy=false;
+const editor=document.getElementById('editor');
+const form=document.getElementById('documentation-form');
+const status=document.getElementById('editor-status');
+function emptyValue(schema){if(schema.type==='object'){
+const value={};for(const key of schema.required||[]){
+value[key]=emptyValue(schema.properties?.[key]||{});}return value;}
+if(schema.type==='array')return [];if(schema.type==='boolean')return false;
+return '';}
+function renderInput(parent,value,schema,path,change,inherited=true){
+const locked=schema.readOnly??inherited;
+if(value!==null&&typeof value==='object'){
+const group=document.createElement('fieldset');parent.append(group);
+text(group,'legend',path);
+if(Array.isArray(value)){
+value.forEach((item,index)=>{const row=document.createElement('div');group.append(row);
+renderInput(row,item,schema.items||{},path+' '+(index+1),
+next=>{value[index]=next;},locked);
+if(!locked){const remove=text(row,'button','Remove '+path+' '+(index+1));
+remove.type='button';remove.onclick=()=>{value.splice(index,1);drawForm();};}});
+if(!locked){const add=text(group,'button','Add '+path);add.type='button';
+add.onclick=()=>{value.push(emptyValue(schema.items||{}));drawForm();};}
+}else{for(const [key,definition] of Object.entries(schema.properties||{})){
+if(!(key in value)&&definition.readOnly===false&&definition.type==='string'){
+value[key]='';}}
+for(const [key,item] of Object.entries(value)){
+renderInput(group,item,schema.properties?.[key]||{},path+'.'+key,
+next=>{value[key]=next;},locked);}}
+return;}
+const label=text(parent,'label',path+(locked?' (read-only)':''));
+const input=document.createElement(typeof value==='string'&&!locked?'textarea':'input');
+label.append(input);input.setAttribute('aria-label',path);
+if(typeof value==='boolean'){input.type='checkbox';input.checked=value;
+input.disabled=locked;
+input.onchange=()=>change(input.checked);}else{input.value=editing.number_labels?.[path]??value??'';input.readOnly=locked;
+input.oninput=()=>change(input.value);}}
+function drawForm(){form.replaceChildren();const manifest=editing.manifest;
+for(const [key,value] of Object.entries(manifest)){
+renderInput(form,value,editing.schema.properties?.[key]||{},key,
+next=>{manifest[key]=next;});}}
+async function openEditor(domain,name){if(editorBusy)return;
+const generation=++editorGeneration;error.textContent='';try{
+const path='/api/leaves/'+encodeURIComponent(domain)+'/'+encodeURIComponent(name);
+const loaded=await request(path);if(generation!==editorGeneration)return;
+editing={...loaded,path,domain,name};editor.hidden=false;
+document.getElementById('editor-title').textContent=domain+'.'+name+' documentation';
+status.textContent='';drawForm();
+document.getElementById('documentation-preview').textContent=editing.preview;
+}catch(problem){error.textContent='Cannot load documentation: '+problem.message;}}
+function documentationPatch(manifest){const result={};
+for(const key of ['summary','purpose','identity_description','limitations','examples']){
+if(key in manifest)result[key]=manifest[key];}
+result.operations={};for(const [name,operation] of Object.entries(manifest.operations)){
+result.operations[name]={description:operation.description,
+parameters:(operation.parameters||[]).map(parameter=>({description:parameter.description}))};}
+result.fields=manifest.fields.map(field=>({meaning:field.meaning,
+...(field.unit!==undefined?{unit:field.unit}:{})}));return result;}
+async function editorAction(action){if(!editing||editorBusy)return;
+const active=editing;++editorGeneration;editorBusy=true;status.textContent='';
+for(const item of editor.querySelectorAll('input,textarea,button'))item.disabled=true;
+try{
+const result=await request(active.path+'/'+action,{method:'POST',
+headers:{'Content-Type':'application/json','X-Dogopencli-Token':token},
+body:JSON.stringify({documentation:documentationPatch(active.manifest),
+revision:active.revision})});
+if(editing!==active)return;
+document.getElementById('documentation-preview').textContent=result.preview;
+if(action==='save'){editing={...editing,...result};drawForm();
+status.textContent='Saved. Changes apply on the next CLI invocation.';}
+else status.textContent='Preview only; not saved.';
+}catch(problem){status.textContent='Unable to '+action+': '+problem.message;}
+finally{editorBusy=false;drawForm();
+for(const button of editor.querySelectorAll('button'))button.disabled=false;}}
+document.getElementById('preview').onclick=()=>editorAction('preview');
+document.getElementById('save').onclick=()=>editorAction('save');
+document.getElementById('reload').onclick=()=>editing&&openEditor(editing.domain,editing.name);
+form.onsubmit=event=>event.preventDefault();
 load();
 </script></html>"""
 
@@ -119,8 +211,57 @@ def create_server(service: Any, port: int = 0) -> ThreadingHTTPServer:
                 return False
             return True
 
+        def leaf_resource(self, *, mutation: bool = False) -> bool:
+            if not self.path.startswith("/api/leaves/"):
+                return False
+            parts = [unquote(part) for part in urlsplit(self.path).path.split("/")[3:]]
+            if (
+                len(parts) != (3 if mutation else 2)
+                or any(not part or "/" in part or part in {".", ".."} for part in parts)
+                or not hasattr(service, "config_file")
+            ):
+                self.error(404, "NOT_FOUND", "Unknown leaf resource")
+                return True
+            from .leaves.documentation import DocumentationEditor
+
+            editor = DocumentationEditor(service.config_file)
+            try:
+                if not mutation:
+                    result = editor.load(*parts)
+                else:
+                    if parts[2] not in {"preview", "save"}:
+                        self.error(404, "NOT_FOUND", "Unknown editor action")
+                        return True
+                    if self.headers.get("Content-Type") != "application/json":
+                        self.error(415, "INVALID_ARGUMENT", "JSON body required")
+                        return True
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if not 0 < length <= 524288:
+                        raise ValueError
+                    payload = json.loads(self.rfile.read(length))
+                    result = getattr(editor, parts[2])(*parts[:2], payload)
+                self.json_data(200, result)
+            except CliError as error:
+                status = {
+                    "EDIT_CONFLICT": 409,
+                    "LEAF_NOT_FOUND": 404,
+                    "INVALID_ARGUMENT": 400,
+                    "INVALID_MANIFEST": 400,
+                    "READ_ONLY_FIELD": 400,
+                }.get(error.code, 400)
+                self.error(status, error.code, error.message)
+            except (ValueError, UnicodeDecodeError):
+                self.error(400, "INVALID_ARGUMENT", "Invalid editor payload")
+            except OSError:
+                self.error(
+                    500, "LEAF_DOCUMENT_ERROR", "Cannot access leaf documentation"
+                )
+            return True
+
         def do_GET(self) -> None:
             if not self.local_request():
+                return
+            if self.leaf_resource():
                 return
             if self.path == "/":
                 self.send_data(200, page, "text/html; charset=utf-8")
@@ -134,6 +275,8 @@ def create_server(service: Any, port: int = 0) -> ThreadingHTTPServer:
 
         def do_POST(self) -> None:
             if not self.local_request(mutation=True):
+                return
+            if self.leaf_resource(mutation=True):
                 return
             prefix = "/api/domains/"
             domain_id = unquote(self.path[len(prefix) :])
@@ -193,7 +336,7 @@ def main(argv: list[str]) -> int:
         description = {
             "help_version": 1,
             "command": "dogopencli gui",
-            "summary": "Run foreground localhost domain controls; Ctrl+C stops server",
+            "summary": "Run local domain controls and leaf documentation editor",
             "effects": dict(GUI_DECLARATION.effects),
             "constraints": list(GUI_DECLARATION.constraints),
             "options": [

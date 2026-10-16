@@ -1,0 +1,98 @@
+{
+  "domain": "collection",
+  "name": "cost",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Collection transaction-cost configurations.",
+      "parameters": []
+    }
+  },
+  "summary": "Collection transaction-cost configurations.",
+  "purpose": "Collection transaction-cost configurations.",
+  "fields": [
+    {
+      "name": "itemId",
+      "type": "string",
+      "meaning": "Native configuration identifier.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "itemType",
+      "type": "string",
+      "meaning": "Fixed collection transaction cost type.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "meaning": "Native cost configuration status.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "legalEntity",
+      "type": "string",
+      "meaning": "Native legal entity reference.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "financialInst",
+      "type": "string",
+      "meaning": "Native financial institution reference.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "bankAccountAliasName",
+      "type": "string",
+      "meaning": "Native bank-account alias.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "transCurrencyCode",
+      "type": "string",
+      "meaning": "Transaction currency code.",
+      "unit": "currency code"
+    },
+    {
+      "name": "costCurrencyCode",
+      "type": "string",
+      "meaning": "Cost currency code.",
+      "unit": "currency code"
+    },
+    {
+      "name": "chargeBearer",
+      "type": "string",
+      "meaning": "Native charge-bearer code.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "clearingNetworkName",
+      "type": "string",
+      "meaning": "Native clearing network name.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "costRateConfigList",
+      "type": "array",
+      "meaning": "Native rate configuration structures; fees are not calculated locally.",
+      "unit": "as declared by native rate objects"
+    }
+  ],
+  "identity": [
+    "itemId"
+  ],
+  "identity_description": "Native itemId identifies each record.",
+  "limitations": [
+    "One verified 1000-row request only; capacity gaps are incomplete results.",
+    "These configurations are not actual transaction charges or calculated fees."
+  ],
+  "examples": [
+    {
+      "title": "Query live",
+      "command": "dogopencli collection list cost --live"
+    }
+  ],
+  "dataset": {
+    "relation": "collection_cost"
+  }
+}

@@ -1,5 +1,6 @@
 # Two-layer domain and leaf plugins
 
+Installed-leaf revisions: [ADR 0022](0022-installed-leaf-pilots.md) supersedes the specific leaf compatibility, registration and Duckdog initialization boundaries described below.
 Status: accepted; implementation specified in issue #200
 Date: 2026-10-16
 

@@ -36,7 +36,7 @@ from .errors import (
 from .execution import invoke_leaf, observe_result
 from .handler_contract import core_handler, validate_core_handlers
 from .helpspec import BizNode, OptionSpec, add_options
-from .helptree import business_entry, help_main, leading_command
+from .helptree import help_main, leading_command
 from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
 from .plugins import (
@@ -1759,42 +1759,26 @@ validate_core_handlers(globals())
 def main(argv: list[str] | None = None) -> int:
     values = list(sys.argv[1:] if argv is None else argv)
     word, index = leading_command(values)
+    if word == "help" and len(values) > index + 1:
+        target = values[index + 1]
+        if target in AUTH_COMMANDS:
+            return help_main(values[:index] + values[index + 1 :])
+        if target in {"domain", "gui"}:
+            handler = cmd_domain_management if target == "domain" else cmd_gui
+            return handler(
+                argparse.Namespace(
+                    tokens=[*values[:index], *values[index + 2 :], "--help"]
+                )
+            )
     if word in {"domain", "gui"}:
         management_main = cmd_domain_management if word == "domain" else cmd_gui
         return management_main(
             argparse.Namespace(tokens=values[:index] + values[index + 1 :])
         )
-    if word == "help" and len(values) > index + 1:
-        target = values[index + 1]
-        if target in {"domain", "gui"}:
-            management_main = cmd_domain_management if target == "domain" else cmd_gui
-            return management_main(
-                argparse.Namespace(
-                    tokens=[*values[:index], *values[index + 2 :], "--help"]
-                )
-            )
-    command_words = values[index:]
-    if word in {"help", "describe", "snapshot", "refresh", "prune"}:
-        command_words = command_words[1:]
-    if command_words[:3] == ["liquidity", "network", "bank-baselines"]:
-        return _emit_error(
-            _argument_error(
-                "bank-baselines retired; use: dogopencli liquidity cash accounts list"
-            )
-        )
-    if word == "snapshot" and not any(token in ("--help", "-h") for token in values):
-        return cmd_snapshot(
-            argparse.Namespace(
-                snapshot_tokens=values[:index] + values[index + 1 :],
-                command_path=("snapshot",),
-            )
-        )
-    if word == "help":
-        return help_main(values[:index] + values[index + 1 :])
     if word in AUTH_COMMANDS:
-        # Authentication follows the DI-aligned envelope protocol (ADR 0004),
-        # an explicit exception to the business data/meta/error protocol.
         from .auth.cli import main as auth_main
 
         return auth_main(values, command_hint=word)
-    return business_entry(values, _execute)
+    from .leaves.cli import main as leaf_main
+
+    return leaf_main(values)

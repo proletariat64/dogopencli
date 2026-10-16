@@ -48,30 +48,6 @@ def test_sample_auth_runs_through_shared_orchestration(tmp_path):
         plugins.register_domains(original)
 
 
-def test_sample_advertised_description_executes_offline(run_cli, monkeypatch):
-    from dogopencli import catalog, helptree
-
-    sample = runpy.run_path(
-        str(Path(__file__).resolve().parents[1] / "examples/domain_component.py")
-    )
-    original = plugins.domain_plugins()
-    try:
-        domains = (sample["component"]("sample"),)
-        plugins.register_domains(domains)
-        nodes = catalog.build_domain_catalog(domains)
-        monkeypatch.setattr(catalog, "NODES", nodes)
-        monkeypatch.setattr(helptree, "NODES", nodes)
-        monkeypatch.setenv("DOGOPENCLI_CONFIG", "")
-        code, out, error = run_cli(["describe", "sample", "list"])
-        assert code == 0, error
-        description = json.loads(out)
-        assert description["data_schema"]["items"]["properties"]["id"] == {
-            "type": "string"
-        }
-    finally:
-        plugins.register_domains(original)
-
-
 def test_sample_executes_handler_with_python_optimization():
     root = Path(__file__).resolve().parents[1]
     result = subprocess.run(

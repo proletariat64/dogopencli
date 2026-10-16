@@ -1,0 +1,55 @@
+{
+  "domain": "liquidity",
+  "name": "reference.entities",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Maintained liquidity entity information.",
+      "parameters": []
+    }
+  },
+  "summary": "Maintained liquidity entity information.",
+  "purpose": "Maintained liquidity entity information.",
+  "fields": [
+    {
+      "name": "instId",
+      "type": "string",
+      "meaning": "Native institution identity.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "instName",
+      "type": "string",
+      "meaning": "Native institution name.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "instCode",
+      "type": "string",
+      "meaning": "Native institution code.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "state",
+      "type": "string",
+      "meaning": "Native entity state.",
+      "unit": "not applicable"
+    }
+  ],
+  "identity": [
+    "instId"
+  ],
+  "identity_description": "Native instId identifies each record.",
+  "limitations": [
+    "List only; no verified detail inquiry is exposed."
+  ],
+  "examples": [
+    {
+      "title": "Query live",
+      "command": "dogopencli liquidity list reference.entities --live"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_reference_entities"
+  }
+}

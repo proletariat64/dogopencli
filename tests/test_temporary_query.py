@@ -82,46 +82,6 @@ def test_enabled_list_catalog_has_uniform_display_and_prune():
         assert NODES[sibling].handler == "cmd_prune"
 
 
-def test_public_help_inventory_declares_uniform_list_operations(capsys):
-    import json
-
-    from dogopencli.catalog import NODES
-    from dogopencli.cli import main
-    from dogopencli.plugins import cache_bindings, domain_plugins
-
-    bindings = cache_bindings()
-    cache_paths = {
-        path
-        for domain in domain_plugins()
-        for leaf in domain.leaves
-        if leaf.enabled
-        for path in leaf.cache_paths
-    }
-    for path in NODES:
-        if path not in cache_paths or path[:1] == ("refresh",):
-            continue
-        if path[-1] != "list" and path != ("fx", "trade"):
-            continue
-        assert main(["help", *path]) == 0
-        document = json.loads(capsys.readouterr().out)
-        options = {option["name"]: option for option in document["options"]}
-        assert "all" not in options
-        assert options["format"]["default"] == "json"
-        assert options["limit"]["default"] == 100
-        assert options["offset"]["default"] == 0
-        assert "live" in options
-        capability = bindings[path].name
-        assert any(
-            candidate[:1] == ("refresh",)
-            and other.handler
-            and (
-                other.cache_capability == capability
-                or getattr(bindings.get(candidate), "name", None) == capability
-            )
-            for candidate, other in NODES.items()
-        ), path
-
-
 @pytest.mark.parametrize("legacy_version", [None, 156])
 def test_format_switch_discards_legacy_once_and_preserves_external_inputs(
     tmp_path, legacy_version
