@@ -1,1038 +1,343 @@
 # Dogopencli
 
-把产品运营平台的付款、收款、流动性与外汇查询带到终端。Dogopencli 面向单人、单机使用，
-提供离线缓存查询、显式实时查询，以及适合脚本和 Agent 读取的 JSON 帮助与数据描述。
-所有生产业务操作仅查询；登录管理专用本地浏览器，刷新写入本地快照。
+An inquiry-only CLI for payment, collection, liquidity, and FX operations.
+Dogopencli is designed for one person on one machine: query supported platform
+endpoints through a dedicated Chrome session, save a temporary local result, and
+read it offline as JSON or a table.
 
-## 快速开始
+Business operations are read-only. Login manages local browser authentication;
+refresh and prune change local caches.
 
-需要 Python 3.10+。实时查询还需要 Google Chrome、运营平台访问权限及人工 SSO 登录；
-缓存查询、帮助和数据描述可以离线使用。缓存应存放在本地 Linux 文件系统上，
-WSL 用户应使用 Linux 磁盘目录。
+## Quick start
 
-### 1. 安装
+You need Python 3.10 or newer. Live queries also require Google Chrome, access to
+the relevant operations platform, and a human to complete company SSO.
+Help, data descriptions, and existing cached results work offline.
 
-从 [Releases](https://github.com/proletariat64/dogopencli/releases) 下载 wheel，
-在虚拟环境中安装。以下以已发布的 v0.2.4 为例，在下载目录执行：
+### Install
+
+From the repository root:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install ./dogopencli-0.4.2-py3-none-any.whl
+python -m pip install -e .
 dogopencli --version
 ```
 
-也可以在仓库根目录安装源码：
+For a packaged installation, download a wheel from
+[Releases](https://github.com/proletariat64/dogopencli/releases) and install the
+downloaded file with `python -m pip install /path/to/downloaded.whl`.
 
-```bash
-python -m pip install -e .
-```
+### Configure a source
 
-### 2. 配置一个查询来源
-
-创建 `~/.config/dogopencli/config.toml`，先添加需要使用的能力。例如账户隔离规则：
+Create `~/.config/dogopencli/config.toml` and enable the source you want to query.
+For example, to query payment transaction-cost configurations:
 
 ```toml
-[sources.collection_account_isolation]
+[sources.payment_cost]
 kind = "cdp"
 ```
 
-`cdp` 表示通过专用 Chrome 会话执行已验证的查询。其他能力的配置键见下表；
-无需一次配置所有来源。
+Source keys for payment and collection are listed below. Liquidity queries and FX
+trade queries do not require entries under `[sources]`.
 
-### 3. 登录、刷新、查询
+### Log in, refresh, and read
 
 ```bash
 dogopencli login
 dogopencli auth check
-dogopencli refresh collection account-isolation
-dogopencli collection account-isolation list --require-fresh --require-complete
+dogopencli refresh payment cost
+dogopencli payment cost list --format table
 ```
 
-`login` 默认检查 Payment；`login --domain liquidity` 检查并恢复 Liquidity；
-`login --domain fx` 检查并恢复 FX。`auth check` 支持同样的三个域。
-各域使用同一套已配置的专用 Chrome profile，普通浏览器登录不能恢复此 profile。
-目标域已有有效的无头会话时直接成功；需要登录时打开可见 Chrome，等待人工
-完成 SSO，随后切回无头模式并复验目标域会话。结果明确标识实际检查的 `domain`。
-每次新启动 Chrome 都复用并整理初始页面，只保留一个入口页，不再额外追加
-入口标签页；模式切换通过正常关闭 Chrome 持久化 cookie 和已关闭标签页记录。
-页面整理仅发生在新启动阶段，不在人工输入期间执行；同模式复用不会整理页面。
-Payment 人工等待期间仅在现有页面里 fetch 已核实的只读用户初始化接口，不新建/关闭
-标签页、不导航表单，也不跟随重定向创建新的 SSO 页面。HTTP 200 本身不代表
-成功：用户初始化响应仅作为完成信号，仍需原有域入口导航验证及无头复验；
-网络/CORS/响应解析失败会继续
-等待并在超时后报不确定状态，不退回会打扰输入的导航轮询。
-Liquidity、FX 人工等待只观察各自现有入口页面的稳定回归和就绪状态，不调用 Payment
-用户信息接口；此观察仅是完成候选，成功仍需目标域入口验证和无头复验。
-默认等待 600 秒，可用 `--timeout-seconds` 调整。`auth check` 只检查现有会话，
-不会启动或修复浏览器。
-
-之后可直接读取缓存，或明确要求实时查询：
+`login` checks the selected domain, opens headed Chrome when human SSO is needed,
+and verifies authentication again after switching to headless Chrome. The default
+domain is `payment`; collection queries use that session too. For other domains:
 
 ```bash
-dogopencli collection account-isolation list --currency GBP --limit 0
-dogopencli collection account-isolation list --live --limit 0
-```
-
-示例中的币种、业务代码与 ID 应替换为实际返回值；示例筛选结果可以为空。
-
-当前版本默认允许使用已验证的 incomplete 列表：live、离线读取和 refresh
-退出 0，`error=null`，每次通过 `meta.warnings` 和 stderr 告警。最新 partial refresh
-可替换旧完整缓存；需要完整结果时，查询和刷新都使用 `--require-complete`，
-严格刷新会在提交前拒绝。身份、范围、格式及 PTR 稳定性失败继续拒绝。
-行为变化与缓存回滚要求见[变更记录](CHANGELOG.md)。
-
-## 可以查询什么
-
-### FX 逐笔交易
-
-首版 `dogopencli fx trade` 查询 FX Shield 的 `RiskStandardTrade` 逐笔明细，
-属于运行态；`TradeBatch` 聚合查询不在此命令范围。该命令默认离线读取最近一次非空刷新结果；`--live` 查询现有认证浏览器且不写缓存。
-`refresh fx trade` 保存临时结果，`fx trade prune` 清空本叶子。无需配置 `[sources]`。
-
-```bash
-dogopencli login --domain fx
-dogopencli auth check --domain fx
-dogopencli fx trade --live --transact-from 2026-10-03 --transact-to 2026-10-03 \
-  --bcode YOUR_BCODE --scene 'A+前报价' --transaction-type SALE \
-  --fulfilled 1 --symbol USD/PHP
-dogopencli fx trade --live --trade-id YOUR_TRADE_ID
-dogopencli help fx trade --format text
-dogopencli describe fx trade
-```
-
-在线未指定交易 ID 或日期时，查询 GMT+08 的上一个完整自然日；显式 ID 不注入日期。
-离线无参数重放原始范围，显式已声明参数只筛选缓存。示例标识须替换为实际值，
-不设置默认商户或 bcode。日期按 UTC+08:00 解释，
-起止日期均包含全天；也接受带秒和显式时区的 ISO 8601 时间。起止时间必须成对，
-bcode、平台商户 ID 或场景筛选要求客户下单时间。各筛选参数直接发送到后端，
-CLI 不推导未验证的多值组合语义。
-
-后端分页从 0 开始，每页 50 条，采集最多 100 页、120 秒；采集后再应用
-`--limit`（默认 100）、`--offset`（默认 0）、`--fields` 或 `--format table`。
-`--limit 0` 显示偏移后的全部匹配行，不改变后台预算。
-金额数值精度、未知字段和业务时间原样保留。HTTP 200 与外层成功均不足以判定成功，
-必须同时检查内层业务结果；业务、认证、网络或无效响应失败时不输出已取得的候选数据。
-后端失败信息可能含 SQL 和业务标识，CLI 仅输出安全的机器错误码。
-
-v0.4.0 正式支持 FX domain。独立 Chrome/profile、CDP 19256 的生产 UAT 已验证
-人工 SSO、自动 headed → headless 切换、FX 认证检查、逐笔范围查询及交易单号查询。
-指定筛选范围的 `2026-10-03` 查询采集 166 条、4 页；2026 年 9 月按 5 天拆成
-6 批，累计采集 6,301 条，每批采集量均与各自后端报告总数一致。
-整月单次查询触及 100 页上限；仅 bcode 的整月查询返回业务错误，不能推广为任意筛选组合均已通过。
-首版尚无已验证的记录身份和 totalCount 计数单位，
-因此 `meta.complete=false`，提供 `reported_total`、`collected_total` 及原因告警，
-不宣称去重或全量覆盖；`--require-complete` 会拒绝返回数据。
-本仓库禁止 CDP 9330–9340；handoff 的 9335 会话不能用于此仓库验证。
-
-### 离线命令与缓存概览
-
-`snapshot` 按 [#80](https://github.com/proletariat64/dogopencli/issues/80)
-提供已安装命令树与本地缓存的元数据概览，默认显示文本树：
-
-```bash
-dogopencli snapshot
-dogopencli snapshot liquidity cash
-dogopencli snapshot liquidity cash balances list --format json
-dogopencli snapshot --format table
-dogopencli snapshot --format json > snapshot.json
-```
-
-路径与 `help` 一致，可选择组或叶子；未知路径与格式退出 2。参数说明和可选值
-继续查看 `help` / `describe`。`availability` 的 supported/unsupported 表示当前版本
-是否实现该命令；延期叶子和原有原因仍可发现，不表示认证、后端或缓存状态。
-
-缓存概览一起显示存在情况、新鲜度与完整性；JSON 保留各采集的质量、范围与缺口。
-缺失缓存的 `rows` 为 null，已验证空采集为 0。`rows` 统计实际保留的业务记录或
-原生详情文档，不计内部索引，也不展开详情成员；重叠范围与多次采集可能重复计数，
-不是去重查询结果或生产总量。完整性只对声明的保留范围成立。
-
-`updated` 为最新成功采集时间，JSON 同时保留最早时间与逐采集时间；报告时间
-`generated_at` 与源观察时间分别保存。新鲜度沿用已有能力/配置策略；时间或策略
-缺失时保持未知，多采集质量不同会显示 mixed，最新采集不代表全部缓存。
-帮助、描述、认证和 snapshot 控制项没有业务缓存；刷新控制项引用其目标查询缓存。
-
-检查只读配置与 SQLite 的一致视图，不创建文件、不迁移或修复缓存，不启动浏览器、
-探测认证、执行查询或刷新。输出只含元数据，范围/采集 ID 是不透明报告标识，
-不能作为业务查询参数。缺失、过期、不完整和延期状态退出 0；配置/读取失败退出 1，
-保留可读取的树并标记检查错误，JSON 仍可解析。诊断写 stderr。
-
-下表命令均省略 `dogopencli` 前缀。配置键对应 `[sources.<键>]`，
-除付款渠道的离线替代源外，使用 `kind = "cdp"`。
-
-| 能力 | 查询命令 | 刷新命令 | 配置键 |
-| --- | --- | --- | --- |
-| 付款渠道 | `payment channel list` | `refresh payment channel` | `payment_channel` |
-| 付款交易成本 | `payment cost list` | `refresh payment cost` | `payment_cost` |
-| 付款 SLA 基线 | `payment sla baselines list` / `get --id ID` | `refresh payment sla` | `payment_sla` |
-| 同行转账规则 | `payment rules same-bank-transfer list` | `refresh payment rules same-bank-transfer` | `payment_rules_same_bank_transfer` |
-| 降本规则 | `payment rules cost-reduction list` | `refresh payment rules cost-reduction` | `payment_rules_cost_reduction` |
-| 重试规则 | `payment rules retry list` | `refresh payment rules retry` | `payment_rules_retry` |
-| 银存切换规则 | `payment rules bank-switch list` | `refresh payment rules bank-switch` | `payment_rules_bank_switch` |
-| PTR 用例 | `payment ptr cases list` | `refresh payment ptr cases` | `payment_ptr_cases` |
-| PTR 单据 | `payment ptr orders list`（必填更新时间范围） | `refresh payment ptr orders`（同范围） | `payment_ptr_orders` |
-| 收款交易成本 | `collection cost list` | `refresh collection cost` | `collection_cost` |
-| 收款 SLA 配置 | `collection sla configs list` / `get --id ID` | `refresh collection sla` | `collection_sla` |
-| 收款 VA 规则 | `collection va rules list` / `get --id ID` | `refresh collection va` | `collection_va` |
-| 收款 VA 容量 | `collection va capacity list` | `refresh collection va capacity` | `collection_va_capacity` |
-| 收款清算系统 | `collection clearing-system list` | `refresh collection clearing-system` | `collection_clearing_system` |
-| 收款卡模板 | `collection card-template list` | `refresh collection card-template` | `collection_card_template` |
-| 收款账户隔离规则 | `collection account-isolation list` | `refresh collection account-isolation` | `collection_account_isolation` |
-
-只有表中标注 `get` 的能力提供独立详情。详情 ID 来自对应列表；VA 规则使用
-`vaRuleId`，付款 SLA 与收款 SLA 使用 `id`。列表摘要不能代替详情。
-
-付款成本固定查询 `FUND_OUT_CHANNEL_TRANS_FEE`，收款成本固定查询
-`FUND_IN_CHANNEL_TRANS_FEE`。这些是成本配置，不是实际交易费用。
-SLA 是配置目标，不是观测到账耗时。
-
-银行账户 VA 规则是独立对象，因完整分页验证失败仍未实现，见
-[#52 与阻塞证据](docs/research/general/2026-09-27-collection-bank-va-rule-blocker.md)。
-收款 VA 费用、VA 池、实体账户、余额及生产变更操作不在当前范围。
-
-付款 flow 规则的真实详情存在身份不一致，#54 暂未交付，也未提供 list-only 替代；
-见[复核证据](docs/research/payment/2026-09-27-payment-flow-rule-blocker.md)。PTR 当前实现流出用例库和有界单据查询；
-网络总览、账户库、巡检规则及两类批次尚未通过各自契约门槛，未注册命令。
-
-## 流动性查询（当前源码分支）
-
-当前发布版本为 **v0.3.0**，依据 [#72](https://github.com/proletariat64/dogopencli/issues/72)、
-[#76](https://github.com/proletariat64/dogopencli/issues/76) 和
-[PR #83](https://github.com/proletariat64/dogopencli/pull/83) 和
-[#87](https://github.com/proletariat64/dogopencli/issues/87) 和
-[#88](https://github.com/proletariat64/dogopencli/issues/88) 和
-[#89](https://github.com/proletariat64/dogopencli/issues/89) 和
-[#97](https://github.com/proletariat64/dogopencli/issues/97) 和
-[#98](https://github.com/proletariat64/dogopencli/issues/98) 和
-[#103](https://github.com/proletariat64/dogopencli/issues/103) 和
-[#104](https://github.com/proletariat64/dogopencli/issues/104) 和
-[#105](https://github.com/proletariat64/dogopencli/issues/105)，以及 Batch F
-[#109](https://github.com/proletariat64/dogopencli/issues/109)–
-[#112](https://github.com/proletariat64/dogopencli/issues/112)，以及
-[PR #121](https://github.com/proletariat64/dogopencli/pull/121) 和
-[PR #126](https://github.com/proletariat64/dogopencli/pull/126)，以及
-[PR #138](https://github.com/proletariat64/dogopencli/pull/138)、
-[PR #140](https://github.com/proletariat64/dogopencli/pull/140)、
-[PR #142](https://github.com/proletariat64/dogopencli/pull/142)，以及
-[#157](https://github.com/proletariat64/dogopencli/issues/157) 和
-[#162](https://github.com/proletariat64/dogopencli/issues/162) 的目录调整后，
-加入 [#176](https://github.com/proletariat64/dogopencli/issues/176) 的两个已验证名单后，
-当前源码共支持 84 个查询叶子；共 132 个查询叶子，其中 35 个延期叶子
-（13 list、22 get）及 13 个已退役 list 可通过帮助发现，
-执行返回 `UNSUPPORTED_CAPABILITY`。源码可使用本节命令；
-v0.2.8 包含 #97/#98 及 #103/#104/#105 的新增能力（85 supported / 46 unsupported）；
-v0.3.0 还包含 [PR #135](https://github.com/proletariat64/dogopencli/pull/135) 的 list 参数契约统一，
-以及 [PR #143](https://github.com/proletariat64/dogopencli/pull/143) 的登录闪屏和重复标签页修复。
-具体支持范围与生产验收结果见下文。
-#105 因子类型定义目录属于 reference，CLI 生产 UAT 状态见[独立契约](docs/research/general/2026-10-05-factor-definitions-contract.md)。
-已实现命令的完整性、告警和后端阻塞须分别判断，
-验收范围见[完整 UAT](docs/research/general/2026-10-03-liquidity-full-cli-uat.md)。
-
-[#88](https://github.com/proletariat64/dogopencli/issues/88) batch B 的三个列表
-`risk events list`、`risk anomalies list`（runtimes）和 `rules monitoring list`
-（settings）当前放行 **2/3**。events/anomalies 分别固定原生
-`RISK_EVENT` / `RISK_ALERT`，使用字符串 `id`，不做本地异常分类。
-两者必须同时提供 `--from-date YYYYMMDD --to-date YYYYMMDD`，后者恰好比前者晚一天；
-请求发送原生 `YYYY-MM-DD`，缓存按命令、原生范围和采集时刻隔离。
-源端 `GMT+08` 时间原样保留，不能把显示日期或 `fetched_at` 当作服务端筛选边界。
-监控规则仍 unsupported：当前查询为空，监控规则类型筛选、非空结构和身份尚未验证。
-离线 help/describe/snapshot 说明实际支持范围和 blocker，详见
-[batch B 证据与继续条件](docs/research/general/2026-10-04-liquidity-issue88-release-gates.md)。
-
-```bash
-dogopencli refresh liquidity risk events --from-date 20260925 --to-date 20260926 --require-complete
-dogopencli liquidity risk events list --from-date 20260925 --to-date 20260926 --limit 0
-dogopencli refresh liquidity risk anomalies --from-date 20260925 --to-date 20260926 --require-complete
-dogopencli liquidity risk anomalies list --from-date 20260925 --to-date 20260926 --limit 0
-```
-
-```toml
-[sources.liquidity]
-kind = "cdp"
-```
-
-```bash
-dogopencli help liquidity --format text
 dogopencli login --domain liquidity
 dogopencli auth check --domain liquidity
-dogopencli refresh liquidity investment holdings --date 20261001
-dogopencli liquidity investment holdings list --date 20261001
-dogopencli liquidity investment holdings get --investment-no HOLDING_ID
-dogopencli liquidity investment returns list --basis cash \
-  --from-date 20260930 --to-date 20260930
-dogopencli describe liquidity investment returns list
-dogopencli liquidity forecast results list --from 20261001 --to 20261001 \
-  --record-from-time 000000 --record-to-time 235959 --live --limit 0
+dogopencli login --domain fx
+dogopencli auth check --domain fx
 ```
 
-日期与身份须替换为实际范围和原生 ID。默认 list 离线读取本叶子唯一临时缓存；
-无参数重放保存的契约变体和范围，显式支持的业务参数只筛选该次记录。
-在线 list `--live` 与原生 get/history 不写缓存；详情始终在线，无 detail refresh。
-显式 refresh 仅采集列表：有效非空结果完整替换，空结果返回本次零计数且保留旧缓存。
-硬失败和严格 partial 拒绝也保留旧缓存。每叶子 `prune` 仅清除自己的缓存。
-采集时间与业务日期分别报告，新鲜缓存不证明业务数据新鲜或来源完整。
+`auth check` inspects the existing session. It does not launch or repair Chrome.
+Authentication in one domain does not establish access to another.
 
-B01/#164 已按业务决定退役 `pricing factors`、`factor-values`、`cost-prices`、
-`strategies`、`client-prices` 与 `fee-orders`。旧 list/refresh 路径保留参数兼容，
-均返回 `UNSUPPORTED_CAPABILITY`（退出码 1），不读取配置、浏览器或缓存；
-这六个资源的 prune 已移除，历史缓存与外部 duckdog 数据保留。
-help/describe/snapshot 将其标为退役且不可用。下文旧版本 UAT 与源码支持数是
-历史记录，不代表当前可执行能力；当前目录以 `dogopencli snapshot liquidity` 为准。
+## Discover commands and data
 
-R01/#167 退役 `cash groups`、`investment strategies`、`rules notification`、
-`ledger customers`、`ledger accounts`（INNER/OUTER）、`reference business-lines`
-与 `reference calendars` 的 list/refresh。沿用上述拒绝约定与数据保留边界；
-Ledger 依据业务确认未使用，不以来源时间久远为理由。已有独立 get 及共享端点的
-其他调用者保持原有支持；`forecast adjustments` 不在本次退役范围。
-外部 importer 的四个已注册 selector 同时拒绝 live 与保存输入发布。
-
-以下省略 `dogopencli liquidity` 前缀；`returns list` 包含 accrual/cash 两个来源，
-参数和逐变体契约以 `help` / `describe` 为准。
-
-| 资源 | 已实现动作 |
-| --- | --- |
-| `cash accounts` | `list` |
-| `cash balances` | `list` |
-| `cash groups` | 已退役，list/refresh 仅拒绝（#167） |
-| `cash group-balances` | `list` |
-| `cash pool-balances` | `list` |
-| `cash credit-usage` | `list` |
-| `cash pools` | `list`, `get` |
-| `cash credit-lines` | `list` |
-| `cash statements intraday` | `list` |
-| `cash statements end-of-day` | `list` |
-| `cash waterlevels` | `list` |
-| `forecast adjustments` | `list` |
-| `forecast cashflows` | `list` |
-| `forecast results` | `list` |
-| `investment benchmarks` | `list` |
-| `investment benchmark-values` | `list`（必填生效日期范围） |
-| `investment quotes` | `list`（仅 QUOTED，必填起息日期范围） |
-| `investment strategy-results` | `list` |
-| `investment compound-ledger` | `list`, `get` |
-| `investment holdings` | `list`, `get` |
-| `investment interest-rates` | `list` |
-| `investment products` | `list`, `get`, `history` |
-| `investment returns` | `list` |
-| `investment strategies` | 已退役 list/refresh（#167）；`get` |
-| `investment transactions` | `list`, `get` |
-| `ledger accounts` | 已退役，list/refresh 仅拒绝（#167） |
-| `ledger customers` | 已退役 list/refresh（#167）；`get` |
-| `network account-capabilities` | `list`, `get` |
-| `operations asset-trades` | `list` |
-| `operations decisions` | `list`（必填启动与创建时间范围）, `get`, `history` |
-| `operations forwards` | `list`, `get` |
-| `operations prefunds` | `list`, `get` |
-| `operations swaps` | `list`（必填交易日期范围） |
-| `operations transfers` | `list`（必填交易日期范围）, `get` |
-| `pricing client-prices` | 已退役，list/refresh 仅拒绝 |
-| `pricing cost-prices` | 已退役，list/refresh 仅拒绝 |
-| `pricing factor-values` | 已退役，list/refresh 仅拒绝 |
-| `pricing strategies` | 已退役，list/refresh 仅拒绝 |
-| `pricing factors` | 已退役，list/refresh 仅拒绝 |
-| `pricing fee-orders` | 已退役，list/refresh 仅拒绝 |
-| `reference banks` | `list` |
-| `reference business-lines` | 已退役，list/refresh 仅拒绝（#167） |
-| `reference calendars` | 已退役，list/refresh 仅拒绝（#167） |
-| `reference entities` | `list` |
-| `reference whitelist entity` | `list`（settings，独立临时槽） |
-| `reference blacklist account` | `list`（settings，独立临时槽） |
-| `reference blacklist bank` | `list`（settings；同 bankId 保留 gmtCreate 较晚记录，独立临时槽） |
-| `risk metrics` | `list` |
-| `risk sla` | `get` |
-| `risk thresholds` | `list`, `get` |
-| `rules action-mapping` | `list` |
-| `rules forecast` | `list` |
-| `rules funding` | `list` |
-| `rules fx-settlement` | `list` |
-| `rules notification` | 已退役 list/refresh（#167）；`get` |
-| `rules operation` | `list`, `get` |
-| `rules realtime` | `list`, `get` |
-| `rules transfer` | `list`, `get` |
-| `rules waterlevel` | `list`, `get` |
-
-### 现金账户：统一资料和完整性
-
-`cash accounts list` 合并现金账户、baseline 列表和逐账户原生详情；
-`accountType` 与 `status` 完全采用 baseline 来源，正常状态保留 `NORMAL`。
-字段来源、冲突和详情状态随每行保留，列表覆盖与详情覆盖分别报告。
-现金原生单空洞只有在当前查询重新验证后才允许通过列表完整性检查；
-原生总数、有效总数和探测证据仍可见，`--require-complete` 还要求所有必要详情成功。
-显式详情拒绝保留列表资料并标记不完整；成功信封中的空详情仍是协议错误，
-不会发布替换缓存。旧现金账户缓存需显式 `refresh liquidity cash accounts` 后使用。
-字段规则见[统一现金账户设计](docs/design/unified-cash-accounts-v1.0.0.md)。
-
-### 现金余额：日期、ANY 和页宽
-
-- 在线无主体默认原生 `instId=ALIPAYGM`（Z17）；显式 ID 或 ANY 覆盖默认值。
-  无日期采用最新契约，成对日期采用每日契约。离线无参数重放已保存变体，不注入默认值。
-- 每日原生 `balance` 为已确认的日终账面余额，业务日 GMT+08。
-  日终可用余额是另一口径；未返回值不推导、不补零。
-- `--entity ANY` 仅在线读取 duckdog 已配置的 `liquidity/reference/entities` selector、
-  `instId` 列。值一次冻结；不接受 instCode/显示标签/目录行 ID 替代，不回退缓存或原生目录。
-  离线 ANY 只使用本次保存的冻结证据，缺证据须省略 ANY 或在线刷新。
-- 最新在线/refresh 的 `--page-size` 默认 100，接受 1–100；离线拒绝显式 page-size，
-  每日按最多 30 个别名 × 七日分块。显示窗口不改变总请求与时限预算。
-- 安全 partial 保留告警，严格模式拒绝数据与发布；账户目录绑定质量与历史归属限制保留。
+Use the installed CLI as the current command reference:
 
 ```bash
+dogopencli help --format text
+dogopencli help collection --format text
+dogopencli help liquidity cash balances list --format text
+dogopencli describe liquidity cash balances list --format text
+dogopencli snapshot
+dogopencli snapshot liquidity --format json
+```
+
+`help` documents parameters, defaults, constraints, effects, and errors. It
+returns JSON by default; `--format text` is intended for reading in a terminal.
+`describe` provides field definitions, JSON Schema, and evidence about the data
+without fetching business records.
+
+`snapshot` shows the installed command tree and local cache metadata without
+starting a browser or querying the backend. A discoverable command may be
+unsupported or retired; those commands return `UNSUPPORTED_CAPABILITY` rather
+than attempting a request. Availability describes implementation support, not
+current authentication or backend health.
+
+## Query modes and cache behavior
+
+| Action | Behavior |
+| --- | --- |
+| List, or `fx trade`, without `--live` | Replay the saved temporary result offline. |
+| Query with `--live` | Query through an existing authenticated browser without replacing the business-result cache. |
+| `refresh <path>` | Acquire data and atomically replace that query's cache when the result is nonempty and accepted. |
+| Supported `get` | Query native details online; details are not cached. |
+| `<path> prune` | Delete only that query's temporary cache, offline. |
+
+Each enabled list-like query owns one temporary result, including its acquired
+scope and quality evidence. A nonempty refresh for another range replaces the
+previous range. A valid empty refresh, hard failure, or strict completeness
+rejection preserves the previous result. After an empty refresh, an offline read
+can therefore still return the older nonempty result; check the refresh metadata.
+
+An offline query with no business filters replays the saved scope. Explicit
+filters apply only where the command documents a reliable local mapping. Queries
+never refresh implicitly or fall back to live access on a cache miss.
+
+The cache is not a historical store. External **duckdog** datasets own imports,
+history, merging, and analysis. See the
+[cache decision](docs/adr/0020-temporary-query-cache-and-duckdog.md) for the current
+contract and the cash-account composite-query exception.
+
+### Display and quality controls
+
+Most lists accept these options; check each command's help for exact support:
+
+| Option | Meaning |
+| --- | --- |
+| `--format json` / `--format table` | Machine-readable output, or a terminal table; JSON is the default. |
+| `--limit N --offset N` | Display window; defaults are 100 and 0. `--limit 0` displays all remaining matches. |
+| `--fields id,currency` | Select top-level record fields while retaining quality metadata. |
+| `--require-fresh` | Reject cached results older than the configured TTL. |
+| `--require-complete` | Reject results without the required coverage proof; an incomplete refresh is not published. |
+
+Display limits do not change backend collection budgets or prove full coverage.
+Usable incomplete results can succeed with warnings by default. Freshness and
+completeness are independent, and the capture time does not establish the source
+record's business observation time.
+
+## Supported areas
+
+### Payment and collection
+
+The table omits the `dogopencli` prefix. Configure each source as
+`[sources.<key>]` with `kind = "cdp"` unless using the channel snapshot alternative.
+
+| Area | Query | Refresh | Source key |
+| --- | --- | --- | --- |
+| Payment channels | `payment channel list` | `refresh payment channel` | `payment_channel` |
+| Payment costs | `payment cost list` | `refresh payment cost` | `payment_cost` |
+| Payment SLA baselines | `payment sla baselines list` / `get --id ID` | `refresh payment sla` | `payment_sla` |
+| Same-bank transfer rules | `payment rules same-bank-transfer list` | `refresh payment rules same-bank-transfer` | `payment_rules_same_bank_transfer` |
+| Cost-reduction rules | `payment rules cost-reduction list` | `refresh payment rules cost-reduction` | `payment_rules_cost_reduction` |
+| Retry rules | `payment rules retry list` | `refresh payment rules retry` | `payment_rules_retry` |
+| Bank-switch rules | `payment rules bank-switch list` | `refresh payment rules bank-switch` | `payment_rules_bank_switch` |
+| PTR cases | `payment ptr cases list` | `refresh payment ptr cases` | `payment_ptr_cases` |
+| PTR orders | `payment ptr orders list` | `refresh payment ptr orders` | `payment_ptr_orders` |
+| Collection costs | `collection cost list` | `refresh collection cost` | `collection_cost` |
+| Collection SLA configurations | `collection sla configs list` / `get --id ID` | `refresh collection sla` | `collection_sla` |
+| Collection VA rules | `collection va rules list` / `get --id ID` | `refresh collection va` | `collection_va` |
+| VA capacity | `collection va capacity list` | `refresh collection va capacity` | `collection_va_capacity` |
+| Clearing systems | `collection clearing-system list` | `refresh collection clearing-system` | `collection_clearing_system` |
+| Card templates | `collection card-template list` | `refresh collection card-template` | `collection_card_template` |
+| Account-isolation rules | `collection account-isolation list` | `refresh collection account-isolation` | `collection_account_isolation` |
+
+Cost queries return fee configurations, not actual transaction charges. SLA
+queries return configured targets, not observed payment arrival times. PTR
+queries read existing cases and orders; they do not start trial runs. PTR order
+queries and refreshes require a bounded update-time range; consult their help.
+
+Payment channel queries also support an explicitly configured private snapshot
+source. This is a bounded alternative dataset, not proof of complete production
+coverage; see [ADR 0005](docs/adr/0005-channel-snapshot-source.md).
+
+### Liquidity
+
+Liquidity covers implemented queries under `cash`, `forecast`, `operations`,
+`investment`, `risk`, `rules`, `network`, `reference`, `pricing`, and `ledger`.
+Some paths remain discoverable but do not execute. Use `snapshot liquidity` to
+check availability and `help` to inspect the specific query.
+
+For example, refresh balances and then read the saved result:
+
+```bash
+dogopencli refresh liquidity cash balances
+dogopencli liquidity cash balances list --format table
 dogopencli liquidity cash balances list --live --limit 0
-dogopencli refresh liquidity cash balances --entity ANY
-dogopencli refresh liquidity cash balances --entity INST_ID_A --from-date 2026-10-01 --to-date 2026-10-07
-dogopencli liquidity cash balances list --limit 0
 dogopencli liquidity cash balances prune
 ```
 
-余额保持原生身份、金额精度与字段含义。同次采集的最新账单展示规则不改变缓存中的完整记录。
-现金余额原生契约见[现金余额读取契约](docs/design/liquidity-cash-balances-v0.1.0.md)；
-缓存与 ANY 行为由 [#157](https://github.com/proletariat64/dogopencli/issues/157) 取代其中旧决策。
+The online cash-balance default entity is `ALIPAYGM`. Paired `--from-date` and
+`--to-date` select inclusive daily observations in GMT+08; omitting them selects
+latest snapshots. Daily `balance` means closing book balance. Amounts and missing
+values retain their source meaning; unavailable balances are not filled with zero.
 
-### Swap 订单列表
+Online `--entity ANY` uses native `instId` values from a configured read-only
+duckdog selector. It freezes that finite selection for the acquisition. Offline
+replay uses the saved selection without reopening duckdog.
 
-在线 `operations swaps list --live` 与对应 refresh 必须同时提供 `--trade-from` 和
-`--trade-to`，格式为 `YYYYMMDD`，包含两端交易日期。缺失、单边或倒置范围在访问
-传输前拒绝；原生无日期全范围有重复记录，未开放。同一叶子的非空刷新替换旧范围，不跨范围拼接记录。离线无参数可重放，
-显式日期仅在已声明的记录映射上筛选。`get` 继续返回 `UNSUPPORTED_CAPABILITY`。
+### FX individual trades
 
-```bash
-dogopencli refresh liquidity operations swaps --trade-from 20260901 --trade-to 20261001
-dogopencli liquidity operations swaps list --trade-from 20260901 --trade-to 20261001 --limit 0
-dogopencli describe liquidity operations swaps list
-```
-
-正式注册 CLI 的生产只读 UAT 已通过 21/21；代表范围为 15 条订单、两页、无重复或
-缺失，refresh 与离线全量记录一致，live 不写缓存。见
-[验收记录](docs/research/general/2026-10-04-funding-execution-batch-acceptance.md)。
-四列表 batch 当前交付 **1/4**：`operations demands list`、`operations executions list`
-和 `investment investable-funds list` 因缺少非空原生结构、身份及业务语义证据，
-继续 unsupported；[#82](https://github.com/proletariat64/dogopencli/issues/82) 及其
-实施、验收 issues 保持开放。
-
-普通 live 对已验证的不完整采集返回有效数据、完整性 false、`INCOMPLETE_RESULT`
-告警，顶层 `error=null`、退出码 0；`--require-complete` 拒绝部分数据。
-默认 incomplete refresh 原子替换旧缓存并告警；严格刷新保留旧缓存。
-固定-total 合同内的后端 total 变化仍返回 `INVALID_RESPONSE`。
-`ledger balances` 已退役；其他 ledger 查询保留原生契约。
-`cash pool-balances list` 提供固定 BANK 范围的现金池余额快照；
-`refresh liquidity cash pool-balances` 显式采集，默认 list 离线读取，`--live` 不写缓存。
-账面余额 `currentBalance` 与可支付余额 `currentAviBalance` 分开保留。
-成员原币余额对应 `currency`，`equv` 折算余额对应 `bankCurrency`；
-池汇总遵循原生 UI 的 USD 显示口径，不能用配置 `mainCurrency` 替换。
-池余额/valueDate 独立于成员金额和成员时间，不强制与成员求和相等；
-成员观察时间及空币种保持 unknown，不把采集时间当余额时间。
-保留负数、空字符串和 null；不提供业务日期查询、历史命令或资金归集操作。
-详见 [现金池余额契约](docs/design/liquidity-pool-balances-v0.1.0.md)。
-
-`cash credit-usage list` 原样读取授信及其 `bankAccountCreditLineList` 成员树；
-`refresh liquidity cash credit-usage` 显式采集到独立 runtimes 缓存，默认离线，
-`--live` 不写缓存。保留共享/非共享标志、两套原生金额、币种及 `mergeFlag`，
-不合并成员、不计算总额或汇率，也不以额度大小、求和或已用/可用关系拒绝数据。
-带逗号的金额字符串、空值、负数及未知业务值原样保留；使用观察时间明确 unknown，
-不从有效期、配置修改时间或采集时间推算。已有 `credit-lines` settings 缓存不变。
-详见 [授信使用读取契约](docs/design/liquidity-credit-usage-v0.1.0.md)。
-
-用户确认 `network product-baselines` 已停用，其 `list`/`get` 已从目录移除；
-银行基线和付款 SLA 基线不受影响。#98 原始四项中，池余额、授信使用和报价三项已实现，
-产品基线一项退役；各项生产验收状态单独记录。
-
-`investment quotes list --from-date YYYY-MM-DD --to-date YYYY-MM-DD` 仅查询 QUOTED。
-起息日起止边界必填，原生 `rowStart=0/pageSize=5000` 单次响应无总数字段；
-`refresh liquidity investment quotes --from-date ... --to-date ...` 发布本叶子临时结果，
-默认 list 离线，`--live` 不写缓存。新范围的非空刷新替换旧范围，不拼接或推定完整性。
-`quote` 为原生百分比，`ticketSize` 为起存金额，O/N 为隔夜；时间按用户确认的
-UTC+08:00 解释，仍保留原生字符串，请求 `timeZone=null` 不变。
-金额、利率、期限、日期和值均不做业务运算或改写；`curMaxLimitAvailable` 含义仍未确认。
-WIN 后台未实现，首版不提供。报价列表契约详见
-[报价读取契约](docs/design/liquidity-quotes-v0.1.0.md)。
-
-### 三项原生详情（#136）
-
-以下 getter 始终使用原生在线详情契约，不读写缓存。列表刷新不采集详情，
-已有列表不能代替详情。
+`fx trade` queries FX Shield individual `RiskStandardTrade` records:
 
 ```bash
-dogopencli liquidity operations demands get --task-id <TASK_ID>
-dogopencli liquidity network realtime get --network-id <NETWORK_ID>
-dogopencli liquidity investment quotes get --quotation-order-id <QUOTATION_ORDER_ID> --live
+dogopencli fx trade --live --trade-id YOUR_TRADE_ID
+dogopencli refresh fx trade
+dogopencli fx trade --format table
+dogopencli fx trade prune
 ```
 
-三种身份均为非空原生字符串，不接受通用 `--id` 或列表分页/日期参数。
-需求详情只公开 FUND_REQUIRE 核心字段，原生空租户回显保持空值；请求租户另列元数据。
-Realtime 详情公开网络配置及返回的版本，不提供指定版本查询，也不推断路由或执行结果。
-报价详情使用原生 form POST，并以 `quotationDetail.quotationId` 核对请求身份；
-保留 `quotationDetail`、`productDetail` 原生层次及金额/百分比精度。
-人员、附件、自由文本及无关业务动作不进入首版投影。
-身份冲突、认证或业务失败均拒绝候选数据，无缓存回退。
-剩余 getter 的资格门槛见 [#137](https://github.com/proletariat64/dogopencli/issues/137)；
-本批权威规格为 [#136](https://github.com/proletariat64/dogopencli/issues/136)。
-实施后独立生产 UAT 已通过 3/3，详见
-[验收记录](docs/research/general/2026-10-07-liquidity-getters-acceptance.md)。
+Replace the example ID with a real value. Online queries without an ID or dates
+use the previous complete GMT+08 day. Explicit dates must be paired; bcode,
+customer-ID, and scene filters require time bounds. Collection is limited to
+100 pages and 120 seconds, independently of the display limit.
 
-没有已验证查询合同的叶子继续延期，如 wallets、quote-groups；
-独立验证过的详情不受此影响。
-[#98 本轮核验](docs/research/general/2026-10-04-liquidity-issue98-gates.md)记录池余额、
-授信使用、产品基线和报价的逐项门槛；调查记录不等于新增能力或生产 CLI UAT。
-[证据与未验证事项](docs/research/general/2026-10-01-liquidity-live-probes.md)，
-[缓存决策](docs/adr/0016-liquidity-independent-list-and-detail-caches.md)。
+Native record identity and total-count semantics remain unverified, so FX results
+remain incomplete and `--require-complete` rejects them. Offline FX business
+filters are not supported; use live queries or refresh for a different scope.
 
-### RFQ 子任务详情与账户上下文路由额度（#139）
+## Configuration and local state
 
-```bash
-dogopencli liquidity investment rfqs get --inquiry-sub-task-id <SUBTASK_ID>
-dogopencli liquidity network route-quotas get --route-id <ROUTE_ID> --account-alias <ACCOUNT_ALIAS> --live
-```
-
-RFQ 使用列表的子任务 `inquirySubTaskId`，原生请求与详情回显虽然名为
-`inquiryTaskId`，仍表示该子任务；父任务引用不能替代。只接受 TARGET_RFQ，
-保留原生询价成员、状态、日期与金额精度，排除自由文本及内部流程 ID。
-
-`route-quotas` 是指定 route/account alias/固定租户上下文的额度聚合，
-保留动态和静态额度数组的顺序、重复项及空 quotaId。
-请求范围另列 metadata；缺少原生身份回显时不会添加虚构身份。
-原生 count 不用作数组总数。`network routes get` 仍延期。
-两者始终执行原生在线详情查询，不读写缓存。资格化及独立验收见
-[本轮报告](docs/research/general/2026-10-07-liquidity-getter-qualification.md)。
-
-### 资产交易根与报价组版本详情（#141）
-
-```bash
-dogopencli liquidity operations asset-trades get --order-no <ORDER_NO>
-dogopencli liquidity investment quote-groups get --quotation-group-row-id <PHYSICAL_ROW_ID> --live
-```
-
-资产交易按根 `orderNo` 读取独立原生交易和产品字段；不包含归属尚未证明的日志。
-产品保留原生 `assertProductCategory` 等拼写，金额、日期和未知状态保持来源值。
-认证租户另列 metadata，不制造缺失的原生租户回显。
-
-报价组使用原生 UI/历史链接选中的物理版本行 `id`，不是业务 `quotationGroupId`。
-wire 字段虽然名为 `quotationGroupId`，仍传入物理行 ID；不接受隐式最新版本解析或额外版本参数。
-所选根版本不会被历史中的较新版本替换，物理版本行 ID 保持独立身份。
-联系人和版本历史保持原生对象数组；附件下载和审批动作排除。
-`quote-groups list` 继续 unsupported，不因详情成功启用全列表。
-
-两者始终执行原生在线详情查询，不读写缓存。详见 [#141 规格](https://github.com/proletariat64/dogopencli/issues/141)
-及[独立验收记录](docs/research/general/2026-10-07-liquidity-asset-quote-group-getters.md)。
-
-### 四项有界列表（Batch F，#109–#112）
-
-`risk sla list` 读取风险 SLA 配置摘要，固定一次 5000 大页，按原生总数和
-`slaConfigId` 核对覆盖。列表不包含尚未证明 populated 的规则数组，也不爬取详情。
-`forecast accuracy list` 必填单个 `--account-alias` 和 `--record-date YYYY-MM-DD`，
-一次最多 100 条基础记录，每条关联原生准确率指标；创建查询日与 `valueDate` 分开，
-不计算本地百分比。`risk account-capacity list` 必填 1–10 个不同 `--account-alias`，
-只查询明确集合；没有原生全账户总数，也不自动发现账户。`availableResource`
-与 `outFlowCapacity` 分开保留。`investment rfqs list` 仅支持 TARGET_RFQ，
-必填 `--from-date/--to-date YYYY-MM-DD`；子任务 `inquirySubTaskId` 与父引用
-`inquiryTaskId` 分开，同父不同子任务均保留，FULL_RANGE_RFQ 不启用。
-
-```bash
-dogopencli refresh liquidity risk sla --require-complete
-dogopencli liquidity risk sla list --limit 0
-dogopencli refresh liquidity forecast accuracy --account-alias ACCOUNT_ALIAS --record-date 2026-10-05 --require-complete
-dogopencli liquidity forecast accuracy list --account-alias ACCOUNT_ALIAS --record-date 2026-10-05 --limit 0
-dogopencli refresh liquidity risk account-capacity --account-alias ACCOUNT_ALIAS_A --account-alias ACCOUNT_ALIAS_B --require-complete
-dogopencli liquidity risk account-capacity list --account-alias ACCOUNT_ALIAS_B --account-alias ACCOUNT_ALIAS_A --limit 0
-dogopencli refresh liquidity investment rfqs --from-date 2026-01-01 --to-date 2026-10-05 --require-complete
-dogopencli liquidity investment rfqs list --from-date 2026-01-01 --to-date 2026-10-05 --limit 0
-```
-
-默认离线、显式非空 refresh 原子替换本叶子唯一临时结果，`--live` 不写库、不回退。
-不保留 capture 历史，也不按查询 scope 分区。
-原生金额、计数、状态和时间保持原值，未证明的来源时区保持 unknown。
-rules monitoring 继续 HOLD。详见
-[四项读取契约](docs/design/liquidity-batch-f-v0.1.0.md)和
-[逐叶验收记录](docs/research/general/2026-10-05-liquidity-batch-f-acceptance.md)。
-
-决策列表的启动时间与创建时间分别使用原生 `YYYY-MM-DD HH:mm:ss` 闭区间；
-四个边界均必填。转账列表使用原生交易日期 `YYYYMMDD` 闭区间；
-保留原始 `gmtCreate`，不据此转换时区、筛选或按展示日期分区。
-列表缓存不包含原生详情。以下刷新仅更新该叶子的临时结果：
-
-```bash
-dogopencli refresh liquidity operations decisions \
-  --start-from "2026-09-30 00:00:00" --start-to "2026-09-30 23:59:59" \
-  --created-from "2026-09-30 00:00:00" --created-to "2026-09-30 23:59:59" \
-  --require-complete
-dogopencli refresh liquidity operations transfers \
-  --transaction-from 20260930 --transaction-to 20260930 --require-complete
-dogopencli liquidity operations transfers list \
-  --transaction-from 20260930 --transaction-to 20260930 --limit 0
-```
-
-### 投资基准、策略结果与计价账单（batch C）
-
-[#89](https://github.com/proletariat64/dogopencli/issues/89) 四列表当前交付 **2/4**：
-`investment benchmark-values list` 查询某一天、某类资金性质（红黄绿）、某种
-投资策略（被动活期利息或定期利息）及币种的市场利息基准。必填
-`--from-date` / `--to-date`（`YYYYMMDD`，包含两端，固定原生 GMT+08）。
-用户确认业务身份为 `effectiveDate + strategyBenchmarkType + currency + colorType`；
-原生 `id` 为空，保留原值但不用于合并。利率 `value` 单位为百分数，保留原始字符串
-精度，不参与身份。同次采集同键不同值拒绝；后续刷新可以修订该基准。
-
-新增本地派生 `primaryId`，便于单字段引用：
-`bmv1:GUAPW3SG:20261002:passiveInterestBenchmark:USD:GREEN`。
-固定顺序为版本前缀、租户、生效日期、策略类型、币种、资金颜色；各段使用 UTF-8
-百分号编码，仅保留 RFC 3986 非保留字符。利率修订、刷新时间和查询范围不改变 ID；
-原生 `id` 和四字段业务身份保留。新字段进入输出、表格及缓存，支持
-`--fields primaryId`。临时缓存切换清除旧格式结果，须先 refresh 再离线读取。
-
-`investment strategy-results list` 支持 `FUND_DECISION_TASK` 与
-`PRODUCT_DECISION_TASK`，必须显式提供 `--task-type`、`--trigger-from` 和
-`--trigger-to`（`YYYYMMDD`，原生 GMT+08，包含两端）。两个变体与日期范围共用本叶子的唯一临时槽；非空刷新直接替换。
-原生 `id` 是任务身份，策略 ID 是独立引用。任务状态不代表投资执行成功。
-
-```bash
-dogopencli refresh liquidity investment benchmark-values --from-date 20260928 --to-date 20261004 --require-complete
-dogopencli liquidity investment benchmark-values list --from-date 20260928 --to-date 20261004 --limit 0
-dogopencli describe liquidity investment benchmark-values list
-dogopencli refresh liquidity investment strategy-results --task-type FUND_DECISION_TASK --trigger-from 20260706 --trigger-to 20261004
-dogopencli liquidity investment strategy-results list --task-type FUND_DECISION_TASK --trigger-from 20260706 --trigger-to 20261004 --limit 0
-dogopencli describe liquidity investment strategy-results list
-```
-
-CDP 9223 正式注册 CLI 生产只读 UAT：基准值 **165/165、17 页**，
-单日 **33/33**，完整空范围刷新和离线读取通过；资金任务 **50/50**、产品任务 **7/7**，
-独立完整采集；离线读取同一 capture 一致，live 不写缓存。金额保留原生字符串与精度；
-`investmentAmount` 来源标签为等值 USD，不做本地换算；`triggerDate` / `resultTime`
-为 epoch 毫秒，业务日期与 `fetched_at` 分开。用户与自由文本字段不进入输出及缓存。
-
-Batch C 的其余两叶子继续 unsupported：`valuations` 非空来源实际为 fee-order，
-由下述 #97 新命令独立表达；DEPOSIT / LOAN 账单查询仍为空，不能据此放行。
-Batch C 本身没有新增 get/history；其余目标由 #72 继续追踪。
-见[逐叶证据与继续条件](docs/research/general/2026-10-04-liquidity-batch-c-gates.md)。
-
-### #97：真实详情与费用订单
-
-新增 `investment strategy-results get`、`risk events get`、`risk anomalies get`
-三个真实详情，以及独立命名的 `pricing fee-orders list`。策略详情必填任务 ID 与
-`--task-type`，资金/产品两类分别验证；风险详情按命令验证 `RISK_EVENT` / `RISK_ALERT`。
-详情始终在线，不读写缓存；列表刷新不会爬取详情。
-风险子事件分页和被排除的处理历史不在单对象详情的完整性声明中。
-
-```bash
-dogopencli liquidity investment strategy-results get --task-id TASK_ID --task-type FUND_DECISION_TASK
-dogopencli liquidity risk events get --risk-event-id EVENT_ID
-dogopencli liquidity risk anomalies get --risk-event-id ALERT_ID
-```
-
-费用订单按包含两端的 Service Date 查询，每次最多 31 个日历日，固定发送原生
-GMT+08 查询设置。费用使用 `pricingCurrency`，交易金额使用 `currency`；金额原样保留，
-不计算投资估值。源端无时区的时间字符串不推断 UTC 偏移；旧 valuations 命令和缓存
-保持独立，不提供别名或迁移。
-
-本批被接受的四个候选已实现 **4/4**：解除三个旧 unsupported，新增一个费用订单叶子。
-原第五项国家／地区基础数据已按用户决定从需求和目录撤除，不导入，也不保留
-unsupported 入口；撤除不计为实现。整合 #97/#98 后目录共 131 项
-（85 supported / 46 unsupported）。四个详情变体和费用订单注册 CLI 生产 UAT
-共 **24/24** 通过，详见[本次证据与验证](docs/research/general/2026-10-04-liquidity-issue97-gates.md)。
-#97 已随 PR #99 合并关闭；#98 等待 PR #100 合并，尚未发布新版本。
-
-## 缓存、实时查询与刷新
-
-| 操作 | 数据来源 | 是否更新本地缓存 |
-| --- | --- | --- |
-| 普通 `list` / `get` | 已发布的 SQLite 快照；不联网、不启动浏览器 | 否 |
-| 查询加 `--live` | 当前 CDP 会话；失败不回退缓存 | 否 |
-| `refresh …` | 配置的 CDP 或渠道 snapshot 来源 | 是，原子发布 |
-| `help` / `describe` | 随安装包发布的命令与字段说明 | 否，也不读取配置或缓存 |
-
-没有缓存时普通查询返回 `CACHE_MISS`。缓存默认有效期为 72 小时；默认允许读取旧数据，
-但会标记 `stale`。需要时加 `--require-fresh` 或 `--require-complete`，不会因此自动刷新。
-每个 list 叶子只有一个临时缓存；主体、日期和契约变体变化时，非空刷新直接替换。
-有效空刷新报告本次零计数、`published=false` 与保留原因，不把旧数据冒充本次结果。
-合法非空 partial 默认可发布，严格拒绝；硬失败保留旧结果。列表刷新不爬取详情，
-get/history 使用真正的原生在线查询，不存储详情。旧业务缓存一次清除，无兼容迁移或备份；
-配置、凭据、浏览器 profile、单独来源文件和 duckdog 保留。
-决定见 [ADR 0020](docs/adr/0020-temporary-query-cache-and-duckdog.md)，
-质量策略继续遵循 [ADR 0019](docs/adr/0019-usable-incomplete-acquisitions.md)。
-
-显示分页不等于后端采集分页。收款成本、VA 规则、清算系统、卡模板及账户隔离规则
-以及上述四项付款规则使用各自验证过的单页采集契约；安全数量缺口会标 incomplete 并告警，
-不猜测下一页。VA 容量采用已验证的多页采集与最终动态总数校验。
-`--limit` 只控制本地展示，不改变完整性证据。
-
-账户隔离采集拒绝仅在后端筛选场景观察到的 null 列表／全零分页响应，避免把未知状态
-发布为空快照；正确回显页码、页大小及零总数的空数组可以接受。见
-[账户隔离契约](docs/research/general/2026-09-27-collection-account-isolation-contract.md)。
-
-## 常用查询方式
-
-所有列表默认输出 JSON，显示前 100 行，偏移量为 0。
-
-| 选项 | 用途 |
+| Setting | Default |
 | --- | --- |
-| `--limit N --offset N` | 显示窗口；limit/offset 均为非负整数；limit 为 0 显示剩余全部行 |
-| `--entity ANY` | 现金余额在线从已声明 duckdog selector 枚举原生 instId，不改变显示窗口 |
-| `--fields id,currency` | 仅保留指定顶层字段，保留选中的完整嵌套值和质量 metadata |
-| `--format table` | 以表格阅读；默认 `--format json` |
-| `--live` | 显式实时查询，不写缓存 |
-| `--require-fresh` | 拒绝超过 TTL 的缓存 |
-| `--require-complete` | 要求当前查询覆盖及采集质量完整 |
+| Configuration file | `~/.config/dogopencli/config.toml` |
+| Query cache | `~/.local/share/dogopencli/cache.sqlite3` |
+| Dedicated Chrome profile | `~/.local/share/dogopencli/chrome/` |
+| CDP port | `9222` |
+| Cache TTL | 72 hours |
 
-```bash
-dogopencli collection sla configs list --currency USD --currency EUR --region US --limit 0
-dogopencli collection sla configs get --id CONFIG_ID
-dogopencli collection va rules get --id VA_RULE_ID --live
-dogopencli collection va capacity list --va-rule-id RULE_ID
-dogopencli collection clearing-system list --currency GBP --format table
-dogopencli collection card-template list --template-id TEMPLATE_ID --live
-dogopencli collection account-isolation list --limit 0 --fields id,currency
-```
+Configuration precedence is an explicit authentication `--config-dir`, then
+`DOGOPENCLI_CONFIG_DIR`, then `DOGOPENCLI_CONFIG`, then the default location.
+The first two select a directory; `DOGOPENCLI_CONFIG` selects a file.
 
-### 收款筛选
-
-以下筛选在缓存与实时查询中均使用本地精确字符串匹配：同字段重复值取 OR，
-不同字段取 AND，区分大小写，`*` 按字面值处理。空值或纯空白参数会被拒绝，
-有效值不裁剪、不标准化，缺失或 null 字段不会匹配。先筛选，再按同次采集的稳定次序应用显示窗口和投影。
-
-| 列表 | 筛选参数 |
-| --- | --- |
-| SLA 配置 | `--business-line`、`--entity`、`--currency`、`--region` |
-| VA 容量 | `--va-rule-id`、`--bank-va-rule-id` |
-| 清算系统 | `--bank-location`、`--currency`、`--system-type`、`--system-name`、`--status` |
-| 卡模板 | `--bank-location`、`--currency`、`--bank`、`--template-name`、`--template-id`、`--status` |
-| 账户隔离规则 | `--opening-rule-id`、`--business-line`、`--business-region`、`--customer-group`、`--scene-code`、`--collection-region`、`--currency`、`--transaction-type` |
-
-收款成本与 VA 规则列表没有领域筛选。收款刷新不接受筛选条件。
-账户隔离的 `customerTags` 和 `currency` 可以包含逗号，需传入完整字符串，CLI 不拆分成员。
-VA 容量的行身份是 `ruleId`；`--bank-va-rule-id` 匹配 `bankAccountVaId`，不是查询银行账户规则详情。
-容量预警状态没有已验证的筛选选项。
-
-付款 Channel、Cost 和 SLA 筛选的缓存与实时语义有所不同，以对应 `help` / `describe` 为准。
-实时付款 Cost/SLA 每字段只接受单值；付款 SLA 的 `--biz-legal-entity` 仅支持实时透传，
-其独立筛选效果未验证，缓存模式拒绝该参数。付款 Channel 默认范围为 `EXTERNAL`，
-`--payout-type` 还支持 `LIQUIDITY`、`MANUAL`、`SETTLEMENT`。
-
-### PTR 用例
-
-PTR 指生产仿真验证。本命令只读已有流出用例，不发起试跑或修改结果。
-
-```toml
-[sources.payment_ptr_cases]
-kind = "cdp"
-```
-
-```bash
-dogopencli refresh payment ptr cases
-dogopencli payment ptr cases list --case-type NEGATIVE --limit 0
-dogopencli payment ptr cases list --channel CHANNEL --debtor-currency USD --live
-dogopencli describe payment ptr cases list --format text
-```
-
-支持用例 ID/名称/类型、渠道、付款账户别名、付款/收款币种、清算网络、
-OBO/FVT 输入、能力基线 ID、收款账户别名的精确本地筛选。
-同项重复 OR、不同项 AND；字符串大小写敏感，空值不匹配，不展开通配符。
-默认离线，`--live` 不发布缓存且不回退。
-
-每次采集固定读取两次 5,000 条容量的首批结果；两次必须完整、身份唯一且保留字段一致。
-总量超过容量、截断、重复或漂移均报错，刷新失败保留旧缓存。
-范围为当前接口可见流出用例库，不保证删除记录或版本历史；`--limit 0` 仅展开显示窗口。
-默认 72h TTL 是缓存策略，不表示验证摘要能保持 72h 最新。
-
-只保留[契约字段清单](docs/research/payment/2026-09-27-payment-ptr-cases-accounts-contract.md)，
-省略个人信息、IBAN/BIC、操作人、自由文本及未知字段；详情 `get` 暂缓。
-`verifyResult` 表示测试验证结果，预期拒绝也可能通过，不等于付款成功。
-
-### PTR 单据
-
-配置 `sources.payment_ptr_orders` 的 `kind = "cdp"`。刷新与查询都必须提供
-`--updated-from`、`--updated-to`，格式严格为 `YYYY-MM-DDTHH:MM:SS+08:00`。
-范围按 `gmtModified` 毫秒时间戳计算，包含起点、排除终点，最多 31 天，终点不得晚于当前时间。
-
-```bash
-dogopencli refresh payment ptr orders \
-  --updated-from 2026-09-01T00:00:00+08:00 --updated-to 2026-09-02T00:00:00+08:00
-dogopencli payment ptr orders list \
-  --updated-from 2026-09-01T00:00:00+08:00 --updated-to 2026-09-02T00:00:00+08:00 \
-  --verify-status VERIFIED --limit 0
-```
-
-不同时间范围的非空刷新替换同一叶子缓存；`--limit 0` 不扩大范围。采集会在两端各多查询一秒，
-要求两次完整首批结果一致、总量不超过 500 条，再精确排除多取的记录。
-超过容量请缩小时间范围，不回退到已发现不可靠的服务端分页。
-仅保存每个范围最近一次成功快照，不自动删除历史范围；72h TTL 不保证动态单据保持最新。
-
-支持 PTR ID、用例 ID、渠道、付款账户别名、付款/收款币种、清算网络、
-支付状态、验证状态和最终结果的精确本地筛选。三种状态分别保留，不推导 PASS/FAIL。
-已知个人信息字段省略，但 `failureReason` 是保留的原始运营失败文本，不能保证其中不含个人信息。
-真实详情 `get` 暂缓；[完整契约](docs/research/payment/2026-09-27-payment-ptr-orders-contract.md)。
-
-### 付款规则筛选
-
-四项规则在缓存和实时模式下都先完整采集，再本地筛选；同字段 OR、跨字段 AND，
-区分大小写、保留空格、`*` 按字面匹配，空白参数拒绝。刷新不接受筛选。
-
-| 列表 | 筛选参数 |
-| --- | --- |
-| 同行转账 | `--bank`、`--status` |
-| 降本 | `--name`、`--business-line`、`--currency`、`--market`、`--status`、`--entity`、`--obo`、`--fvt` |
-| 重试 | `--name`、`--status`、`--communication-mode`、`--integration-mode`、`--entity`、`--business-line`、`--bank`、`--currency`、`--region`、`--bank-account`、`--clearing-network` |
-| 银存切换 | `--source-account`、`--source-network`、`--status`、`--target-account`、`--target-network` |
-
-降本的主体/OBO/FVT、重试的主体/业务线/银行/币种/地区/银行账户/清算网络，
-按原始字符串数组的成员精确匹配，不拆分逗号。OBO/FVT 不是布尔开关。
-银存切换要求嵌套条件在同一适用条件、同一规则内成立，目标账户和网络必须属于同一目标；
-返回整个来源节点，保留未匹配的子规则。降本列表是组摘要，不代表完整历史版本。
-
-```bash
-dogopencli refresh payment rules retry
-dogopencli payment rules retry list --currency USD --currency EUR --limit 0
-dogopencli payment rules bank-switch list --source-account SOURCE_ACCOUNT --limit 0
-dogopencli describe payment rules cost-reduction list --format text
-```
-
-以上命令需先配置对应 `sources.payment_rules_*` 的 `kind = "cdp"`。
-具体字段映射和证据见 `describe` 与[查询契约](docs/research/payment/2026-09-27-payment-rules-contract.md)。
-
-## 帮助与导航
-
-```bash
-dogopencli
-dogopencli help collection
-dogopencli help collection account-isolation list
-dogopencli collection account-isolation list --help
-dogopencli help collection account-isolation list --format text
-dogopencli describe collection account-isolation list --format text
-```
-
-无参数入口和分组命令提供逐层导航；叶子命令直接执行操作，需要帮助时加 `--help`
-或使用 `help <路径>`。帮助默认 JSON，人工阅读可用 `--format text`。
-
-### Data helper
-
-`describe <查询路径>` 提供 JSON Schema、字段说明、来源证据和读取指引，不查询业务数据。
-帮助输出使用 `help_version`；描述输出包含 `describe_version`、`schema_version`、
-`capability`、`data_schema`、`read_guide` 和 `query_help`。两者直接返回文档对象，
-不使用业务查询的 `data/meta/error` envelope。
-
-Agent 或脚本应先读取 `help` 确认参数，再用 `describe` 判断字段含义。Schema 中
-`x-evidence` 区分已验证、仅观察和未知事实；`x-observed-values` 不是封闭枚举。
-保留缺失、null、空字符串、空数组及原始数值精度，不推断未验证的金额倍率、时间单位或跨域关联。
-更完整的领域区别见 [CONTEXT.md](CONTEXT.md)。
-
-## 读取查询结果
-
-JSON 业务结果使用 `data`、`meta`、`error`。先检查退出码和 `error`，再使用数据。
-
-| Metadata | 如何理解 |
-| --- | --- |
-| `source` / `backend` | 读取方式 `cache/live` 与来源类型 `snapshot/cdp` 是两个维度 |
-| `fetched_at` / `stale` | 采集时间与缓存新鲜度；新鲜不等于完整 |
-| `complete` / `dataset_complete` | 来源覆盖与数据集完整性；原始采集与当前局部筛选覆盖分别解释 |
-| `simulated` | 是否属于显式替代数据；不能把替代集当作已验证生产全量 |
-| `matched_total` / `returned_count` / `has_more` | 当前可用来源中的匹配数与显示窗口，不证明生产覆盖 |
-| `loaded_at` / `source_observed_from` / `source_observed_to` | 导入时间与原始观察时间；重新导入不会让旧观察变新 |
-
-`--fields` 不删除质量 metadata。投影后的数据可能缺少 schema 中的必填字段，
-应作为部分记录处理。`seqid` 是本地位置，不是跨快照身份；不同能力的 ID 也不是通用 join key。
-
-业务查询和刷新退出码：`0` 成功、`1` 运行失败、`2` 参数错误、`130` 用户中断。
-允许的部分结果也可能退出 `0`，因此需要检查质量字段或指定 `--require-complete`。
-认证命令使用独立的 `output_version` envelope，参数和运行错误均退出 `1`。
-
-## 主体白名单与账户黑名单（规格 #176）
-
-`liquidity reference whitelist entity list` 与 `liquidity reference blacklist account list`
-查询两个独立 settings 来源；支持 live、显式 refresh、默认离线及每叶独立 prune。
-原生身份分别为 `instId` 与 `aliasName`，不是响应中的占位整数 `id`。
-默认保留 VALID/INVALID 和原生字段；过滤仅为采集后的本地精确匹配。
-原生 5000／1000 页宽与输出 limit 分开，完整性检查保留分页边界及终止证据。
-
-`liquidity reference blacklist bank list` 按用户确认以 `bankId` 识别银行，同银行保留
-原生 `gmtCreate` 较晚的完整记录，先选择再应用本地 `--bank-id` / `--status` 过滤。
-同时间但内容冲突、缺失或无效创建时间明确失败；完全相同的同时间行可归并。
-原生报数和 arrivals 表示来源行，collected_total 表示所选银行；只有原始分页、边界与
-终止覆盖验证通过才 complete。live 不写槽，refresh / 离线读取 / prune 使用独立临时槽。
-生产验收与代码合并分别记录，#168 的完成不以代码存在或历史样本代替。
-来源、字段、过滤、分页、独立临时槽及继续条件见[契约指南](docs/design/liquidity-access-lists-v0.1.0.md)。
-
-## 配置与本地会话
-
-| 内容 | 默认位置或值 |
-| --- | --- |
-| 配置 | `~/.config/dogopencli/config.toml` |
-| 缓存 | `~/.local/share/dogopencli/cache.sqlite3` |
-| 专用 Chrome profile | `~/.local/share/dogopencli/chrome/` |
-| CDP 端口 | `9222` |
-| 缓存 TTL | `72` 小时 |
-
-配置路径优先级为：认证命令显式 `--config-dir`、`DOGOPENCLI_CONFIG_DIR`、
-`DOGOPENCLI_CONFIG`、默认路径。前两者指定目录，`DOGOPENCLI_CONFIG` 指定文件。
-
-可选缓存配置如下；路径请使用本机的实际绝对路径：
+Optional cache settings:
 
 ```toml
 [cache]
-path = "/home/YOUR_USER/.local/share/dogopencli/cache.sqlite3"
+path = "/absolute/path/to/cache.sqlite3"
 ttl_hours = 72
 ```
 
-### 可选 duckdog selector
+Keep the cache on a local Linux filesystem. Its SQLite WAL and POSIX locking
+requirements exclude Windows DrvFS/9p and network filesystems. Concurrent refresh
+conflicts return `LOCKED`.
 
-仅在线现金余额 ANY 需要 DuckDB 依赖和已存在的数据库：
+Use a dedicated browser profile with only one Chrome process owning it. Do not
+use CDP ports **9330–9340**. `dogopencli logout` clears and verifies the dedicated
+local authentication; it does not delete query caches or revoke company-wide SSO.
+Keep cookies, tokens, profiles, private datasets, and raw production responses out
+of Git and shared logs.
+
+### Optional duckdog selectors
+
+Install DuckDB support only when using features that read external selectors:
+
+```bash
+python -m pip install -e '.[duckdog]'
+```
+
+For online cash balances with `--entity ANY`, configure an existing database and
+an entity relation or view containing valid native `instId` values:
 
 ```toml
 [duckdog]
-path = "data/duckdog.duckdb"
+path = "/absolute/path/to/duckdog.duckdb"
 
 [duckdog.selectors]
 "liquidity/reference/entities" = "entities"
 ```
 
-相对数据库路径以配置文件目录为基准。物理 relation/view 必须具有有效原生 `instId` 列；
-空、null、空白或无效标识拒绝，不用显示代码替代。只读打开，不创建数据库，不接受任意 SQL。
-普通在线、离线、get、prune 与 help 不需要 duckdog；离线 ANY 仅使用保存的冻结集合。
-外部 duckdog 按 list 叶子组织 selector，负责 Parquet/JSON 加载、导入、历史和分析。
-CLI 不自动导入或导出到 duckdog。可配置仓库内私有数据目录；`data/`、DuckDB 与 Parquet 文件
-由 Git 忽略，不提交真实记录。无历史存储或百万条保留承诺。
+Relative database paths resolve against the configuration file's directory.
+Dogopencli opens this input read-only; it does not create a database, accept
+arbitrary SQL, or automatically import query results into duckdog. Other selector
+consumers document their requirements in their command help and design contracts.
+Ordinary offline cache reads do not need DuckDB.
 
-缓存依赖 SQLite WAL、共享内存及 POSIX 文件锁，不支持 Windows DrvFS/9p 或网络文件系统。
-并发刷新返回 `LOCKED`，不会抢占活跃锁。专用 profile 同一时刻由一个 Chrome 进程持有；
-不要与日常浏览器共用 profile，也不要使用 CDP 端口 9330–9340。
+## Using results in scripts and agents
 
-```bash
-dogopencli logout
-```
+Business query JSON uses `data`, `meta`, and `error`. Check the exit status and
+`error` before consuming records, then inspect `meta` for scope, freshness,
+completeness, counts, and warnings. A successful exit alone does not prove full
+coverage. `--fields` preserves quality metadata.
 
-`logout` 清理并验证专用本地认证，不删除业务缓存，也不撤销公司全局 SSO。
-Cookie、令牌、profile、私有快照及生产原始响应不得提交到 Git。
+Help and descriptions return their own document formats; authentication commands
+use a separate output envelope. Business queries generally exit `0` on success,
+`1` on runtime failure, `2` on argument or configuration errors, and `130` on
+interruption. Authentication commands use `1` for argument and runtime errors.
+Diagnostics go to stderr.
 
-### 付款渠道的离线替代源
+Field names, identifiers, and units are specific to each contract. Consult
+`describe` before joining records or interpreting amounts and timestamps. Keep
+null, missing values, empty strings, and zero distinct.
 
-付款 Channel 的生产全量验收仍受后端分页问题阻塞，见
-[Issue #10](https://github.com/proletariat64/dogopencli/issues/10)。可显式使用已整理的私有数据集：
-
-```toml
-[sources.payment_channel]
-kind = "snapshot"
-path = "/absolute/path/to/channel-dataset"
-```
-
-运行 `dogopencli refresh payment channel` 导入后，普通查询只读缓存。
-数据集不随仓库分发，仅覆盖 `EXTERNAL`，不支持 `--live`，也不证明生产全量；
-完整性标记保留这些限制。切回 `kind = "cdp"` 时移除 snapshot 专用的 `dataset_id`，
-显式刷新并验证覆盖，不会自动回退。来源类型、路径或显式数据集身份变化后需重新刷新。
-见 [ADR 0005](docs/adr/0005-channel-snapshot-source.md)。
-
-## 故障处理
-
-| 错误码 | 建议操作 |
+| Error | Next step |
 | --- | --- |
-| `CONFIG_ERROR` | 检查配置文件路径、对应 source 节和来源类型 |
-| `CACHE_MISS` | 执行该能力的刷新命令；来源身份改变也需要刷新 |
-| `CACHE_STALE` | 刷新，或明确允许旧数据后移除 `--require-fresh` |
-| `INCOMPLETE_RESULT` | 检查覆盖或详情拒绝；VA 规则刷新可能已发布部分快照 |
-| `AUTH_REQUIRED` / `BROWSER_UNAVAILABLE` | 执行 `login` 恢复专用会话；Liquidity 使用 `login --domain liquidity`；启动失败时检查 Chrome 日志 |
-| `LOCKED` | 等待当前刷新或浏览器操作结束后重试 |
-| `INVALID_RESPONSE` | 后端响应不符合已验证契约；保留错误信息并排查，勿视为空结果 |
-| `SOURCE_SCOPE_UNAVAILABLE` / `LIVE_SOURCE_UNAVAILABLE` | 检查渠道替代集的范围及实时查询限制 |
-| `REQUEST_NOT_ALLOWED` | 请求超出已验证查询允许清单，需要核查实现与契约 |
-| `CACHE_ERROR` / `IO_ERROR` | 检查本地权限、磁盘和支持的文件系统 |
-| `INTERNAL_ERROR` | 保留 stderr 与错误关联号，提交脱敏问题报告 |
+| `CONFIG_ERROR` | Check the configuration path and required source entry. |
+| `CACHE_MISS` / `CACHE_STALE` | Explicitly refresh the relevant query. |
+| `INCOMPLETE_RESULT` | Inspect coverage warnings and the command's scope constraints. |
+| `AUTH_REQUIRED` / `BROWSER_UNAVAILABLE` | Run `login` for the relevant domain and check Chrome diagnostics. |
+| `LOCKED` | Wait for the active operation to finish and retry. |
+| `BUSINESS_QUERY_FAILED` / `INVALID_RESPONSE` | Investigate the backend failure or contract mismatch; do not treat it as an empty result. |
+| `UNSUPPORTED_CAPABILITY` | Check command availability; the path is not executable in this version. |
 
-## 未完成的外部验收依赖
+## Development
 
-- Liquidity 专用登录（[#145](https://github.com/proletariat64/dogopencli/issues/145)）的独立生产认证 UAT 于 2026-10-11 通过 4/4：人工 SSO 与自动 headless 切换、认证检查、重复登录及 Payment 认证检查。共享 OAuth 保持认证的实际行为由用户接受，未人为构造服务端 Liquidity 过期。UAT 使用独立 Chrome/profile 和未占用端口，禁止 9222、9223、9330–9340 及任何活跃会话端口；不得复制生产 cookies/profile。
-- 付款 Channel 真实全量 UAT 仍待后端分页故障修复（[#1](https://github.com/proletariat64/dogopencli/issues/1)）；离线替代集不代表生产全量。
-- 认证 UAT 的 `logout` 范围仍需单独确认；当前规则查询验收复用已有会话，未执行登出。
-- 安静登录轮询已在独立 profile 验证未登录态及连续 fetch 不改变标签页/文档/测试输入，并完成真实人工 SSO、原有认证复验及 headed → headless 持久化闭环；用户确认闪屏消失。另一次全新 profile 验证只有一个可见入口页，登录后 payment/liquidity 认证检查及 payment cost、collection cost、liquidity cash balances 代表性只读查询成功。代表性查询不等于所有命令或全量 refresh 已验收。
-- launcher 安全参数变更后的完整生产连接复验仍待完成：用当前默认参数执行 `dogopencli login`，再执行 `dogopencli refresh payment cost`，验证应用会话和采集。此前独立空 profile 的真实 Chrome 检查只证明启用沙箱、未开放通配 Origin 时原生 CDP 可连接，且不可信 Origin 被拒绝；已有会话上的查询成功不能替代该流程。
-
-## 开发与文档
-
-每个新工作树先在其根目录执行 `make bootstrap`。需要已安装的 Python
-（3.10 或以上）和 uv；bootstrap 不下载 Python。依赖版本由 `uv.lock` 固定，
-使用 uv 共享缓存和硬链接。首次创建环境时，也复用主工作树 `.venv` 中
-Python 版本一致且符合锁文件的依赖，避免重复下载已有包。各工作树拥有
-独立 `.venv` 和源码绑定，并在结束时验证导入路径。重复运行可补齐依赖。
-缓存与工作树须在同一文件系统；可用 `UV_CACHE_DIR` 指定共享缓存目录。
-已有环境中的额外包保留。仓库开发命令统一使用 `rtk`：
+Each worktree uses its own virtual environment and source binding. With Python
+3.10+, uv, rtk, code-review-graph, and Google Chrome installed, run:
 
 ```bash
 rtk proxy make bootstrap
+source tmp/bootstrap-browser/env.sh
+```
+
+Bootstrap installs locked dependencies, updates the current worktree's code
+graph, and provisions a dedicated browser, configuration, and cache under the
+ignored `tmp/bootstrap-browser/` directory. It waits for human SSO when needed
+and reports success only after headless authentication verification. Select a
+different domain with `make bootstrap BOOTSTRAP_DOMAIN=liquidity` or
+`BOOTSTRAP_DOMAIN=fx`. It does not copy another profile's cookies.
+
+Source the generated environment file before running CLI commands in that shell;
+`make` cannot update its parent shell. Close the worktree's dedicated Chrome
+before removing the worktree.
+
+Run the repository checks:
+
+```bash
 rtk proxy make test
 rtk proxy make lint
 rtk proxy make doc-guard test-doc-guard
 ```
 
-bootstrap 最后更新当前工作树的 code-review-graph 索引（首次自动构建），
-并启动独立的 Chrome、执行登录认证（默认 payment；资金管理使用
-`make bootstrap BOOTSTRAP_DOMAIN=liquidity`，FX 使用 `BOOTSTRAP_DOMAIN=fx`）。
-认证失效时自动打开可见 Chrome 等待人工 SSO，成功后回到 headless 并重新验证。
-需要已安装 `rtk`、`code-review-graph` 和
-`google-chrome`（可用 `DOGOPENCLI_CHROME_BIN` 指定可执行文件）。Chrome
-保留默认沙箱与 Origin 限制，使用 OS 分配的空闲 loopback 端口，排除
-9330–9340。profile、日志、配置和查询缓存均位于被 Git 忽略的
-`tmp/bootstrap-browser/`，不复制其他 profile 或 Cookie。重复执行复用经过
-profile 归属验证的浏览器，保留当前模式和标签页；端口冲突则失败，不抢占。
+Tests use sanitized fixtures, fake browser responses, and temporary local caches.
+Local checks and CI do not establish production acceptance for every command.
+Production validation requires the relevant permissions and stays inquiry-only.
 
-在当前 shell 激活隔离配置后再执行认证或查询（make 无法修改父 shell 环境）：
+## Documentation
 
-```bash
-source tmp/bootstrap-browser/env.sh
-rtk proxy .venv/bin/dogopencli login --domain liquidity
-rtk proxy .venv/bin/dogopencli auth check --domain liquidity
-```
+- [Documentation index](docs/README.md): specifications, contracts, research, and acceptance evidence.
+- [Domain vocabulary](CONTEXT.md): business objects, identities, units, and distinctions.
+- [Architecture decisions](docs/adr/): implementation decisions and their scope.
+- [Changelog](CHANGELOG.md): behavior changes and migration notes.
+- [Contributor instructions](AGENTS.md): repository workflows and constraints.
+- [GitHub Issues](https://github.com/proletariat64/dogopencli/issues): requirements and defects.
+- [Releases](https://github.com/proletariat64/dogopencli/releases): published packages and release notes.
 
-bootstrap 的浏览器阶段仅在所选域通过 headless 认证后报告 PASS；人工 SSO
-复用现有 `login` 流程，等待上限为 600 秒。超时或中断保留浏览器，可激活
-隔离配置后执行 `login` 继续。全局配置和已有浏览器会话保留。
-移除工作树前应先关闭其专用 Chrome。
-
-测试使用缩短的浏览器轮询间隔，生产探测仍使用 0.25 秒间隔；
-验证稳定窗口的测试显式设置其窗口和时钟。`make test` 与 CI 输出最慢的
-20 项测试，便于定位新的耗时。CI 对 PR 的合并结果、master 推送和标签推送
-运行完整检查；功能分支通过 PR 验证，避免同一 PR 再运行一次分支 push CI。
-同一 PR 或引用的新运行会取消过期运行。
-
-AI 审查由 `.github/workflows/ocr-review.yml` 在同仓库 PR 打开、更新和重新打开时
-运行；纯 `docs/**` 变更跳过。直接使用官方 `alibaba/open-code-review@main` Action，
-默认安装最新版 OCR，并由 Action 管理配置、JSON 输出、评论发布和日志 artifact。
-Kimi Code 的 OpenAI-compatible endpoint 为
-`https://api.kimi.com/coding/v1/chat/completions`，模型 `k3`，
-`llm_reasoning_effort: high`，密钥复用 repository secret `KIMI_API_KEY`。
-设置 `llm_extra_body: '{}'` 以覆盖 Action 默认关闭 thinking 的行为，保留 K3 推理。
-审查规则 `.opencodereview/rule.json` 保留内置语言规则，并要求可验证的缺陷证据；
-不因缺少测试、风格偏好或假设性风险单独生成 finding。低严重度及 test、style、
-documentation、maintainability 类别进入 sticky summary，其他问题保留行内发布。
-开启 checkpoint 增量范围；首次或 checkpoint 失效时完整审查。位置去重与自动解决
-过时线程保持关闭。其他输入保持官方默认：review effort 为 `medium`，
-`stream_progress` 关闭；Action 内部使用 `--format json --audience agent`。
-官方 Action 不提供命名 provider 输入，因此通过 `with` 直接连接 Kimi Code，
-不再自行配置本地命名 provider `kimicode`。
-
-启动 OCR 前通过 `/usages` 检查订阅额度；额度耗尽或未知时跳过，认证、配置、
-网络和普通限流错误仍使检查失败，不用钱包余额绕过订阅限制。
-Qoder/Kimi CLI review 和 Qoder Assistant 工作流已移除；现有 Qoder secret 不再使用。
-额度检查通过不代表审查已执行，AI review 不替代 Python CI 或生产 UAT。
-
-业务插件位于 `src/dogopencli/plugins/payment/`、`src/dogopencli/plugins/collection/`
-与 `src/dogopencli/plugins/liquidity/`；
-认证、受限传输、缓存和输出由共享模块提供。测试使用公开 CLI、假 CDP 与临时 SQLite。
-生产验收保持查询范围，并使用私有缓存。
-
-- [文档索引](docs/README.md)：契约、研究、验收与架构决策。
-- [领域词汇](CONTEXT.md)：付款、收款、VA 规则与账户对象的区别。
-- [贡献约定](AGENTS.md)：代码、测试、浏览器及研究工作流。
-- [GitHub Issues](https://github.com/proletariat64/dogopencli/issues)：需求、规格与缺陷。
-- [Releases](https://github.com/proletariat64/dogopencli/releases)：安装包与版本记录。
-
-契约与 UAT 报告记录特定日期、账号权限下的验证结果；生产行为变化后需要重新验证。
-
-Batch A ([#87](https://github.com/proletariat64/dogopencli/issues/87)) 两个必需列表的注册生产 CLI UAT 已通过 **2/2**，报价组调查 **1/1**，可选列表放行 **0/1**。当前源码支持数为 **71/133**；报价组继续 unsupported。决策与转账完整刷新分别为 264 与 4,954 条，本地 Kimi 两轴复审均通过。见[本批验收证据](docs/research/general/2026-10-04-liquidity-batch-a-acceptance.md)。
-
-转账规则配置列表（[#103](https://github.com/proletariat64/dogopencli/issues/103)）使用固定租户及默认 entity 范围的一次 GET 大页（5000）。原生 ruleCount、到达数和唯一 ruleId 数一致才 complete；没有自动分页或详情爬取。`refresh liquidity rules transfer` 显式发布 settings capture，普通 `liquidity rules transfer list` 离线读取，`--live` 不写缓存。配置摘要排除动作载荷、人员及运行调度信息；已有 `get --rule-id` 保持独立。生产 CLI UAT 已通过，见[独立验收报告](docs/research/general/2026-10-05-liquidity-transfer-rules-uat.md)；用户已授权本地 Kimi/API 源码与规格审查；[b622caf](https://github.com/proletariat64/dogopencli/commit/b622cafc8ffa06295e4dab8e37e9533963eac8c3) 的静态审查通过，confidence 4/5，测试与生产 UAT 由 root 独立完成。后续纯文档提交未宣称经过 Kimi 复审。
-
-#105 因子类型定义的生产 UAT 与已授权 Kimi 静态审查已通过（confidence 4/5）；审查源码为 [fe33524](https://github.com/proletariat64/dogopencli/commit/fe335248961838db52a0a263f10eff61abe7de1c)，测试与生产 UAT 由 root 独立完成，见[验收报告](docs/research/general/2026-10-05-factor-definitions-uat.md)。后续纯文档提交未宣称经过 Kimi 复审。
-
-### Realtime network 配置列表（#104）
-
-`liquidity network realtime list` 查询原生 decision network settings；先运行
-`refresh liquidity network realtime`，默认离线读取；`--live` 不写缓存。只发一次
-`rowStart=0/pageSize=5000` 原生请求，缺覆盖持续报告 incomplete；`--require-complete`
-拒绝 partial。原生 id 与 routeId 分开，状态不代表实际执行成功。动态性能指标及
-私有字段不公开；routes/rules monitoring 不随本列表启用；独立 get 见上方 #136。
-v0.2.8 发布时目录为
-85 supported / 46 unsupported / 131 total；生产 CLI UAT 204/204 完整及全部 5,304 个投影值对照通过；已随 v0.2.8 发布。
-
-审查修复后独立生产 UAT 再次通过，见[契约与验收报告](docs/research/general/2026-10-05-realtime-network-contract.md)；用户已授权本地 Kimi/API 源码与规格审查；[9488a7f](https://github.com/proletariat64/dogopencli/commit/9488a7f55f604559285572940a36afe2a46e093c) 的静态审查通过，confidence 4/5，测试与生产 UAT 由 root 独立完成。后续纯文档提交未宣称经过 Kimi 复审。
+Contract and acceptance reports record observations for a particular date,
+account, and scope. Consult those reports for production evidence; command
+availability alone does not establish current backend coverage.
