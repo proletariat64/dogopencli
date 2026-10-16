@@ -32,23 +32,35 @@ def emit(
     if output_format == "json":
         print(canonical(envelope))
     else:
-        print(_pretty(envelope))
+        sections = []
+        if data is not None or error is None:
+            sections.append(_text(data))
+        if meta is not None:
+            sections.append("Metadata:\n" + _text(meta, 1))
+        if error is not None:
+            sections.append("Error:\n" + _text(error, 1))
+        print("\n\n".join(sections))
 
 
-def _pretty(value: Any, depth: int = 0) -> str:
-    """Readable text envelope with exact native numeric tokens."""
-    padding = "  " * (depth + 1)
-    closing = "  " * depth
-    if isinstance(value, dict) and value:
-        items = [
-            canonical(key) + ": " + _pretty(item, depth + 1)
-            for key, item in value.items()
-        ]
-        return "{\n" + padding + (",\n" + padding).join(items) + "\n" + closing + "}"
-    if isinstance(value, list) and value:
-        items = [_pretty(item, depth + 1) for item in value]
-        return "[\n" + padding + (",\n" + padding).join(items) + "\n" + closing + "]"
-    return canonical(value)
+def _text(value: Any, depth: int = 0) -> str:
+    """Render labeled fields and bullet lists without changing native values."""
+    padding = "  " * depth
+    if isinstance(value, (dict, list)):
+        if not value:
+            kind = "object" if isinstance(value, dict) else "list"
+            return padding + f"(empty {kind})"
+        items = value.items() if isinstance(value, dict) else ((None, v) for v in value)
+        lines = []
+        for key, item in items:
+            label = f"{key}:" if key is not None else "-"
+            rendered = _text(item, depth + 1)
+            if isinstance(item, (dict, list)) or "\n" in rendered:
+                lines.append(padding + label + "\n" + rendered)
+            else:
+                lines.append(padding + label + " " + rendered[len(padding) + 2 :])
+        return "\n".join(lines)
+    scalar = value if isinstance(value, str) and value else canonical(value)
+    return "\n".join(padding + line for line in scalar.split("\n"))
 
 
 def _boolean(value: str) -> bool:

@@ -92,5 +92,8 @@ def test_installed_console_script() -> None:
     )
     assert result.returncode == 0
     assert result.stderr == ""
-    assert "dogopencli <domain> <action> <dotted-leaf>" in result.stdout
-    assert "payment" in result.stdout
+    assert result.stdout.startswith(
+        "usage: dogopencli <domain> <action> <dotted-leaf>\n"
+        "domains:\n  - collection\n  - fx\n  - liquidity\n  - payment\n"
+    )
+    assert "\ninstallation: plugins install-pilots\n" in result.stdout

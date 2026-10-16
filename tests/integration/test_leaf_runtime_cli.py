@@ -85,7 +85,10 @@ def test_live_prune_domain_gate_formats_and_offline_filters(run_cli, pilots):
     assert code == 2 and json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
     assert run_cli(["payment", "list", "sla.baselines", "--format", "table"])[0] == 2
     code, out, _ = run_cli(["payment", "list", "sla.baselines", "--format", "text"])
-    assert code == 0 and json.loads(out)["meta"]["source"] == "cache"
+    assert code == 0
+    assert out.startswith("-\n  id: 1\n  status: ACTIVE\n")
+    assert "\nMetadata:\n" in out
+    assert "\n  source: cache\n" in out
     assert run_cli(["domain", "disable", "payment"])[0] == 0
     before = list(pilots.business_requests)
     code, out, _ = run_cli(["payment", "list", "sla.baselines", "--live"])
@@ -201,6 +204,10 @@ def test_partial_cache_retains_warnings_and_strict_refresh_preserves_capture(
     _, out, err = run_cli(["collection", "list", "cost"])
     saved = json.loads(out)
     assert saved["data"][0]["itemId"] == "first" and "INCOMPLETE_RESULT" in err
+    code, out, text_err = run_cli(["collection", "list", "cost", "--format", "text"])
+    assert code == 0 and text_err == err
+    assert "\n  itemId: first\n" in out
+    assert "\n  warnings:\n    -\n      code: INCOMPLETE_RESULT\n" in out
     pilots.business_script.append(cost_page("second"))
     code, out, _ = run_cli(["collection", "refresh", "cost", "--require-complete"])
     assert code == 1 and json.loads(out)["meta"]["published"] is False
@@ -227,13 +234,19 @@ def test_display_formats_preserve_native_decimal_and_string_types(run_cli, pilot
         code, out, _ = run_cli(
             ["payment", "list", "sla.baselines", "--live", "--format", output_format]
         )
-        result = json.loads(out, parse_float=Decimal)
         assert code == 0
-        assert result["data"][0] == {
-            "id": "1",
-            "fraction": Decimal("0.1234567890123456789"),
-            "nativeString": "0.1000",
-        }
+        if output_format == "json":
+            result = json.loads(out, parse_float=Decimal)
+            assert result["data"][0] == {
+                "id": "1",
+                "fraction": Decimal("0.1234567890123456789"),
+                "nativeString": "0.1000",
+            }
+        else:
+            assert out.startswith(
+                "-\n  fraction: 0.1234567890123456789\n"
+                "  id: 1\n  nativeString: 0.1000\n\nMetadata:\n"
+            )
 
 
 def test_cache_lock_rejects_refresh_without_query(run_cli, pilots):
