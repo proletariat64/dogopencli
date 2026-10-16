@@ -9,9 +9,10 @@ false-busy state.
 - ``.dogopencli-login.lock`` — held exclusive for one whole login operation; a
   concurrent login fails immediately with ``login_in_progress``.
 - ``.dogopencli-browser-control.lock`` — held shared by active data work and
+  authentication checks (through observation persistence), and
   exclusive by browser mutations (login launch/restart/mode-switch, later
-  logout). Either conflict is ``browser_busy``; read-only probes
-  (``dogopencli auth check``) take no lock.
+  logout). Either conflict is ``browser_busy``. Authentication checks never
+  acquire the login lock or launch/switch Chrome.
 """
 
 import contextlib

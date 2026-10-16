@@ -1,7 +1,10 @@
 """The runnable example uses the same public auth contract as real domains."""
 
 import json
+import os
 import runpy
+import subprocess
+import sys
 from pathlib import Path
 
 from dogopencli import plugins
@@ -40,7 +43,7 @@ def test_sample_auth_runs_through_shared_orchestration(tmp_path):
             "authenticated",
         ]
         assert all(item["auth"]["updated_at"] for item in inventory)
-        assert not environment.profile.exists()
+        assert not (environment.profile / "Cookies").exists()
     finally:
         plugins.register_domains(original)
 
@@ -67,3 +70,20 @@ def test_sample_advertised_description_executes_offline(run_cli, monkeypatch):
         }
     finally:
         plugins.register_domains(original)
+
+
+def test_sample_executes_handler_with_python_optimization():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-O", str(root / "examples/domain_component.py")],
+        cwd=root,
+        env={**os.environ, "PYTHONPATH": str(root / "src")},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    output = json.loads(result.stdout)
+    assert output["records"] == [{"id": "synthetic-1", "domain": "sample"}]
+    assert output["removed_domain"] == "sample"
+    assert [item["domain"] for item in output["auth"]] == ["sample", "sample_peer"]

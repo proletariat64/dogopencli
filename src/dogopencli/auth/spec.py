@@ -137,7 +137,12 @@ COMMANDS = (
             "browser_required": True,
             "destructive": False,
         },
-        errors=("auth_required", "browser_unavailable", "service_failure"),
+        errors=(
+            "auth_required",
+            "browser_unavailable",
+            "browser_busy",
+            "service_failure",
+        ),
         examples=(
             "dogopencli auth check",
             "dogopencli auth check --domain liquidity --format text",

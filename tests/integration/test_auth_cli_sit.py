@@ -493,9 +493,69 @@ def test_auth_check_authenticated_headless(run_cli, auth_setup):
     assert result["cdp_url"] == CDP_URL
     assert result["profile"] == str(auth_setup.profile)
     assert result["probe"]["final_origin"] == PAYMENT_ORIGIN
-    # Read-only: no launch, no mode switch, no lock files, no profile creation.
+    # Probe only: no launch or mode switch; coordination may create a lock file.
     assert auth_setup.state.launches == []
-    assert not auth_setup.profile.exists()
+    assert not (auth_setup.profile / "Cookies").exists()
+    assert not (auth_setup.profile / LOGIN_LOCK_NAME).exists()
+    acquire_browser_control(auth_setup.profile, shared=False).release()
+
+
+def test_auth_check_holds_browser_control_through_observation_save(
+    run_cli, auth_setup, monkeypatch
+):
+    from fake_cdp import seed_cookies
+
+    from dogopencli.domains import DomainService
+
+    seed_cookies(auth_setup.state)
+    record_auth = DomainService.record_auth
+    logout_attempts = []
+
+    def save_with_concurrent_logout(self, domain_id, verdict):
+        auth_setup.state.href = SSO_URL
+        code, out, _ = run_cli([*auth_setup.argv, "logout"])
+        logout_attempts.append((code, json.loads(out)))
+        auth_setup.state.href = PAYMENT_URL
+        record_auth(self, domain_id, verdict)
+
+    monkeypatch.setattr(DomainService, "record_auth", save_with_concurrent_logout)
+    code, _, _ = invoke(
+        run_cli, [*auth_setup.argv, "auth", "check", "--domain", "payment"]
+    )
+    assert code == 0
+    assert len(logout_attempts) == 1
+    logout_code, logout_result = logout_attempts[0]
+    assert logout_code == 1
+    assert logout_result["error"]["code"] == "browser_busy"
+    assert auth_setup.state.deleted_cookies == []
+
+    # Releasing check control permits logout; no stale authenticated save follows it.
+    auth_setup.state.href = SSO_URL
+    code, output, _ = run_cli([*auth_setup.argv, "logout"])
+    assert code == 0, output
+    assert auth_setup.state.deleted_cookies
+    _, output, _ = run_cli([*auth_setup.argv, "domain", "show", "payment"])
+    assert json.loads(output)["result"]["auth"]["outcome"] == "unknown"
+
+
+def test_auth_check_control_conflict_reports_all_domains_unchecked(run_cli, auth_setup):
+    held = acquire_browser_control(auth_setup.profile, shared=False)
+    try:
+        code, output, _ = run_cli([*auth_setup.argv, "auth", "check"])
+    finally:
+        held.release()
+    assert code == 1
+    error = json.loads(output)["error"]
+    assert error["code"] == "browser_busy"
+    assert [item["domain"] for item in error["details"]["domains"]] == [
+        "payment",
+        "collection",
+        "fx",
+        "liquidity",
+    ]
+    assert all(item["checked"] is False for item in error["details"]["domains"])
+    assert auth_setup.state.transports == []
+    assert auth_setup.state.launches == []
 
 
 def test_auth_check_headed_mode_is_also_verified(run_cli, auth_setup):

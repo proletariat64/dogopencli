@@ -54,7 +54,7 @@ def authenticate_domains(
     try:
         if recover:
             login_lock = acquire_login_lock(environment.profile)
-            control = acquire_browser_control(environment.profile, shared=False)
+        control = acquire_browser_control(environment.profile, shared=not recover)
         for domain in selected:
             remaining = deadline - monotonic()
             if interrupted or unavailable or remaining <= 0:
