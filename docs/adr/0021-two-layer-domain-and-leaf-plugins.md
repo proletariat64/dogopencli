@@ -1,10 +1,11 @@
 # Two-layer domain and leaf plugins
 
-Status: proposed; product scope agreed, implementation contract pending
+Status: accepted; implementation specified in issue #200
 Date: 2026-10-16
 
 Planning map: [Chart the domain component rebuild](https://github.com/proletariat64/dogopencli/issues/196).
-The map's child decision tickets settle the remaining implementation contract.
+Implementation contract: [Rebuild the domain component layer](https://github.com/proletariat64/dogopencli/issues/200).
+The map's child decision tickets provide the supporting design decisions.
 
 Rebuild payment, collection, FX and liquidity as standard domain components
 above the existing leaf capability registry. Each domain owns its identity,
@@ -44,8 +45,8 @@ registration is sufficient; separate domain packages, package-management
 commands and hot loading/unloading are outside this effort. Use
 registered/unregistered to describe component membership.
 
-A domain plugin is a module implementing a small `DomainPlugin` interface that
-returns a complete domain declaration. A leaf remains the query capability
+A domain module supplies a `DomainComponent` implementing the `DomainPlugin`
+protocol as its complete declaration. A leaf remains the query capability
 and its command metadata within that declaration. Keep `Capability`,
 `EndpointContract`, collectors and existing query implementations unless a
 specific compatibility requirement needs a change.
@@ -53,8 +54,10 @@ specific compatibility requirement needs a change.
 The declaration contains domain identity, root and navigation groups, leaf
 registrations, descriptions, and application/auth metadata required by
 ADR 0015. Prefer declarative data over callbacks that mutate shared registries.
-The exact Python types will be settled through the Wayfinder decisions; this ADR does
-not require a class hierarchy or a separate method for every field.
+`DomainAuthPolicy` declares application auth behavior and an optional probe;
+`LeafRegistration` binds each capability to its operations and contributions.
+These declarations do not require a class hierarchy or a separate method for
+every field.
 
 Every domain must answer the same five questions within its own package:
 
@@ -135,9 +138,14 @@ domains. These multi-domain semantics intentionally extend ADR 0015.
 
 ## CLI and localhost GUI
 
-Provide a consistent CLI command family for inventory and controls. Exact
-command names and result schemas are a remaining contract decision. Inventory
-is offline and domain settings and recorded results are shared by CLI and GUI.
+Provide `domain list`, `domain show <domain>`, `domain leaves <domain>`,
+`domain enable <domain>` and `domain disable <domain>`. Results use the shared
+structured envelope, with text output available. Inventory is offline and
+domain settings and recorded results are shared by CLI and GUI through one
+domain service. A versioned SQLite store adjacent to the effective config file
+holds operational metadata separately from business caches. Absent-store reads
+return defaults without creating a file; writes are transactional and corrupt
+state fails explicitly rather than silently enabling domains.
 
 `dogopencli gui` starts a foreground localhost web server, prints its URL and
 stops on Ctrl+C. Version 1 shows domain status and enables/disables domains.
@@ -146,8 +154,11 @@ controls, login actions or business-query execution in the GUI.
 
 Changes apply to subsequent executions. Queries already running finish under
 the settings with which they started. The GUI does not introduce background
-authentication checks or leaf probes. Storage concurrency and the exact local
-HTTP interface are resolved in the implementation contract.
+authentication checks or leaf probes. The server binds loopback, chooses an
+available port by default, and serves bundled assets. Reads use
+`GET /api/domains`; domain toggles use `POST /api/domains/<domain>` with an enabled
+boolean. Mutations require the local page token and matching Host/Origin;
+state-changing GET requests are unavailable.
 
 ## Registration and lifecycle
 
@@ -158,7 +169,7 @@ to catalog or transport code. Entry-point discovery and external plugin
 installation remain deferred: deterministic offline startup meets this
 single-machine CLI's needs.
 
-`register_domain()` validates a complete contribution before publishing it.
+`register_domains()` validates the complete contribution set before publishing it.
 Validate unique domain and capability identities, command-path collisions,
 domain ownership of query paths and corresponding refresh/prune subtrees,
 parent reachability, and executable handler bindings. Handler existence must
