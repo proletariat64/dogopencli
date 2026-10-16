@@ -11,9 +11,14 @@ from argparse import Namespace
 from contextlib import redirect_stdout
 from dataclasses import dataclass
 from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from dogopencli import plugins
+from dogopencli.auth.domains import authenticate_domains
+from dogopencli.browser.environment import BrowserEnvironment
 from dogopencli.catalog import build_domain_catalog
+from dogopencli.domains import DomainService
 from dogopencli.helpspec import BizNode
 from dogopencli.plugins import DomainAuthPolicy, DomainComponent, leaf_registration
 
@@ -30,8 +35,14 @@ class FakeTransport:
         return domain_id in {"sample", "sample_peer"}
 
 
-def fake_auth(transport: FakeTransport, domain_id: str) -> dict:
-    return {"domain": domain_id, "authenticated": transport.authenticated(domain_id)}
+def fake_auth(environment: BrowserEnvironment, *, timeout: float = 15.0) -> dict:
+    """Use the real domain probe signature with a synthetic external boundary."""
+    return {
+        "domain": environment.domain_id,
+        "authenticated": FakeTransport().authenticated(environment.domain_id),
+        "mode": "headless",
+        "startup_url": environment.startup_url,
+    }
 
 
 def sample_list(args: Namespace) -> int:
@@ -73,7 +84,6 @@ def component(domain_id: str) -> DomainComponent:
 def run() -> dict:
     original = plugins.domain_plugins()
     sample, peer = component("sample"), component("sample_peer")
-    transport = FakeTransport()
     try:
         plugins.register_domains((*original, sample, peer))
         catalog = build_domain_catalog(plugins.domain_plugins())
@@ -81,7 +91,22 @@ def run() -> dict:
         assert ("sample_peer", "list") in catalog
         # A shared portal does not merge identities or auth observations.
         assert sample.entry_point == peer.entry_point
-        auth = [domain.auth.probe(transport, domain.id) for domain in (sample, peer)]
+        with TemporaryDirectory(prefix="dogopencli-domain-sample-") as directory:
+            root = Path(directory)
+            environment = BrowserEnvironment(
+                cdp_url="http://127.0.0.1:48529",
+                profile=root / "chrome",
+                startup_url=PORTAL,
+                chrome_bin="unused-synthetic-browser",
+                log_path=root / "chrome.log",
+            )
+            result = authenticate_domains(
+                environment,
+                DomainService(root / "config.toml"),
+                [sample.id, peer.id],
+                recover=False,
+            )
+            auth = result["domains"]
         handler = plugins.handler_for(catalog[("sample", "list")].handler)
         assert handler is sample_list
         output = StringIO()

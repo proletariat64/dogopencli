@@ -349,7 +349,7 @@ def domain_plugins() -> tuple[DomainPlugin, ...]:
 
 
 def handler_for(name: str) -> Callable[..., int] | None:
-    """Resolve a domain-supplied binding before shared built-in handlers."""
+    """Resolve a domain binding; validation reserves core execution names."""
     return next(
         (domain.handlers[name] for domain in _DOMAINS if name in domain.handlers), None
     )
@@ -358,6 +358,7 @@ def handler_for(name: str) -> Callable[..., int] | None:
 def validate_domains(domains: tuple[DomainPlugin, ...]) -> None:
     """Reject invalid whole contributions before registry publication."""
     from ..auth.spec import SPECS
+    from ..handler_contract import CORE_HANDLER_NAMES
 
     domain_ids: set[str] = set()
     leaf_ids: set[str] = set()
@@ -390,6 +391,7 @@ def validate_domains(domains: tuple[DomainPlugin, ...]) -> None:
                 or not name.isidentifier()
                 or not callable(callback)
                 or name in handler_names
+                or name in CORE_HANDLER_NAMES
             ):
                 raise ValueError(f"invalid or duplicate handler binding: {name}")
             handler_names.add(name)
@@ -420,6 +422,11 @@ def validate_domains(domains: tuple[DomainPlugin, ...]) -> None:
                 raise ValueError(f"inconsistent cache binding: {leaf.id}")
             declarations.extend((*leaf.groups, *executable))
         for node in declarations:
+            if node.handler is not None and (
+                not isinstance(node.handler, str)
+                or node.handler not in CORE_HANDLER_NAMES | domain.handlers.keys()
+            ):
+                raise ValueError(f"missing executable handler binding: {node.path}")
             owner = (
                 node.path[1:2]
                 if node.path[:1] in (("refresh",), ("prune",))

@@ -69,6 +69,41 @@ def test_invalid_domain_replacement_preserves_installed_registry():
     assert plugins.get_capability(first_leaf.id) is before
 
 
+@pytest.mark.parametrize("defect", ["missing", "reserved", "group"])
+def test_invalid_execution_bindings_leave_registry_unchanged(defect):
+    from dogopencli.helpspec import BizNode
+
+    installed = plugins.domain_plugins()
+    original = installed[0]
+    leaf = original.leaves[0]
+    capability = plugins.get_capability(leaf.id)
+    commands = plugins.command_nodes()
+    if defect == "reserved":
+        invalid = replace(original, handlers={"cmd_refresh_cost": lambda args: 0})
+    elif defect == "group":
+        invalid = replace(
+            original,
+            groups=(
+                *original.groups,
+                BizNode((original.id, "unbound"), "Unbound.", handler="missing"),
+            ),
+        )
+    else:
+        broken = replace(
+            leaf,
+            commands=(replace(leaf.commands[0], handler="missing_execution_handler"),),
+        )
+        invalid = replace(original, leaves=(broken, *original.leaves[1:]))
+    replacement = (invalid, *installed[1:])
+    with pytest.raises(ValueError, match="handler|executable"):
+        plugins.register_domains(replacement)
+    with pytest.raises(ValueError, match="handler|executable"):
+        build_domain_catalog(replacement)
+    assert plugins.domain_plugins() == installed
+    assert plugins.get_capability(leaf.id) is capability
+    assert plugins.command_nodes() == commands
+
+
 @pytest.mark.parametrize("defect", ["ownership", "parent", "cache", "handler"])
 def test_domain_contributions_are_validated_before_assembly(defect):
     from dogopencli.helpspec import BizNode
