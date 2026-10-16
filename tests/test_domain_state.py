@@ -140,3 +140,124 @@ def test_selection_validates_before_auth_and_deduplicates(declarations, tmp_path
         service.select_domains(["demo"])
     with pytest.raises(CliError, match="No enabled domains"):
         service.select_domains()
+
+
+def test_unknown_domain_fails_without_creating_state(declarations, tmp_path, capsys):
+    code, body = invoke(capsys, tmp_path, "disable", "absent")
+    assert code != 0
+    assert body["error"]["code"] == "DOMAIN_NOT_FOUND"
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_configuration_files_in_same_directory_are_isolated(declarations, tmp_path):
+    from dogopencli.domains import DomainService
+
+    first = DomainService(tmp_path / "first.toml")
+    second = DomainService(tmp_path / "second.toml")
+    first.set_enabled("demo", False)
+    assert second.inventory()[0]["enabled"] is True
+    assert first.inventory()[0]["enabled"] is False
+
+
+def test_absent_registration_does_not_return_from_retained_state(
+    declarations, monkeypatch, tmp_path
+):
+    from dogopencli.domains import DomainService
+
+    service = DomainService(tmp_path / "config.toml")
+    service.set_enabled("demo", False)
+    service.record_execution(
+        "demo", "demo_items", outcome="failed", operation="get", error_code="NOT_FOUND"
+    )
+    monkeypatch.setattr(plugins, "domain_plugins", lambda: ())
+    assert service.inventory() == []
+    monkeypatch.setattr(plugins, "domain_plugins", lambda: declarations)
+    assert service.inventory()[0]["enabled"] is False
+    assert (
+        service.inventory()[0]["leaves"][0]["last_execution"]["error_code"]
+        == "NOT_FOUND"
+    )
+
+
+def test_concurrent_settings_and_result_writes_do_not_replace_each_other(
+    declarations, tmp_path
+):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from dogopencli.domains import DomainService
+
+    location = tmp_path / "config.toml"
+
+    def setting():
+        DomainService(location).set_enabled("demo", False)
+
+    def result():
+        DomainService(location).record_execution(
+            "demo", "demo_items", outcome="success", operation="refresh"
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(setting), executor.submit(result)]
+        for future in futures:
+            future.result()
+    row = DomainService(location).inventory()[0]
+    assert row["enabled"] is False
+    assert row["leaves"][0]["last_execution"]["operation"] == "refresh"
+
+
+def test_invalid_store_is_reported_instead_of_reenabling_domain(
+    declarations, tmp_path, capsys
+):
+    from dogopencli.domains import DomainService
+
+    service = DomainService(tmp_path / "config.toml")
+    service.state_path.write_bytes(b"invalid sqlite")
+    code, body = invoke(capsys, tmp_path, "list")
+    assert code != 0
+    assert body["error"]["code"] == "DOMAIN_STATE_ERROR"
+    assert service.state_path.read_bytes() == b"invalid sqlite"
+
+
+def test_failed_state_save_preserves_previous_observation(declarations, tmp_path):
+    from dogopencli.domains import DomainService
+    from dogopencli.errors import CliError
+
+    service = DomainService(tmp_path / "config.toml")
+    service.record_execution("demo", "demo_items", outcome="success", operation="list")
+    previous = service.inventory()[0]["leaves"][0]["last_execution"]
+    service.state_path.chmod(0o400)
+    try:
+        with pytest.raises(CliError) as failure:
+            service.record_execution(
+                "demo",
+                "demo_items",
+                outcome="failed",
+                operation="get",
+                error_code="TIMEOUT",
+            )
+        assert failure.value.code == "DOMAIN_STATE_ERROR"
+    finally:
+        service.state_path.chmod(0o600)
+    assert service.inventory()[0]["leaves"][0]["last_execution"] == previous
+
+
+@pytest.mark.parametrize(
+    "bad_record",
+    [
+        "{}",
+        '{"outcome": [], "updated_at": null}',
+        '{"outcome":"success","updated_at":"yesterday","operation":"list"}',
+    ],
+)
+def test_invalid_observations_fail_clearly(declarations, tmp_path, capsys, bad_record):
+    import sqlite3
+
+    from dogopencli.domains import DomainService
+
+    service = DomainService(tmp_path / "config.toml")
+    service.record_execution("demo", "demo_items", outcome="success", operation="list")
+    with sqlite3.connect(service.state_path) as database:
+        database.execute("UPDATE executions SET record=?", (bad_record,))
+    code, body = invoke(capsys, tmp_path, "show", "demo")
+    assert code != 0
+    assert body["error"]["code"] == "DOMAIN_STATE_ERROR"
