@@ -32,8 +32,9 @@ def _unknown_execution() -> dict[str, Any]:
 class DomainService:
     """Application boundary shared by CLI, auth orchestration and localhost GUI."""
 
-    def __init__(self, config_file: Path | None = None) -> None:
+    def __init__(self, config_file: Path | None = None, *, registry=None) -> None:
         self.config_file = (config_file or config.config_path()).expanduser().resolve()
+        self._registry = registry
         self.state_path = self.config_file.with_name(
             self.config_file.name + ".domains.sqlite3"
         )
@@ -43,6 +44,11 @@ class DomainService:
         if domain_id is not None and not any(d.id == domain_id for d in domains):
             raise CliError("DOMAIN_NOT_FOUND", f"Unknown domain: {domain_id}")
         settings, executions, auth = self._read()
+        from .leaves.registry import Registry
+
+        registry = self._registry
+        if registry is None:
+            registry = Registry(self.config_file).scan(wait_seconds=5)
         return [
             {
                 "id": domain.id,
@@ -52,14 +58,22 @@ class DomainService:
                 "leaves": [
                     {
                         "id": leaf.id,
-                        "enabled": leaf.enabled,
-                        "effective_enabled": leaf.enabled
-                        and settings.get(domain.id, True),
+                        "enabled": True,
+                        "effective_enabled": settings.get(domain.id, True),
+                        "name": leaf.name,
+                        "operations": list(leaf.manifest["operations"]),
                         "last_execution": executions.get(
                             (domain.id, leaf.id), _unknown_execution()
                         ),
                     }
-                    for leaf in domain.leaves
+                    for leaf in registry.leaves.values()
+                    if leaf.domain == domain.id
+                ],
+                "diagnostics": [
+                    item
+                    for item in registry.diagnostics
+                    if item.get("id") in {"plugins", domain.id}
+                    or item.get("id", "").startswith(domain.id + ".")
                 ],
             }
             for domain in domains

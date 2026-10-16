@@ -25,11 +25,12 @@ DOMAIN_OUTPUT = {
 
 GUI_DECLARATION = BizNode(
     ("gui",),
-    "Serve domain status and controls on localhost.",
+    "Serve domain controls and leaf documentation editing on localhost.",
     handler="cmd_gui",
     effects={**NO_EFFECTS, "mutates": True, "network": True},
     constraints=(
         "Serves HTTP only on localhost; never contacts production systems.",
+        "Documentation saves validate and update local leaf manifests only.",
         "Domain toggles write local execution settings; no production mutation, "
         "login or business query execution is available.",
     ),

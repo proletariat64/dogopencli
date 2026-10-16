@@ -31,28 +31,36 @@ def test_python_m_entry_returns_root_json() -> None:
     assert result.returncode == 0
     assert result.stderr == ""
     doc = json.loads(result.stdout)
-    assert doc["help_version"] == 1
-    assert doc["command"] == "dogopencli"
-    assert [child["name"] for child in doc["children"]] == [
-        "snapshot",
-        "domain",
-        "gui",
-        "payment",
+    assert doc["data"]["usage"] == "dogopencli <domain> <action> <dotted-leaf>"
+    assert doc["data"]["domains"] == ["collection", "fx", "liquidity", "payment"]
+    assert doc["data"]["actions"] == [
+        "list",
+        "get",
         "refresh",
-        "collection",
-        "liquidity",
-        "fx",
-        "describe",
         "prune",
-        "auth",
-        "login",
-        "logout",
+        "help",
+        "describe",
     ]
 
 
-def test_python_m_help_path() -> None:
+def test_python_m_help_path(tmp_path) -> None:
+    import shutil
+
+    shutil.copytree(
+        REPO_ROOT / "src/dogopencli/leaf_packages/payment/sla.baselines",
+        tmp_path / "plugins/payment/sla.baselines",
+    )
     result = subprocess.run(
-        [sys.executable, "-m", "dogopencli", "help", "payment", "channel"],
+        [
+            sys.executable,
+            "-m",
+            "dogopencli",
+            "payment",
+            "help",
+            "sla.baselines",
+            "--config-dir",
+            str(tmp_path),
+        ],
         capture_output=True,
         text=True,
         env=_env(),
@@ -60,7 +68,10 @@ def test_python_m_help_path() -> None:
     )
     assert result.returncode == 0
     assert result.stderr == ""
-    assert json.loads(result.stdout)["command"] == "dogopencli payment channel"
+    document = json.loads(result.stdout)["data"]
+    assert document["id"] == "payment.sla.baselines"
+    assert set(document["operations"]) == {"list", "get"}
+    assert "--format json|text" in document["guidance"]
 
 
 def test_installed_console_script() -> None:
@@ -74,11 +85,12 @@ def test_installed_console_script() -> None:
         pytest.skip("dogopencli console script is not installed")
     result = subprocess.run(
         [dogopencli, "--format", "text"],
+        env=_env(),
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
     )
     assert result.returncode == 0
     assert result.stderr == ""
-    assert result.stdout.startswith("dogopencli\n")
+    assert "dogopencli <domain> <action> <dotted-leaf>" in result.stdout
     assert "payment" in result.stdout

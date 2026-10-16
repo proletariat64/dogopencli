@@ -1,0 +1,135 @@
+{
+  "domain": "payment",
+  "name": "sla.baselines",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Payment SLA baseline configurations.",
+      "parameters": [
+        {
+          "name": "biz-category",
+          "type": "string",
+          "required": false,
+          "description": "Business category.",
+          "local_field": "bizCategory"
+        },
+        {
+          "name": "creditor-currency",
+          "type": "string",
+          "required": false,
+          "description": "Creditor currency.",
+          "local_field": "creditorCurrency"
+        },
+        {
+          "name": "region-code",
+          "type": "string",
+          "required": false,
+          "description": "Region code.",
+          "local_field": "regionCode"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "description": "Baseline status.",
+          "local_field": "status"
+        },
+        {
+          "name": "biz-legal-entity",
+          "type": "string",
+          "required": false,
+          "description": "Native legal entity passthrough; independent filter effect is unverified; no cached mapping."
+        }
+      ]
+    },
+    "get": {
+      "description": "Fetch native detail by baseline ID.",
+      "parameters": []
+    }
+  },
+  "summary": "Payment SLA baseline configurations.",
+  "purpose": "Payment SLA baseline configurations.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native SLA baseline identifier.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "bizCategory",
+      "type": "string",
+      "meaning": "Business category.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "creditorCurrency",
+      "type": "string",
+      "meaning": "Creditor currency.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "regionCode",
+      "type": "string",
+      "meaning": "Region code.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "meaning": "Native baseline status.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "timezone",
+      "type": "string",
+      "meaning": "SLA timezone.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "debitorSuccessSla",
+      "type": "string",
+      "meaning": "Native debitor-success SLA value; unit is not inferred from its text.",
+      "unit": "native representation"
+    },
+    {
+      "name": "creditorSuccessSla",
+      "type": "string",
+      "meaning": "Native creditor-success SLA value; unit is not inferred from its text.",
+      "unit": "native representation"
+    },
+    {
+      "name": "holidayLimit",
+      "type": "string",
+      "meaning": "Native holiday-limit setting.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "serviceLevelLimit",
+      "type": "array",
+      "meaning": "Native service-level limit structures.",
+      "unit": "as declared by native objects"
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies each record.",
+  "limitations": [
+    "Legal entity is live/refresh only; its independent filter effect is unverified.",
+    "Detail uses its native endpoint and has no cache."
+  ],
+  "examples": [
+    {
+      "title": "Query live",
+      "command": "dogopencli payment list sla.baselines --live"
+    },
+    {
+      "title": "Fetch baseline detail",
+      "command": "dogopencli payment get sla.baselines BASELINE_ID"
+    }
+  ],
+  "dataset": {
+    "relation": "payment_sla_baselines"
+  }
+}

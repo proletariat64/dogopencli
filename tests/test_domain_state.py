@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from dogopencli import plugins
+from dogopencli.leaves import cli as leaf_cli
 
 
 @pytest.mark.parametrize(
@@ -68,25 +69,42 @@ def test_domain_help_parses_format_and_option_values_offline(
 
 
 @pytest.fixture
-def declarations(monkeypatch):
-    leaf = SimpleNamespace(
-        id="demo_items",
-        enabled=True,
-        commands=(SimpleNamespace(path=("demo", "items", "list")),),
-        refresh_commands=(SimpleNamespace(path=("refresh", "demo", "items")),),
-    )
-    disabled = SimpleNamespace(
-        id="demo_future",
-        enabled=False,
-        commands=(SimpleNamespace(path=("demo", "future", "list")),),
-        refresh_commands=(),
-    )
+def declarations(monkeypatch, tmp_path):
+    """Install a real list leaf; static domain declarations own auth only."""
     domains = (
-        SimpleNamespace(
-            id="demo", entry_point="https://example.test/", leaves=(leaf, disabled)
-        ),
+        SimpleNamespace(id="demo", entry_point="https://example.test/", leaves=()),
     )
     monkeypatch.setattr(plugins, "domain_plugins", lambda: domains, raising=False)
+    monkeypatch.setattr(leaf_cli, "domain_plugins", lambda: domains)
+    monkeypatch.setenv("DOGOPENCLI_CONFIG", str(tmp_path / "config.toml"))
+    folder = tmp_path / "plugins/demo/items"
+    folder.mkdir(parents=True)
+    manifest = {
+        "domain": "demo",
+        "name": "items",
+        "adapter": "adapter.py:adapter",
+        "operations": {"list": {"description": "List demo items", "parameters": []}},
+        "fields": [{"name": "id", "type": "string", "meaning": "Native ID"}],
+        "identity": ["id"],
+        "summary": "Demo",
+        "purpose": "Test installed inventory",
+        "identity_description": "Native ID",
+        "limitations": [],
+        "examples": [],
+        "dataset": {"relation": "demo_items"},
+    }
+    (folder / "leaf.json").write_text(json.dumps(manifest))
+    (folder / "adapter.py").write_text(
+        "class Adapter:\n"
+        " def capability(self, parameters): pass\n"
+        " def scope(self, parameters): return ''\n"
+        " def collector(self, *args, **kwargs): pass\n"
+        " def filter(self, rows, parameters): return rows\n"
+        "adapter = Adapter()\n"
+    )
+    broken = tmp_path / "plugins/demo/future"
+    broken.mkdir()
+    (broken / "leaf.json").write_text("invalid JSON")
     return domains
 
 
@@ -105,8 +123,9 @@ def test_inventory_is_offline_and_does_not_create_store(declarations, tmp_path, 
     assert domain["enabled"] is True
     assert domain["auth"] == {"outcome": "unknown", "updated_at": None}
     assert domain["leaves"][0]["last_execution"]["outcome"] == "unknown"
-    assert domain["leaves"][1]["enabled"] is False
-    assert list(tmp_path.iterdir()) == []
+    assert domain["diagnostics"][0]["id"] == "demo.future"
+    assert not (tmp_path / "config.toml.domains.sqlite3").exists()
+    assert not (tmp_path / "leaf-cache.sqlite3").exists()
 
 
 def test_domain_toggle_survives_reopen_without_rewriting_leaf_settings(
@@ -120,7 +139,8 @@ def test_domain_toggle_survives_reopen_without_rewriting_leaf_settings(
     assert invoke(capsys, tmp_path, "show", "demo")[1]["result"]["enabled"] is False
     code, body = invoke(capsys, tmp_path, "enable", "demo")
     assert body["result"]["leaves"][0]["effective_enabled"] is True
-    assert body["result"]["leaves"][1]["effective_enabled"] is False
+    assert len(body["result"]["leaves"]) == 1
+    assert body["result"]["diagnostics"][0]["id"] == "demo.future"
 
 
 def test_recorded_results_are_persisted_separate_from_auth(
@@ -131,7 +151,7 @@ def test_recorded_results_are_persisted_separate_from_auth(
     service = DomainService(tmp_path / "config.toml")
     service.record_execution(
         "demo",
-        "demo_items",
+        "demo.items",
         outcome="warning",
         operation="list",
         diagnostic="Bearer PRIVATE; account=123",
@@ -161,27 +181,16 @@ def test_gates_follow_registration_and_leave_last_result_intact(
     declarations, tmp_path, capsys
 ):
     from dogopencli.domains import DomainService
-    from dogopencli.errors import CliError
 
     service = DomainService(tmp_path / "config.toml")
-    assert service.require_execution(("demo", "items", "list")) == (
-        "demo",
-        "demo_items",
-    )
-    assert service.require_execution(("refresh", "demo", "items")) == (
-        "demo",
-        "demo_items",
-    )
-    assert service.require_execution(("prune", "demo", "items")) is None
-    service.record_execution("demo", "demo_items", outcome="success", operation="list")
+    service.record_execution("demo", "demo.items", outcome="success", operation="list")
     previous = service.inventory()[0]["leaves"][0]["last_execution"]
-    with pytest.raises(CliError, match="disabled") as failure:
-        service.require_execution(("demo", "future", "list"))
-    assert failure.value.code == "LEAF_DISABLED"
     service.set_enabled("demo", False)
-    with pytest.raises(CliError, match="disabled") as failure:
-        service.require_execution(("demo", "items", "list"))
-    assert failure.value.code == "DOMAIN_DISABLED"
+    from dogopencli.cli import main
+
+    assert main(["demo", "list", "items", "--config-dir", str(tmp_path)]) == 1
+    failure = json.loads(capsys.readouterr().out)
+    assert failure["error"]["code"] == "DOMAIN_DISABLED"
     assert service.inventory()[0]["leaves"][0]["last_execution"] == previous
 
 
@@ -205,7 +214,7 @@ def test_unknown_domain_fails_without_creating_state(declarations, tmp_path, cap
     code, body = invoke(capsys, tmp_path, "disable", "absent")
     assert code != 0
     assert body["error"]["code"] == "DOMAIN_NOT_FOUND"
-    assert list(tmp_path.iterdir()) == []
+    assert not (tmp_path / "config.toml.domains.sqlite3").exists()
 
 
 def test_configuration_files_in_same_directory_are_isolated(declarations, tmp_path):
@@ -226,7 +235,7 @@ def test_absent_registration_does_not_return_from_retained_state(
     service = DomainService(tmp_path / "config.toml")
     service.set_enabled("demo", False)
     service.record_execution(
-        "demo", "demo_items", outcome="failed", operation="get", error_code="NOT_FOUND"
+        "demo", "demo.items", outcome="failed", operation="get", error_code="NOT_FOUND"
     )
     monkeypatch.setattr(plugins, "domain_plugins", lambda: ())
     assert service.inventory() == []
@@ -252,7 +261,7 @@ def test_concurrent_settings_and_result_writes_do_not_replace_each_other(
 
     def result():
         DomainService(location).record_execution(
-            "demo", "demo_items", outcome="success", operation="refresh"
+            "demo", "demo.items", outcome="success", operation="refresh"
         )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -282,14 +291,14 @@ def test_failed_state_save_preserves_previous_observation(declarations, tmp_path
     from dogopencli.errors import CliError
 
     service = DomainService(tmp_path / "config.toml")
-    service.record_execution("demo", "demo_items", outcome="success", operation="list")
+    service.record_execution("demo", "demo.items", outcome="success", operation="list")
     previous = service.inventory()[0]["leaves"][0]["last_execution"]
     service.state_path.chmod(0o400)
     try:
         with pytest.raises(CliError) as failure:
             service.record_execution(
                 "demo",
-                "demo_items",
+                "demo.items",
                 outcome="failed",
                 operation="get",
                 error_code="TIMEOUT",
@@ -314,7 +323,7 @@ def test_invalid_observations_fail_clearly(declarations, tmp_path, capsys, bad_r
     from dogopencli.domains import DomainService
 
     service = DomainService(tmp_path / "config.toml")
-    service.record_execution("demo", "demo_items", outcome="success", operation="list")
+    service.record_execution("demo", "demo.items", outcome="success", operation="list")
     with sqlite3.connect(service.state_path) as database:
         database.execute("UPDATE executions SET record=?", (bad_record,))
     code, body = invoke(capsys, tmp_path, "show", "demo")

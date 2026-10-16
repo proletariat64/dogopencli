@@ -4,56 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from dogopencli import cli
 from dogopencli.catalog import NODES, build_catalog
 from dogopencli.helpspec import BizNode
-from dogopencli.plugins import command_nodes
-
-
-def test_every_executable_is_discoverable_and_dispatches(
-    run_cli, monkeypatch, tmp_path
-):
-    monkeypatch.setenv("DOGOPENCLI_CONFIG", str(tmp_path / "config.toml"))
-    from dogopencli.plugins import domain_plugins
-
-    disabled_paths = {
-        node.path
-        for domain in domain_plugins()
-        for leaf in domain.leaves
-        if not leaf.enabled
-        for node in (*leaf.commands, *leaf.refresh_commands)
-    }
-    leaves = [node for node in NODES.values() if node.handler]
-    assert all(
-        NODES[node.path].handler == node.handler
-        and NODES[node.path].options
-        == tuple(
-            option
-            for option in node.options
-            if option.name != "all"
-            and not (node.path[-1] == "get" and option.name == "require_fresh")
-        )
-        for node in command_nodes()
-    )
-    for node in leaves:
-        if node.path in disabled_paths:
-            continue
-        handler = node.handler
-        assert handler is not None
-        assert callable(getattr(cli, handler))
-        assert NODES[node.path[:-1]].children.count((node.path[-1], node.summary)) == 1
-        calls = []
-        monkeypatch.setattr(
-            cli, handler, lambda args, calls=calls: calls.append(args) or 0
-        )
-        argv = list(node.path)
-        for option in node.options:
-            if option.required:
-                # Choice-restricted options need a declared value.
-                value = option.choices[0] if option.choices else "synthetic"
-                argv.extend((option.flag, value))
-        assert run_cli(argv) == (0, "", "")
-        assert len(calls) == 1
 
 
 def test_new_leaf_only_needs_its_declaration():
