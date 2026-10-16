@@ -51,6 +51,22 @@ def sample_list(args: Namespace) -> int:
     return 0
 
 
+def sample_description(node) -> dict:
+    """Describe synthetic data without inspecting browser, config or records."""
+    return {
+        "schema_version": 1,
+        "data_schema": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"id": {"type": "string"}, "domain": {"type": "string"}},
+                "required": ["id", "domain"],
+            },
+        },
+        "read_guide": {"summary": "Synthetic records for the domain component sample."},
+    }
+
+
 @dataclass(frozen=True)
 class SampleCapability:
     name: str
@@ -69,6 +85,7 @@ def component(domain_id: str) -> DomainComponent:
         leaves=(
             leaf_registration(
                 capability,
+                description=sample_description,
                 commands=(
                     BizNode(
                         (domain_id, "list"),

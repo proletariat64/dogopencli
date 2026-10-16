@@ -9,6 +9,7 @@ from .helpspec import (
     FIELDS,
     FORMAT_TABLE,
     LIMIT,
+    NO_EFFECTS,
     OFFSET,
     REQUIRE_COMPLETE,
     BizNode,
@@ -140,7 +141,10 @@ def build_domain_catalog(
     domains = tuple(sorted(domains, key=lambda domain: domain.navigation_order))
     validate_domains(domains)
     queries = tuple(
-        node for domain in domains for leaf in domain.leaves for node in leaf.commands
+        _execution_effects(node, leaf.enabled)
+        for domain in domains
+        for leaf in domain.leaves
+        for node in leaf.commands
     )
     refreshes = []
     for domain in domains:
@@ -149,7 +153,10 @@ def build_domain_catalog(
             *domain.refresh_order,
             *(name for name in leaves if name not in domain.refresh_order),
         ):
-            refreshes.extend(leaves[name].refresh_commands)
+            refreshes.extend(
+                _execution_effects(node, leaves[name].enabled)
+                for node in leaves[name].refresh_commands
+            )
     described = tuple(
         description_nodes(
             (
@@ -168,6 +175,8 @@ def build_domain_catalog(
     first_root = next((node for node in domain_groups if len(node.path) == 1), None)
     if first_root is not None:
         domain_groups.insert(domain_groups.index(first_root) + 1, REFRESH_NODE)
+    elif refreshes:
+        domain_groups.insert(0, REFRESH_NODE)
     declarations = [
         SNAPSHOT_NODE,
         *MANAGEMENT_DECLARATIONS,
@@ -193,6 +202,28 @@ def build_domain_catalog(
     ):
         declarations = [node for node in declarations if node.path != ("prune",)]
     return build_catalog(declarations)
+
+
+def _execution_effects(node: BizNode, enabled: bool) -> BizNode:
+    """Describe the local observation write shared by executable leaf handlers."""
+    if not enabled:
+        return replace(node, effects=dict(NO_EFFECTS), effects_variants=())
+    return replace(
+        node,
+        effects={**node.effects, "mutates": True},
+        effects_variants=tuple(
+            {
+                **variant,
+                "effects": {**variant["effects"], "mutates": True},
+            }
+            for variant in node.effects_variants
+        ),
+        constraints=(
+            *node.constraints,
+            "Writes local execution observations; never mutates production business "
+            "configuration. Observation storage is separate from the query cache.",
+        ),
+    )
 
 
 NODES = build_domain_catalog(domain_plugins())

@@ -104,6 +104,36 @@ def test_invalid_execution_bindings_leave_registry_unchanged(defect):
     assert plugins.command_nodes() == commands
 
 
+@pytest.mark.parametrize("defect", ["empty", "children", "executable_group"])
+def test_catalog_invariant_failure_does_not_publish_registry(defect):
+    from dogopencli.helpspec import BizNode
+
+    installed = plugins.domain_plugins()
+    domain = installed[0]
+    if defect == "empty":
+        groups = (*domain.groups, BizNode((domain.id, "empty"), "Empty group."))
+        invalid = replace(domain, groups=groups)
+    elif defect == "children":
+        groups = (
+            replace(domain.groups[0], children=(("invented", "Invented child."),)),
+            *domain.groups[1:],
+        )
+        invalid = replace(domain, groups=groups)
+    else:
+        groups = (
+            *domain.groups,
+            BizNode((domain.id, "run"), "Ungated execution.", handler="sample_run"),
+        )
+        invalid = replace(
+            domain, groups=groups, handlers={"sample_run": lambda args: 0}
+        )
+    commands = plugins.command_nodes()
+    with pytest.raises(ValueError):
+        plugins.register_domains((invalid, *installed[1:]))
+    assert plugins.domain_plugins() == installed
+    assert plugins.command_nodes() == commands
+
+
 @pytest.mark.parametrize("defect", ["ownership", "parent", "cache", "handler"])
 def test_domain_contributions_are_validated_before_assembly(defect):
     from dogopencli.helpspec import BizNode
@@ -149,3 +179,35 @@ def test_inquiry_operations_use_shared_list_get_vocabulary():
         ),
     )
     assert registration.operations == ((("sample", "trade"), "list"),)
+
+
+def test_refresh_root_is_assembled_from_leaf_owned_groups():
+    from types import SimpleNamespace
+
+    from dogopencli.helpspec import BizNode
+
+    domain = plugins.DomainComponent(
+        id="sample",
+        entry_point="https://example.test/",
+        handlers={"sample_list": lambda args: 0, "sample_refresh": lambda args: 0},
+        leaves=(
+            plugins.leaf_registration(
+                SimpleNamespace(name="sample.items", cache_enabled=False),
+                groups=(
+                    BizNode(("sample",), "Sample."),
+                    BizNode(("refresh", "sample"), "Refresh sample."),
+                ),
+                commands=(BizNode(("sample", "list"), "List.", handler="sample_list"),),
+                refresh_commands=(
+                    BizNode(
+                        ("refresh", "sample", "items"),
+                        "Refresh items.",
+                        handler="sample_refresh",
+                    ),
+                ),
+            ),
+        ),
+    )
+    catalog = build_domain_catalog((domain,))
+    assert ("refresh", "sample", "items") in catalog
+    assert catalog[("refresh",)].children == (("sample", "Refresh sample."),)

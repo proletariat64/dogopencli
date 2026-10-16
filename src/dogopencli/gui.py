@@ -183,10 +183,14 @@ def main(argv: list[str]) -> int:
     except SystemExit as error:
         return int(error.code)
     if args.help:
+        from .management import GUI_DECLARATION
+
         description = {
             "help_version": 1,
             "command": "dogopencli gui",
             "summary": "Run foreground localhost domain controls; Ctrl+C stops server",
+            "effects": dict(GUI_DECLARATION.effects),
+            "constraints": list(GUI_DECLARATION.constraints),
             "options": [
                 {
                     "name": "--config-dir",
@@ -207,6 +211,9 @@ def main(argv: list[str]) -> int:
             print(json.dumps(description))
         else:
             print(description["command"] + " — " + description["summary"])
+            print("Effects: " + str(description["effects"]))
+            for constraint in description["constraints"]:
+                print(constraint)
             for option in description["options"]:
                 print(option["name"] + "  " + option["description"])
         return 0

@@ -123,6 +123,7 @@ def test_partial_domain_failure_still_checks_independent_remaining_domains(
         "liquidity",
     ]
     assert outcomes[2]["error"]["code"] == "service_failure"
+    assert outcomes[2]["authenticated"] is None
     assert outcomes[3]["authenticated"] is True
     code, output, _ = run_cli([*auth_setup.argv, "domain", "show", "fx"])
     assert json.loads(output)["result"]["auth"]["outcome"] == "failed"
@@ -154,10 +155,71 @@ def test_browser_loss_identifies_all_unchecked_domains(run_cli, auth_setup):
     outcomes = json.loads(output)["error"]["details"]["domains"]
     assert len(outcomes) == 4
     assert outcomes[0]["error"]["code"] == "browser_unavailable"
+    assert outcomes[0]["authenticated"] is None
     assert all(
         item["checked"] is False and item["authenticated"] is None
         for item in outcomes[1:]
     )
+
+
+@pytest.mark.parametrize("inconclusive", [False, True])
+def test_interrupt_during_auth_save_preserves_one_verdict_per_domain(
+    run_cli, auth_setup, monkeypatch, inconclusive
+):
+    from dogopencli.domains import DomainService
+
+    if inconclusive:
+        auth_setup.state.href = "https://unexpected.example/"
+
+    def interrupted_save(self, domain_id, verdict):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(DomainService, "record_auth", interrupted_save)
+    code, output, _ = run_cli([*auth_setup.argv, "auth", "check"])
+    assert code == 130
+    outcomes = json.loads(output)["error"]["details"]["domains"]
+    assert [item["domain"] for item in outcomes] == [
+        "payment",
+        "collection",
+        "fx",
+        "liquidity",
+    ]
+    assert outcomes[0]["checked"] is True
+    assert outcomes[0]["authenticated"] is (None if inconclusive else True)
+    assert all(item["checked"] is False for item in outcomes[1:])
+
+
+@pytest.mark.parametrize("failure", ["navigation", "not_ready"])
+def test_one_page_failure_does_not_skip_independent_auth_domains(
+    run_cli, auth_setup, failure
+):
+    from fake_cdp import FakeTransport
+
+    from dogopencli.browser.environment import FX_STARTUP_URL
+
+    class EntryTransport(FakeTransport):
+        def new_target(self, url, *, timeout=None):
+            self.entry = url
+            self._state.href = (
+                "chrome-error://chromewebdata/" if url == FX_STARTUP_URL else url
+            )
+            return super().new_target(url, timeout=timeout)
+
+        def evaluate_probe(self, expression):
+            if self.entry == FX_STARTUP_URL and failure == "not_ready":
+                raise cdp.PageNotReady("loading")
+            return super().evaluate_probe(expression)
+
+    cdp.set_transport_factory(lambda url: EntryTransport(auth_setup.state))
+    code, out, _ = run_cli([*auth_setup.argv, "auth", "check"])
+    assert code == 1
+    outcomes = json.loads(out)["error"]["details"]["domains"]
+    assert outcomes[2]["domain"] == "fx"
+    assert outcomes[2]["error"]["code"] == "browser_unavailable"
+    assert outcomes[2]["authenticated"] is None
+    assert outcomes[3]["domain"] == "liquidity"
+    assert outcomes[3]["checked"] is True
+    assert outcomes[3]["authenticated"] is True
 
 
 @pytest.fixture

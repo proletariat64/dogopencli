@@ -5,6 +5,7 @@ from dataclasses import replace
 from time import monotonic
 from typing import Any
 
+from ..browser.cdp import CdpError, make_transport
 from ..browser.coordination import acquire_browser_control, acquire_login_lock
 from ..browser.environment import BrowserEnvironment
 from ..browser.errors import (
@@ -15,7 +16,7 @@ from ..browser.errors import (
     AuthError,
 )
 from ..browser.login import restore_authentication
-from ..browser.probe import check_authentication
+from ..browser.probe import browser_mode, check_authentication
 from ..domains import DomainService
 from ..errors import CliError
 
@@ -75,6 +76,7 @@ def authenticate_domains(
                 domain_id=domain.id,
                 auth_policy=domain.auth,
             )
+            observation = None
             try:
                 if recover:
                     verdict = restore_authentication(target, timeout_seconds=remaining)
@@ -83,7 +85,7 @@ def authenticate_domains(
                     verdict = probe(target, timeout=min(15.0, remaining))
                 verdict = {**verdict, "domain": domain.id}
                 outcomes.append({**verdict, "checked": True})
-                _persist(service, domain.id, verdict)
+                observation = verdict
             except AuthError as exc:
                 details = {
                     **exc.details,
@@ -96,30 +98,39 @@ def authenticate_domains(
                     "message": exc.message,
                     "retryable": exc.retryable,
                 }
+                authenticated = False if exc.code == AUTH_REQUIRED else None
                 outcomes.append(
                     {
                         "domain": domain.id,
-                        "authenticated": False,
+                        "authenticated": authenticated,
                         "checked": True,
                         "error": error,
                     }
                 )
-                _persist(
-                    service,
-                    domain.id,
-                    {
-                        "authenticated": False if exc.code == AUTH_REQUIRED else None,
-                        "error_code": exc.code,
-                        "diagnostic": exc.code,
-                    },
-                )
+                observation = {
+                    "authenticated": authenticated,
+                    "error_code": exc.code,
+                    "diagnostic": exc.code,
+                }
                 if first_error is None:
                     first_error = exc
-                unavailable = exc.code in {
-                    BROWSER_UNAVAILABLE,
-                    BROWSER_BUSY,
-                    LOGIN_IN_PROGRESS,
-                }
+                unavailable = exc.code in {BROWSER_BUSY, LOGIN_IN_PROGRESS}
+                if exc.code == BROWSER_UNAVAILABLE:
+                    remaining = deadline - monotonic()
+                    try:
+                        unavailable = (
+                            remaining <= 0
+                            or browser_mode(
+                                make_transport(environment.cdp_url).version(
+                                    timeout=min(1.0, remaining)
+                                )
+                            )
+                            is None
+                        )
+                    except CdpError:
+                        unavailable = True
+                    except KeyboardInterrupt:
+                        interrupted = True
             except KeyboardInterrupt:
                 interrupted = True
                 outcomes.append(
@@ -133,6 +144,12 @@ def authenticate_domains(
                         },
                     }
                 )
+            if observation is not None:
+                try:
+                    _persist(service, domain.id, observation)
+                except KeyboardInterrupt:
+                    # A completed verdict remains valid even if its save is interrupted.
+                    interrupted = True
         if interrupted:
             raise AuthError(
                 "interrupted",

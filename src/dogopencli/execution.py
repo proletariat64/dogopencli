@@ -31,12 +31,12 @@ def observe_result(meta: Any, error: Any = None) -> None:
 
 def invoke_leaf(path: tuple[str, ...], handler: Callable[[], int]) -> int:
     """Gate once, execute once, and persist only completed leaf observations."""
-    from .domains import DomainService
+    from .domains import DomainService, execution_owner
 
+    if execution_owner(path) is None:
+        return handler()
     service = DomainService()
     owner = service.require_execution(path)
-    if owner is None:
-        return handler()
     observation = Observation()
     token = _CURRENT.set(observation)
     code = 1

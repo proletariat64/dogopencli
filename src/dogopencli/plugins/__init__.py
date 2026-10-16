@@ -364,6 +364,7 @@ def validate_domains(domains: tuple[DomainPlugin, ...]) -> None:
     leaf_ids: set[str] = set()
     handler_names: set[str] = set()
     paths: set[tuple[str, ...]] = set()
+    group_paths: set[tuple[str, ...]] = set()
     reserved = {
         "auth",
         "login",
@@ -404,10 +405,16 @@ def validate_domains(domains: tuple[DomainPlugin, ...]) -> None:
         ):
             raise ValueError(f"invalid refresh order: {domain.id}")
         declarations = list(domain.groups)
+        if any(node.handler is not None for node in domain.groups):
+            raise ValueError("executable groups must be registered as leaf operations")
         for leaf in domain.leaves:
             if not leaf.id or leaf.id != leaf.capability.name or leaf.id in leaf_ids:
                 raise ValueError(f"invalid or duplicate leaf ID: {leaf.id}")
             leaf_ids.add(leaf.id)
+            if any(node.handler is not None for node in leaf.groups):
+                raise ValueError(
+                    "executable groups must be registered as leaf operations"
+                )
             if type(leaf.enabled) is not bool:
                 raise ValueError(f"invalid enabled state: {leaf.id}")
             executable = (*leaf.commands, *leaf.refresh_commands, *leaf.prune_commands)
@@ -422,6 +429,8 @@ def validate_domains(domains: tuple[DomainPlugin, ...]) -> None:
                 raise ValueError(f"inconsistent cache binding: {leaf.id}")
             declarations.extend((*leaf.groups, *executable))
         for node in declarations:
+            if node.children:
+                raise ValueError(f"children must be derived: {node.path}")
             if node.handler is not None and (
                 not isinstance(node.handler, str)
                 or node.handler not in CORE_HANDLER_NAMES | domain.handlers.keys()
@@ -437,10 +446,16 @@ def validate_domains(domains: tuple[DomainPlugin, ...]) -> None:
             if node.path in paths or node.path in SPECS:
                 raise ValueError(f"duplicate command path: {node.path}")
             paths.add(node.path)
+            if node.handler is None:
+                group_paths.add(node.path)
     parents = paths | {(), ("refresh",), ("prune",)}
     for path in paths:
         if path[:-1] not in parents:
             raise ValueError(f"missing parent for command: {path}")
+    parent_paths = {path[:-1] for path in paths}
+    for path in group_paths:
+        if path not in parent_paths:
+            raise ValueError(f"command must be either group or executable: {path}")
 
 
 def register_domains(domains: tuple[DomainPlugin, ...]) -> None:
