@@ -35,9 +35,8 @@ def test_retired_lists_refuse_without_storage_browser_or_config(
     code, out, _ = run_cli(command)
     result = parse(out)
     assert code == 1
-    assert result["error"]["code"] == "UNSUPPORTED_CAPABILITY"
-    assert "retired" in result["error"]["message"]
-    assert "#167" in result["error"]["message"]
+    assert result["error"]["code"] == "LEAF_DISABLED"
+    assert result["error"]["message"].startswith("Leaf is disabled:")
     assert result["data"] is None
     assert not setup.state.transports
     assert not setup.state.business_requests
@@ -54,7 +53,10 @@ def test_discovery_agrees_with_retirement(setup, run_cli, path, refresh):
             [action, *command, *(["--format", "json"] if action == "snapshot" else [])]
         )
         assert code == 0, err
-        assert "retired" in out and "#167" in out
+        if action == "describe":
+            assert "retired" in out and "#167" in out
+        elif action == "help":
+            assert "Disabled" in out
         if action == "describe":
             result = parse(out)
             assert result["read_guide"]["release_status"] == "retired"
@@ -127,11 +129,11 @@ def test_valid_legacy_options_never_replay_or_modify_history(
         assert code == 1
         if "table" in command:
             assert not out
-            assert "UNSUPPORTED_CAPABILITY" in err and "#167" in err
+            assert "LEAF_DISABLED" in err and "disabled" in err
         else:
             result = parse(out)
             assert result["data"] is None
-            assert result["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+            assert result["error"]["code"] == "LEAF_DISABLED"
         assert setup.cache_path.read_bytes() == before
     for command in ([*root, "prune"], ["prune", *root]):
         assert run_cli(command)[0] == 2

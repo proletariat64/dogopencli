@@ -82,7 +82,7 @@ def test_batch_f4_discovery_explains_the_named_routes_blocker(
         assert document["options"] == []
         assert document["effects"]["network"] is False
         assert document["effects"]["browser_required"] is False
-        reason = document["summary"]
+        assert document["summary"] == "Disabled inquiry."
     else:
         guide = document["read_guide"]
         assert guide["kind"] == "settings"
@@ -91,8 +91,9 @@ def test_batch_f4_discovery_explains_the_named_routes_blocker(
         assert guide["options"] == []
         assert not document["data_schema"].get("properties")
         reason = guide["reason"]
-    for fragment in LIST_BLOCKER:
-        assert fragment in reason
+    if command == "describe":
+        for fragment in LIST_BLOCKER:
+            assert fragment in reason
     assert (cache.read_bytes() if cache.exists() else None) == before
 
 
@@ -113,20 +114,18 @@ def test_batch_f4_routes_queries_refuse_without_browser_or_cache_access(
     assert code == (1 if mode == "cached" else 2)
     assert envelope["data"] is None
     assert envelope["error"]["code"] == (
-        "UNSUPPORTED_CAPABILITY" if mode == "cached" else "INVALID_ARGUMENT"
+        "LEAF_DISABLED" if mode == "cached" else "INVALID_ARGUMENT"
     )
     assert envelope["error"]["retryable"] is False
     if mode == "cached":
         message = envelope["error"]["message"]
-        assert message.startswith("liquidity network routes list is deferred: ")
-        for fragment in LIST_BLOCKER:
-            assert fragment in message
+        assert message.startswith("Leaf is disabled:")
     assert (cache.read_bytes() if cache.exists() else None) == before
 
 
 @pytest.mark.parametrize(
     "action,code,error",
-    [("get", 1, "UNSUPPORTED_CAPABILITY"), ("history", 2, "INVALID_ARGUMENT")],
+    [("get", 1, "LEAF_DISABLED"), ("history", 2, "INVALID_ARGUMENT")],
 )
 def test_batch_f4_route_detail_and_history_refuse(
     disconnected, run_cli, action, code, error
@@ -140,9 +139,7 @@ def test_batch_f4_route_detail_and_history_refuse(
     assert envelope["error"]["retryable"] is False
     if action == "get":
         message = envelope["error"]["message"]
-        assert message.startswith("liquidity network routes get is deferred: ")
-        for fragment in GET_BLOCKER:
-            assert fragment in message
+        assert message.startswith("Leaf is disabled:")
     assert (cache.read_bytes() if cache.exists() else None) == before
 
 

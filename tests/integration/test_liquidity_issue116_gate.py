@@ -82,7 +82,7 @@ def test_batch_f1_wallet_discovery_explains_each_named_blocker(
         assert document["options"] == []
         assert document["effects"]["network"] is False
         assert document["effects"]["browser_required"] is False
-        assert document["summary"] == f"Unsupported ({status}): {reason}"
+        assert document["summary"] == "Disabled inquiry."
     else:
         guide = document["read_guide"]
         assert guide["kind"] == kind
@@ -102,10 +102,8 @@ def test_batch_f1_wallet_lists_refuse_cached_without_touching_cache(
     envelope = parse(out)
     assert code == 1
     assert envelope["data"] is None
-    assert envelope["error"]["code"] == "UNSUPPORTED_CAPABILITY"
-    assert envelope["error"]["message"] == (
-        f"liquidity {' '.join(path)} list is deferred: {reason}"
-    )
+    assert envelope["error"]["code"] == "LEAF_DISABLED"
+    assert envelope["error"]["message"].startswith("Leaf is disabled:")
     assert envelope["error"]["retryable"] is False
     assert (cache.read_bytes() if cache.exists() else None) == before
 
@@ -135,7 +133,7 @@ def test_batch_f1_wallet_live_strict_and_refresh_cannot_execute(
 @pytest.mark.parametrize(
     "extra,exit_code,error_code",
     [
-        ([], 1, "UNSUPPORTED_CAPABILITY"),
+        ([], 1, "LEAF_DISABLED"),
         (["--live"], 2, "INVALID_ARGUMENT"),
     ],
 )
@@ -148,10 +146,8 @@ def test_batch_f1_wallet_get_refuses_without_touching_cache(
     assert code == exit_code
     assert envelope["data"] is None
     assert envelope["error"]["code"] == error_code
-    if error_code == "UNSUPPORTED_CAPABILITY":
-        assert envelope["error"]["message"] == (
-            f"liquidity cash wallets get is deferred: {WALLET_GET_REASON}"
-        )
+    if error_code == "LEAF_DISABLED":
+        assert envelope["error"]["message"].startswith("Leaf is disabled:")
     assert envelope["error"]["retryable"] is False
     assert (cache.read_bytes() if cache.exists() else None) == before
 

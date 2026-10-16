@@ -349,7 +349,7 @@ def test_routes_remains_unsupported_and_quota_help_declares_exact_context(
     setup, run_cli
 ):
     code, out, _ = run_cli(["liquidity", "network", "routes", "get"])
-    assert code == 1 and parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+    assert code == 1 and parse(out)["error"]["code"] == "LEAF_DISABLED"
     code, out, err = run_cli(["help", "liquidity", "network", "route-quotas", "get"])
     assert code == 0, (out, err)
     assert "--route-id" in out and "--account-alias" in out

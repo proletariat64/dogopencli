@@ -75,7 +75,7 @@ def test_batch_b_discovery_explains_each_native_scope_and_release_blocker(
         assert document["options"] == []
         assert document["effects"]["network"] is False
         assert document["effects"]["browser_required"] is False
-        reason = document["summary"]
+        assert document["summary"] == "Disabled inquiry."
     else:
         guide = document["read_guide"]
         assert guide["kind"] == kind
@@ -84,9 +84,15 @@ def test_batch_b_discovery_explains_each_native_scope_and_release_blocker(
         assert guide["options"] == []
         assert not document["data_schema"].get("properties")
         reason = guide["reason"]
-    assert scope_evidence in reason
-    for blocker in ("nonempty", "identity", "complete acquisition", "production UAT"):
-        assert blocker in reason
+    if command == "describe":
+        assert scope_evidence in reason
+        for blocker in (
+            "nonempty",
+            "identity",
+            "complete acquisition",
+            "production UAT",
+        ):
+            assert blocker in reason
     assert (cache.read_bytes() if cache.exists() else None) == before
 
 
@@ -108,7 +114,7 @@ def test_batch_b_queries_refuse_without_browser_or_cache_access(
     assert code == (1 if mode == "cached" else 2)
     assert envelope["data"] is None
     assert envelope["error"]["code"] == (
-        "UNSUPPORTED_CAPABILITY" if mode == "cached" else "INVALID_ARGUMENT"
+        "LEAF_DISABLED" if mode == "cached" else "INVALID_ARGUMENT"
     )
     assert envelope["error"]["retryable"] is False
     assert (cache.read_bytes() if cache.exists() else None) == before
@@ -128,7 +134,7 @@ def test_unavailable_history_and_identity_free_details_refuse(
     assert code == (1 if deferred_get else 2)
     assert envelope["data"] is None
     assert envelope["error"]["code"] == (
-        "UNSUPPORTED_CAPABILITY" if deferred_get else "INVALID_ARGUMENT"
+        "LEAF_DISABLED" if deferred_get else "INVALID_ARGUMENT"
     )
     assert (cache.read_bytes() if cache.exists() else None) == before
 

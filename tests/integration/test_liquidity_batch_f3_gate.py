@@ -105,7 +105,7 @@ def test_batch_f3_discovery_explains_each_named_blocker(
         assert document["options"] == []
         assert document["effects"]["network"] is False
         assert document["effects"]["browser_required"] is False
-        reason = document["summary"]
+        assert document["summary"] == "Disabled inquiry."
     else:
         guide = document["read_guide"]
         assert guide["kind"] == "runtimes"
@@ -114,8 +114,9 @@ def test_batch_f3_discovery_explains_each_named_blocker(
         assert guide["options"] == []
         assert not document["data_schema"].get("properties")
         reason = guide["reason"]
-    for blocker in blockers:
-        assert blocker in reason
+    if command == "describe":
+        for blocker in blockers:
+            assert blocker in reason
     assert (cache.read_bytes() if cache.exists() else None) == before
 
 
@@ -137,15 +138,12 @@ def test_batch_f3_queries_refuse_without_browser_or_cache_access(
     assert code == (1 if mode == "cached" else 2)
     assert envelope["data"] is None
     assert envelope["error"]["code"] == (
-        "UNSUPPORTED_CAPABILITY" if mode == "cached" else "INVALID_ARGUMENT"
+        "LEAF_DISABLED" if mode == "cached" else "INVALID_ARGUMENT"
     )
     assert envelope["error"]["retryable"] is False
     if mode == "cached":
         message = envelope["error"]["message"]
-        prefix = f"liquidity {' '.join(path)} list is deferred: "
-        assert message.startswith(prefix)
-        for blocker in blockers:
-            assert blocker in message
+        assert message.startswith("Leaf is disabled:")
     assert (cache.read_bytes() if cache.exists() else None) == before
 
 

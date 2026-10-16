@@ -445,7 +445,7 @@ def test_transfer_registration_matches_release_evidence(setup, run_cli):
         return
     code, out, _ = run_cli(["liquidity", "operations", "transfers", "list"])
     assert code == 1
-    assert parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+    assert parse(out)["error"]["code"] == "LEAF_DISABLED"
     assert setup.state.business_requests == []
 
 

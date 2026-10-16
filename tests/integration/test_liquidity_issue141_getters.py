@@ -481,7 +481,7 @@ def test_quote_group_list_remains_unsupported_and_metadata_keeps_physical_bindin
     setup, run_cli
 ):
     code, out, _ = run_cli(["liquidity", "investment", "quote-groups", "list"])
-    assert code == 1 and parse(out)["error"]["code"] == "UNSUPPORTED_CAPABILITY"
+    assert code == 1 and parse(out)["error"]["code"] == "LEAF_DISABLED"
     setup.state.business_handler = lambda payload, index: {
         "status": 200,
         "body": group("SYN-ROW-1", 1),
