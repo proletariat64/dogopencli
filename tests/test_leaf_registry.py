@@ -108,7 +108,9 @@ def test_missing_registered_table_is_reported_without_repair(tmp_path):
         ).fetchone() == (0,)
 
 
-@pytest.mark.parametrize("reserved", ["live", "detail-identity", "explicit-parameters"])
+@pytest.mark.parametrize(
+    "reserved", ["live", "version", "detail-identity", "explicit-parameters"]
+)
 def test_basic_schema_rejects_unsupported_and_reserved_controls(tmp_path, reserved):
     from dogopencli.errors import CliError
     from dogopencli.leaves.registry import validate_manifest
@@ -292,3 +294,83 @@ def test_existing_binding_validates_while_external_reader_is_open(tmp_path):
         assert registry.diagnostics == []
     finally:
         reader.communicate("\n", timeout=10)
+
+
+@pytest.mark.parametrize(
+    "installation_point", ["registry_lock", "cache_lock", "root_unavailable"]
+)
+def test_scan_preserves_cache_when_leaf_appears_during_cleanup(
+    tmp_path, monkeypatch, installation_point
+):
+    import dataclasses
+    import shutil
+    from contextlib import contextmanager
+
+    import dogopencli.leaves.registry as module
+    from dogopencli.cache import Cache, SnapshotMeta
+
+    folder = install(tmp_path)
+    registry = module.Registry(tmp_path / "config.toml")
+    registry.scan()
+    cache = Cache(registry.cache_path)
+    meta = SnapshotMeta(
+        namespace="leaf:payment.sample",
+        capability="sample",
+        scope="all",
+        source_kind="live",
+        snapshot_id="concurrent",
+        dataset_id=None,
+        simulated=False,
+        backend_complete=True,
+        dataset_complete=True,
+        fetched_at="2026-10-16T00:00:00Z",
+        loaded_at="2026-10-16T00:00:00Z",
+        source_observed_from=None,
+        source_observed_to=None,
+        row_count=1,
+    )
+    cache.publish(meta, [(1, '{"value":1}')])
+    shutil.rmtree(folder)
+    if installation_point == "registry_lock":
+        original = module.fcntl.flock
+
+        def install_before_lock(fd, operation):
+            if operation & module.fcntl.LOCK_EX and not folder.exists():
+                install(tmp_path)
+            return original(fd, operation)
+
+        monkeypatch.setattr(module.fcntl, "flock", install_before_lock)
+    else:
+        original = Cache.refresh_lock
+
+        @contextmanager
+        def install_before_cleanup(self, *args, **kwargs):
+            with original(self, *args, **kwargs):
+                if installation_point == "root_unavailable":
+                    (tmp_path / "plugins").rename(tmp_path / "plugins-unavailable")
+                else:
+                    install(tmp_path)
+                yield
+
+        monkeypatch.setattr(Cache, "refresh_lock", install_before_cleanup)
+    registry.scan()
+    if installation_point == "root_unavailable":
+        assert registry.diagnostics
+        (tmp_path / "plugins-unavailable").rename(tmp_path / "plugins")
+        install(tmp_path)
+    else:
+        assert registry.diagnostics == []
+    assert dataclasses.asdict(
+        cache.current("leaf:payment.sample")
+    ) == dataclasses.asdict(meta)
+    monkeypatch.undo()
+    assert module.Registry(tmp_path / "config.toml").scan().diagnostics == []
+    assert cache.current("leaf:payment.sample") is not None
+
+
+def test_inventory_of_new_scope_does_not_create_configuration(tmp_path):
+    from dogopencli.domains import DomainService
+
+    scope = tmp_path / "new-scope"
+    DomainService(scope / "config.toml").inventory()
+    assert not scope.exists()

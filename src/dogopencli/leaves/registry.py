@@ -25,6 +25,7 @@ _NAME = r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*"
 _PARAMETER = r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
 _TYPES = ["string", "integer", "number", "boolean"]
 _RESERVED = {
+    "version",
     "format",
     "fields",
     "limit",
@@ -409,24 +410,11 @@ class Registry:
     def scan(self, *, wait_seconds: float = 0) -> "Registry":
         self.leaves = {}
         self.diagnostics = []
-        # An absent/unavailable root is never affirmative uninstall evidence.
+        # Probe availability without creating a new configuration scope. This
+        # does not capture folder names; authoritative enumeration is locked.
         try:
-            domains = sorted(self.root.iterdir())
-            folders = []
-            unavailable_domains = set()
-            for domain in domains:
-                if not domain.is_dir() or domain.is_symlink():
-                    unavailable_domains.add(domain.name)
-                    self._error(
-                        domain.name, _invalid("domain must be a local directory")
-                    )
-                else:
-                    try:
-                        folders.extend(sorted(domain.iterdir()))
-                    except OSError as error:
-                        unavailable_domains.add(domain.name)
-                        self._error(domain.name, error)
-
+            with os.scandir(self.root):
+                pass
         except OSError as error:
             if self.root.exists():
                 self._error("plugins", error)
@@ -449,6 +437,28 @@ class Registry:
                         )
                         return self
                     time.sleep(min(0.05, remaining))
+            # An absent/unavailable root is never affirmative uninstall evidence.
+            try:
+                domains = sorted(self.root.iterdir())
+                folders = []
+                unavailable_domains = set()
+                for domain in domains:
+                    if not domain.is_dir() or domain.is_symlink():
+                        unavailable_domains.add(domain.name)
+                        self._error(
+                            domain.name, _invalid("domain must be a local directory")
+                        )
+                    else:
+                        try:
+                            folders.extend(sorted(domain.iterdir()))
+                        except OSError as error:
+                            unavailable_domains.add(domain.name)
+                            self._error(domain.name, error)
+
+            except OSError as error:
+                if self.root.exists():
+                    self._error("plugins", error)
+                return self
             with sqlite3.connect(
                 directory / "leaf-registry.sqlite3", timeout=10
             ) as state:
@@ -475,6 +485,20 @@ class Registry:
                     ):
                         cache = Cache(self.cache_path)
                         with cache.refresh_lock():
+                            # A folder installed after enumeration is not uninstalled.
+                            domain, name = identity.split(".", 1)
+                            try:
+                                (self.root / domain / name).lstat()
+                            except FileNotFoundError:
+                                # Missing parents can mean an unavailable root,
+                                # not an uninstalled leaf. Revalidate the scope.
+                                with os.scandir(self.root):
+                                    pass
+                                if any(item.name == domain for item in domains):
+                                    with os.scandir(self.root / domain):
+                                        pass
+                            else:
+                                continue
                             cache.remove(f"leaf:{identity}")
                         state.execute(
                             "UPDATE bindings SET active=0 WHERE leaf_id=?", (identity,)

@@ -150,3 +150,33 @@ def test_documentation_patch_preserves_large_locked_numbers(editor):
             {"revision": saved["revision"], "documentation": {"identity": ["changed"]}},
         )
     assert failure.value.code == 400
+
+
+def test_text_help_and_editor_preview_preserve_parameter_rules(editor):
+    from dogopencli.leaves.documentation import render_text
+
+    url, token, path = editor
+    manifest = json.loads(path.read_text())
+    manifest["operations"]["get"]["parameters"] = [
+        {
+            "name": "kind",
+            "type": "string",
+            "description": "Native kind",
+            "required": True,
+            "default": ["normal"],
+            "choices": ["normal", "special"],
+            "multiple": True,
+        }
+    ]
+    path.write_text(json.dumps(manifest))
+    loaded = read_editor(url)
+    preview = write_editor(url, token, loaded, "preview")["preview"]
+    rendered = render_text(loaded["manifest"])
+    for text in (preview, rendered):
+        for rule in (
+            "required",
+            'default=["normal"]',
+            "choices=normal|special",
+            "repeatable",
+        ):
+            assert rule in text

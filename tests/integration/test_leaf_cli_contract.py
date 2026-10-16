@@ -55,3 +55,19 @@ def test_same_dotted_leaf_name_drives_help_describe_and_offline_list(
     code, output, _ = run_cli([domain, "list", leaf])
     assert code == 1
     assert json.loads(output)["error"]["code"] == "CACHE_MISS"
+
+
+def test_version_works_without_scanning_plugins(run_cli, tmp_path, monkeypatch):
+    from dogopencli import __version__
+    from dogopencli.leaves.registry import Registry
+
+    monkeypatch.setenv("DOGOPENCLI_CONFIG_DIR", str(tmp_path / "unused"))
+
+    def unexpected_scan(*args, **kwargs):
+        pytest.fail("version must not scan installed leaves")
+
+    monkeypatch.setattr(Registry, "scan", unexpected_scan)
+    code, output, _ = run_cli(["--version"])
+    assert code == 0
+    assert __version__ in output
+    assert not (tmp_path / "unused").exists()

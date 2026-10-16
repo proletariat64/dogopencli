@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, NoReturn
 
-from dogopencli import config
+from dogopencli import __version__, config
 from dogopencli.domains import DomainService
 from dogopencli.errors import CliError
 from dogopencli.jsonutil import canonical
@@ -131,10 +131,14 @@ def main(argv: list[str]) -> int:
     started = False
     try:
         common = Parser(add_help=False, allow_abbrev=False)
+        common.add_argument("--version", action="store_true")
         common.add_argument("--config-dir")
         common.add_argument("--format", choices=("json", "text"), default="json")
         controls, tokens = common.parse_known_args(argv)
         output_format = controls.format
+        if controls.version:
+            emit({"version": __version__}, output_format=output_format)
+            return 0
         config_file = config.config_path(controls.config_dir)
         if tokens == ["plugins", "install-pilots"]:
             emit(_install(config_file), output_format=output_format)

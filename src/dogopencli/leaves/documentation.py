@@ -47,8 +47,17 @@ def render_text(document: dict[str, Any]) -> str:
             + specification.get("description", "")
         )
         for parameter in specification.get("parameters", []):
+            rules = ["required" if parameter.get("required") else "optional"]
+            if "default" in parameter:
+                rules.append(
+                    "default=" + json.dumps(parameter["default"], ensure_ascii=False)
+                )
+            if "choices" in parameter:
+                rules.append("choices=" + "|".join(map(str, parameter["choices"])))
+            if parameter.get("multiple"):
+                rules.append("repeatable")
             lines.append(
-                f"  --{parameter['name']} ({parameter['type']}): "
+                f"  --{parameter['name']} ({parameter['type']}; {', '.join(rules)}): "
                 + parameter.get("description", "")
             )
     for field in document.get("fields", []):
