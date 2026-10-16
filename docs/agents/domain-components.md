@@ -98,6 +98,9 @@ handler do not update execution observations. Domain auth observations are
 separate and updated by explicit login/auth checks. A cached query does not
 prove current authentication. Observation-save failure must be visible without
 changing the business result; a setting change succeeds only after durable save.
+Auth persistence warnings remain visible on stderr with `--quiet`, which suppresses
+progress diagnostics. Authentication output schemas and verdict exit codes stay
+unchanged when an observation save fails.
 Logout invalidates recorded authentication before cookie clearing begins,
 including when clearing or its verification subsequently fails. A pre-clearing
 browser or lock failure preserves the last verified observation.

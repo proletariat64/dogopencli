@@ -99,12 +99,17 @@ def create_server(service: Any, port: int = 0) -> ThreadingHTTPServer:
         def local_request(self, *, mutation: bool = False) -> bool:
             port = self.server.server_address[1]
             hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+            if port == 80:
+                hosts.update({"127.0.0.1", "localhost"})
             host = self.headers.get("Host")
             if host not in hosts:
                 self.error(403, "INVALID_HOST", "Use the printed localhost URL")
                 return False
             origin = self.headers.get("Origin")
-            if origin is not None and origin != f"http://{host}":
+            expected_origin = (
+                f"http://{host.removesuffix(':80') if port == 80 else host}"
+            )
+            if origin is not None and origin != expected_origin:
                 self.error(403, "INVALID_ORIGIN", "Cross-origin requests are rejected")
                 return False
             if mutation and not secrets.compare_digest(

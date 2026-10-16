@@ -211,3 +211,36 @@ def test_refresh_root_is_assembled_from_leaf_owned_groups():
     catalog = build_domain_catalog((domain,))
     assert ("refresh", "sample", "items") in catalog
     assert catalog[("refresh",)].children == (("sample", "Refresh sample."),)
+
+
+@pytest.mark.parametrize("child_first", [False, True])
+def test_describe_projection_preserves_executable_query_parents(child_first):
+    from types import SimpleNamespace
+
+    from dogopencli.helpspec import BizNode
+
+    commands = (
+        BizNode(("sample", "items"), "Query parent.", handler="sample_items"),
+        BizNode(("sample", "items", "list"), "List items.", handler="sample_items"),
+    )
+    domain = plugins.DomainComponent(
+        id="sample",
+        entry_point="https://example.test/",
+        groups=(BizNode(("sample",), "Sample."),),
+        handlers={"sample_items": lambda args: 0},
+        leaves=(
+            plugins.leaf_registration(
+                SimpleNamespace(name="sample.items", cache_enabled=False),
+                commands=commands[::-1] if child_first else commands,
+                description=lambda node: {
+                    "schema_version": 1,
+                    "data_schema": {"type": "array"},
+                    "read_guide": {},
+                },
+            ),
+        ),
+    )
+    catalog = build_domain_catalog((domain,))
+    parent = catalog[("describe", "sample", "items")]
+    assert parent.handler == "cmd_describe"
+    assert [name for name, summary in parent.children] == ["list"]

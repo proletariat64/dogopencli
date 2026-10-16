@@ -8,6 +8,30 @@ import pytest
 from dogopencli import plugins
 
 
+@pytest.mark.parametrize(
+    "arguments,format,command",
+    [
+        (["list", "--help", "--format=text"], "text", "dogopencli domain list"),
+        (
+            ["list", "--help", "--config-dir", "text", "--format=json"],
+            "json",
+            "dogopencli domain list",
+        ),
+        (["--config-dir", "disable", "--help"], "json", "dogopencli domain"),
+    ],
+)
+def test_domain_help_parses_format_and_option_values_offline(
+    run_cli, monkeypatch, arguments, format, command
+):
+    monkeypatch.setenv("DOGOPENCLI_CONFIG", "")
+    code, output, error = run_cli(["domain", *arguments])
+    assert code == 0, error
+    if format == "json":
+        assert json.loads(output)["command"] == command
+    else:
+        assert output.startswith(command + "\n")
+
+
 @pytest.fixture
 def declarations(monkeypatch):
     leaf = SimpleNamespace(

@@ -3,7 +3,7 @@
 import sys
 from dataclasses import replace
 from time import monotonic
-from typing import Any
+from typing import Any, TextIO
 
 from ..browser.cdp import CdpError, make_transport
 from ..browser.coordination import acquire_browser_control, acquire_login_lock
@@ -13,6 +13,7 @@ from ..browser.errors import (
     BROWSER_BUSY,
     BROWSER_UNAVAILABLE,
     LOGIN_IN_PROGRESS,
+    SERVICE_FAILURE,
     AuthError,
 )
 from ..browser.login import restore_authentication
@@ -21,13 +22,18 @@ from ..domains import DomainService
 from ..errors import CliError
 
 
-def _persist(service: DomainService, domain_id: str, verdict: dict[str, Any]) -> None:
+def _persist(
+    service: DomainService,
+    domain_id: str,
+    verdict: dict[str, Any],
+    warning_stream: TextIO | None = None,
+) -> None:
     try:
         service.record_auth(domain_id, verdict)
     except CliError:
         print(
             "warning: DOMAIN_STATE_ERROR: auth observation was not saved",
-            file=sys.stderr,
+            file=warning_stream if warning_stream is not None else sys.stderr,
         )
 
 
@@ -38,6 +44,7 @@ def authenticate_domains(
     *,
     recover: bool,
     timeout_seconds: float = 600.0,
+    warning_stream: TextIO | None = None,
 ) -> dict[str, Any]:
     """Return every selected verdict; never multiply the human login budget."""
     try:
@@ -146,7 +153,7 @@ def authenticate_domains(
                 )
             if observation is not None:
                 try:
-                    _persist(service, domain.id, observation)
+                    _persist(service, domain.id, observation, warning_stream)
                 except KeyboardInterrupt:
                     # A completed verdict remains valid even if its save is interrupted.
                     interrupted = True
@@ -171,7 +178,7 @@ def authenticate_domains(
         ):
             if first_error is None:
                 first_error = AuthError(
-                    AUTH_REQUIRED,
+                    SERVICE_FAILURE,
                     "login deadline reached before all domains were verified",
                 )
             first_error.details = {**first_error.details, "domains": outcomes}
