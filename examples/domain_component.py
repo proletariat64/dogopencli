@@ -128,7 +128,8 @@ def run() -> dict:
         assert handler is sample_list
         output = StringIO()
         with redirect_stdout(output):
-            assert handler(Namespace(command_path=("sample", "list"))) == 0
+            status = handler(Namespace(command_path=("sample", "list")))
+            assert status == 0
         rows = json.loads(output.getvalue())
         plugins.register_domains((*original, peer))
         remaining = build_domain_catalog(plugins.domain_plugins())

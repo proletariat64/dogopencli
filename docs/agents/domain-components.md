@@ -101,6 +101,10 @@ changing the business result; a setting change succeeds only after durable save.
 Logout invalidates recorded authentication before cookie clearing begins,
 including when clearing or its verification subsequently fails. A pre-clearing
 browser or lock failure preserves the last verified observation.
+Auth check holds shared browser control across verification and observation
+persistence. Login/logout require exclusive control, preventing a completed
+logout from being overwritten by an older auth check. Checks may create local
+coordination files but never launch Chrome or switch its mode.
 
 Cache ownership stays with existing leaves. The domain interface does not
 change query cache retention or make get/live calls publish caches. Declare
