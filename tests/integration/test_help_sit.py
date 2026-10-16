@@ -15,6 +15,8 @@ from dogopencli.plugins.payment.channel import SCOPES, STATUSES
 
 ROOT_CHILDREN = [
     "snapshot",
+    "domain",
+    "gui",
     "payment",
     "refresh",
     "collection",

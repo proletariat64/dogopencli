@@ -322,18 +322,18 @@ def test_deferred_leaf_is_discoverable_and_fails_truthfully(setup, run_cli):
     code, out, _ = run_cli(["liquidity", "rules", "monitoring", "list"])
     assert code == 1
     error = parse(out)["error"]
-    assert error["code"] == "UNSUPPORTED_CAPABILITY"
+    assert error["code"] == "LEAF_DISABLED"
     assert "monitoring" in error["message"].lower()
     help_code, help_out, _ = run_cli(
         ["help", "liquidity", "rules", "monitoring", "list"]
     )
     assert help_code == 0
-    assert "Unsupported" in help_out
+    assert "Disabled inquiry" in help_out
     # The wider #71 audit deferrals are discoverable the same way.
     code, out, _ = run_cli(["liquidity", "cash", "wallets", "list"])
     assert code == 1
     error = parse(out)["error"]
-    assert error["code"] == "UNSUPPORTED_CAPABILITY"
+    assert error["code"] == "LEAF_DISABLED"
     assert "filter-unverified" in error["message"] or "wallet" in error["message"]
 
 

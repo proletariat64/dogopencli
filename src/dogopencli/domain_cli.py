@@ -16,7 +16,7 @@ class _Parser(argparse.ArgumentParser):
 
 
 def main(argv: list[str]) -> int:
-    parser = _Parser(prog="dogopencli domain", allow_abbrev=False)
+    parser = _Parser(prog="dogopencli domain", allow_abbrev=False, add_help=False)
     parser.add_argument(
         "action", choices=("list", "show", "leaves", "enable", "disable")
     )
@@ -26,6 +26,30 @@ def main(argv: list[str]) -> int:
     format = "json"
     command = "domain"
     try:
+        if not argv or "--help" in argv or "-h" in argv:
+            from .catalog import NODES
+            from .helpspec import document, render_text
+
+            action = next(
+                (
+                    word
+                    for word in argv
+                    if word in {"list", "show", "leaves", "enable", "disable"}
+                ),
+                None,
+            )
+            path = ("domain", action) if action else ("domain",)
+            if "text" in argv:
+                print(render_text(NODES[path]), end="")
+            else:
+                value = document(NODES[path])
+                value["arguments"] = (
+                    []
+                    if action in {None, "list"}
+                    else [{"name": "domain", "required": True, "type": "str"}]
+                )
+                print(json.dumps(value))
+            return 0
         args = parser.parse_args(argv)
         format = args.format
         command = "domain " + args.action

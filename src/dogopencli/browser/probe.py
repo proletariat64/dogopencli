@@ -39,11 +39,9 @@ from .cdp import (
     url_origin,
 )
 from .environment import (
-    FX_STARTUP_URL,
-    LIQUIDITY_STARTUP_URL,
     PAYMENT_STARTUP_URL,
-    STARTUP_URLS,
     BrowserEnvironment,
+    authentication_policy,
 )
 from .errors import (
     AUTH_REQUIRED,
@@ -159,9 +157,7 @@ def check_authentication(
     ``dogopencli login`` for recovery.
     """
     entry_url = environment.startup_url if startup_url is None else startup_url
-    domain = next(
-        (name for name, url in STARTUP_URLS.items() if url == entry_url), None
-    )
+    domain = environment.domain_id
     guidance = [
         "dogopencli login"
         + (f" --domain {domain}" if domain and domain != "payment" else "")
@@ -379,13 +375,9 @@ def probe_login_completion(
     closed target is retryable while Chrome remains reachable. Never fall
     back to navigations during human input, even on CORS/network failure.
     """
-    if environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}:
+    if authentication_policy(environment).document_completion:
         return _entry_completion(
             environment, timeout=timeout, rejected_candidates=rejected_candidates
-        )
-    if environment.startup_url != PAYMENT_STARTUP_URL:
-        raise AuthError(
-            SERVICE_FAILURE, "quiet login probe has no verified entry contract"
         )
     deadline = monotonic() + timeout
     transport = make_transport(environment.cdp_url)

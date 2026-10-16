@@ -33,10 +33,8 @@ from typing import Any
 from . import launcher
 from .coordination import acquire_browser_control, acquire_login_lock
 from .environment import (
-    FX_STARTUP_URL,
-    LIQUIDITY_STARTUP_URL,
-    STARTUP_URLS,
     BrowserEnvironment,
+    authentication_policy,
 )
 from .errors import AUTH_REQUIRED, BROWSER_UNAVAILABLE, SERVICE_FAILURE, AuthError
 from .probe import check_authentication, probe_login_completion
@@ -79,26 +77,41 @@ def login(
     try:
         control = acquire_browser_control(environment.profile, shared=False)
         try:
-            if not _ensure_headless(environment):
-                return _human_login(
-                    environment, timeout_seconds=timeout_seconds, resume=True
-                )
-            try:
-                return _check_headless(environment)
-            except AuthError as exc:
-                if exc.code != AUTH_REQUIRED:
-                    raise
-            return _human_login(environment, timeout_seconds=timeout_seconds)
+            return restore_authentication(environment, timeout_seconds=timeout_seconds)
         finally:
             control.release()
     finally:
         login_lock.release()
 
 
+def restore_authentication(
+    environment: BrowserEnvironment, *, timeout_seconds: float
+) -> dict[str, Any]:
+    """Restore one domain while the caller holds profile lifecycle locks."""
+    deadline = monotonic() + timeout_seconds
+    headless = _ensure_headless(environment)
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        raise AuthError(AUTH_REQUIRED, "login deadline reached before verification")
+    if not headless:
+        return _human_login(environment, timeout_seconds=remaining, resume=True)
+    try:
+        return _check_headless(environment, timeout=min(15.0, remaining))
+    except AuthError as exc:
+        if exc.code != AUTH_REQUIRED:
+            raise
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        raise AuthError(AUTH_REQUIRED, "login deadline reached before recovery")
+    return _human_login(environment, timeout_seconds=remaining)
+
+
 def _check_headless(
     environment: BrowserEnvironment, *, timeout: float = 15.0
 ) -> dict[str, Any]:
-    verdict = check_authentication(environment, timeout=timeout)
+    policy = authentication_policy(environment)
+    probe = policy.probe or check_authentication
+    verdict = probe(environment, timeout=timeout)
     if verdict.get("mode") != "headless":
         raise AuthError(
             BROWSER_UNAVAILABLE,
@@ -112,13 +125,9 @@ def _human_login(
 ) -> dict[str, Any]:
     """Headed human SSO verified by probes, then a verified headless handoff."""
     deadline = monotonic() + timeout_seconds
-    domain = next(
-        (name for name, url in STARTUP_URLS.items() if url == environment.startup_url),
-        "payment",
-    )
-    recovery_command = "dogopencli login" + (
-        f" --domain {domain}" if domain != "payment" else ""
-    )
+    domain = environment.domain_id
+    policy = authentication_policy(environment)
+    recovery_command = "dogopencli login" + (f" --domain {domain}" if domain else "")
     print(
         "login: resuming the existing headed Chrome for human company SSO"
         if resume
@@ -142,16 +151,13 @@ def _human_login(
                 last_failure=candidate_failure,
                 candidate_retry_after=candidate_retry_after,
             )
-            if environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}:
-                sleep(min(HANDOFF_SETTLE_SECONDS, max(0.0, deadline - monotonic())))
-                if monotonic() >= deadline:
-                    raise AuthError(
-                        AUTH_REQUIRED,
-                        "login deadline reached during session settle; "
-                        "headed Chrome was preserved",
-                    )
-            else:
-                sleep(HANDOFF_SETTLE_SECONDS)
+            sleep(min(HANDOFF_SETTLE_SECONDS, max(0.0, deadline - monotonic())))
+            if monotonic() >= deadline:
+                raise AuthError(
+                    AUTH_REQUIRED,
+                    "login deadline reached during session settle; "
+                    "headed Chrome was preserved",
+                )
         except KeyboardInterrupt:
             # Preserve Chrome exactly as it is; coordination releases through
             # the caller's finally blocks. Report, then let the CLI shell map
@@ -164,12 +170,8 @@ def _human_login(
             )
             raise
         try:
-            if environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}:
-                check_authentication(
-                    environment, timeout=min(15.0, max(0.001, deadline - monotonic()))
-                )
-            else:
-                check_authentication(environment)
+            probe = policy.probe or check_authentication
+            probe(environment, timeout=min(15.0, max(0.001, deadline - monotonic())))
         except AuthError as exc:
             if exc.code in {AUTH_REQUIRED, SERVICE_FAILURE} and monotonic() < deadline:
                 if candidate is not None:
@@ -193,22 +195,20 @@ def _human_login(
         )
         _launch(environment, mode="headless")
         try:
-            if environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}:
-                remaining = deadline - monotonic()
-                if remaining <= 0:
-                    raise AuthError(
-                        AUTH_REQUIRED,
-                        "login deadline reached during headless handoff; "
-                        "headed Chrome was restored",
-                    )
-                return _check_headless(environment, timeout=min(15.0, remaining))
-            return _check_headless(environment)
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise AuthError(
+                    AUTH_REQUIRED,
+                    "login deadline reached during headless handoff; "
+                    "headed Chrome was restored",
+                )
+            return _check_headless(environment, timeout=min(15.0, remaining))
         except AuthError as exc:
             if exc.code != AUTH_REQUIRED:
                 raise
             attempts += 1
             if attempts >= MAX_HANDOFF_ATTEMPTS or monotonic() >= deadline:
-                if environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}:
+                if policy.bounded_handoff:
                     _launch(environment, mode="headed")
                 raise AuthError(
                     AUTH_REQUIRED,
@@ -311,7 +311,7 @@ def _ensure_headless(environment: BrowserEnvironment) -> bool:
     user_agent = (version or {}).get("User-Agent") or ""
     headless = "HeadlessChrome/" in user_agent
     resume_headed = (
-        environment.startup_url in {LIQUIDITY_STARTUP_URL, FX_STARTUP_URL}
+        authentication_policy(environment).preserve_headed
         and bool(user_agent)
         and not headless
     )

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
+from .execution import observe_result
 
 BANK_ROW_OCCURRENCES = "bank_row_occurrences_latest_gmtCreate"
 
@@ -388,4 +389,5 @@ def prepare_result(
         output["warnings"] = list(decision.warnings)
         for warning in decision.warnings:
             print(f"warning: {warning['code']}: {warning['message']}", file=sys.stderr)
+    observe_result(output)
     return output

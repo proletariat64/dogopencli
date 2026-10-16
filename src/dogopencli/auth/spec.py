@@ -126,9 +126,8 @@ COMMANDS = (
         options=(
             _option(
                 "domain",
-                "Application domain to probe; the verdict applies to this domain only.",
-                choices=("payment", "liquidity", "fx"),
-                default="payment",
+                "Domain to probe; repeat for a subset, omit for all enabled domains.",
+                kind="append",
             ),
         ),
         effects={
@@ -154,9 +153,8 @@ COMMANDS = (
         options=(
             _option(
                 "domain",
-                "Application domain to restore in the dedicated profile.",
-                choices=("payment", "liquidity", "fx"),
-                default="payment",
+                "Domain to restore; repeat for a subset, omit for all enabled domains.",
+                kind="append",
             ),
             TIMEOUT_SECONDS,
         ),
@@ -232,6 +230,8 @@ def _add_argument(parser: argparse.ArgumentParser, spec: ArgumentSpec) -> None:
         kwargs["default"] = bool(spec.default)
     elif spec.kind == "positive":
         kwargs["type"] = _positive
+    elif spec.kind == "append":
+        kwargs["action"] = "append"
     if spec.choices:
         kwargs["choices"] = spec.choices
     parser.add_argument(*spec.flags, **kwargs)
@@ -263,6 +263,10 @@ def _describe(argument: ArgumentSpec) -> dict[str, Any]:
         value["flags"] = list(argument.flags)
     if argument.choices:
         value["choices"] = list(argument.choices)
+    if argument.name == "domain":
+        from ..plugins import domain_plugins
+
+        value["choices"] = [domain.id for domain in domain_plugins()]
     return value
 
 

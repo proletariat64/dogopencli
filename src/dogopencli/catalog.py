@@ -16,6 +16,7 @@ from .helpspec import (
     display_modes,
     opt,
 )
+from .management import DECLARATIONS as MANAGEMENT_DECLARATIONS
 from .plugins import DomainPlugin, domain_plugins, validate_domains
 
 AUTH_PATHS = frozenset(path for path in AUTH_SPECS if path)
@@ -169,6 +170,7 @@ def build_domain_catalog(
         domain_groups.insert(domain_groups.index(first_root) + 1, REFRESH_NODE)
     declarations = [
         SNAPSHOT_NODE,
+        *MANAGEMENT_DECLARATIONS,
         *(node for domain in domains for leaf in domain.leaves for node in leaf.groups),
         *domain_groups,
         ROOT_NODE,

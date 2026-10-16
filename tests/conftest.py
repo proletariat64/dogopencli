@@ -4,6 +4,7 @@ synthetic; no production rows, credentials, or CDP access."""
 
 import importlib.util
 import json
+import os
 from collections.abc import Callable
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -288,8 +289,17 @@ def config_factory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def run_cli(
     capsys: pytest.CaptureFixture,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> Callable[[list[str]], tuple[int, str, str]]:
     from dogopencli.cli import main
+
+    # Public commands now persist operational observations. Keep tests that
+    # don't supply configuration away from the real user's domain settings.
+    if not any(
+        key in os.environ for key in ("DOGOPENCLI_CONFIG", "DOGOPENCLI_CONFIG_DIR")
+    ):
+        monkeypatch.setenv("DOGOPENCLI_CONFIG", str(tmp_path / "config.toml"))
 
     def run(argv: list[str]) -> tuple[int, str, str]:
         code = main(argv)
