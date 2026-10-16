@@ -1,5 +1,8 @@
 # 文档索引
 
+- [Domain component development guide](agents/domain-components.md): shared interface,
+  registration, local controls, observations and runnable synthetic sample.
+
 - [Liquidity 白名单／黑名单契约](design/liquidity-access-lists-v0.1.0.md)：#176 / #168，主体与账户名单独立查询；银行名单原生身份仍待验证。
 - [Duckdog 初始设计 #160](design/duckdog-v0.1.0.md)：DuckDB＋Parquet、settings 全量覆盖、runtime 扩展边界；[settings 导入契约](design/duckdog-settings-import-v0.1.0.md)。`duckdog-import` 为本地安装的 skill，不随仓库分发，首期支持 banks、entities。
 
