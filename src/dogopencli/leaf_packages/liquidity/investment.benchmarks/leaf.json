@@ -1,0 +1,68 @@
+{
+  "domain": "liquidity",
+  "name": "investment.benchmarks",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List investment strategy benchmark rules in the verified fixed date scope.",
+      "parameters": []
+    }
+  },
+  "summary": "Investment strategy benchmark rules.",
+  "purpose": "Inspect configured investment strategy benchmark rules and their native values; this inquiry does not execute investments or calculate realized returns.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string or number",
+      "meaning": "Native benchmark rule identity."
+    },
+    {
+      "name": "strategyBenchmarkType",
+      "type": "string",
+      "meaning": "Native strategy benchmark type."
+    },
+    {
+      "name": "value",
+      "type": "number or string or null",
+      "meaning": "Native benchmark value; preserve its original type and precision."
+    },
+    {
+      "name": "valueType",
+      "type": "string",
+      "meaning": "Native value interpretation; no rate or unit conversion is applied."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native currency."
+    },
+    {
+      "name": "effectiveDate",
+      "type": "string or number or null",
+      "meaning": "Native effective date or timestamp, with its original timezone."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies a benchmark rule; zero is retained as a valid native value. No local identity is generated.",
+  "limitations": [
+    "List only; no verified getter.",
+    "The POST inquiry pins tntInstId=GUAPW3SG, timeZone=GMT+08, valueDateStart=\"\" and valueDateEnd=\"\". No user date or scope filter is exposed.",
+    "Rows are data.data and the reported fixed total is data.totalCount. Pagination uses rowStart offsets and pageSize=5000.",
+    "Native unknown fields, nulls, empty strings, zero, decimal precision and date representations are preserved. Current production qualification is recorded separately."
+  ],
+  "examples": [
+    {
+      "title": "Query live",
+      "command": "dogopencli liquidity list investment.benchmarks --live"
+    },
+    {
+      "title": "Refresh temporary cache",
+      "command": "dogopencli liquidity refresh investment.benchmarks"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_benchmarks"
+  }
+}
