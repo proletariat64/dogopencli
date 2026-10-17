@@ -1,5 +1,12 @@
 # Repository Guidelines
 
+## Refactoring
+
+- Every change must fit the new architecture and interface. Retire mismatched code; migrate required business behavior to new contracts.
+- No users depend on old versions. Remove backward-compatibility aliases, shims, wrappers, and fallbacks.
+- Use legacy code only for business-output cross-checks, in isolation. The new runtime must not import, wrap, or call it.
+- Retrieve old Python source from GitHub release tags when needed. Delete obsolete code/tests/docs; keep no legacy copies in the repo.
+
 ## Scope and Architecture
 Dogopencli is a Python CLI for querying the product operations platform, intended for one person on one machine. The current scope covers payment products, the collection transaction-cost inquiries in issue #21, SLA configuration inquiries in issue #27 and VA rule inquiries in issue #32. Liquidity inquiry scope is the verified slice in issue #72 against #71; unsupported leaves remain discoverable but non-executing, and per-leaf production UAT is pending. Other collection capabilities, including VA fees, pools and physical accounts, remain deferred.
 
