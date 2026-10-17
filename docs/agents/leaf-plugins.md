@@ -357,6 +357,14 @@ records which checks have actually passed. Required production evidence must be
 present before this pattern is described as proven. The broader migration map
 remains paused until separately resumed; this handbook does not resume it.
 
+The four pilots have now passed independent installed execution, isolated
+same-input release comparisons and per-leaf nonempty production UAT, as recorded
+in the [evidence companion](leaf-handbook-evidence.md). The resulting migration
+method is leaf-owned native business behavior under current contracts, direct
+imports of genuine host primitives, isolated release-tag comparison, retired-file
+and transitive-consumer checks, installed-artifact proof and per-leaf business UAT.
+These examples do not establish arbitrary module-loading or complex-leaf support.
+
 1. Identify a supported inquiry and its historical contract, tests and UAT. Use
    current dotted-name practice. Assess simplicity by actual behavior: verified
    endpoint/envelope/identity, ordinary paging, no backend workaround, custom
