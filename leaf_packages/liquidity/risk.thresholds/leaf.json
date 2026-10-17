@@ -1,0 +1,73 @@
+{
+  "domain": "liquidity",
+  "name": "risk.thresholds",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List risk event thresholds with full native fields.",
+      "parameters": []
+    },
+    "get": {
+      "description": "Query native detail by benchmarkId; reads online without changing the saved list.",
+      "parameters": []
+    }
+  },
+  "summary": "Risk event thresholds.",
+  "purpose": "Inspect risk event thresholds through their native inquiry without changing configuration.",
+  "fields": [
+    {
+      "name": "benchmarkId",
+      "type": "string or integer",
+      "meaning": "Native record identity; original JSON type is retained."
+    },
+    {
+      "name": "riskEventType",
+      "type": "native",
+      "meaning": "Native risk event type."
+    },
+    {
+      "name": "status",
+      "type": "native",
+      "meaning": "Native threshold status."
+    },
+    {
+      "name": "version",
+      "type": "native",
+      "meaning": "Native record version."
+    },
+    {
+      "name": "gmtModified",
+      "type": "native",
+      "meaning": "Native modification timestamp; no timezone conversion."
+    }
+  ],
+  "identity": [
+    "benchmarkId"
+  ],
+  "identity_description": "Native benchmarkId identifies each record; no synthetic identity is created.",
+  "limitations": [
+    "Fixed native pageSize=10; rowStart offsets start at zero.",
+    "Native endpoint has no page echoes. Completeness requires fixed total, arrival and unique identity agreement.",
+    "Unknown fields, native JSON types and exact decimal values are retained.",
+    "Pinned v0.4.3 provides contract provenance; current production qualification is recorded separately.",
+    "Fixed GUAPW3SG tenant.",
+    "Native detail uses POST form /api/risk/benchmark/riskEventBenchmarkDetailDetail.json; sends benchmarkId as a string without tenant or timeZone."
+  ],
+  "examples": [
+    {
+      "title": "Read saved records",
+      "command": "dogopencli liquidity list risk.thresholds"
+    },
+    {
+      "title": "Acquire live records",
+      "command": "dogopencli liquidity list risk.thresholds --live"
+    },
+    {
+      "title": "Query native detail",
+      "command": "dogopencli liquidity get risk.thresholds RECORD_ID"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_risk_thresholds"
+  }
+}

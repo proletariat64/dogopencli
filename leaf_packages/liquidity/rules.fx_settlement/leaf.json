@@ -1,0 +1,84 @@
+{
+  "domain": "liquidity",
+  "name": "rules.fx_settlement",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List fx settlement account rules with full native fields.",
+      "parameters": [
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "currency",
+          "description": "Exact case-sensitive local currency match; repeat for alternatives. Never sent to the backend; refresh retains the full native scope."
+        }
+      ]
+    }
+  },
+  "summary": "FX settlement account rules.",
+  "purpose": "Inspect fx settlement account rules through their native inquiry without changing configuration.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string or integer",
+      "meaning": "Native record identity; original JSON type is retained."
+    },
+    {
+      "name": "accountNo",
+      "type": "native",
+      "meaning": "Native settlement account number."
+    },
+    {
+      "name": "bankId",
+      "type": "native",
+      "meaning": "Native bank identity."
+    },
+    {
+      "name": "currency",
+      "type": "native",
+      "meaning": "Native currency used by the exact local currency filter."
+    },
+    {
+      "name": "direction",
+      "type": "native",
+      "meaning": "Native settlement direction."
+    },
+    {
+      "name": "status",
+      "type": "native",
+      "meaning": "Native configuration status."
+    },
+    {
+      "name": "runStatus",
+      "type": "native",
+      "meaning": "Native execution status."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies each record; no synthetic identity is created.",
+  "limitations": [
+    "Fixed native pageSize=5000; rowStart offsets start at zero.",
+    "Native endpoint has no page echoes. Completeness requires fixed total, arrival and unique identity agreement.",
+    "Unknown fields, native JSON types and exact decimal values are retained.",
+    "Pinned v0.4.3 provides contract provenance; current production qualification is recorded separately.",
+    "Fixed GUAPW3SG tenant.",
+    "currency filters exact native currency locally after acquisition. Repeated values select alternatives without duplicate output; filtered refresh saves the full scope."
+  ],
+  "examples": [
+    {
+      "title": "Read saved records",
+      "command": "dogopencli liquidity list rules.fx_settlement"
+    },
+    {
+      "title": "Acquire live records",
+      "command": "dogopencli liquidity list rules.fx_settlement --live"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_rules_fx_settlement"
+  }
+}

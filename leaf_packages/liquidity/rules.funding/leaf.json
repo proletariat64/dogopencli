@@ -1,0 +1,69 @@
+{
+  "domain": "liquidity",
+  "name": "rules.funding",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List funding action relations with full native fields.",
+      "parameters": []
+    }
+  },
+  "summary": "Funding action relations.",
+  "purpose": "Inspect funding action relations through their native inquiry without changing configuration.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string or integer",
+      "meaning": "Native record identity; original JSON type is retained."
+    },
+    {
+      "name": "relationName",
+      "type": "native",
+      "meaning": "Native funding relation name."
+    },
+    {
+      "name": "fundInstId",
+      "type": "native",
+      "meaning": "Native funding institution identity."
+    },
+    {
+      "name": "status",
+      "type": "native",
+      "meaning": "Native relation status."
+    },
+    {
+      "name": "effectiveness",
+      "type": "native",
+      "meaning": "Native effectiveness value."
+    },
+    {
+      "name": "version",
+      "type": "native",
+      "meaning": "Native record version."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies each record; no synthetic identity is created.",
+  "limitations": [
+    "Fixed native pageSize=5000; rowStart offsets start at zero.",
+    "Native endpoint has no page echoes. Completeness requires fixed total, arrival and unique identity agreement.",
+    "Unknown fields, native JSON types and exact decimal values are retained.",
+    "Pinned v0.4.3 provides contract provenance; current production qualification is recorded separately.",
+    "Fixed GUAPW3SG tenant."
+  ],
+  "examples": [
+    {
+      "title": "Read saved records",
+      "command": "dogopencli liquidity list rules.funding"
+    },
+    {
+      "title": "Acquire live records",
+      "command": "dogopencli liquidity list rules.funding --live"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_rules_funding"
+  }
+}
