@@ -1,0 +1,78 @@
+{
+  "domain": "liquidity",
+  "name": "rules.realtime",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List realtime rules with full native fields.",
+      "parameters": []
+    },
+    "get": {
+      "description": "Query native detail by id; reads online without changing the saved list.",
+      "parameters": []
+    }
+  },
+  "summary": "Realtime rules.",
+  "purpose": "Inspect realtime rules through their native inquiry without changing configuration.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string or integer",
+      "meaning": "Native record identity; original JSON type is retained."
+    },
+    {
+      "name": "ruleName",
+      "type": "native",
+      "meaning": "Native realtime rule name."
+    },
+    {
+      "name": "aliasName",
+      "type": "native",
+      "meaning": "Native rule alias."
+    },
+    {
+      "name": "currency",
+      "type": "native",
+      "meaning": "Native rule currency."
+    },
+    {
+      "name": "runStatus",
+      "type": "native",
+      "meaning": "Native execution status."
+    },
+    {
+      "name": "version",
+      "type": "native",
+      "meaning": "Native record version."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies each record; no synthetic identity is created.",
+  "limitations": [
+    "Fixed native pageSize=10; rowStart offsets start at zero.",
+    "Native endpoint has no page echoes. Completeness requires fixed total, arrival and unique identity agreement.",
+    "Unknown fields, native JSON types and exact decimal values are retained.",
+    "Pinned v0.4.3 provides contract provenance; current production qualification is recorded separately.",
+    "Native request has no tenant or timeZone field.",
+    "Native detail uses POST json /api/realtime/rule/getDetail.json; sends Id as a string without tenant or timeZone."
+  ],
+  "examples": [
+    {
+      "title": "Read saved records",
+      "command": "dogopencli liquidity list rules.realtime"
+    },
+    {
+      "title": "Acquire live records",
+      "command": "dogopencli liquidity list rules.realtime --live"
+    },
+    {
+      "title": "Query native detail",
+      "command": "dogopencli liquidity get rules.realtime RECORD_ID"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_rules_realtime"
+  }
+}

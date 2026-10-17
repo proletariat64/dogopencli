@@ -1,0 +1,64 @@
+--- a/.agents/skills/duckdog-import/scripts/import_settings.py
++++ b/.agents/skills/duckdog-import/scripts/import_settings.py
+@@ -40,2 +40,2 @@
+-    "rules/action-mapping": ("id",),
+-    "rules/fx-settlement": ("id",),
++    "rules/action_mapping": ("id",),
++    "rules/fx_settlement": ("id",),
+@@ -116,19 +116,25 @@
+     raise ImportRejected("non-finite JSON number")
+ 
+ 
+-# Migration #257 only. Empty host scope means the package-owned native inquiry:
+-# banks tenant; benchmarks fixed empty dates; forecast fixed instId=["Z21"].
+-B01_LEAVES = frozenset(
++# Migrations #257 and #259 only. Empty host scope means the leaf-owned
++# native acquisition; repeated local selectors must be absent for full import.
++INSTALLED_LEAVES = frozenset(
+     {
+         "liquidity/reference/banks",
+         "liquidity/investment/benchmarks",
+         "liquidity/rules/forecast",
++        "liquidity/rules/action_mapping",
++        "liquidity/rules/funding",
++        "liquidity/rules/fx_settlement",
++        "liquidity/rules/operation",
++        "liquidity/rules/realtime",
++        "liquidity/risk/thresholds",
+     }
+ )
+ 
+ 
+ def acquisition_command(selector):
+-    if selector in B01_LEAVES:
++    if selector in INSTALLED_LEAVES:
+         domain, *leaf = selector.split("/")
+         return [
+             "dogopencli",
+@@ -167,7 +173,7 @@
+     rows, meta = envelope.get("data"), envelope.get("meta")
+     if not isinstance(rows, list) or not isinstance(meta, dict):
+         raise ImportRejected("expected data array and acquisition metadata")
+-    if selector in B01_LEAVES:
++    if selector in INSTALLED_LEAVES:
+         if (
+             meta.get("leaf") != selector.replace("/", ".")
+             or meta.get("operation") != "list"
+@@ -208,7 +214,7 @@
+     if meta.get("has_more") is not False:
+         raise ImportRejected("candidate display is truncated")
+     expected_scope = (
+-        "" if selector in B01_LEAVES else REGISTRY[selector].get("scope", {})
++        "" if selector in INSTALLED_LEAVES else REGISTRY[selector].get("scope", {})
+     )
+     if meta.get("scope") != expected_scope or meta.get("query") != REGISTRY[
+         selector
+@@ -235,7 +241,7 @@
+             if not str(value).strip():
+                 raise ImportRejected("blank native identity")
+             # Preserve tuple boundaries for compound native identities.
+-            key.append(encode(value) if selector in B01_LEAVES else str(value))
++            key.append(encode(value) if selector in INSTALLED_LEAVES else str(value))
+         key = tuple(key)
+         if key in seen:
+             raise ImportRejected("blank or duplicate native identity")
