@@ -631,3 +631,33 @@ def test_help_keeps_false_choices_true_defaults_and_zero_defaults(run_cli, tmp_p
     assert "default: 0" in run_cli(["gui", "-h", "--format", "text"])[1]
     for option in ("--all", "--recursive", "--tree"):
         assert run_cli(["-h", option])[0] == 2
+
+
+def test_help_stacks_description_tokens_that_fit_terminal_but_not_column(
+    run_cli, tmp_path, monkeypatch
+):
+    import os
+    import shutil
+    import sys
+    from pathlib import Path
+
+    shutil.copytree(
+        Path(__file__).parents[1] / "src/dogopencli/leaf_packages",
+        tmp_path / "plugins",
+    )
+    manifest_path = tmp_path / "plugins/payment/sla.baselines/leaf.json"
+    manifest = json.loads(manifest_path.read_text())
+    path_token = "/tmp/" + "a" * 35
+    manifest["operations"]["list"]["parameters"][0]["description"] = (
+        "Read configuration from " + path_token
+    )
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "fileno", lambda: 1)
+    monkeypatch.setattr(os, "get_terminal_size", lambda *_: os.terminal_size((60, 24)))
+    code, text, error = run_cli(
+        ["payment", "list", "sla.baselines", "-h", "--format", "text"]
+    )
+    assert (code, error) == (0, "")
+    assert path_token in text
+    assert all(len(line) <= 60 for line in text.splitlines())

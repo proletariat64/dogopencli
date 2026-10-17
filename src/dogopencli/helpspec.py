@@ -617,12 +617,19 @@ def render_text(doc: dict[str, Any], width: int = 88) -> str:
         lines.extend(["", title + ":"])
         column = min(max(_width(label) for label, _ in entries), 30)
         for label, description in entries:
-            if width < 60 or _width(label) > column:
+            description_width = max(1, width - column - 4)
+            wrapped = _wrap(description, description_width)
+            if (
+                width < 60
+                or _width(label) > column
+                or any(_width(line) > description_width for line in wrapped)
+            ):
+                # An intact token can fit the terminal but exceed the narrower
+                # description column. Give it the normal stacked-row width.
                 lines.extend(_wrap(label, width, "  ", break_cjk=False))
                 lines.extend(_wrap(description, width, "    "))
             else:
                 prefix = "  " + label + " " * (column - _width(label) + 2)
-                wrapped = _wrap(description, max(1, width - _width(prefix)), "")
                 lines.append(prefix + wrapped[0])
                 lines.extend(" " * (column + 4) + line for line in wrapped[1:])
 
