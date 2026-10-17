@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from dogopencli.auth import domains as auth_domains
+
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/bootstrap_browser.py"
 
 
@@ -16,6 +18,22 @@ def bootstrap(monkeypatch):
     launcher = setup.__globals__["launcher"]
     monkeypatch.setattr(launcher, "_cdp_metadata", lambda url: "")
     monkeypatch.setattr(launcher, "launch", lambda env, mode: mode)
+
+    def check(environment, service, selectors, *, recover):
+        assert recover is False
+        assert selectors is None
+        assert service.config_file == environment.profile.parent / "config.toml"
+        monkeypatch.setattr(
+            launcher, "_cdp_metadata", lambda url: '{"User-Agent":"HeadlessChrome/1"}'
+        )
+        return {
+            "domains": [
+                {"domain": domain, "authenticated": True, "checked": True}
+                for domain in ("payment", "collection", "fx", "liquidity")
+            ]
+        }
+
+    monkeypatch.setattr(auth_domains, "authenticate_domains", check)
     return setup
 
 
@@ -92,6 +110,34 @@ def test_main_verifies_selected_domain_on_isolated_browser(
     assert "authentication verified headless" in capsys.readouterr().out
 
 
+def test_main_default_sets_up_browser_without_domain_login(
+    tmp_path, monkeypatch, bootstrap, capsys
+):
+    namespace = runpy.run_path(str(SCRIPT))
+    main = namespace["main"]
+    environment = bootstrap(tmp_path)
+    roots = []
+    monkeypatch.setitem(
+        main.__globals__, "setup", lambda root: roots.append(root) or environment
+    )
+    monkeypatch.setitem(
+        main.__globals__, "login", lambda env: pytest.fail("domain login attempted")
+    )
+    assert main([]) == 0
+    assert roots == [SCRIPT.parents[1]]
+    output = capsys.readouterr().out
+    assert "PASS; isolated browser ready" in output
+    assert "domain auth check:\n" in output
+    assert "payment: authenticated" in output
+    assert "fx: authenticated" in output
+    assert "$caveman\n" in output
+    assert f"profile: {environment.profile}" in output
+    assert f"CDP {environment.cdp_url}" in output
+    assert "Chrome mode headless" in output
+    assert output.rstrip().endswith("-" * 73)
+    assert "authentication verified" not in output
+
+
 @pytest.mark.parametrize("interrupted", [False, True])
 def test_main_login_failure_does_not_claim_success(
     tmp_path, monkeypatch, bootstrap, capsys, interrupted
@@ -107,7 +153,58 @@ def test_main_login_failure_does_not_claim_success(
         raise namespace["AuthError"]("auth_required", "login deadline reached")
 
     monkeypatch.setitem(main.__globals__, "login", fail)
-    assert main([]) == (130 if interrupted else 1)
+    assert main(["--domain", "payment"]) == (130 if interrupted else 1)
     output = capsys.readouterr()
     assert "PASS" not in output.out
     assert ("interrupted" if interrupted else "auth_required") in output.err
+
+
+def test_main_reports_partial_auth_failure_without_failing_browser_setup(
+    tmp_path, monkeypatch, bootstrap, capsys
+):
+    main = runpy.run_path(str(SCRIPT))["main"]
+    environment = bootstrap(tmp_path)
+    monkeypatch.setitem(main.__globals__, "setup", lambda root: environment)
+    launcher = main.__globals__["launcher"]
+    monkeypatch.setattr(
+        launcher, "_cdp_metadata", lambda url: '{"User-Agent":"HeadlessChrome/1"}'
+    )
+
+    def check(*args, **kwargs):
+        raise main.__globals__["AuthError"](
+            "browser_unavailable",
+            "Runtime probe failed",
+            details={
+                "domains": [
+                    {"domain": "payment", "authenticated": True},
+                    {"domain": "fx", "error": {"code": "auth_required"}},
+                    {
+                        "domain": "liquidity",
+                        "error": {"code": "browser_unavailable"},
+                    },
+                ]
+            },
+        )
+
+    monkeypatch.setitem(main.__globals__, "authenticate_domains", check)
+    assert main([]) == 0
+    output = capsys.readouterr().out
+    assert "payment: authenticated" in output
+    assert "fx: auth_required" in output
+    assert "liquidity: browser_unavailable" in output
+    assert "bootstrap browser: PASS" in output
+
+
+def test_main_auth_check_interruption_does_not_print_ready_prompt(
+    tmp_path, monkeypatch, bootstrap, capsys
+):
+    main = runpy.run_path(str(SCRIPT))["main"]
+    environment = bootstrap(tmp_path)
+    monkeypatch.setitem(main.__globals__, "setup", lambda root: environment)
+
+    def check(*args, **kwargs):
+        raise main.__globals__["AuthError"]("interrupted", "Command interrupted")
+
+    monkeypatch.setitem(main.__globals__, "authenticate_domains", check)
+    assert main([]) == 130
+    assert "start up prompts" not in capsys.readouterr().out

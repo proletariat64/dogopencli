@@ -9,6 +9,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+from dogopencli.auth.domains import authenticate_domains
 from dogopencli.browser import launcher
 from dogopencli.browser.coordination import acquire_file_lock
 from dogopencli.browser.environment import (
@@ -22,6 +23,8 @@ from dogopencli.browser.environment import (
 )
 from dogopencli.browser.errors import AuthError
 from dogopencli.browser.login import login
+from dogopencli.domains import DomainService
+from dogopencli.errors import CliError
 
 
 def available_port() -> int:
@@ -111,26 +114,87 @@ def setup(root: Path) -> BrowserEnvironment:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--domain", choices=STARTUP_URLS, default="payment")
+    parser.add_argument(
+        "--domain",
+        choices=STARTUP_URLS,
+        help="also verify domain authentication and complete human SSO if needed",
+    )
     args = parser.parse_args(argv)
     try:
         environment = setup(Path(__file__).resolve().parents[1])
+        domains = DomainService(config_file=environment.profile.parent / "config.toml")
+        if args.domain is not None:
+            print(
+                f"Verifying isolated {args.domain} login; "
+                "complete SSO if Chrome opens.",
+                flush=True,
+            )
+            login(replace(environment, startup_url=STARTUP_URLS[args.domain]))
+            print(f"{args.domain} authentication verified headless")
         print(
-            f"Verifying isolated {args.domain} login; complete SSO if Chrome opens.",
-            flush=True,
+            "Checking enabled domain authentication (no automatic SSO)...", flush=True
         )
-        login(replace(environment, startup_url=STARTUP_URLS[args.domain]))
-        print(
-            f"bootstrap browser: PASS; {args.domain} authentication verified headless"
-        )
+        try:
+            verdict = authenticate_domains(environment, domains, None, recover=False)
+            outcomes = verdict.get("domains", [verdict])
+        except AuthError as error:
+            if error.code == "interrupted":
+                raise KeyboardInterrupt from error
+            outcomes = error.details.get("domains") or [
+                {"domain": "all", "error": {"code": error.code}}
+            ]
+        print_startup_prompt(environment, outcomes)
         return 0
     except KeyboardInterrupt:
         print("bootstrap browser: interrupted; browser preserved", file=sys.stderr)
         return 130
-    except (OSError, RuntimeError, AuthError, launcher.LauncherError) as error:
+    except (
+        OSError,
+        RuntimeError,
+        AuthError,
+        CliError,
+        launcher.LauncherError,
+    ) as error:
         code = f"{error.code}: " if isinstance(error, AuthError) else ""
         print(f"bootstrap browser: {code}{error}", file=sys.stderr)
         return 1
+
+
+def print_startup_prompt(environment: BrowserEnvironment, outcomes: list[dict]) -> None:
+    """Print a copyable handoff with current browser and observed auth status."""
+    metadata = launcher._cdp_metadata(environment.cdp_url)
+    if not metadata:
+        raise RuntimeError("CDP unavailable after domain auth check")
+    mode = launcher._metadata_mode(metadata)
+    owner = launcher._Owner(environment.profile / launcher.OWNER_FILE_NAME)
+    pid = (
+        owner.pid
+        if owner.is_valid(environment.profile)
+        else launcher._profile_lock_pid(environment.profile)
+    )
+    print("\n----start up prompts-----------------------------------------------------")
+    print("$caveman\n")
+    print(
+        "- This worktree is ready for development; UAT requires domain authentication."
+    )
+    print("- Prepared isolated Chrome profile and CDP settings for future UAT.")
+    print(f"    Chrome mode {mode}")
+    print(f"    pid {pid if pid is not None else 'unknown'}")
+    print(f"    CDP {environment.cdp_url}")
+    print(f"    profile: {environment.profile}")
+    print("    bootstrap browser: PASS; isolated browser ready")
+    print("    domain auth check:")
+    for outcome in outcomes:
+        status = (
+            "authenticated"
+            if outcome.get("authenticated") is True
+            else outcome.get("error", {}).get("code", "unknown")
+        )
+        print(f"      {outcome['domain']}: {status}")
+    shell = shlex.quote(str(environment.profile.parent / "env.sh"))
+    print(f"- Activate isolated config: source {shell}")
+    print("- If authentication is required: dogopencli login")
+    print("-------------------------------------------------------------------------")
 
 
 if __name__ == "__main__":

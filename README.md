@@ -125,6 +125,14 @@ query, login, import or package-management buttons.
 
 ## Development
 
+`make bootstrap` prepares the worktree environment, code graph and isolated
+Chrome/CDP profile, then checks enabled domains' authentication without starting
+SSO. Domain auth failures are reported in the final copyable startup prompt;
+they do not fail browser setup. Browser setup failures still fail bootstrap.
+Run `source tmp/bootstrap-browser/env.sh` to activate its configuration in your
+shell. To also log in, use `make bootstrap BOOTSTRAP_DOMAIN=payment` (or
+`liquidity` / `fx`); explicit login requires successful headless verification.
+
 ```bash
 python -m pip install -e '.[dev]'
 python -m pytest -q
