@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import tempfile
+import uuid
 import zipfile
 from pathlib import Path
 
@@ -30,10 +31,10 @@ def pack(source: Path, output: Path) -> dict:
                 identity = f"{verified.manifest['domain']}.{verified.manifest['name']}"
             # Stage on the destination filesystem. Hard-link publication is atomic
             # and refuses a destination created concurrently, unlike replace().
-            descriptor, staging = tempfile.mkstemp(
-                prefix=".dogopencli-pack-", dir=output.parent
+            staging_path = output.parent / f".dogopencli-pack-{uuid.uuid4().hex}"
+            descriptor = os.open(
+                staging_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666
             )
-            staging_path = Path(staging)
             try:
                 with os.fdopen(descriptor, "wb") as destination:
                     destination.write(archive_path.read_bytes())

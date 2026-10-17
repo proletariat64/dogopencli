@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import stat
 import struct
 import subprocess
 import sys
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / ".agents/skills/plugin-helper/scripts/plugin_helper.py"
 
 
-def invoke(*arguments):
+def invoke(*arguments, umask=-1):
     environment = dict(os.environ, PYTHONPATH=str(ROOT / "src"))
     return subprocess.run(
         [sys.executable, str(SCRIPT), *map(str, arguments)],
@@ -24,6 +25,7 @@ def invoke(*arguments):
         capture_output=True,
         text=True,
         check=False,
+        umask=umask,
     )
 
 
@@ -142,3 +144,13 @@ def test_corrupt_compressed_zip_has_static_diagnostics(
     assert archive_path.read_bytes() == original
     assert not (scope / "plugins").exists()
     assert not (scope / "duckdog.duckdb").exists()
+
+
+@pytest.mark.parametrize(("umask", "permissions"), [(0o022, 0o644), (0o077, 0o600)])
+def test_helper_pack_respects_artifact_umask(source, tmp_path, umask, permissions):
+    output = tmp_path / "portable-delivery.zip"
+    result = invoke("pack", source, "--output", output, umask=umask)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert stat.S_IMODE(output.stat().st_mode) == permissions
+    assert invoke("verify", output).returncode == 0
+    assert list(tmp_path.glob(".dogopencli-pack-*")) == []
