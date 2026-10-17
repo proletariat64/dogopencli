@@ -248,7 +248,7 @@ def test_all_installed_pilots_execute_without_retired_runtime(installed):
             assert offline["meta"]["complete"] is False
             assert offline["meta"]["unique_count"] is None
             assert {"IDENTITY_UNPROVEN", "TOTAL_SEMANTICS_UNPROVEN"} <= set(
-                offline["meta"]["reasons"]
+                offline["meta"]["acquisition"]["reasons"]
             )
         if domain == "payment":
             filtered, _ = success(domain, "list", leaf, "--status", "ACTIVE")
