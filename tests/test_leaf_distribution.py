@@ -20,6 +20,15 @@ RETIRED = (
     "snapshot",
     "cached_query",
     "handler_contract",
+    "annotations",
+    "execution",
+    "snapshot_cache",
+    "table",
+    "transport.snapshot",
+)
+RETIRED_SCRIPTS = (
+    "scripts/build_liquidity_fields.py",
+    "scripts/prepare_channel_snapshot.py",
 )
 PILOTS = (
     ("collection", "cost"),
@@ -51,11 +60,19 @@ def test_distributions_exclude_retired_runtime_and_imports(artifact):
                 if member.isfile()
             }
     for name, source in contents.items():
+        assert not any(
+            name == retired or name.endswith("/" + retired)
+            for retired in RETIRED_SCRIPTS
+        ), name
         parts = Path(name).parts
         if "dogopencli" not in parts:
             continue
         relative = parts[parts.index("dogopencli") + 1 :]
-        assert not relative or relative[0].removesuffix(".py") not in RETIRED, name
+        module_path = ".".join(relative).removesuffix(".py")
+        assert not any(
+            module_path == retired or module_path.startswith(retired + ".")
+            for retired in RETIRED
+        ), name
         if not name.endswith(".py"):
             continue
         for node in ast.walk(ast.parse(source, filename=name)):

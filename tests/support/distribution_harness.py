@@ -19,6 +19,11 @@ RETIRED = (
     "snapshot",
     "cached_query",
     "handler_contract",
+    "annotations",
+    "execution",
+    "snapshot_cache",
+    "table",
+    "transport.snapshot",
 )
 
 
