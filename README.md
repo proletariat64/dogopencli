@@ -7,19 +7,30 @@ change local cache only. Output formats are **json** and **text**.
 ## Install and configure
 
 Python 3.10+ is required; live inquiries also require Google Chrome and platform
-access. Install the project and explicitly copy the four pilot leaf packages:
+access. Install the project and explicitly install each desired bundled leaf:
 
 ```bash
 python -m pip install -e .
-dogopencli plugins install-pilots --config-dir ~/.config/dogopencli
+dogopencli plugins list
+dogopencli plugins install bundled:payment.sla.baselines
+dogopencli plugins install bundled:collection.cost
+dogopencli plugins install bundled:liquidity.reference.entities
+dogopencli plugins install bundled:fx.trade
 ```
 
-An existing destination is never silently replaced. Replace or remove individual
-folders directly under `<effective-config-directory>/plugins/<domain>/<leaf>/`.
-The manifest is `leaf.json`; the complete dotted leaf name must match its folder.
-Valid installed leaves become available on the next invocation, subject to the
-domain switch. Invalid leaves appear as inventory diagnostics independently of
-healthy leaves. This pilot introduces no package/version manager or hot loading.
+Each install accepts one local directory, ordinary ZIP, direct HTTP(S) ZIP URL or
+`bundled:<domain>.<dotted-leaf>` identity. The package root contains `leaf.json` and
+its declared adapter; README and ordinary resources are optional. Installation
+creates an independent snapshot and validates the adapter and storage bindings
+without querying business data. The domain must already be enabled.
+
+Existing identities are never overwritten, including edited installed manifests.
+To reinstall deliberately, run `dogopencli plugins uninstall <domain>.<dotted-leaf>`
+then install again. Uninstall needs no prompt and retains Duckdog datasets, binding
+history, credentials and source packages. It removes only that installed leaf and
+its temporary query cache. Valid installed leaves become available on the next
+invocation. `plugins list` distinguishes bundled availability, installed declarations
+and invalid declarations; it does not execute adapters or qualify production use.
 
 `--config-dir` overrides `DOGOPENCLI_CONFIG_DIR`, then `DOGOPENCLI_CONFIG` (file),
 then the default `~/.config/dogopencli/config.toml`.
@@ -36,7 +47,7 @@ path = "duckdog.duckdb"
 New leaf cache is `leaf-cache.sqlite3` beside the effective config. Duckdog defaults
 to `duckdog.duckdb` there. First installation creates one empty `_record VARCHAR`
 table per list leaf; later loading validates the binding and table. No business
-records are imported. Removing a leaf cleans its cache after a successful scan,
+records are imported. Uninstall removes only that leaf and its managed cache,
 preserving Duckdog tables/data. Malformed folders and unavailable roots do not
 count as confirmed removal. Retained bindings validate existing data on reinstall.
 

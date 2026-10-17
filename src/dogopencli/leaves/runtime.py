@@ -154,6 +154,18 @@ def execute(
     live = operation == "refresh" or args.live
     ttl = _ttl(config_file)
     with store.refresh_lock() if operation == "refresh" else nullcontext():
+        if operation == "refresh" and leaf.installation_token is not None:
+            try:
+                status = leaf.path.stat()
+                current_token = (status.st_dev, status.st_ino, status.st_ctime_ns)
+            except OSError as error:
+                raise CliError(
+                    "LEAF_NOT_FOUND", "Leaf was removed before refresh started"
+                ) from error
+            if current_token != leaf.installation_token:
+                raise CliError(
+                    "LEAF_NOT_FOUND", "Leaf installation changed; run refresh again"
+                )
         if live:
             capability = leaf.adapter.capability(parameters)
             scope = leaf.adapter.scope(parameters)

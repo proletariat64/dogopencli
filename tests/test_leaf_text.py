@@ -28,10 +28,11 @@ def test_version_install_and_domain_text(run_cli):
         f"version: {__version__}\n",
         "",
     )
-    code, output, error = run_cli(["plugins", "install-pilots", "--format", "text"])
+    code, output, error = run_cli(
+        ["plugins", "install", "bundled:payment.sla.baselines", "--format", "text"]
+    )
     assert code == 0 and error == ""
-    assert output.startswith("installed:\n  - ")
-    assert "\n  - payment/sla.baselines\n" in output
+    assert "payment.sla.baselines" in output
     code, output, error = run_cli(["payment", "--format", "text"])
     assert (code, error) == (0, "")
     assert "command: dogopencli payment\n" in output
@@ -90,7 +91,7 @@ def test_exact_business_values_and_metadata(capsys):
 def test_business_commands_use_shared_text(run_cli, monkeypatch, action):
     from dogopencli.leaves import cli
 
-    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
     monkeypatch.setattr(
         cli,
         "execute",
@@ -132,7 +133,7 @@ def test_business_failure_text_keeps_metadata_and_retryability(run_cli, monkeypa
     from dogopencli.errors import CliError
     from dogopencli.leaves import cli
 
-    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
 
     def fail(*args):
         raise CliError(

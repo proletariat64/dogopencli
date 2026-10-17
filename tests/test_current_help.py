@@ -4,7 +4,7 @@ import json
 
 
 def test_progressive_help_is_current_and_does_not_activate(run_cli, tmp_path):
-    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
     adapter = tmp_path / "plugins/payment/sla.baselines/adapter.py"
     adapter.write_text('raise RuntimeError("must not activate")')
     before = {
@@ -33,7 +33,7 @@ def test_progressive_help_is_current_and_does_not_activate(run_cli, tmp_path):
 
 
 def test_operation_contracts_and_help_syntax(run_cli):
-    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
     prefix = ["payment", "get", "sla.baselines"]
     code, out, _ = run_cli([*prefix, "--help"])
     doc = json.loads(out)["data"]
@@ -132,7 +132,7 @@ def test_first_help_traverses_all_children_without_runtime(
 def test_help_values_are_data_and_describe_remains_distinct(run_cli, monkeypatch):
     from dogopencli.leaves import cli
 
-    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
     captured = []
 
     def execute(leaf, operation, parameters, args, config):
@@ -181,7 +181,7 @@ def test_bare_gui_executes_but_help_does_not(run_cli, monkeypatch):
 
 
 def test_leaf_parameters_do_not_change_unrelated_command_syntax(run_cli, tmp_path):
-    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
     manifest = tmp_path / "plugins/payment/sla.baselines/leaf.json"
     value = json.loads(manifest.read_text())
     value["operations"]["list"]["parameters"].extend(
@@ -223,7 +223,7 @@ def test_leaf_parameters_do_not_change_unrelated_command_syntax(run_cli, tmp_pat
 
 
 def test_required_typed_parameters_validate_before_activation(run_cli, tmp_path):
-    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
     path = tmp_path / "plugins/payment/sla.baselines/leaf.json"
     manifest = json.loads(path.read_text())
     manifest["operations"]["get"]["parameters"] = [
@@ -258,7 +258,7 @@ def test_explicit_empty_choices_remain_a_reject_all_constraint(
 ):
     from dogopencli.leaves import cli
 
-    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
     manifest_path = tmp_path / "plugins/payment/sla.baselines/leaf.json"
     manifest = json.loads(manifest_path.read_text())
     manifest["operations"]["list"]["parameters"][3]["choices"] = []
@@ -337,7 +337,9 @@ def test_domain_registration_preserves_core_installation_help(run_cli):
         document = json.loads(out)["data"]
         assert code == 0
         assert document["summary"] == "Manage local leaf installations."
-        assert "install-pilots" in {child["name"] for child in document["children"]}
+        assert {"install", "uninstall", "list"} <= {
+            child["name"] for child in document["children"]
+        }
     finally:
         plugins.register_domains(original)
 
@@ -347,7 +349,7 @@ def test_common_option_spellings_remain_literal_business_values(
 ):
     from dogopencli.leaves import cli
 
-    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
     executions = []
 
     def execute(leaf, operation, parameters, args, config_file):
