@@ -1,6 +1,10 @@
 """Plugin lifecycle navigation and declaration-only discovery through CLI."""
 
 import json
+import socket
+import subprocess
+
+import pytest
 
 
 def test_plugins_progressively_disclose_single_leaf_lifecycle(run_cli, tmp_path):
@@ -99,3 +103,83 @@ def test_bundled_list_does_not_create_missing_configuration(run_cli, tmp_path):
     }
     assert all(row["state"] == "available" for row in rows)
     assert not directory.exists()
+
+
+@pytest.mark.parametrize("output_format", ["json", "text"])
+@pytest.mark.parametrize("scheme", ["http", "HTTPS"])
+def test_extra_install_sources_hide_entire_urls_before_effects(
+    run_cli, tmp_path, monkeypatch, output_format, scheme
+):
+    scope = tmp_path / "absent"
+    first = "http://first-user:first-password@127.0.0.1:9/first-path?token=first-secret"
+    extra = (
+        f"{scheme}://second-user:second-password@127.0.0.1:9/second-path"
+        "?token=second-secret#private-fragment"
+    )
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid syntax must not start download or network")
+
+    monkeypatch.setattr(socket, "create_connection", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    code, output, error = run_cli(
+        [
+            "--config-dir",
+            str(scope),
+            "--format",
+            output_format,
+            "plugins",
+            "install",
+            first,
+            extra,
+            "extra-literal",
+        ]
+    )
+    assert (code, error) == (2, "")
+    if output_format == "json":
+        diagnostic = json.loads(output)["error"]
+        assert diagnostic["code"] == "INVALID_ARGUMENT"
+    else:
+        assert "INVALID_ARGUMENT" in output
+    assert "unrecognized arguments" in output
+    assert "extra-literal" in output
+    assert "[HTTP(S) URL]" in output
+    for secret in (
+        "first-user",
+        "first-password",
+        "first-path",
+        "first-secret",
+        "second-user",
+        "second-password",
+        "second-path",
+        "second-secret",
+        "private-fragment",
+        "127.0.0.1",
+    ):
+        assert secret not in output
+    assert not scope.exists()
+
+
+def test_install_global_option_error_hides_url_before_dispatch(run_cli, tmp_path):
+    scope = tmp_path / "absent"
+    code, output, error = run_cli(
+        [
+            "--config-dir",
+            str(scope),
+            "plugins",
+            "install",
+            "bundled:payment.sla.baselines",
+            "--format",
+            "https://private-user:private-password@host.invalid/path?secret=token#fragment",
+        ]
+    )
+    assert (code, error) == (2, "")
+    diagnostic = json.loads(output)["error"]
+    assert diagnostic["code"] == "INVALID_ARGUMENT"
+    assert "--format" in diagnostic["message"]
+    assert "invalid choice" in diagnostic["message"]
+    assert "[HTTP(S) URL]" in diagnostic["message"]
+    assert "private" not in output
+    assert "secret" not in output
+    assert "fragment" not in output
+    assert not scope.exists()

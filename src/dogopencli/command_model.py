@@ -6,6 +6,7 @@ Core declarations remain owned by their execution modules.
 
 import argparse
 import math
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import NoReturn
@@ -338,6 +339,8 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
 
 class Parser(argparse.ArgumentParser):
     def error(self, message: str) -> NoReturn:
+        # argparse echoes rejected values; source URLs can carry credentials.
+        message = re.sub(r"https?://\S+", "[HTTP(S) URL]", message, flags=re.IGNORECASE)
         raise CliError("INVALID_ARGUMENT", message, exit_code=2)
 
 

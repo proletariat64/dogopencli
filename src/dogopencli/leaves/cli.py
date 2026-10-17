@@ -1,11 +1,11 @@
 """Manifest-driven action-first public command registration."""
 
-import argparse
 import math
 import sys
-from typing import Any, NoReturn
+from typing import Any
 
 from dogopencli import __version__, config
+from dogopencli.command_model import Parser
 from dogopencli.domains import DomainService
 from dogopencli.errors import CliError
 from dogopencli.jsonutil import canonical
@@ -13,11 +13,6 @@ from dogopencli.plugins import domain_plugins
 
 from .registry import Leaf, Registry
 from .runtime import execute
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message: str) -> NoReturn:
-        raise CliError("INVALID_ARGUMENT", message, exit_code=2)
 
 
 def emit(
