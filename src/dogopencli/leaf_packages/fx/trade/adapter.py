@@ -214,7 +214,6 @@ def acquire(
         if response.status in (401, 403):
             raise CliError(
                 AUTH_REQUIRED,
-                BUSINESS_QUERY_FAILED,
                 "FX authorization required; run dogopencli login --domain fx",
             )
         if response.status != 200:

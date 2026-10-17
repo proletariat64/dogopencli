@@ -114,6 +114,31 @@ def test_fx_native_pages_preserve_unknown_identity(run_cli, pilots):
     assert code == 1 and json.loads(out)["data"] is None
 
 
+@pytest.mark.parametrize("status", [401, 403])
+@pytest.mark.parametrize("command", [["list", "trade", "--live"], ["refresh", "trade"]])
+def test_fx_authorization_failure_requires_login_without_publishing(
+    run_cli, pilots, status, command
+):
+    from dogopencli.domain_contracts import FX_STARTUP_URL
+
+    pilots.href = FX_STARTUP_URL
+    pilots.business_script.append({"status": status, "body": {}})
+    code, out, _ = run_cli(["fx", *command, "--trade-id", "TEST"])
+    value = json.loads(out)
+    assert code == 1, out
+    assert value["error"]["code"] == "AUTH_REQUIRED"
+    assert value["error"]["message"].startswith("FX authorization required;")
+    assert "dogopencli login --domain fx" in value["error"]["message"]
+    assert value["error"]["retryable"] is False
+    assert value["data"] is None
+    if command[0] == "refresh":
+        assert value["meta"]["published"] is False
+    else:
+        assert value["meta"] is None
+    code, out, _ = run_cli(["fx", "list", "trade"])
+    assert code == 1 and json.loads(out)["error"]["code"] == "CACHE_MISS", out
+
+
 def test_liquidity_entities_accept_native_inst_id_without_synthetic_id(run_cli, pilots):
     from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
