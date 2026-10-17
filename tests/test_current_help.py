@@ -251,3 +251,95 @@ def test_required_typed_parameters_validate_before_activation(run_cli, tmp_path)
     code, out, _ = run_cli([*prefix, "native-id"])
     assert code == 2
     assert json.loads(out)["error"]["message"] == "--attempt is required"
+
+
+def test_explicit_empty_choices_remain_a_reject_all_constraint(
+    run_cli, tmp_path, monkeypatch
+):
+    from dogopencli.leaves import cli
+
+    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    manifest_path = tmp_path / "plugins/payment/sla.baselines/leaf.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["operations"]["list"]["parameters"][3]["choices"] = []
+    manifest_path.write_text(json.dumps(manifest))
+    executions = []
+    monkeypatch.setattr(
+        cli, "execute", lambda *args: (executions.append(args) or [], {})
+    )
+    prefix = ["payment", "list", "sla.baselines"]
+    code, out, _ = run_cli([*prefix, "-h"])
+    assert code == 0
+    status = next(
+        option
+        for option in json.loads(out)["data"]["options"]
+        if option["name"] == "status"
+    )
+    assert status["choices"] == []
+    for suffix in [["--status", "OPEN", "-h"], ["--status", "OPEN"]]:
+        assert run_cli([*prefix, *suffix])[0] == 2
+    assert executions == []
+    assert run_cli(prefix)[0] == 0
+    assert len(executions) == 1
+
+
+def test_version_never_bypasses_invalid_command_paths(run_cli):
+    for path in (
+        ["help"],
+        ["gui", "help"],
+        ["bogus"],
+        ["payment", "help", "sla.baselines"],
+        ["gui", "unknown"],
+        ["plugins", "unknown"],
+    ):
+        for args in ([*path, "--version"], ["--version", *path]):
+            code, out, _ = run_cli(args)
+            assert code == 2, (args, out)
+            assert json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+            assert "--help" in json.loads(out)["error"]["message"]
+
+
+def test_common_option_spellings_remain_literal_business_values(
+    run_cli, monkeypatch, tmp_path
+):
+    from dogopencli.leaves import cli
+
+    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    executions = []
+
+    def execute(leaf, operation, parameters, args, config_file):
+        executions.append(
+            (operation, parameters, getattr(args, "detail_identity", None), config_file)
+        )
+        return [], {}
+
+    monkeypatch.setattr(cli, "execute", execute)
+    for literal in (
+        "--version",
+        "--format",
+        "--config-dir",
+        "--help",
+        "-h",
+        "--format=text",
+        "--config-dir=elsewhere",
+    ):
+        for tail, operation, parameters, identity in [
+            (
+                ["list", "sla.baselines", "--status", literal],
+                "list",
+                {"status": literal},
+                None,
+            ),
+            (["get", "sla.baselines", "--", literal], "get", {}, literal),
+        ]:
+            before = len(executions)
+            code, out, _ = run_cli(["payment", *tail])
+            assert code == 0, (tail, out)
+            assert len(executions) == before + 1, (tail, out)
+            assert executions[-1] == (
+                operation,
+                parameters,
+                identity,
+                tmp_path / "config.toml",
+            )
+            assert json.loads(out)["data"] == []

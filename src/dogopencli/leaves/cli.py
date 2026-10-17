@@ -139,13 +139,6 @@ def main(argv: list[str]) -> int:
         common.add_argument("--format", choices=("json", "text"), default="json")
         controls, tokens = common.parse_known_args(argv)
         output_format = controls.format
-        if controls.version:
-            emit({"version": __version__}, output_format=output_format)
-            return 0
-        config_file = config.config_path(controls.config_dir)
-        if tokens == ["plugins", "install-pilots"]:
-            emit(_install(config_file), output_format=output_format)
-            return 0
         from ..command_model import resolve
 
         # Discover and validate the entire invocation before activating runtime.
@@ -161,11 +154,19 @@ def main(argv: list[str]) -> int:
                 and tokens[1] in {"list", "get", "refresh", "prune", "describe"}
                 and not any(token in {"-h", "--help"} for token in tokens)
             ):
-                Registry(config_file).discover().get(tokens[0], tokens[2])
+                Registry(config.config_path(controls.config_dir)).discover().get(
+                    tokens[0], tokens[2]
+                )
             raise
         output_format = invocation.args.format
         config_file = invocation.config_file
         node = invocation.node
+        if invocation.args.version:
+            emit({"version": __version__}, output_format=output_format)
+            return 0
+        if node.path == ("plugins", "install-pilots") and not invocation.help_requested:
+            emit(_install(config_file), output_format=output_format)
+            return 0
         if invocation.help_requested or node.handler is None:
             from ..helpspec import document
 

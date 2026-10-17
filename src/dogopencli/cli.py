@@ -1817,4 +1817,4 @@ def main(argv: list[str] | None = None) -> int:
         return auth_main([*path, *invocation.remaining], command_hint=path[0])
     from .leaves.cli import main as leaf_main
 
-    return leaf_main(values)
+    return leaf_main([*path, *invocation.remaining])

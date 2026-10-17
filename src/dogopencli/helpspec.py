@@ -174,6 +174,8 @@ class OptionSpec:
     # as ``argument_contract`` (Issue #127 decision 6).
     argument_contract: dict[str, Any] | None = None
     value_type: str | None = None
+    # An explicitly declared empty choice set rejects every supplied value.
+    choices_declared: bool = False
 
     @property
     def flags(self) -> tuple[str, ...]:
@@ -455,7 +457,7 @@ def add_options(
             from .command_model import value_parser
 
             kwargs["type"] = value_parser(option.value_type)
-        if option.choices:
+        if option.choices or option.choices_declared:
             kwargs["choices"] = option.choices
         if option.required:
             kwargs["required"] = True
@@ -494,7 +496,7 @@ def _describe(option: OptionSpec) -> dict[str, Any]:
         "default": option.effective_default,
     }
     value["flags"] = list(option.flags)
-    if option.choices:
+    if option.choices or option.choices_declared:
         value["choices"] = list(option.choices)
     if option.argument_contract is not None:
         contract: dict[str, Any] = {

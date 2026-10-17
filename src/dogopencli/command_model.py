@@ -92,6 +92,7 @@ def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
             default=item.get("default"),
             help_default=item.get("default"),
             choices=tuple(item.get("choices", ())),
+            choices_declared="choices" in item,
             value_type=item["type"],
             required=item.get("required", False) and operation in {"get", "refresh"},
             argument_contract={
