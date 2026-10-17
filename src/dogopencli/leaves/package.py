@@ -238,6 +238,7 @@ def _download(url: str, destination: Path) -> None:
             watchdog = threading.Timer(remaining, interrupt_download)
             watchdog.daemon = True
             watchdog.start()
+            response = None
             try:
                 target = parsed.path or "/"
                 if parsed.query:
@@ -284,6 +285,8 @@ def _download(url: str, destination: Path) -> None:
             finally:
                 watchdog.cancel()
                 watchdog.join()
+                if response is not None:
+                    response.close()
                 connection.close()
         raise ValueError
     except (OSError, ValueError, http.client.HTTPException, AttributeError):
