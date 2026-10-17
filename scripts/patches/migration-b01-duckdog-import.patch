@@ -1,0 +1,160 @@
+--- a/.agents/skills/duckdog-import/scripts/import_settings.py
++++ b/.agents/skills/duckdog-import/scripts/import_settings.py
+@@ -116,6 +116,47 @@
+     raise ImportRejected("non-finite JSON number")
+ 
+ 
++# Migration #257 only. Empty host scope means the package-owned native inquiry:
++# banks tenant; benchmarks fixed empty dates; forecast fixed instId=["Z21"].
++B01_LEAVES = frozenset(
++    {
++        "liquidity/reference/banks",
++        "liquidity/investment/benchmarks",
++        "liquidity/rules/forecast",
++    }
++)
++
++
++def acquisition_command(selector):
++    if selector in B01_LEAVES:
++        domain, *leaf = selector.split("/")
++        return [
++            "dogopencli",
++            domain,
++            "list",
++            ".".join(leaf),
++            "--live",
++            "--limit",
++            "0",
++            "--require-complete",
++            "--format",
++            "json",
++        ]
++    return [
++        "dogopencli",
++        *selector.split("/"),
++        "list",
++        "--live",
++        "--limit",
++        "0",
++        "--offset",
++        "0",
++        "--require-complete",
++        "--format",
++        "json",
++    ]
++
++
+ def validate(text, selector):
+     reject_retired(selector)
+     envelope = json.loads(
+@@ -126,16 +167,52 @@
+     rows, meta = envelope.get("data"), envelope.get("meta")
+     if not isinstance(rows, list) or not isinstance(meta, dict):
+         raise ImportRejected("expected data array and acquisition metadata")
+-    expected = selector.replace("/", ".") + ".list"
+-    if meta.get("capability") != expected or meta.get("source") != "live":
+-        raise ImportRejected("wrong capability or non-live source")
++    if selector in B01_LEAVES:
++        if (
++            meta.get("leaf") != selector.replace("/", ".")
++            or meta.get("operation") != "list"
++            or "capability" in meta
++            or meta.get("backend") != "cdp"
++            or meta.get("source") != "live"
++        ):
++            raise ImportRejected("wrong installed leaf, operation or live source")
++        evidence = meta.get("acquisition")
++        if (
++            meta.get("dataset_complete") is not True
++            or not isinstance(evidence, dict)
++            or evidence.get("scope_complete") is not True
++            or evidence.get("dataset_complete") is not True
++            or evidence.get("total_semantics") != "unique_objects"
++            or evidence.get("reasons") != []
++        ):
++            raise ImportRejected("installed leaf acquisition is not complete")
++        for key in ("reported_total", "collected_total", "arrivals", "unique_count"):
++            if type(evidence.get(key)) is not int or evidence[key] != len(rows):
++                raise ImportRejected("installed leaf acquisition count mismatch")
++        for document in (meta, evidence):
++            if (
++                type(document.get("duplicate_count")) is not int
++                or document["duplicate_count"] != 0
++            ):
++                raise ImportRejected("installed leaf acquisition has duplicates")
++        if type(meta.get("unique_count")) is not int or meta["unique_count"] != len(
++            rows
++        ):
++            raise ImportRejected("installed leaf unique count mismatch")
++    else:
++        expected = selector.replace("/", ".") + ".list"
++        if meta.get("capability") != expected or meta.get("source") != "live":
++            raise ImportRejected("wrong capability or non-live source")
+     if meta.get("simulated") is not False or meta.get("complete") is not True:
+         raise ImportRejected("candidate must be real and complete")
+     if meta.get("has_more") is not False:
+         raise ImportRejected("candidate display is truncated")
+-    if meta.get("scope") != REGISTRY[selector].get("scope", {}) or meta.get(
+-        "query"
+-    ) != REGISTRY[selector].get("query", {}):
++    expected_scope = (
++        "" if selector in B01_LEAVES else REGISTRY[selector].get("scope", {})
++    )
++    if meta.get("scope") != expected_scope or meta.get("query") != REGISTRY[
++        selector
++    ].get("query", {}):
+         raise ImportRejected("settings replacement requires unfiltered scope")
+     for key in ("returned_count", "matched_total", "collected_total", "reported_total"):
+         count = meta.get(key)
+@@ -158,7 +235,7 @@
+             if not str(value).strip():
+                 raise ImportRejected("blank native identity")
+             # Preserve tuple boundaries for compound native identities.
+-            key.append(str(value))
++            key.append(encode(value) if selector in B01_LEAVES else str(value))
+         key = tuple(key)
+         if key in seen:
+             raise ImportRejected("blank or duplicate native identity")
+@@ -310,19 +387,7 @@
+                                 "application": "dogopencli",
+                                 "domain": selector.split("/")[0],
+                                 "leaf": selector,
+-                                "command": [
+-                                    "dogopencli",
+-                                    *selector.split("/"),
+-                                    "list",
+-                                    "--live",
+-                                    "--limit",
+-                                    "0",
+-                                    "--offset",
+-                                    "0",
+-                                    "--require-complete",
+-                                    "--format",
+-                                    "json",
+-                                ],
++                                "command": acquisition_command(selector),
+                                 "acquisition": meta,
+                             }
+                         ),
+@@ -373,19 +438,7 @@
+         if args.input:
+             text = args.input.read_text(encoding="utf-8")
+         else:
+-            command = [
+-                "dogopencli",
+-                *args.selector.split("/"),
+-                "list",
+-                "--live",
+-                "--limit",
+-                "0",
+-                "--offset",
+-                "0",
+-                "--require-complete",
+-                "--format",
+-                "json",
+-            ]
++            command = acquisition_command(args.selector)
+             process = subprocess.run(
+                 command, capture_output=True, text=True, timeout=300
+             )

@@ -71,3 +71,36 @@ The former cash/groups declaration used identity `id` and default query/scope
 `{"equiCurrency":"USD"}`. The former investment/strategies identity was
 `strategyRuleCode`, rules/notification was `id`, and ledger/customers was
 `customerNo, version`. These are historical evidence, not active import contracts.
+
+
+## Independent leaf migration B01 (#257)
+
+The tracked `scripts/patches/migration-b01-duckdog-import.patch` adapts the
+external settings helper to the current installed-leaf envelope for exactly:
+
+- `liquidity/reference/banks` (`bankId`)
+- `liquidity/investment/benchmarks` (`id`)
+- `liquidity/rules/forecast` (`ruleId`)
+
+For these selectors, identity is `meta.leaf` with the matching dotted value and
+`meta.operation="list"`; historical `meta.capability` envelopes are rejected.
+Source must be live CDP, real, complete and untruncated. Both acquisition and
+public counts must agree with the full row count, unique native identities and
+zero duplicates; incomplete acquisition evidence is rejected. The original
+acquisition metadata is stored unchanged, alongside exact typed JSON records.
+No metadata is synthesized to make an old contract accept a current result.
+
+Each package reports the fixed host `scope=""` and `query={}`. This is the
+package-owned native scope: tenant bank directory, benchmark rules with both
+date fields empty, and forecast rules for fixed `instId=["Z21"]`, respectively.
+In particular, importing forecast does not claim a tenant-wide rule inventory.
+Explicit country filters, alternate scopes and cached results cannot replace
+these datasets. Acquisitions use the current command
+`dogopencli liquidity list <dotted-leaf> --live --limit 0 --require-complete --format json`.
+Other current installed leaf identities are not implicitly enabled by this patch.
+
+Apply the patch only to the existing external helper after review. Tests apply
+it to a private copy of the captured helper and verify actual DuckDB/Parquet
+readback, decimal fidelity, original metadata and rejection before publication.
+The patch does not change the host runtime or install another importer. Actual
+production import remains explicit and separately evidenced under #257.
