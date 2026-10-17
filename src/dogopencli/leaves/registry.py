@@ -14,6 +14,7 @@ import sqlite3
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -222,6 +223,7 @@ class Leaf:
     manifest: dict
     adapter: Any = None
     adapter_sha256: str = ""
+    installation_token: tuple[int, int, int] | None = None
 
     @property
     def id(self) -> str:
@@ -387,12 +389,27 @@ class Registry:
                 raise _invalid("adapter does not implement declared operations")
         finally:
             sys.modules.pop(module_name, None)
+        status = folder.stat()
         return Leaf(
-            value["domain"], value["name"], folder, value, adapter, adapter_sha256
+            value["domain"],
+            value["name"],
+            folder,
+            value,
+            adapter,
+            adapter_sha256,
+            (status.st_dev, status.st_ino, status.st_ctime_ns),
         )
 
-    def _storage(self, leaf: Leaf, state: sqlite3.Connection) -> None:
+    def _storage(
+        self,
+        leaf: Leaf,
+        state: sqlite3.Connection,
+        *,
+        publish: Callable[[], None] | None = None,
+    ) -> None:
         if "list" not in leaf.manifest["operations"]:
+            if publish is not None:
+                publish()
             return
         database = self._database()
         relation = leaf.manifest["dataset"]["relation"]
@@ -462,12 +479,14 @@ class Registry:
                 raise CliError(
                     "DATASET_ERROR", "Registered Duckdog table has incompatible columns"
                 )
+            state.execute(
+                "INSERT OR IGNORE INTO bindings VALUES (?, ?, ?, 1)",
+                (leaf.id, str(database), relation.lower()),
+            )
+            state.execute("UPDATE bindings SET active=1 WHERE leaf_id=?", (leaf.id,))
+            if publish is not None:
+                publish()
             db.execute("COMMIT")
-        state.execute(
-            "INSERT OR IGNORE INTO bindings VALUES (?, ?, ?, 1)",
-            (leaf.id, str(database), relation.lower()),
-        )
-        state.execute("UPDATE bindings SET active=1 WHERE leaf_id=?", (leaf.id,))
 
     def scan(self, *, wait_seconds: float = 0) -> "Registry":
         self.leaves = {}

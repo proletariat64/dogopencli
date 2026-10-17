@@ -7,9 +7,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from dogopencli.leaves.package import validate_package
-
 from dogopencli.errors import CliError
+from dogopencli.leaves.package import validate_package
 
 
 def pack(source: Path, output: Path) -> dict:
