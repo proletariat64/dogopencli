@@ -19,7 +19,6 @@ from dogopencli.jsonutil import canonical, parse
 from dogopencli.result_policy import AcquisitionEvidence
 
 PAGE_SIZE = 10
-TENANT = "GUAPW3SG"
 
 
 @dataclass(frozen=True)
