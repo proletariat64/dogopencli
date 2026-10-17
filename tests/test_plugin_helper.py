@@ -48,7 +48,9 @@ def test_helper_verifies_and_packs_static_snapshot(source, tmp_path):
     assert packed.returncode == 0, packed.stdout + packed.stderr
     assert invoke("verify", output).returncode == 0
     with zipfile.ZipFile(output) as archive:
-        assert set(archive.namelist()) == {p.as_posix() for p in before}
+        assert set(archive.namelist()) == {p.as_posix() for p in before} | {
+            "resources/"
+        }
         assert archive.read("resources/help.txt") == b"ordinary resource\n"
     assert {
         p.relative_to(source): p.read_bytes() for p in source.rglob("*") if p.is_file()
@@ -74,3 +76,25 @@ def test_helper_rejects_invalid_input_without_output(source, tmp_path):
     assert not output.exists()
     assert (source / "leaf.json").read_text() == "{}"
     assert invoke("verify", "https://example.invalid/package.zip").returncode != 0
+
+
+def test_helper_pack_install_preserves_empty_directories(source, tmp_path, run_cli):
+    (source / "resources/empty/nested").mkdir(parents=True)
+    output = tmp_path / "with-empty-directories.zip"
+    packed = invoke("pack", source, "--output", output)
+    assert packed.returncode == 0, packed.stdout + packed.stderr
+    with zipfile.ZipFile(output) as archive:
+        assert "resources/empty/nested/" in archive.namelist()
+    # Installation checks interface only; use the valid bundled adapter.
+    (source / "adapter.py").write_bytes(
+        (
+            ROOT / "src/dogopencli/leaf_packages/payment/sla.baselines/adapter.py"
+        ).read_bytes()
+    )
+    runnable = tmp_path / "runnable.zip"
+    assert invoke("pack", source, "--output", runnable).returncode == 0
+    code, out, error = run_cli(["plugins", "install", str(runnable)])
+    assert (code, error) == (0, ""), out + error
+    installed = tmp_path / "plugins/payment/sla.baselines"
+    assert (installed / "resources/empty/nested").is_dir()
+    assert (installed / "resources/help.txt").read_text() == "ordinary resource\n"

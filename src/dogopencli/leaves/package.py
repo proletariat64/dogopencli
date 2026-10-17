@@ -4,10 +4,10 @@ import http.client
 import json
 import os
 import re
-import socket
 import stat
+import subprocess
+import sys
 import tempfile
-import threading
 import time
 import zipfile
 from contextlib import contextmanager
@@ -200,7 +200,7 @@ def _manifest(root: Path) -> dict:
     return value
 
 
-def _download(url: str, destination: Path) -> None:
+def _download_transfer(url: str, destination: Path) -> None:
     deadline = time.monotonic() + DOWNLOAD_TIMEOUT
     try:
         for redirects in range(MAX_REDIRECTS + 1):
@@ -224,20 +224,6 @@ def _download(url: str, destination: Path) -> None:
                 parsed.hostname, parsed.port, timeout=remaining
             )
 
-            active_socket = []
-
-            def interrupt_download(connection=connection, active_socket=active_socket):
-                stream = active_socket[0] if active_socket else connection.sock
-                if stream is not None:
-                    try:
-                        stream.shutdown(socket.SHUT_RDWR)
-                    except OSError:
-                        pass
-                connection.close()
-
-            watchdog = threading.Timer(remaining, interrupt_download)
-            watchdog.daemon = True
-            watchdog.start()
             response = None
             try:
                 target = parsed.path or "/"
@@ -246,7 +232,6 @@ def _download(url: str, destination: Path) -> None:
                 connection.request(
                     "GET", target, headers={"Accept-Encoding": "identity"}
                 )
-                active_socket.append(connection.sock)
                 response = connection.getresponse()
                 if response.status in {301, 302, 303, 307, 308}:
                     location = response.getheader("Location")
@@ -283,13 +268,56 @@ def _download(url: str, destination: Path) -> None:
                     raise ValueError
                 return
             finally:
-                watchdog.cancel()
-                watchdog.join()
                 if response is not None:
                     response.close()
                 connection.close()
         raise ValueError
     except (OSError, ValueError, http.client.HTTPException, AttributeError):
+        raise ValueError("Download failed") from None
+
+
+def _download(url: str, destination: Path) -> None:
+    # A socket timeout cannot bound synchronous DNS. A separate interpreter
+    # makes every transfer phase cancellable without forking host threads.
+    worker = (
+        "import json, sys; "
+        "request = json.load(sys.stdin); "
+        "sys.path[:] = request['path']; "
+        "from dogopencli.leaves import package; "
+        "package.MAX_ARCHIVE_BYTES = request['max_bytes']; "
+        "package.MAX_REDIRECTS = request['max_redirects']; "
+        "package.DOWNLOAD_TIMEOUT = request['timeout']; "
+        "package._download_transfer(request['url'], "
+        "package.Path(request['destination']))"
+    )
+    payload = json.dumps(
+        {
+            "url": url,
+            "destination": str(destination),
+            "path": sys.path,
+            "max_bytes": MAX_ARCHIVE_BYTES,
+            "max_redirects": MAX_REDIRECTS,
+            "timeout": DOWNLOAD_TIMEOUT,
+        }
+    )
+    try:
+        # Secret URLs only cross stdin; child diagnostics never reach logs.
+        with subprocess.Popen(
+            [sys.executable, "-c", worker],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ) as process:
+            try:
+                process.communicate(payload, timeout=DOWNLOAD_TIMEOUT)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
+            if process.returncode:
+                raise ValueError
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         raise CliError(
             "DOWNLOAD_FAILED",
             "HTTP ZIP download failed; "

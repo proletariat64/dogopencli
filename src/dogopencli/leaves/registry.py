@@ -7,6 +7,7 @@ repair or deletion of DuckDB data. Ownership records survive folder removal.
 import fcntl
 import hashlib
 import importlib.util
+import inspect
 import json
 import os
 import re
@@ -385,8 +386,25 @@ class Registry:
             required = {"get", "capability"} if "get" in value["operations"] else set()
             if "list" in value["operations"]:
                 required |= {"capability", "scope", "collector", "filter"}
-            if any(not callable(getattr(adapter, name, None)) for name in required):
-                raise _invalid("adapter does not implement declared operations")
+            arguments = {
+                "capability": ({},),
+                "scope": ({},),
+                "collector": (None, None, "scope"),
+                "filter": ([], {}),
+                "get": (None, {}, "identity"),
+            }
+            for name in required:
+                method = getattr(adapter, name, None)
+                if not callable(method):
+                    raise _invalid("adapter does not implement declared operations")
+                try:
+                    # Validate call compatibility without executing business methods.
+                    inspect.signature(method).bind(*arguments[name])
+                except (TypeError, ValueError):
+                    raise _invalid(
+                        "adapter method signature does not implement "
+                        "declared operations"
+                    ) from None
         finally:
             sys.modules.pop(module_name, None)
         status = folder.stat()

@@ -2,6 +2,8 @@
 
 import io
 import json
+import os
+import socket
 import stat
 import threading
 import time
@@ -188,7 +190,8 @@ def test_http_total_deadline(http_source, monkeypatch):
     with pytest.raises(CliError, match="HTTP ZIP download failed"):
         with prepare_package(http_source[0] + "/slow"):
             pytest.fail("deadline ignored")
-    assert http_source[1] == ["/slow"]
+    # Deadline includes interpreter startup, so request may never reach server.
+    assert http_source[1] in ([], ["/slow"])
 
 
 def test_streamed_http_limit_without_content_length(http_source, monkeypatch):
@@ -203,3 +206,38 @@ def test_explicit_bundled_resource_works_statically():
         assert package.manifest["domain"] == "payment"
         assert package.manifest["name"] == "sla.baselines"
         assert (package.path / "adapter.py").is_file()
+
+
+def test_install_deadline_bounds_dns_and_reaps_transfer(run_cli, tmp_path, monkeypatch):
+    customization = tmp_path / "python-startup"
+    customization.mkdir()
+    marker = tmp_path / "resolver.pid"
+    resolver = (
+        "import os, socket, time\n"
+        "def blocked(*args, **kwargs):\n"
+        f"    open({str(marker)!r}, 'w').write(str(os.getpid()))\n"
+        "    time.sleep(2)\n"
+        "    raise OSError('resolver blocked')\n"
+        "socket.getaddrinfo = blocked\n"
+    )
+    (customization / "sitecustomize.py").write_text(resolver)
+    monkeypatch.setenv("PYTHONPATH", str(customization))
+
+    def blocked(*args, **kwargs):
+        time.sleep(2)
+        raise OSError("resolver blocked")
+
+    monkeypatch.setattr(socket, "getaddrinfo", blocked)
+    monkeypatch.setattr(delivery, "DOWNLOAD_TIMEOUT", 0.5)
+    started = time.monotonic()
+    code, output, error = run_cli(
+        ["plugins", "install", "http://blocked.invalid/package?secret=private"]
+    )
+    assert code != 0
+    assert "DOWNLOAD_FAILED" in output + error
+    assert "private" not in output + error
+    assert time.monotonic() - started < 1.5
+    assert marker.exists()
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(marker.read_text()), 0)
+    assert not (tmp_path / "plugins/payment").exists()
