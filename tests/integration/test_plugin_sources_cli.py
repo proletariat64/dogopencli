@@ -2,8 +2,11 @@
 
 import io
 import json
+import os
 import socket
 import sqlite3
+import subprocess
+import sys
 import threading
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,6 +18,7 @@ from dogopencli.cache import Cache, SnapshotMeta
 
 _CREATE_CONNECTION = socket.create_connection
 _SOCKET_CONNECT = socket.socket.connect
+_POPEN = subprocess.Popen
 
 
 def invoke(run_cli, *arguments):
@@ -40,7 +44,7 @@ def delivered_source(tmp_path):
 
 
 @pytest.fixture
-def delivery_server(delivered_source, monkeypatch):
+def delivery_server(delivered_source, monkeypatch, tmp_path):
     payload = delivered_source[1].read_bytes()
     requests = []
 
@@ -69,8 +73,33 @@ def delivery_server(delivered_source, monkeypatch):
         assert address == allowed, "Only task-owned loopback HTTP server is allowed"
         return _SOCKET_CONNECT(stream, address)
 
-    # Narrow integration's network guard to this fixture's single loopback port.
-    # Its browser/subprocess guards and all other network restrictions remain.
+    # The downloader runs in a cancellable interpreter. Apply the same single
+    # loopback destination restriction there before any package code imports.
+    startup = tmp_path / "download-startup"
+    startup.mkdir()
+    (startup / "sitecustomize.py").write_text(
+        "import socket\n"
+        "original_connect = socket.socket.connect\n"
+        "original_resolve = socket.getaddrinfo\n"
+        "def connect(stream, address):\n"
+        f"    assert address == {allowed!r}\n"
+        "    return original_connect(stream, address)\n"
+        "def resolve(host, port, *args, **kwargs):\n"
+        f"    assert (host, port) == {allowed!r}\n"
+        "    return original_resolve(host, port, *args, **kwargs)\n"
+        "socket.socket.connect = connect\n"
+        "socket.getaddrinfo = resolve\n"
+    )
+
+    def download_process(arguments, **kwargs):
+        assert arguments[:2] == [sys.executable, "-c"]
+        assert len(arguments) == 3 and "package._download_transfer(" in arguments[2]
+        assert "http://" not in arguments[2] and "https://" not in arguments[2]
+        environment = dict(os.environ, PYTHONPATH=str(startup))
+        return _POPEN(arguments, env=environment, **kwargs)
+
+    # Only the downloader process and this loopback port cross SIT guards.
+    monkeypatch.setattr(subprocess, "Popen", download_process)
     monkeypatch.setattr(socket, "create_connection", _CREATE_CONNECTION)
     monkeypatch.setattr(socket.socket, "connect", connect)
     try:
