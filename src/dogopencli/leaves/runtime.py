@@ -190,7 +190,10 @@ def execute(
             check_complete(
                 evidence, require_complete=args.require_complete, mode=operation
             )
-            _project(window_rows(rows, limit, offset), fields)
+            selected = (
+                leaf.adapter.filter(rows, parameters) if operation == "list" else rows
+            )
+            _project(window_rows(selected, limit, offset), fields)
             published = operation == "refresh" and bool(rows)
             if published:
                 snapshot = SnapshotMeta(
@@ -220,6 +223,7 @@ def execute(
                     snapshot,
                     [(index, canonical(row)) for index, row in enumerate(rows, 1)],
                 )
+            rows = selected
         else:
             snapshot, stored = store.read(namespace)
             if snapshot is None:
@@ -285,8 +289,25 @@ def execute(
         source_acquisition = evidence.record()
         requested_coverage = True
         if not live:
+            local_parameters = {
+                definition["name"].replace("-", "_")
+                for definition in definitions
+                if definition.get("local_field")
+            }
+            requested_parameters = {
+                **query,
+                **{
+                    key: value
+                    for key, value in parameters.items()
+                    if key in args.explicit_parameters
+                },
+            }
+            same_native_scope = leaf.adapter.scope(
+                requested_parameters
+            ) == leaf.adapter.scope(query)
             requested_coverage = all(
                 key not in args.explicit_parameters
+                or (key in local_parameters and same_native_scope)
                 or parameters.get(key) == value
                 or canonical(parameters.get(key)) == canonical(value)
                 for key, value in query.items()
