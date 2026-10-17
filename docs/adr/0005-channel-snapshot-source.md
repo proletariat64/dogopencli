@@ -1,5 +1,6 @@
 # Channel 故障期间采用显式离线替代源，保持正式查询架构
 
+历史 Channel snapshot 源与整理工具由 [#255](https://github.com/proletariat64/dogopencli/issues/255) 退役，不是当前可用查询。私有数据只存指定范围、不进入 Git 或日志的边界继续适用；以下 release 源码链接仅供隔离历史核对。
 Status: accepted
 Date: 2026-09-11
 
@@ -19,7 +20,7 @@ Date: 2026-09-11
 
 单轮真实 CDP 采集中，同 `abilityId` 出现不同内容会使 `complete=false`，即使总行数闭合也不得刷新覆盖旧缓存。实时查询保留两种内容并标记不完整，`--require-complete` 失败。该一致性检查独立于完整内容去重，不把 abilityId 升格为主键，也不改变跨轮历史整理集保留版本的规则。
 
-[离线整理工具](../../scripts/prepare_channel_snapshot.py)不联网，不能覆盖已有目录。包含 records、provenance、manifest 三个文件；原始业务数据不进入 Git、日志或公共 fixture。
+[离线整理工具](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/scripts/prepare_channel_snapshot.py)不联网，不能覆盖已有目录。包含 records、provenance、manifest 三个文件；原始业务数据不进入 Git、日志或公共 fixture。
 
 2026-09-11 用户进一步明确使用本仓库 `tmp/`，而非系统 `/tmp/`。按此覆盖此前“必须位于仓库外”的路径约定：真实导出与整理集可以写入已被 Git 忽略、权限受限的 `<repo>/tmp/`，继续拒绝仓库内其他目录；仓库外私有路径仍可配置。`.gitignore` 的 `/tmp/` 必须保持生效。浏览器 profile 使用持久私有目录，系统临时目录不再作为本轮数据归档位置。
 

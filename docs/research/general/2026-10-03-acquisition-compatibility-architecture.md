@@ -4,13 +4,15 @@ Observed: 2026-10-03
 Scope: general
 Status: snapshot
 
+Retired source references: local links removed by #255 now point to pinned release v0.4.3; this historical snapshot does not describe the current installed runtime.
+
 后续业务取舍：用户要求默认允许发布与使用安全 incomplete 缓存；当前 feature branch 已按[统一 incomplete 规格](../../design/unified-incomplete-v0.1.0.md)与[ADR 0019](../../adr/0019-usable-incomplete-acquisitions.md)实施。本文保留原研究建议，不再代表当前分支的发布/退出码规则；实施及验收状态见该规格，历史研究不证明新策略的生产 UAT。
 
 ## 结论与适用范围
 
 建议采用 **领域声明采集契约、公共层记录完整性证据并决定结果处置、领域存储执行原子发布** 的架构。统一错误、告警、退出码、发布状态和恢复边界；分页请求、总数语义、身份、详情要求与稳定性证明按已验证的能力契约保留差异。
 
-第一步复用现有 `CollectedScope`、`execute_bounded` 和采集器注册机制，增加一个小型公共结果策略模块；先消除 live/refresh 的重复判断与 `schema_version` 耦合，再逐域迁移。当前规模不需要插件框架、通用工作流引擎、任意策略脚本或一套全新采集接口。现有分工见 [公共采集器](../../../src/dogopencli/collect.py#L55)、[采集器注册入口](../../../src/dogopencli/plugins/__init__.py#L157)和 [ADR 0015](../../adr/0015-peer-domain-plugins-and-shared-auth.md)。
+第一步复用现有 `CollectedScope`、`execute_bounded` 和采集器注册机制，增加一个小型公共结果策略模块；先消除 live/refresh 的重复判断与 `schema_version` 耦合，再逐域迁移。当前规模不需要插件框架、通用工作流引擎、任意策略脚本或一套全新采集接口。现有分工见 [公共采集器](../../../src/dogopencli/collect.py#L55)、[采集器注册入口](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/__init__.py#L157)和 [ADR 0015](../../adr/0015-peer-domain-plugins-and-shared-auth.md)。
 
 本报告是建议与源码观察，尚未成为已接受 ADR、GitHub 规格或已交付功能。没有修改业务代码、创建 Issue、调用生产浏览器或重跑 UAT。
 
@@ -22,12 +24,12 @@ Status: snapshot
 
 | 观察 | 当前证据与影响 |
 | --- | --- |
-| Liquidity 有 46 个可执行 list 路由，9 个进入专用 incomplete 分支 | 按 [LIST_LEAVES](../../../src/dogopencli/plugins/liquidity/leaves.py#L2480) 与 [live 条件](../../../src/dogopencli/plugins/liquidity/query.py#L359)统计；returns 有两个请求变体，仍只算一个路由。 |
-| 告警开关借用了缓存版本 | live 与 refresh 都检查 `schema_version` 或 accounts/returns 路径；[版本字段](../../../src/dogopencli/plugins/liquidity/spec.py#L112)本应隔离缓存契约，不应决定部分结果的退出码。 |
-| 其余 37 个 Liquidity list 的普通 live 可以不完整但退出 0 | [live 返回](../../../src/dogopencli/plugins/liquidity/query.py#L408)只在专用分支传入 error；[输出函数](../../../src/dogopencli/plugins/liquidity/query.py#L87)据 error 决定退出码。严格 live 与 refresh 仍拒绝。 |
+| Liquidity 有 46 个可执行 list 路由，9 个进入专用 incomplete 分支 | 按 [LIST_LEAVES](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/leaves.py#L2480) 与 [live 条件](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/query.py#L359)统计；returns 有两个请求变体，仍只算一个路由。 |
+| 告警开关借用了缓存版本 | live 与 refresh 都检查 `schema_version` 或 accounts/returns 路径；[版本字段](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/spec.py#L112)本应隔离缓存契约，不应决定部分结果的退出码。 |
+| 其余 37 个 Liquidity list 的普通 live 可以不完整但退出 0 | [live 返回](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/query.py#L408)只在专用分支传入 error；[输出函数](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/query.py#L87)据 error 决定退出码。严格 live 与 refresh 仍拒绝。 |
 | Payment 也存在同类差异 | [cost 普通 live](../../../src/dogopencli/cli.py#L527)、[SLA 普通 live](../../../src/dogopencli/cli.py#L785)、[channel 普通 live](../../../src/dogopencli/cli.py#L316)可仅标记 `complete=false`；不能只改 Liquidity 后声称全局已统一。 |
-| 部分 Collection 与 Payment 列表当前普通 live 就要求完整 | [Collection cost 解析](../../../src/dogopencli/plugins/collection/cost.py#L84)、[Collection SLA](../../../src/dogopencli/cli.py#L1033)、[VA rules](../../../src/dogopencli/cli.py#L1140)、[VA capacity](../../../src/dogopencli/cli.py#L1300)、[配置/付款规则通道](../../../src/dogopencli/cli.py#L1351)保留完整性拒绝，迁移时不能悄悄放宽。 |
-| holdings 默认页宽已变化 | 当前 [holdings 声明](../../../src/dogopencli/plugins/liquidity/leaves.py#L394)为 **500**，与[现有测试](../../../tests/unit/plugins/liquidity/test_collect.py#L229)一致；上一轮报告的默认 10 已不适用。这不是本次生产全量验证。 |
+| 部分 Collection 与 Payment 列表当前普通 live 就要求完整 | [Collection cost 解析](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/collection/cost.py#L84)、[Collection SLA](../../../src/dogopencli/cli.py#L1033)、[VA rules](../../../src/dogopencli/cli.py#L1140)、[VA capacity](../../../src/dogopencli/cli.py#L1300)、[配置/付款规则通道](../../../src/dogopencli/cli.py#L1351)保留完整性拒绝，迁移时不能悄悄放宽。 |
+| holdings 默认页宽已变化 | 当前 [holdings 声明](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/leaves.py#L394)为 **500**，与[现有测试](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/unit/plugins/liquidity/test_collect.py#L229)一致；上一轮报告的默认 10 已不适用。这不是本次生产全量验证。 |
 
 原有 9 个 Liquidity 告警路由是 cash accounts、investment returns、forecast results、cash balances、cash groups、cash group-balances、cash pools、cash credit-lines、cash statements end-of-day。大页配置只改变取数策略，不意味着接入告警，也不意味着后端已修复。
 
@@ -49,9 +51,9 @@ flowchart TD
 
 ### 领域采集契约
 
-插件继续拥有请求构造、响应解析、scope 校验、原生身份、分页推进方式、总数语义与业务一致性证明。公共策略不能用 endpoint 名称猜规则，也不能捕获所有 `CliError` 并转成部分成功。现有 [EndpointContract](../../../src/dogopencli/plugins/__init__.py#L20)、[ListSpec](../../../src/dogopencli/plugins/liquidity/spec.py#L84)与领域采集器已提供主要声明位置。
+插件继续拥有请求构造、响应解析、scope 校验、原生身份、分页推进方式、总数语义与业务一致性证明。公共策略不能用 endpoint 名称猜规则，也不能捕获所有 `CliError` 并转成部分成功。现有 [EndpointContract](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/__init__.py#L20)、[ListSpec](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/spec.py#L84)与领域采集器已提供主要声明位置。
 
-保留目前的 pageNo、rowStart、single-response 循环，不先强行合成一个 paginator。复用 [collect_complete_scope](../../../src/dogopencli/plugins/__init__.py#L208)中已有的域采集器分派；Liquidity 的 capability 形状不完全等同于核心 `Capability`，若接入该入口，需要一个窄适配器，不通过强制类型转换掩盖差异。
+保留目前的 pageNo、rowStart、single-response 循环，不先强行合成一个 paginator。复用 [collect_complete_scope](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/__init__.py#L208)中已有的域采集器分派；Liquidity 的 capability 形状不完全等同于核心 `Capability`，若接入该入口，需要一个窄适配器，不通过强制类型转换掩盖差异。
 
 ### 完整性证据
 
@@ -67,9 +69,9 @@ flowchart TD
 | `attempts` | 精简的候选页宽、页数、完成状态与恢复原因；不存生产响应、真实业务 ID 或请求原文。 |
 | `scope_complete`、`dataset_complete` | 分别描述当前请求范围的覆盖与此次要求的数据组成；详情完成度与列表覆盖分开。 |
 
-对固定总数且有身份的分页契约，默认完成条件仍为 `arrivals == reported_total == unique_count`，并且 scope、字段与一致性验证全部通过。当前核心与 Liquidity offset 已使用该规则，见 [核心判断](../../../src/dogopencli/collect.py#L239)和 [offset 判断](../../../src/dogopencli/plugins/liquidity/collect.py#L131)。
+对固定总数且有身份的分页契约，默认完成条件仍为 `arrivals == reported_total == unique_count`，并且 scope、字段与一致性验证全部通过。当前核心与 Liquidity offset 已使用该规则，见 [核心判断](../../../src/dogopencli/collect.py#L239)和 [offset 判断](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/collect.py#L131)。
 
-single-response、无身份行次和动态总数由各自契约提供证明：不能把“三数相等”无条件施加到全部接口；也不能以未报告总数为由自动认定任何响应完整。现有 [single-response](../../../src/dogopencli/plugins/liquidity/collect.py#L143)是明确声明的整范围单响应合同。
+single-response、无身份行次和动态总数由各自契约提供证明：不能把“三数相等”无条件施加到全部接口；也不能以未报告总数为由自动认定任何响应完整。现有 [single-response](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/collect.py#L143)是明确声明的整范围单响应合同。
 
 ### 公共结果策略与发布结果
 
@@ -77,7 +79,7 @@ single-response、无身份行次和动态总数由各自契约提供证明：�
 
 将正常 live 的规则声明为 `partial_with_error` 或 `complete_only`；后者用于保留已经要求完整的能力。默认拒绝不完整列表的发布。VA 的详情容错为独立的发布规则，由领域证明“完整列表＋精确匹配的详情拒绝”后提供资格，不能只凭两个布尔量批准例外。
 
-发布资格不等于 `published=true`。领域存储完成原子提交后，返回实际发布结果，再由公共输出报告。避免为告警而在提交后抛出普通异常，丢失已写入事实：当前 [VA refresh](../../../src/dogopencli/plugins/collection/va_rule_inquiry.py#L169)已发布后才抛 `INCOMPLETE_RESULT`，调用者因此无法进入[正常输出](../../../src/dogopencli/cli.py#L1113)。迁移应返回带 snapshot/质量的刷新结果，由 CLI 输出并退出 1。
+发布资格不等于 `published=true`。领域存储完成原子提交后，返回实际发布结果，再由公共输出报告。避免为告警而在提交后抛出普通异常，丢失已写入事实：当前 [VA refresh](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/collection/va_rule_inquiry.py#L169)已发布后才抛 `INCOMPLETE_RESULT`，调用者因此无法进入[正常输出](../../../src/dogopencli/cli.py#L1113)。迁移应返回带 snapshot/质量的刷新结果，由 CLI 输出并退出 1。
 
 `schema_version` 只用于原有缓存隔离；分页页宽保持现有声明为唯一来源。不同时引入另一套 `initial_page_size` 配置制造双重真值。将来的 `running_total` 等字段整理由独立重构处理，第一阶段直接从已有契约适配成内部策略。
 
@@ -120,7 +122,7 @@ single-response、无身份行次和动态总数由各自契约提供证明：�
 | Liquidity detail | 与列表独立采集和缓存；不拿列表行当真实详情 | 独立详情发布器，不加入强制全量详情抓取 |
 | PTR cases / orders | 两轮完整内容一致；orders 在扩大后的取数范围证明稳定，再裁业务窗口 | 继续使用已注册 collector；不因 count 相等取消稳定证明 |
 
-目录依据：[Payment cost contract](../../../src/dogopencli/plugins/payment/cost.py#L39)、[Collection cost contract](../../../src/dogopencli/plugins/collection/cost.py#L34)、[SLA contract](../../../src/dogopencli/plugins/payment/sla.py#L44)、[核心恢复](../../../src/dogopencli/collect.py#L88)、[VA capacity](../../../src/dogopencli/plugins/collection/va_capacity.py#L40)、[VA refusal 发布](../../../src/dogopencli/plugins/collection/va_rule_inquiry.py#L124)、[PTR 稳定采集](../../../src/dogopencli/plugins/payment/ptr.py#L238)、[orders 裁窗](../../../src/dogopencli/plugins/payment/ptr_orders.py#L357)。
+目录依据：[Payment cost contract](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/payment/cost.py#L39)、[Collection cost contract](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/collection/cost.py#L34)、[SLA contract](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/payment/sla.py#L44)、[核心恢复](../../../src/dogopencli/collect.py#L88)、[VA capacity](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/collection/va_capacity.py#L40)、[VA refusal 发布](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/collection/va_rule_inquiry.py#L124)、[PTR 稳定采集](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/payment/ptr.py#L238)、[orders 裁窗](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/payment/ptr_orders.py#L357)。
 
 固定总数变化、同身份内容冲突、scope/回显不匹配、未知包络、认证或权限错误、一般业务失败、超时、无进展、页预算耗尽继续硬拒绝，不能用重采或普通 live 降级隐藏。核心 `consistency_field` 目前会把不同内容表现为 `complete=false`；需要单独记录其原因，不能将它与原生身份冲突混同，更不能把任意“不完整”都解释成容量问题。见 [核心一致性记录](../../../src/dogopencli/collect.py#L205)与 [共享重试边界](../../../src/dogopencli/collect.py#L272)。
 
@@ -130,15 +132,15 @@ single-response、无身份行次和动态总数由各自契约提供证明：�
 
 每个恢复步骤必须声明：适用 capability/variant、允许的页宽、触发原因、取数语义证据、最大候选数。现有 Cost/SLA 的 5000→10000 保持原触发行为；新增缩页只有在明确容量拒绝或经验证的覆盖缺口时启用，不能捕获一般业务错误。恢复方向可以增大或缩小，依据端点合同，而不是统一固定方向。
 
-候选之间不拼接，不拿旧缓存补洞；每轮从起点完整构建。固定总数只在同一候选内保持稳定，独立重建的新候选可以有不同总数，但也必须独立满足完整性；[现有成本测试](../../../tests/integration/test_cost_cli_sit.py#L605)已覆盖前轮 total=9、后轮 total=8。重试、重采和 PTR 二轮证明共享剩余预算，不能每步重置为 900 秒。中间失败但最终独立候选完整时可退出 0，同时保留恢复摘要，不将中间候选行混入结果。
+候选之间不拼接，不拿旧缓存补洞；每轮从起点完整构建。固定总数只在同一候选内保持稳定，独立重建的新候选可以有不同总数，但也必须独立满足完整性；[现有成本测试](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/integration/test_cost_cli_sit.py#L605)已覆盖前轮 total=9、后轮 total=8。重试、重采和 PTR 二轮证明共享剩余预算，不能每步重置为 900 秒。中间失败但最终独立候选完整时可退出 0，同时保留恢复摘要，不将中间候选行混入结果。
 
 ## 现有架构约束与额外发现
 
 本方案遵守 [ADR 0003](../../adr/0003-local-query-snapshots.md)、[ADR 0015](../../adr/0015-peer-domain-plugins-and-shared-auth.md)、[ADR 0016](../../adr/0016-liquidity-independent-list-and-detail-caches.md)和 [ADR 0018](../../adr/0018-liquidity-capture-store-and-retention.md)。VA 部分详情发布依 [ADR 0010](../../adr/0010-collection-va-partial-detail-tolerance.md)，Channel snapshot 替代源依 [ADR 0005](../../adr/0005-channel-snapshot-source.md)；两个例外不能被通用“失败保留旧缓存”口号抹掉。
 
-保留存储的原子边界：[Liquidity plan](../../../src/dogopencli/plugins/liquidity/store.py#L368)是验证与计划，[commit_plan](../../../src/dogopencli/plugins/liquidity/store.py#L618)一次提交 capture、index、trim 与删除。只有通过发布资格后才规划 retention，未发布候选不能触发淘汰；故意淘汰与采集缺数必须分开。运行态、配置态、参考信息的 profile 不因结果策略统一而改变。
+保留存储的原子边界：[Liquidity plan](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/store.py#L368)是验证与计划，[commit_plan](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/store.py#L618)一次提交 capture、index、trim 与删除。只有通过发布资格后才规划 retention，未发布候选不能触发淘汰；故意淘汰与采集缺数必须分开。运行态、配置态、参考信息的 profile 不因结果策略统一而改变。
 
-另外发现一个独立完整性风险：single-response 有原生身份时先去重，再只核对 total 与去重后数量，没有核对原始到达数，见 [single collector](../../../src/dogopencli/plugins/liquidity/collect.py#L158)。本次用现有 fake transport 做了一次纯合成验证：两个完全相同的 product 行、total=1，当前结果为 `complete=true`、返回一行。它与 offset 的证明要求不一致；现有[单响应测试](../../../tests/unit/plugins/liquidity/test_collect.py#L164)没有覆盖这个组合。
+另外发现一个独立完整性风险：single-response 有原生身份时先去重，再只核对 total 与去重后数量，没有核对原始到达数，见 [single collector](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/collect.py#L158)。本次用现有 fake transport 做了一次纯合成验证：两个完全相同的 product 行、total=1，当前结果为 `complete=true`、返回一行。它与 offset 的证明要求不一致；现有[单响应测试](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/unit/plugins/liquidity/test_collect.py#L164)没有覆盖这个组合。
 
 建议把这项作为迁移前单独的窄修复：先补真实行为回归，再令有身份的单响应校验原始到达数与报告数，不把去重当作完整证明。无身份的 cashflows 行次仍应保留。此次没有修复，也不能由这个合成样例推断生产发生过该问题。
 
@@ -166,6 +168,6 @@ single-response、无身份行次和动态总数由各自契约提供证明：�
 5. **发布与展示**：失败前后检查记录、snapshot、index 与 retention 无变化；提交失败回滚；live 从不发布；limit/offset/fields 不改变质量；已发布 partial 的 VA 缺详情 get 为 incomplete，完整列表证明不存在的 ID 才为 NOT_FOUND。
 6. **路由覆盖**：遍历实际注册表及请求变体检查规则存在；选代表能力通过真实 CLI 做行为验证，避免为全部 46 路由机械复制同一测试。
 
-现有基线来自 [Liquidity collector 测试](../../../tests/unit/plugins/liquidity/test_collect.py)、[Liquidity CLI partial/cache 测试](../../../tests/integration/test_liquidity_cli_sit.py#L426)、[Forecast partial/cache 测试](../../../tests/integration/test_liquidity_spec76_cli_sit.py#L331)、[成本恢复测试](../../../tests/integration/test_cost_cli_sit.py#L456)、[VA capacity 测试](../../../tests/integration/test_collection_va_capacity_cli_sit.py#L193)、[VA rules 测试](../../../tests/integration/test_collection_va_rule_cli_sit.py#L396)。
+现有基线来自 [Liquidity collector 测试](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/unit/plugins/liquidity/test_collect.py)、[Liquidity CLI partial/cache 测试](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/integration/test_liquidity_cli_sit.py#L426)、[Forecast partial/cache 测试](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/integration/test_liquidity_spec76_cli_sit.py#L331)、[成本恢复测试](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/integration/test_cost_cli_sit.py#L456)、[VA capacity 测试](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/integration/test_collection_va_capacity_cli_sit.py#L193)、[VA rules 测试](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/integration/test_collection_va_rule_cli_sit.py#L396)。
 
 本次实际运行：Liquidity collector 与 accounts partial/cache 的定向选择 **14 passed，45 deselected**；Forecast results partial/cache 测试 **1 passed**。共 15 项离线检查通过，另完成上述单响应风险的合成重现。业务测试没有验证尚未实施的公共策略；没有生产 UAT、全量 CI 或后端根因验证。本次文档通过仓库 `make doc-guard` 校验。

@@ -4,6 +4,8 @@ Observed: 2026-09-09
 Scope: payment
 Status: snapshot
 
+Retired source references: local links removed by #255 now point to pinned release v0.4.3; this historical snapshot does not describe the current installed runtime.
+
 ## 诊断方向
 
 用户反馈正常浏览器前端能够查看全部 Channel，要求优先观察页面真实发出的请求与响应处理。这是明确的诊断线索；[此前的直接重放](2026-09-08-channel-query-contract.md)失败不能证明页面同样失败，更不能先归为后端页大小上限。
@@ -84,7 +86,7 @@ Status: snapshot
 
 ## Python 每页 50 条完整遍历与 seqid 导出
 
-使用[手工运行的只读诊断脚本](../../../tests/integration/channel_pages_probe.py)，连接既有 CDP 9222 和已登录 Channel iframe，按实际查询契约执行 `EXTERNAL,pageSize=50,pageNum=1…99`。这是显式运行的生产诊断工具，不是正式 CLI 或默认执行的自动测试。依赖当前环境已有的 `websocket-client`。
+使用[手工运行的只读诊断脚本](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/integration/channel_pages_probe.py)，连接既有 CDP 9222 和已登录 Channel iframe，按实际查询契约执行 `EXTERNAL,pageSize=50,pageNum=1…99`。这是显式运行的生产诊断工具，不是正式 CLI 或默认执行的自动测试。依赖当前环境已有的 `websocket-client`。
 
 ```bash
 rtk proxy python3 tests/integration/channel_pages_probe.py --port 9222

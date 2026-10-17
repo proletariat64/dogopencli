@@ -2,42 +2,30 @@
 
 ## Python 代码与测试目录
 
-业务代码采用 `src/` 布局。以下为开发时遵循的目标结构；目录随实现按需创建，不预建空包。当前已有 `scripts/doc_guard.py` 和 `tests/test_doc_guard.py`；业务包与 `pyproject.toml` 已按此结构创建，`transport/` 含替代源实现，`browser/` 随 CDP 票据创建。
+业务代码采用 `src/` 布局。宿主提供协议、认证、传输和安装运行机制；四个业务 adapter 位于独立 leaf package，不保留旧业务运行时。
 
 ```text
 dogopencli/
-├── pyproject.toml                 # 包元数据、依赖、CLI 入口及 pytest/Ruff 配置
-├── src/
-│   └── dogopencli/
-│       ├── __init__.py
-│       ├── __main__.py            # python -m dogopencli 的薄入口
-│       ├── cli.py                 # 命令注册和输出
-│       ├── config.py              # 配置加载与校验
-│       ├── browser/               # CDP、登录与浏览器生命周期
-│       ├── transport/             # 查询允许清单、请求执行与错误处理
-│       └── plugins/
-│           ├── __init__.py        # 插件接口与发现
-│           ├── cost.py           # 付款与收款共用的成本响应解析及排序
-│           ├── payment/          # 付款查询、参数模型及响应解析
-│           ├── collection/       # 已验证的收款查询及描述
-│           └── liquidity/        # 同级流动性查询、契约、缓存及描述
-├── tests/
-│   ├── test_doc_guard.py          # 已有文档工具测试，使用 unittest
-│   ├── unit/                     # 按业务包相对路径组织单元测试
-│   │   └── plugins/payment/
-│   ├── integration/              # CLI、插件和传输层协作测试
-│   ├── fixtures/                 # 脱敏或合成的查询响应样本
-│   └── conftest.py               # 引入 pytest 后的共享 fixture
-├── scripts/                      # 仓库维护工具，不承载业务查询实现
-├── docs/                         # 规范、研究、领域决策与配图
-└── Makefile                      # 常用开发与校验命令
+├── pyproject.toml                 # 包元数据、依赖、CLI 入口及检查配置
+├── src/dogopencli/
+│   ├── cli.py                     # 当前公共命令入口
+│   ├── contracts.py               # 中立 endpoint/capability/result 协议
+│   ├── domain_contracts.py        # 无业务加载副作用的 domain/auth 声明
+│   ├── browser/                   # CDP、登录与浏览器生命周期
+│   ├── transport/                 # 允许清单、请求执行与错误处理
+│   ├── leaves/                    # 安装、发现、文档、共享运行时及临时缓存
+│   └── leaf_packages/             # 按 domain/dotted-leaf 布置 manifest/adapter
+├── examples/leaf_simple/           # 独立合成列表叶子的可执行开发参考
+├── tests/                         # 公开 CLI、宿主、分发及合成响应测试
+├── scripts/                       # 仓库维护工具，不承载业务查询实现
+└── docs/                          # 规范、研究、领域决策与配图
 ```
 
-Python 包、模块和函数使用 `snake_case`，类使用 `PascalCase`；测试文件使用 `test_<module>.py`。例如 `src/dogopencli/plugins/payment/channels.py` 对应 `tests/unit/plugins/payment/test_channels.py`。`__init__.py` 和 `__main__.py` 遵循 Python 特殊模块命名。
+Python 包、模块和函数使用 `snake_case`，类使用 `PascalCase`；测试文件使用 `test_<module>.py`。独立叶子目录使用 manifest 声明的 dotted identity；`__init__.py` 和 `__main__.py` 遵循 Python 特殊模块命名。
 
 业务测试使用 pytest，集中在 `pyproject.toml` 配置；现有文档工具测试继续通过 `make test-doc-guard` 运行。单元测试使用假 CDP 响应；集成测试默认使用本地替身，生产只读验证须显式启用。所有测试均禁用 CDP 端口 9330–9340。
 
-认证、只读限制和通用错误处理集中在核心层；产品插件仅声明查询并解析结果。v0.1.0 仅覆盖付款；当前范围以根目录 [AGENTS.md](../../AGENTS.md#scope-and-architecture) 为准，包含已验证的收款查询及 #71/#72 的流动性只读切片。流动性默认离线、列表/详情独立刷新，延期叶子仅提供帮助与明确拒绝；逐叶生产 UAT 仍待完成。收款 VA 规则已实现，VA 费用、账户池和实体账户仍暂缓。凭证、浏览器 profile、`.venv/`、缓存和构建产物不进入版本控制。
+认证、只读限制和通用错误处理集中在宿主；业务叶子自行拥有原生请求、解析、身份、过滤和采集策略。当前四个 bundled leaf 范围及验收见根目录 [AGENTS.md](../../AGENTS.md#scope-and-architecture) 和 [#255](https://github.com/proletariat64/dogopencli/issues/255)。历史查询文档不代表当前注册或生产验收；后续迁移地图 #241 保持暂停。凭证、浏览器 profile、`.venv/`、缓存和构建产物不进入版本控制。
 
 2026-09-11 用户明确指定本仓库 `tmp/` 保存私有探查导出和 Channel 替代数据集，避免系统 `/tmp/` 清理导致丢失。该目录由根 `.gitignore` 的 `/tmp/` 排除，使用 0700 目录和 0600 数据文件；不得作为可提交 fixture 或文档资产。真实数据写入仍拒绝仓库内其他目录，详见 [ADR 0005](../adr/0005-channel-snapshot-source.md)。
 

@@ -4,6 +4,8 @@ Observed: 2026-09-09
 Scope: payment
 Status: snapshot
 
+Retired source references: local links removed by #255 now point to pinned release v0.4.3; this historical snapshot does not describe the current installed runtime.
+
 ## 问题摘要
 
 生产环境“流出渠道基础数据管理 → Ant主体流出渠道”在 `EXTERNAL` 场景下，使用页面支持的每页 50 条查询，部分页返回 HTTP 200，但业务失败且无结果数据。该现象已通过页面原生搜索、分页控件和 Python/CDP 查询分别观察到，并非仅发生在脚本重放中。
@@ -98,6 +100,6 @@ Python 通过已登录浏览器逐页执行同一只读查询，`pageNum=1…99,
 
 后续[每页 10 与 100 条全页对照](2026-09-09-channel-page-size-comparison.md)同样未取得完整数据：10 条分页取得 4184 行，100 条分页取得 1814 行；两轮各有部分内容未在另一轮出现。该补充证据不改变本报告的根因待确认结论。
 
-- [只读遍历脚本](../../../tests/integration/channel_pages_probe.py)。手工运行：`rtk proxy python3 tests/integration/channel_pages_probe.py --port 9222`。
+- [只读遍历脚本](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/integration/channel_pages_probe.py)。手工运行：`rtk proxy python3 tests/integration/channel_pages_probe.py --port 9222`。
 - [完整研究记录](2026-09-09-channel-ui-investigation.md)，包含原生 UI 请求、DOM 行比较及静态前端实现观察。
 - 本机私有附件：`/tmp/dogopencli-channel-export-bob78hme/manifest.json` 为逐页汇总；同目录 `records.jsonl` 为原始业务行及 seqid。原始行不嵌入本报告、不提交 Git；临时附件不保证长期保留。

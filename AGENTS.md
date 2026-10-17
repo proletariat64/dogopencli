@@ -8,9 +8,9 @@
 - Retrieve old Python source from GitHub release tags when needed. Delete obsolete code/tests/docs; keep no legacy copies in the repo.
 
 ## Scope and Architecture
-Dogopencli is a Python CLI for querying the product operations platform, intended for one person on one machine. The current scope covers payment products, the collection transaction-cost inquiries in issue #21, SLA configuration inquiries in issue #27 and VA rule inquiries in issue #32. Liquidity inquiry scope is the verified slice in issue #72 against #71; unsupported leaves remain discoverable but non-executing, and per-leaf production UAT is pending. Other collection capabilities, including VA fees, pools and physical accounts, remain deferred.
+Dogopencli is a Python CLI for querying the product operations platform, intended for one person on one machine. The bundled business scope is four installed leaves: payment.sla.baselines list/get, collection.cost list, liquidity.reference.entities list and fx.trade list. Spec #255 defines their independence and production acceptance. Historical inquiries are not current registrations; later implementation requires a bounded ticket and isolated pinned-release reference. The broader migration map #241 remains paused. Other collection capabilities, including VA fees, pools and physical accounts, remain deferred.
 
-Payment production scope starts at `https://ifundcontrol.alipay.com/productOperation/paymentProductManagement/`. Collection scope covers the verified `collectionProductManagement/productPriceManagement/channelCost`, `collectionProductManagement/productSLAManagement/SlaManagement` and `collectionProductManagement/networkConstruction/VARuleManagement` entries and their cost/SLA/VA rule inquiry contracts. Confirm actual menus and API contracts before implementation; historical knowledge-base designs do not prove current production behavior.
+Payment production scope starts at `https://ifundcontrol.alipay.com/productOperation/paymentProductManagement/`. The current collection pilot covers the verified `collectionProductManagement/productPriceManagement/channelCost` transaction-cost inquiry. Historical SLA/VA rule entries are reference material for later explicitly scoped work, not current installed capabilities. Confirm actual menus and API contracts before implementation; historical knowledge-base designs do not prove current production behavior.
 
 Liquidity uses the verified `https://iliquidity.alipay.com/GUAPW3SG/menu/PortfolioMgmt` entry and its allowlisted inquiry contracts; payment authorization does not establish liquidity access.
 
@@ -20,9 +20,10 @@ Keep every business operation inquiry-only. Allow explicitly verified query endp
 The application uses the following layout:
 
 - `src/dogopencli/`: CLI, configuration, browser transport, and plugin discovery.
-- `src/dogopencli/plugins/payment/`: payment queries, schemas, and response parsing.
-- `src/dogopencli/plugins/collection/`: collection transaction-cost, SLA configuration and VA rule queries and schemas.
-- `src/dogopencli/plugins/liquidity/`: liquidity inquiries, native contracts, independent list/detail caches and descriptions.
+- `src/dogopencli/contracts.py`: neutral endpoint, capability and parsed-result contracts.
+- `src/dogopencli/domain_contracts.py`: side-effect-free domain identity and auth declarations.
+- `src/dogopencli/leaf_packages/<domain>/<dotted-leaf>/`: bundled manifests and self-contained business adapters.
+- `src/dogopencli/leaves/`: package lifecycle, registry, shared runtime, documentation and temporary cache.
 - `tests/`: unit and integration tests with sanitized fixtures.
 - `docs/`: verified API contracts and design decisions.
 

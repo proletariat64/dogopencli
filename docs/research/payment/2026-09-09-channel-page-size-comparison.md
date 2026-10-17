@@ -4,6 +4,8 @@ Observed: 2026-09-09
 Scope: payment
 Status: snapshot
 
+Retired source references: local links removed by #255 now point to pinned release v0.4.3; this historical snapshot does not describe the current installed runtime.
+
 ## 结论
 
 按用户要求分别从第 1 页完整尝试遍历。每页 10 条取得更多数据，但耗时更长、跨页重复更多，仍未取得完整结果。每页 100 条取得的记录内容也不全包含在每页 10 条的结果中：有 504 条不同内容仅在 100 条分页这一轮出现。因此不能将缩小页大小视为完整性修复。
@@ -83,7 +85,7 @@ rtk proxy python3 tests/integration/channel_pages_probe.py --port 9222 --page-si
 
 ## 脚本、附件与校验
 
-[只读诊断脚本](../../../tests/integration/channel_pages_probe.py)新增 `--page-size`，默认仍为 50。本轮实际使用的两个命令：
+[只读诊断脚本](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/integration/channel_pages_probe.py)新增 `--page-size`，默认仍为 50。本轮实际使用的两个命令：
 
 ```bash
 rtk proxy python3 tests/integration/channel_pages_probe.py --port 9222 --page-size 10 --max-pages 1000 --budget-seconds 900
