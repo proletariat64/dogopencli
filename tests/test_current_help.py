@@ -318,6 +318,30 @@ def test_auth_errors_keep_resolved_path_with_interleaved_global_options(run_cli)
         assert document["error"]["next"] == ["dogopencli auth check --help"]
 
 
+def test_domain_registration_preserves_core_installation_help(run_cli):
+    import runpy
+    from pathlib import Path
+
+    from dogopencli import plugins
+
+    sample = runpy.run_path(
+        str(Path(__file__).parents[1] / "examples/domain_component.py")
+    )
+    original = plugins.domain_plugins()
+    try:
+        try:
+            plugins.register_domains((*original, sample["component"]("plugins")))
+        except ValueError:
+            pass
+        code, out, _ = run_cli(["plugins", "--help"])
+        document = json.loads(out)["data"]
+        assert code == 0
+        assert document["summary"] == "Manage local leaf installations."
+        assert "install-pilots" in {child["name"] for child in document["children"]}
+    finally:
+        plugins.register_domains(original)
+
+
 def test_common_option_spellings_remain_literal_business_values(
     run_cli, monkeypatch, tmp_path
 ):

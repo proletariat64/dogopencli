@@ -373,6 +373,7 @@ def validate_domains(domains: tuple[DomainPlugin, ...]) -> None:
         "snapshot",
         "domain",
         "gui",
+        "plugins",
         "refresh",
         "describe",
         "prune",
