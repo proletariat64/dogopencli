@@ -431,12 +431,16 @@ def resolve(argv: list[str]) -> Invocation:
                     f"Unknown option {flag}; use "
                     + " ".join(("dogopencli", *path, "--help")),
                     exit_code=2,
+                    command_path=path,
                 )
             if option.kind != "bool" and not equal:
                 index += 1
                 if index == len(argv):
                     raise CliError(
-                        "INVALID_ARGUMENT", f"{flag} expected one argument", exit_code=2
+                        "INVALID_ARGUMENT",
+                        f"{flag} expected one argument",
+                        exit_code=2,
+                        command_path=path,
                     )
                 value = argv[index]
                 equal = "="
@@ -452,6 +456,7 @@ def resolve(argv: list[str]) -> Invocation:
                 "INVALID_ARGUMENT",
                 f"Unknown command {token}; use dogopencli {chr(32).join(path)} --help",
                 exit_code=2,
+                command_path=path,
             )
         index += 1
     node = nodes[path]
@@ -461,6 +466,7 @@ def resolve(argv: list[str]) -> Invocation:
         )
     except CliError as error:
         error.message += "; use " + " ".join(("dogopencli", *path, "--help"))
+        error.command_path = path
         raise
     if (
         config_error is not None
@@ -468,6 +474,7 @@ def resolve(argv: list[str]) -> Invocation:
         and not args.version
         and node.handler is not None
     ):
+        config_error.command_path = path
         raise config_error
     return Invocation(node, args, registry, config_file, remaining, help_requested)
 

@@ -1765,17 +1765,13 @@ def main(argv: list[str] | None = None) -> int:
     except CliError as error:
         # Report auth argument failures through the existing auth envelope;
         # never fall back to an older help parser after failed validation.
-        word, index = leading_command(values)
+        word, _ = leading_command(values)
         if word in AUTH_COMMANDS:
             from .auth.cli import error_dict
             from .auth.output import Result, emit
             from .browser.errors import invalid
 
-            command = (
-                "auth.check"
-                if word == "auth" and values[index + 1 : index + 2] == ["check"]
-                else word
-            )
+            command = ".".join(error.command_path) if error.command_path else word
             output_format = "json"
             for position, token in enumerate(values):
                 if token == "--format=text" or (

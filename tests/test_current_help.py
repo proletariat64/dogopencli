@@ -308,6 +308,16 @@ def test_core_argument_errors_are_not_reported_as_missing_leaves(run_cli):
         assert "--help" in error["message"]
 
 
+def test_auth_errors_keep_resolved_path_with_interleaved_global_options(run_cli):
+    for options in (["--verbose"], ["--format", "json"], ["--quiet", "-h"]):
+        code, out, _ = run_cli(["auth", *options, "check", "--bad"])
+        document = json.loads(out)
+        assert code == 1
+        assert document["command"] == "auth.check"
+        assert document["error"]["code"] == "invalid_arguments"
+        assert document["error"]["next"] == ["dogopencli auth check --help"]
+
+
 def test_common_option_spellings_remain_literal_business_values(
     run_cli, monkeypatch, tmp_path
 ):
