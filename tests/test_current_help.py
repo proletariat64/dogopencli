@@ -63,6 +63,7 @@ def test_first_help_traverses_all_children_without_runtime(
 ):
     import shutil
     import socket
+    import subprocess
     from pathlib import Path
 
     from dogopencli.domains import DomainService
@@ -88,6 +89,10 @@ def test_first_help_traverses_all_children_without_runtime(
     monkeypatch.setattr(leaf_cli, "execute", forbidden)
     monkeypatch.setattr(DomainService, "__init__", forbidden)
     monkeypatch.setattr(socket, "create_connection", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    from dogopencli.cache import Cache
+
+    monkeypatch.setattr(Cache, "__init__", forbidden)
     before = {
         p.relative_to(tmp_path): p.read_bytes()
         for p in tmp_path.rglob("*")
@@ -105,6 +110,9 @@ def test_first_help_traverses_all_children_without_runtime(
         for child in names:
             assert " " not in child
             pending.append([*path, child])
+        assert (
+            json.loads(run_cli([*path, "--help", "--format", "json"])[1])["data"] == doc
+        )
         for flag in ("-h", "--help"):
             assert json.loads(run_cli([*path, flag])[1])["data"] == doc
         if (
@@ -115,9 +123,10 @@ def test_first_help_traverses_all_children_without_runtime(
             assert json.loads(run_cli(path)[1])["data"] == doc
         text_code, text, text_err = run_cli([*path, "--help", "--format", "text"])
         assert (text_code, text_err) == (0, "")
-        assert doc["command"] in text and doc["summary"] in text
+        assert doc["command"] in " ".join(text.split())
+        assert doc["summary"] in " ".join(text.split())
         for item in doc["options"]:
-            assert item["summary"] in text
+            assert item["summary"] in " ".join(text.split())
             assert all(flag in text for flag in item["flags"])
         assert "PRIVATE-" not in out + text
     after = {
@@ -388,3 +397,237 @@ def test_common_option_spellings_remain_literal_business_values(
                 tmp_path / "config.toml",
             )
             assert json.loads(out)["data"] == []
+
+
+def test_text_help_uses_sections_and_preserves_contract(run_cli):
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
+    code, text, err = run_cli(
+        ["payment", "list", "sla.baselines", "-h", "--format", "text"]
+    )
+    assert (code, err) == (0, "")
+    assert text.startswith("Usage: dogopencli payment list sla.baselines")
+    for heading in (
+        "Options:",
+        "Constraints:",
+        "Examples:",
+        "Next:",
+        "Effects:",
+        "Errors:",
+    ):
+        assert heading in text
+    assert "default: 100" in text
+    assert "default: false" not in text.lower()
+    assert "required: false" not in text.lower()
+    assert "(empty list)" not in text
+    assert "help_version:" not in text
+
+
+def test_installed_parameter_modes_follow_operation_and_local_mapping(
+    run_cli, tmp_path
+):
+    import shutil
+    from pathlib import Path
+
+    shutil.copytree(
+        Path(__file__).parents[1] / "src/dogopencli/leaf_packages", tmp_path / "plugins"
+    )
+
+    def options(domain, operation, leaf):
+        code, out, _ = run_cli([domain, operation, leaf, "-h"])
+        assert code == 0
+        return {o["name"]: o for o in json.loads(out)["data"]["options"]}
+
+    fx = options("fx", "list", "trade")["bcode"]["argument_contract"]["modes"]
+    assert fx["cache"] == {"available": False}
+    assert fx["live"]["available"] is True
+    freshness = options("fx", "list", "trade")["require_fresh"]["argument_contract"][
+        "modes"
+    ]
+    assert freshness["live"]["available"] is True
+    assert freshness["live"]["effective"] is False
+    payment = options("payment", "list", "sla.baselines")["status"][
+        "argument_contract"
+    ]["modes"]
+    assert payment["cache"]["role"] == "local-filter"
+    assert payment["cache"]["required"] is False
+    assert set(
+        options("payment", "refresh", "sla.baselines")["status"]["argument_contract"][
+            "modes"
+        ]
+    ) == {"refresh"}
+    path = tmp_path / "plugins/payment/sla.baselines/leaf.json"
+    doc = json.loads(path.read_text())
+    parameter = {
+        "name": "attempt",
+        "type": "integer",
+        "required": True,
+        "multiple": True,
+        "choices": [1, 2],
+        "description": "Native attempts.",
+    }
+    doc["operations"]["get"]["parameters"] = [parameter]
+    doc["operations"]["list"]["parameters"] = [parameter]
+    path.write_text(json.dumps(doc))
+    for operation, expected in (
+        ("list", {"cache", "live"}),
+        ("refresh", {"refresh"}),
+        ("get", {"get"}),
+    ):
+        option = options("payment", operation, "sla.baselines")["attempt"]
+        modes = option["argument_contract"]["modes"]
+        assert set(modes) == expected
+        acquisition = modes["live" if operation == "list" else operation]
+        assert acquisition["required"] is True
+        assert acquisition["cardinality"] == {"min": 1, "max": None}
+        assert option["choices"] == [1, 2] and option["repeatable"] is True
+
+
+def test_leaf_errors_are_operation_specific_and_match_cache_failure(run_cli):
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
+    errors = {}
+    for operation in ("list", "get", "refresh", "prune", "describe"):
+        code, output, _ = run_cli(["payment", operation, "sla.baselines", "-h"])
+        assert code == 0
+        errors[operation] = json.loads(output)["data"]["errors"]
+    assert {
+        "CACHE_MISS",
+        "CACHE_STALE",
+        "CACHE_CONTRACT_CHANGED",
+        "INCOMPLETE_RESULT",
+        "CONFIG_ERROR",
+        "AUTH_REQUIRED",
+    } <= set(errors["list"])
+    assert "INCOMPLETE_RESULT" in errors["refresh"]
+    assert "AUTH_REQUIRED" in errors["get"]
+    for operation in ("get", "refresh", "prune", "describe"):
+        assert "CACHE_MISS" not in errors[operation]
+    for operation in ("prune", "describe"):
+        assert "AUTH_REQUIRED" not in errors[operation]
+    code, output, _ = run_cli(["payment", "list", "sla.baselines"])
+    assert code == 1
+    assert json.loads(output)["error"]["code"] == "CACHE_MISS"
+
+
+def test_help_terminal_width_redirect_and_wide_prose(run_cli, tmp_path, monkeypatch):
+    import os
+    import shutil
+    import sys
+    import unicodedata
+    from pathlib import Path
+
+    shutil.copytree(
+        Path(__file__).parents[1] / "src/dogopencli/leaf_packages", tmp_path / "plugins"
+    )
+    path = tmp_path / "plugins/payment/sla.baselines/leaf.json"
+    manifest = json.loads(path.read_text())
+    chinese = "缓存查询保留原生业务字段并支持本地过滤且不访问生产网络。" * 3
+    long_token = "--" + "unchanged-native-token-" * 8
+    manifest["operations"]["list"]["description"] = chinese + " " + long_token
+    path.write_text(json.dumps(manifest))
+    args = ["payment", "list", "sla.baselines", "-h", "--format", "text"]
+
+    def width(text):
+        return sum(
+            0
+            if unicodedata.combining(c)
+            else 2
+            if unicodedata.east_asian_width(c) in {"W", "F"}
+            else 1
+            for c in text
+        )
+
+    for columns in (36, 88, 140):
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+        monkeypatch.setattr(sys.stdout, "fileno", lambda: 1)
+        monkeypatch.setattr(
+            os,
+            "get_terminal_size",
+            lambda *_, columns=columns: os.terminal_size((columns, 24)),
+        )
+        code, text, err = run_cli(args)
+        assert (code, err) == (0, "")
+        assert long_token in text
+        assert chinese in "".join(text.split())
+        for line in text.splitlines():
+            assert width(line) <= columns or any(
+                width(word) > columns - 4 for word in line.split()
+            ), line
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
+    outputs = []
+    for columns in (20, 200):
+        monkeypatch.setenv("COLUMNS", str(columns))
+        outputs.append(run_cli(args)[1])
+    assert outputs[0] == outputs[1]
+    assert "\x1b" not in outputs[0]
+    assert all(
+        width(line) <= 88 or long_token in line for line in outputs[0].splitlines()
+    )
+
+
+def test_help_keeps_unicode_command_tokens_intact(run_cli, monkeypatch):
+    import os
+    import sys
+    from dataclasses import replace
+
+    from dogopencli.auth import spec
+
+    token = "/tmp/" + "中文配置目录" * 15
+    example = "dogopencli login --config-dir " + token
+    monkeypatch.setattr(
+        spec,
+        "COMMANDS",
+        tuple(
+            replace(command, examples=(example,), summary="Use " + token)
+            if command.path == ("login",)
+            else command
+            for command in spec.COMMANDS
+        ),
+    )
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "fileno", lambda: 1)
+    monkeypatch.setattr(os, "get_terminal_size", lambda *_: os.terminal_size((36, 24)))
+    code, text, err = run_cli(["login", "-h", "--format", "text"])
+    assert (code, err) == (0, "")
+    assert text.count(token) == 2
+    assert example in " ".join(text.split())
+
+
+def test_help_keeps_false_choices_true_defaults_and_zero_defaults(run_cli, tmp_path):
+    import shutil
+    from pathlib import Path
+
+    shutil.copytree(
+        Path(__file__).parents[1] / "src/dogopencli/leaf_packages", tmp_path / "plugins"
+    )
+    path = tmp_path / "plugins/payment/sla.baselines/leaf.json"
+    manifest = json.loads(path.read_text())
+    manifest["operations"]["get"]["parameters"] = [
+        {
+            "name": "enabled",
+            "type": "boolean",
+            "required": False,
+            "default": True,
+            "choices": [True, False],
+            "description": "Native switch.",
+        },
+        {
+            "name": "restricted",
+            "type": "string",
+            "required": False,
+            "choices": [],
+            "description": "No accepted supplied values.",
+        },
+    ]
+    path.write_text(json.dumps(manifest))
+    code, text, _ = run_cli(
+        ["payment", "get", "sla.baselines", "-h", "--format", "text"]
+    )
+    assert code == 0
+    flattened = " ".join(text.split())
+    assert "default: True" in flattened
+    assert "choices: True, False" in flattened
+    assert "choices: none (no supplied value accepted)" in flattened
+    assert "detail_identity" in flattened and "[required]" in flattened
+    assert "default: 0" in run_cli(["gui", "-h", "--format", "text"])[1]
+    for option in ("--all", "--recursive", "--tree"):
+        assert run_cli(["-h", option])[0] == 2

@@ -1,17 +1,13 @@
-"""Declarative business help: one declaration drives parsing and both formats.
+"""Shared command declarations, help documents and deterministic text rendering.
 
-DI-style ``help_version=1`` documents for the business command tree (Issue
-#13). The same OptionSpec/BizNode records generate the argparse leaf parsers,
-the parent/child navigation, and the JSON/text help renderers, so help can
-never drift from the accepted syntax. The auth subtree keeps its ported
-declaration in ``auth/spec.py``; ``helptree`` delegates those paths there.
-
-Normative source: docs/research/general/2026-09-12-cli-help-acceptance-matrix.md
+The current command model projects core and installed-leaf declarations into
+help_version=1 documents. Parsing and both output formats share these contracts.
+Legacy business modules still consume the shared option declaration helpers.
 """
 
 import argparse
-from dataclasses import dataclass, field, replace
-from typing import Any, NoReturn
+from dataclasses import dataclass, field
+from typing import Any
 
 HELP_VERSION = 1
 HELP_FORMATS = ("json", "text")
@@ -464,28 +460,6 @@ def add_options(
         parser.add_argument(*option.flags, **kwargs)
 
 
-class HelpParser(argparse.ArgumentParser):
-    """Validate help syntax without printing or exiting the public CLI."""
-
-    def error(self, message: str) -> NoReturn:
-        raise ValueError(message)
-
-
-def validate_help_options(tokens: list[str], options: tuple[OptionSpec, ...]) -> None:
-    parser = HelpParser(add_help=False, allow_abbrev=False)
-    add_options(
-        parser,
-        tuple(
-            replace(option, required=False)
-            for option in options
-            if option.name != "format"
-        ),
-    )
-    parser.add_argument("--format", choices=HELP_FORMATS)
-    parser.add_argument("--help", "-h", action="store_true")
-    parser.parse_args(tokens)
-
-
 def _describe(option: OptionSpec) -> dict[str, Any]:
     value: dict[str, Any] = {
         "name": option.name,
@@ -546,62 +520,221 @@ def document(node: BizNode) -> dict[str, Any]:
     return doc
 
 
-def render_text(node: BizNode) -> str:
-    """Human rendering of the same document; no ANSI, pager, or TTY logic."""
-    doc = document(node)
-    lines = [doc["command"], doc["summary"], ""]
-    if doc["children"]:
-        lines.append("Children:")
-        for entry in doc["children"]:
-            lines.append(f"  {entry['name']}  {entry['summary']}")
-    if doc["arguments"]:
-        lines.append("Arguments:")
-        for entry in doc["arguments"]:
-            suffix = " [required]" if entry.get("required") else ""
-            lines.append(f"  {entry['name']}  {entry.get('summary', '')}{suffix}")
-    if doc["options"]:
-        lines.append("Options:")
-        for entry in doc["options"]:
-            flags = ", ".join(entry.get("flags", (entry["name"],)))
-            metadata = []
-            if entry["type"] != "bool":
-                flags += " <" + entry["name"].strip("_").upper() + ">"
-            if entry.get("repeatable") or entry["type"] == "append":
-                metadata.append("repeatable")
-            if entry.get("choices"):
-                metadata.append(
-                    "choices: " + ", ".join(str(choice) for choice in entry["choices"])
+def _width(text: str) -> int:
+    import unicodedata
+
+    return sum(
+        0
+        if unicodedata.combining(char)
+        else 2
+        if unicodedata.east_asian_width(char) in {"W", "F"}
+        else 1
+        for char in text
+    )
+
+
+def _wrap(
+    text: str, width: int, indent: str = "", *, break_cjk: bool = True
+) -> list[str]:
+    """Keep Latin tokens intact; permit natural breaks between CJK characters."""
+    import re
+
+    lines = []
+    for paragraph in text.splitlines() or [""]:
+        line = indent
+        separator = ""
+        words = []
+        for token in re.findall(r"\s+|\S+", paragraph):
+            if not break_cjk or any(
+                marker in token for marker in ("/", "\\", "--", ".", "=")
+            ):
+                words.append(token)
+            else:
+                words.extend(re.findall(r"[\u3400-\u9fff]|[^\u3400-\u9fff]+", token))
+        for word in words:
+            if word.isspace():
+                separator = " " if line != indent else ""
+                continue
+            if line != indent and _width(line + separator + word) > width:
+                lines.append(line)
+                line = indent
+                separator = ""
+            line += separator + word
+            separator = ""
+        lines.append(line)
+    return lines
+
+
+def _mode_text(modes: dict[str, Any]) -> str:
+    descriptions = []
+    for name, mode in modes.items():
+        if not mode.get("available"):
+            descriptions.append(name + ": unavailable")
+            continue
+        role = str(mode.get("role", "available")).replace("-", " ")
+        detail = name + ": " + role
+        if mode.get("effective") is False:
+            detail += ", no effect"
+        if mode.get("required"):
+            detail += ", required"
+        cardinality = mode.get("cardinality", {})
+        if cardinality.get("max", 1) is None:
+            detail += ", repeatable"
+        descriptions.append(detail)
+    return "; ".join(descriptions)
+
+
+def render_text(doc: dict[str, Any], width: int = 88) -> str:
+    """Render an already assembled help document; no discovery or IO."""
+    width = max(1, width)
+    arguments = "".join(
+        " <" + entry["name"] + ">"
+        if entry.get("required")
+        else " [" + entry["name"] + "]"
+        for entry in doc.get("arguments", [])
+    )
+    usage = "Usage: " + doc["command"] + arguments
+    if doc.get("children"):
+        usage += " <command>"
+    if doc.get("options"):
+        usage += " [options]"
+    lines = _wrap(usage, width, break_cjk=False)
+    lines.extend(_wrap(doc["summary"], width))
+
+    def section(title: str, items: list[str]) -> None:
+        if items:
+            lines.extend(["", title + ":"])
+            for item in items:
+                lines.extend(
+                    _wrap(
+                        item, width, "  ", break_cjk=title not in {"Examples", "Next"}
+                    )
                 )
-            if entry["required"]:
-                metadata.append("required")
-            if entry.get("default") is not None:
-                metadata.append("default: " + str(entry["default"]))
-            suffix = " [" + "; ".join(metadata) + "]" if metadata else ""
-            lines.append(f"  {flags}  {entry['summary']}{suffix}")
-    for key in ("constraints", "examples", "next"):
-        if doc[key]:
-            lines.append(key.capitalize() + ":")
-            lines.extend("  " + item for item in doc[key])
-    if node.handler:
-        lines.append("Effects: " + str(doc["effects"]))
-        for variant in doc.get("effects_variants", []):
-            lines.append("Effects variant:")
-            lines.append(f"  when: {variant['when']}")
-            lines.append(f"  {variant['summary']}")
-            lines.append(f"  effects: {variant['effects']}")
-        lines.append("Errors: " + ", ".join(doc["errors"]))
-        lines.append(
-            "Exit codes: "
-            + "; ".join(f"{code} {text}" for code, text in doc["exit_codes"].items())
+
+    def rows(title: str, entries: list[tuple[str, str]]) -> None:
+        if not entries:
+            return
+        lines.extend(["", title + ":"])
+        column = min(max(_width(label) for label, _ in entries), 30)
+        for label, description in entries:
+            if width < 60 or _width(label) > column:
+                lines.extend(_wrap(label, width, "  ", break_cjk=False))
+                lines.extend(_wrap(description, width, "    "))
+            else:
+                prefix = "  " + label + " " * (column - _width(label) + 2)
+                wrapped = _wrap(description, max(1, width - _width(prefix)), "")
+                lines.append(prefix + wrapped[0])
+                lines.extend(" " * (column + 4) + line for line in wrapped[1:])
+
+    rows("Commands", [(c["name"], c["summary"]) for c in doc.get("children", [])])
+    rows(
+        "Arguments",
+        [
+            (
+                entry["name"],
+                entry.get("summary", "")
+                + (" [required]" if entry.get("required") else ""),
+            )
+            for entry in doc.get("arguments", [])
+        ],
+    )
+    options = []
+    for entry in doc.get("options", []):
+        label = ", ".join(entry.get("flags", [entry["name"]]))
+        if entry["type"] != "bool":
+            label += " <" + entry["name"].strip("_").upper() + ">"
+        metadata = []
+        if entry.get("required"):
+            metadata.append("required")
+        if entry.get("repeatable"):
+            metadata.append("repeatable")
+        if "choices" in entry:
+            metadata.append(
+                "choices: "
+                + (
+                    ", ".join(str(choice) for choice in entry["choices"])
+                    or "none (no supplied value accepted)"
+                )
+            )
+        default = entry.get("default")
+        if (
+            default is not None
+            and default != []
+            and not (entry["type"] == "bool" and default is False)
+        ):
+            metadata.append("default: " + str(default))
+        contract = entry.get("argument_contract", {})
+        if contract.get("modes"):
+            metadata.append(_mode_text(contract["modes"]))
+        description = entry["summary"]
+        if metadata:
+            description += " [" + "; ".join(metadata) + "]"
+        options.append((label, description))
+    rows("Options", options)
+    section("Constraints", doc.get("constraints", []))
+    section("Examples", doc.get("examples", []))
+    next_steps = doc.get("next", [])
+    generated = [
+        doc["command"] + " " + child["name"] + " --help"
+        for child in doc.get("children", [])
+    ]
+    if generated and next_steps == generated:
+        next_steps = [doc["command"] + " <command> --help --format text"]
+    section("Next", next_steps)
+    effect_names = {
+        "mutates": "writes local state",
+        "network": "accesses network",
+        "browser_required": "requires browser",
+        "destructive": "destructive",
+    }
+
+    def effects(value: dict[str, Any]) -> str:
+        active = [effect_names.get(key, key) for key, flag in value.items() if flag]
+        if not active:
+            return "No side effects."
+        if value.get("network") is False:
+            active.append("no network")
+        return "; ".join(active)
+
+    if not doc.get("children"):
+        effect_rows = [effects(doc.get("effects", {}))]
+        effect_rows.extend(
+            variant["when"]
+            + ": "
+            + variant["summary"]
+            + " "
+            + effects(variant["effects"])
+            for variant in doc.get("effects_variants", [])
         )
-        output = doc["output"]
-        lines.append(
-            "Default output: "
-            + str(output["default_format"])
-            + "; formats: "
-            + ", ".join(output["formats"])
+        section("Effects", effect_rows)
+        section("Errors", [", ".join(doc["errors"])] if doc.get("errors") else [])
+        section(
+            "Exit codes",
+            [
+                code + ": " + description
+                for code, description in doc.get("exit_codes", {}).items()
+            ],
         )
-    lines.append("Help formats: " + ", ".join(doc["output"]["help_formats"]))
+        output = doc.get("output", {})
+        section(
+            "Output",
+            [
+                "Default: "
+                + output["default_format"]
+                + "; formats: "
+                + ", ".join(output["formats"])
+            ]
+            if "default_format" in output
+            else [],
+        )
+    diagnostics = []
+    for entry in doc.get("diagnostics", []):
+        diagnostics.append(
+            "; ".join(str(key) + ": " + str(value) for key, value in entry.items())
+            if isinstance(entry, dict)
+            else str(entry)
+        )
+    section("Diagnostics", diagnostics)
     return "\n".join(lines) + "\n"
 
 

@@ -198,7 +198,7 @@ def test_failed_save_reports_error_and_preserves_state():
 
 def test_gui_help_is_offline_and_supports_json_text(capsys):
     assert gui.main(["--help"]) == 0
-    help_data = json.loads(capsys.readouterr().out)
+    help_data = json.loads(capsys.readouterr().out)["data"]
     assert help_data["command"] == "dogopencli gui"
     assert help_data["help_version"] == 1
     assert gui.main(["--help", "--format", "text"]) == 0

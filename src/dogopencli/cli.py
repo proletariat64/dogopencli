@@ -18,6 +18,7 @@ from . import collect as collect_mod
 from . import config as config_mod
 from .cache import Cache, SnapshotMeta
 from .cached_query import CachedQuery, is_stale, read_cached_query, snapshot_meta
+from .command_model import leading_command
 from .errors import (
     AUTH_REQUIRED,
     BUSINESS_QUERY_FAILED,
@@ -36,7 +37,6 @@ from .errors import (
 from .execution import invoke_leaf, observe_result
 from .handler_contract import core_handler, validate_core_handlers
 from .helpspec import BizNode, OptionSpec, add_options
-from .helptree import leading_command
 from .inquiry import inquiry_session
 from .jsonutil import canonical, parse
 from .plugins import (

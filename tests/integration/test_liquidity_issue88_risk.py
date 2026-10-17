@@ -8,7 +8,7 @@ from dataclasses import replace
 
 import pytest
 
-from dogopencli import catalog, helptree, plugins, snapshot
+from dogopencli import catalog, plugins, snapshot
 from dogopencli.plugins.liquidity import leaves
 from dogopencli.plugins.liquidity.risk_batch import RISK_ANOMALIES, RISK_EVENTS
 
@@ -46,7 +46,6 @@ def risk_candidate_catalog(monkeypatch):
         declarations[node.path] = node
     nodes = catalog.build_catalog(declarations.values())
     monkeypatch.setattr(catalog, "NODES", nodes)
-    monkeypatch.setattr(helptree, "NODES", nodes)
     monkeypatch.setattr(snapshot, "NODES", nodes)
 
 

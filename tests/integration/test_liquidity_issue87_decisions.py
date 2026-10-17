@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from dogopencli import catalog, helptree
+from dogopencli import catalog
 from dogopencli.plugins.liquidity import leaves
 from dogopencli.plugins.liquidity.decision_list import (
     DECISIONS,
@@ -55,7 +55,6 @@ def decision_candidate_catalog(monkeypatch):
         declarations[node.path] = node
     nodes = catalog.build_catalog(declarations.values())
     monkeypatch.setattr(catalog, "NODES", nodes)
-    monkeypatch.setattr(helptree, "NODES", nodes)
 
 
 def decision(index, **changes):

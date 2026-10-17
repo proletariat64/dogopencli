@@ -98,6 +98,6 @@ def test_installed_console_script(tmp_path) -> None:
     )
     assert result.returncode == 0
     assert result.stderr == ""
-    assert "command: dogopencli\n" in result.stdout
-    assert "name: plugins" in result.stdout
-    assert "dogopencli plugins --help" in result.stdout
+    assert result.stdout.startswith("Usage: dogopencli <command>")
+    assert "plugins" in result.stdout.split("Commands:", 1)[1]
+    assert "dogopencli <command> --help --format text" in result.stdout

@@ -9,7 +9,7 @@ from dataclasses import replace
 
 import pytest
 
-from dogopencli import catalog, helptree
+from dogopencli import catalog
 from dogopencli.plugins.liquidity import leaves
 from dogopencli.plugins.liquidity.transfer_list import TRANSFER_ORDERS
 
@@ -47,7 +47,6 @@ def transfer_candidate_catalog(monkeypatch):
         declarations[node.path] = node
     nodes = catalog.build_catalog(declarations.values())
     monkeypatch.setattr(catalog, "NODES", nodes)
-    monkeypatch.setattr(helptree, "NODES", nodes)
 
 
 def transfer(index, **overrides):

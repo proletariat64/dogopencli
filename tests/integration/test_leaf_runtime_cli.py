@@ -126,6 +126,8 @@ def test_stale_strict_and_domain_observations(run_cli, pilots, monkeypatch):
     assert code == 0 and json.loads(out)["meta"]["stale"] is True
     code, out, _ = run_cli(["payment", "list", "sla.baselines", "--require-fresh"])
     assert code == 1 and json.loads(out)["error"]["code"] == "CACHE_STALE"
+    _, help_output, _ = run_cli(["payment", "list", "sla.baselines", "-h"])
+    assert "CACHE_STALE" in json.loads(help_output)["data"]["errors"]
     _, inventory, _ = run_cli(["domain", "leaves", "payment"])
     observed = json.loads(inventory)["result"]
     assert observed[0]["id"] == "payment.sla.baselines"
@@ -157,6 +159,16 @@ def test_effective_scope_is_saved_and_adapter_updates_require_refresh(run_cli, p
     assert live["meta"]["scope"] == pilots.business_requests[-1]["queryRequest"]
     code, out, _ = run_cli(["fx", "list", "trade"])
     assert code == 0 and json.loads(out)["meta"]["scope"] == live["meta"]["scope"]
+    _, help_output, _ = run_cli(["fx", "list", "trade", "-h"])
+    help_doc = json.loads(help_output)["data"]
+    for name in ("bcode", "symbol"):
+        option = next(item for item in help_doc["options"] if item["name"] == name)
+        assert option["argument_contract"]["modes"]["cache"] == {"available": False}
+        requests = list(pilots.business_requests)
+        code, out, _ = run_cli(["fx", "list", "trade", "--" + name, "X"])
+        assert code == 2 and json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+        assert pilots.business_requests == requests
+    assert "CACHE_CONTRACT_CHANGED" in help_doc["errors"]
     path = Path(__import__("os").environ["DOGOPENCLI_CONFIG"]).parent
     adapter = path / "plugins/fx/trade/adapter.py"
     adapter.write_text(adapter.read_text() + "\n# replacement contract\n")

@@ -11,7 +11,6 @@ rejected as invalid arguments.
 
 import argparse
 import contextlib
-import json
 import os
 import sys
 from pathlib import Path
@@ -39,10 +38,8 @@ from .output import Result, emit
 from .spec import (
     SPECS,
     CommandSpec,
-    document,
     globals_parser,
     leaf_parser,
-    render_text,
 )
 
 CONFIG_DIR_ENV = "DOGOPENCLI_CONFIG_DIR"
@@ -180,12 +177,9 @@ def main(argv: list[str], command_hint: str | None = None) -> int:
                 raise invalid("Unknown command: " + " ".join(remainder))
             if spec.handler:
                 leaf_parser(spec).parse_args(remainder, namespace=global_args)
-            sys.stdout.write(
-                render_text(spec)
-                if format == "text"
-                else json.dumps(document(spec), ensure_ascii=False) + "\n"
-            )
-            return 0
+            from ..command_model import emit_help, resolve
+
+            return emit_help(resolve(values))
         args = leaf_parser(spec).parse_args(remainder, namespace=global_args)
         try:
             args.config_file = config_mod.config_path(args.config_dir)
