@@ -61,9 +61,7 @@ def environment_entry_points_fail(monkeypatch):
     def broken(*args, **kwargs):
         raise AssertionError("help must not touch config/cache/browser")
 
-    monkeypatch.setattr("dogopencli.cli.config_mod.load", broken)
-    monkeypatch.setattr("dogopencli.cli.Cache", broken)
-    monkeypatch.setattr("dogopencli.cached_query.Cache", broken)
+    monkeypatch.setattr("dogopencli.leaves.runtime.cache_for", broken)
     monkeypatch.setattr("dogopencli.inquiry.resolve_environment", broken)
     monkeypatch.setattr("dogopencli.inquiry.make_transport", broken)
     monkeypatch.setattr("dogopencli.inquiry.acquire_browser_control", broken)

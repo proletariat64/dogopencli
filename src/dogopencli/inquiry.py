@@ -7,11 +7,12 @@ from pathlib import Path
 from .browser import errors as auth_errors
 from .browser.cdp import CdpTransport, make_transport, url_origin
 from .browser.coordination import acquire_browser_control
-from .browser.environment import STARTUP_URLS, resolve_environment
+from .browser.environment import resolve_environment
 from .browser.errors import AuthError
 from .browser.probe import check_authentication, probe_entry
+from .contracts import TransportCapability
+from .domain_contracts import STARTUP_URLS
 from .errors import AUTH_REQUIRED, BROWSER_UNAVAILABLE, LOCKED, CliError
-from .plugins import TransportCapability
 from .transport.cdp import CdpQueryTransport
 
 

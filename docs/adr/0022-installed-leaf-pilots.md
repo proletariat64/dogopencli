@@ -21,8 +21,9 @@ Domain enablement and authentication remain authoritative.
 All actions follow the domain: `payment list sla.baselines`,
 `payment get sla.baselines <id>`, `payment refresh sla.baselines`,
 `payment describe sla.baselines`. Help and maintenance use the same dotted name.
-Formatted output supports `json` and `text` only. Legacy public leaf registrations
-are detached; implementations remain for the separate migration/cleanup #218.
+Formatted output supports `json` and `text` only. Native business behavior belongs
+to each installed adapter. The repository and built distributions do not retain
+legacy business implementations or compatibility copies.
 
 Common runtime owns collection orchestration, result policy, one cache slot per
 list, rendering and storage registration. Adapters own verified native contracts,
@@ -62,7 +63,36 @@ The pilots are payment `sla.baselines` list/get, collection `cost` list, liquidi
 `reference.entities` list and FX `trade` list. Four-domain production UAT and
 GUI interaction evidence are required independently of automated checks. FX's
 166-row reference reproduction is comparison evidence, never a fixed future count
-or proof of completeness. Later migration and old-code deletion remain #218.
+or proof of completeness. The broader migration map #241 remains paused.
+
+## Amendment: independent business implementations (#255)
+
+[Spec #255](https://github.com/proletariat64/dogopencli/issues/255) replaces the
+four pilot wrappers and retires the host's legacy business bootstrap. Neutral
+endpoint/result protocols belong to `dogopencli.contracts`; domain-only identity
+and authentication declarations belong to `dogopencli.domain_contracts`. Neither
+owner registers business implementations. Current CLI/help/GUI/registry consumers
+use those owners directly, with no compatibility re-exports.
+
+The four adapters own native request construction, response validation, identity,
+filters and collection policy. Genuine shared transport, collection/evidence,
+serialization, lifecycle, cache and Duckdog services remain host-owned. Unmigrated
+leaves do not justify shipping the old runtime or a renamed copy.
+
+Historical business comparison uses isolated release `v0.4.3`, pinned to
+`a7e5c5ead675487646eb9a53d73ec9e0aeb944f9`, outside the repository and new
+runtime. Compare identical inputs, field values/types, amounts, identities, counts
+and multiplicities. Liquidity retains native `instId` despite the old descriptor's
+`id`; FX content comparison never proves native identity or total semantics.
+
+Acceptance requires both architecture and business proof: retired files absent
+from repository/wheel/sdist, fresh installed execution outside the checkout,
+all four packages through public lifecycle and controlled transport, required
+checks/review, same-input comparisons and four-domain nonempty production UAT.
+Payment additionally requires real-ID get and representative supported filters.
+The evidence companion records results; this decision alone is not a passing gate.
+Daily installed versions remain untouched. Delivery ends at one reviewable PR,
+without automatic merge, release or deployment.
 
 ## Amendment: explicit portable installation (#239)
 

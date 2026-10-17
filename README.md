@@ -172,10 +172,12 @@ business-query, login, import or package-management buttons.
 ## Develop and migrate
 
 The [development handbook](docs/agents/leaf-plugins.md) is the entry point for new
-leaves and legacy migration. [Issue #218](https://github.com/proletariat64/dogopencli/issues/218)
-tracks remaining-leaf migration: establish the current inventory, migrate and
-accept one supported leaf, then remove superseded code only after checking retained
-consumers. Unsupported placeholders are not automatic migration targets. Historical
+leaves and historical migration. [Issue #255](https://github.com/proletariat64/dogopencli/issues/255)
+requires four self-contained pilots and retirement of the old business runtime.
+The [broader migration map](https://github.com/proletariat64/dogopencli/issues/241)
+remains paused until separately resumed. Later work starts with a bounded inventory
+and isolated pinned-release references, then accepts each supported inquiry.
+Unsupported placeholders are not automatic migration targets. Historical
 command examples in older reports are evidence of that revision, not current CLI
 registration.
 

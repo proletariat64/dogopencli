@@ -16,13 +16,13 @@ from dogopencli.browser.environment import (
     CHROME_BIN_ENV,
     DEFAULT_CHROME_BIN,
     FORBIDDEN_PORTS,
-    STARTUP_URLS,
     BrowserEnvironment,
     _auth_section,
     cdp_port,
 )
 from dogopencli.browser.errors import AuthError
 from dogopencli.browser.login import login
+from dogopencli.domain_contracts import STARTUP_URLS
 from dogopencli.domains import DomainService
 from dogopencli.errors import CliError
 

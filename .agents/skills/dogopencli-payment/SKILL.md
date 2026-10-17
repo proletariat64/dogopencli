@@ -1,51 +1,73 @@
 ---
 name: dogopencli-payment
-description: Query payment channel configurations, channel costs, and SLA baselines through dogopencli. Use for payment operations lookups or comparisons, including 付款渠道、成本、SLA基线; covers cached, mock, and explicitly requested live inquiries.
+description: Query installed payment SLA baseline lists and native details through dogopencli. Use for payment SLA configuration lookups or comparisons, including 付款SLA基线; supports offline, explicitly requested live, and refresh inquiries.
 ---
 
 # Dogopencli payment inquiries
 
-Use the public CLI for inquiry-only access. This skill does not authorize changes to production configuration. Payment rules and collection products are outside this command set.
+Use the public CLI for inquiry-only access. This skill does not authorize
+production configuration changes. The bundled payment leaf is `sla.baselines`
+with list/get. Historical channel/cost commands are not current registrations.
 
-## Discover the relevant command
+## Discover the installed contract
 
-Use installed `dogopencli`; in its checkout use `uv run dogopencli`. If unavailable, report the missing executable rather than installing dependencies implicitly. Apply the host's shell wrapper convention, such as `rtk proxy`, to these examples.
+Use installed `dogopencli`; in this checkout use `uv run dogopencli`. If unavailable,
+report the missing executable rather than installing implicitly. Apply the host's
+shell wrapper convention, such as `rtk proxy`, to these examples.
 
-Start with `dogopencli payment --help`, then inspect an action such as `dogopencli payment list --help` and the relevant installed dotted leaf with `-h` or `--help`. Help is flag-only; positional `help` commands are unsupported. Bare root and groups disclose navigation; bare executable leaves run queries. Read current JSON help for accepted flags, constraints, effects, and examples instead of inventing filters or copying backend requests.
+Start with `dogopencli payment -h`, then `payment list -h` and
+`payment list sla.baselines -h`. Use current JSON help for flags, constraints,
+effects and examples. Help is flag-only. Bare groups disclose navigation;
+bare executable leaves run inquiries. If the leaf is absent, report that fact;
+installation requires task authorization and is not inferred from lookup intent.
 
-| Need | Command |
-| --- | --- |
-| Channel configuration | `dogopencli payment channel list` |
-| Payment channel costs | `dogopencli payment cost list` |
-| SLA baseline discovery | `dogopencli payment sla baselines list` |
-| Baseline details | `dogopencli payment sla baselines get --id ID` |
+```bash
+dogopencli payment list sla.baselines
+dogopencli payment list sla.baselines --live
+dogopencli payment get sla.baselines BASELINE_ID
+```
 
-Get an SLA ID from the list, then request detail; a list row is not a substitute for detail. Cost configuration alone does not establish actual transaction charges or aggregate expenditure.
+Obtain a native `id` from the list before get. The detail endpoint uses
+`slaBaselineId`; a list row is not a substitute for native detail.
 
-## Choose data and scope
+## Select scope and data mode
 
-Default queries read the local cache without browser or network access; local initialization or migration can write files. Use this default for ordinary lookups. For an explicitly current/backend request, inspect leaf help and use `--live`, or refresh if the user requested updating the local snapshot. Live queries do not refresh cache.
+Default list replays the temporary cache without browser/network access. Use
+`--live` for an explicitly current/backend request; it does not publish cache.
+Use `payment refresh sla.baselines` only when updating the saved snapshot is
+within the task. A successful nonempty accepted refresh replaces the whole slot;
+empty, failure and strict rejection retain the prior snapshot.
 
-Channel defaults to EXTERNAL. Other advertised payout scopes require a source supporting them. A configured snapshot source covers EXTERNAL only and cannot serve live queries; do not switch source configuration merely to make a query succeed.
+Supported native filter mappings are `--biz-category`, `--creditor-currency`,
+`--region-code` and `--status`. Read installed help for exact accepted values and
+mode restrictions. `--biz-legal-entity` is acquisition-only, has no cached field
+mapping, and its independent backend filtering effect is unproven. Disclose that
+limitation rather than asserting a verified legal-entity subset.
 
-Cost is restricted to FUND_OUT_CHANNEL_TRANS_FEE. SLA `--biz-legal-entity` is live-only and its independent filtering effect is unverified: disclose this limitation rather than claiming a verified legal-entity subset.
+## Interpret evidence
 
-## Query and interpret
+Use JSON for parsing and inspect `data`, `meta`, `error` and exit status. Current
+formats are `json` and `text`. Discover display windows in current help; use
+`--limit 0` for an unrestricted display when accepted, without treating that
+option as backend completeness. Select `--fields` only for observed native names.
 
-Keep JSON for parsing; inspect `data`, `meta`, `error`, and exit status. Help uses JSON/text; business results use JSON/table. Apply filters from the leaf contract. Repeated values of one cached filter are OR, different fields are AND; live filters accept one value per field.
-
-Default list output is at most 100 rows. For totals, exports, or exhaustive comparisons, use `--all` or traverse the advertised output window, checking metadata. Do not combine `--all` with explicit `--limit` or `--offset`. Select `--fields` only after discovering actual returned field names.
-
-Report source, capture time, scope, staleness, and completeness with conclusions. Default TTL is 72 hours, configurable; use `--require-fresh` and/or `--require-complete` when the requested conclusion requires them. Output truncation, snapshot completeness, and backend completeness are different conditions.
-
-Channel mock data can be a complete curated dataset while `simulated=true` and `backend_complete=false`. Describe it as exported/mock evidence, not current full production coverage. An empty result from partial coverage proves only no match in available records. `seqid` is a local dataset position, not a stable business key; do not use it to join snapshots or domains. Establish a shared business key before comparing channel, cost, and SLA records.
+Report source, capture time, saved query scope, staleness and completeness.
+Use `--require-fresh` or `--require-complete` when the conclusion requires them.
+Native SLA values are configuration targets, not measured payment performance.
+Preserve exact numeric/text amounts, unknown fields and null/empty distinctions.
+An empty cached filter result proves only no match in the saved records.
 
 ## Recover within scope
 
-For CACHE_MISS, inspect `dogopencli payment refresh DOTTED_LEAF --help` and refresh when within the requested task. Refresh writes local snapshots; its source may be an export or CDP. Preserve existing source configuration and let the CLI enforce publication quality.
+For `CACHE_MISS` or `CACHE_CONTRACT_CHANGED`, inspect refresh help and refresh
+when authorized. Do not convert an old snapshot to bypass contract validation.
+For authentication/browser failures, use `dogopencli auth check --domain payment`
+and authorized `dogopencli login --domain payment`; manual SSO belongs to the
+user. Follow repository browser/profile rules; never use ports 9330–9340 or
+borrow another session.
 
-For AUTH_REQUIRED or BROWSER_UNAVAILABLE, inspect `dogopencli auth --help` and the relevant auth leaf. Use the existing session check first; use `dogopencli login` when login is needed and authorized, leaving interactive SSO to the user. Keep DI-compatible auth arguments as advertised by current help. Never use CDP ports 9330–9340.
-
-On persistent collection or source errors, report the error and available coverage; do not loop indefinitely or bypass the CLI with arbitrary CDP JavaScript or backend requests. Keep cookies, tokens, and unrequested sensitive record content out of logs. Save requested exports under a persistent user-selected path or repository `tmp/`, not system `/tmp`.
-
-Finish with the requested findings and their material data limitations, or the precise blocker and next command. Never infer success solely from an HTTP status or the presence of some records.
+Report persistent errors and available evidence rather than retrying indefinitely
+or bypassing the CLI with arbitrary requests/JavaScript. Keep cookies, tokens and
+unrequested sensitive data out of logs. Save requested exports under a persistent
+user-selected path or private repository `tmp/`. HTTP 200 and returned rows alone
+never prove a successful business inquiry or complete coverage.

@@ -4,6 +4,8 @@ Observed: 2026-09-11
 Scope: payment
 Status: snapshot
 
+Retired source references: local links removed by #255 now point to pinned release v0.4.3; this historical snapshot does not describe the current installed runtime.
+
 ## 当前决定
 
 用户确认故障属于后端，并要求将历史导出整理为 Channel 替代数据源，继续原设计的实现工作。正式边界见 [ADR 0005](../../adr/0005-channel-snapshot-source.md)，最终产品规格继续保存在 [Issue #1](https://github.com/proletariat64/dogopencli/issues/1)。
@@ -58,7 +60,7 @@ simulated = true
 
 ## 已交付的离线整理工具
 
-[prepare_channel_snapshot.py](../../../scripts/prepare_channel_snapshot.py)读取导出目录，验证输入清单，去除旧 seqid 后按完整内容去重，保留不同内容及版本，生成新的连续编号和逐条来源。按用户追加要求，输出可位于被 Git 忽略的仓库 `tmp/`，也支持仓库外私有目录；拒绝仓库内其他路径，不覆盖已有数据集。
+[prepare_channel_snapshot.py](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/scripts/prepare_channel_snapshot.py)读取导出目录，验证输入清单，去除旧 seqid 后按完整内容去重，保留不同内容及版本，生成新的连续编号和逐条来源。按用户追加要求，输出可位于被 Git 忽略的仓库 `tmp/`，也支持仓库外私有目录；拒绝仓库内其他路径，不覆盖已有数据集。
 
 其他输入整理时可按以下形式执行；目标必须是尚不存在的新目录：
 

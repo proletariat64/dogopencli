@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from dogopencli.collect import CollectedScope, collect_scope
+from dogopencli.contracts import EndpointContract, ParsedPage
 from dogopencli.errors import (
     BUSINESS_QUERY_FAILED,
     INVALID_RESPONSE,
@@ -15,7 +16,6 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import parse
-from dogopencli.plugins import EndpointContract, ParsedPage
 
 
 class SampleCapability:

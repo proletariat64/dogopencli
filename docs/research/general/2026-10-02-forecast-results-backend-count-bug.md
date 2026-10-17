@@ -4,6 +4,8 @@ Observed: 2026-10-02
 Scope: general
 Status: snapshot
 
+Retired source references: local links removed by #255 now point to pinned release v0.4.3; this historical snapshot does not describe the current installed runtime.
+
 ## Summary and evidence boundary
 
 The dated full-scope forecast-results inquiry reports **7504 records**, but
@@ -106,13 +108,13 @@ is not a claim of complete results or an activation decision.
 - Keep native width/offset behavior and identity validation. No smaller-page
   fallback, silent count correction or incomplete cache publication is authorized.
 
-Source evidence: [`collect.py`](../../../src/dogopencli/plugins/liquidity/collect.py)
+Source evidence: [`collect.py`](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/collect.py)
 (`collect_liquidity_scope`, `_collect_offset`, `_merge_page`),
-[`query.py`](../../../src/dogopencli/plugins/liquidity/query.py)
+[`query.py`](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/query.py)
 (`_run_list_live`), and
-[`refresh.py`](../../../src/dogopencli/plugins/liquidity/refresh.py)
+[`refresh.py`](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/refresh.py)
 (`run_refresh_list`). The
-[integration SIT](../../../tests/integration/test_liquidity_spec76_cli_sit.py)
+[integration SIT](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/tests/integration/test_liquidity_spec76_cli_sit.py)
 `test_forecast_7504_7502_uses_accounts_partial_contract_and_preserves_cache`
 checks width 5000, offsets 0/5000, ordinary/strict live, incomplete refresh,
 byte-identical prior-cache protection and disconnected offline reading. These

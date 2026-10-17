@@ -149,7 +149,7 @@ def test_describe_rejects_removed_json_alias(run_cli, pilots):
 def test_effective_scope_is_saved_and_adapter_updates_require_refresh(run_cli, pilots):
     from test_leaf_pilots_cli import fx_page
 
-    from dogopencli.browser.environment import FX_STARTUP_URL
+    from dogopencli.domain_contracts import FX_STARTUP_URL
 
     pilots.href = FX_STARTUP_URL
     pilots.business_script.append(fx_page([{"uniqueId": "synthetic"}]))

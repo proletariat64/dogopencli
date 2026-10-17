@@ -40,12 +40,8 @@ extend-exclude = [".qoder"]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
-# Pre-existing probe/docs tests predate the Ruff gate; keep them untouched.
-"tests/integration/channel_pages_probe.py" = ["E501"]
+# Documentation guard fixtures contain long literal examples.
 "tests/test_doc_guard.py" = ["E501"]
-"tests/test_prepare_channel_snapshot.py" = ["E741"]
-# Generated sampled-field evidence: native field names exceed the limit.
-"src/dogopencli/plugins/liquidity/fields.py" = ["E501"]
 
 [tool.setuptools.package-data]
 "dogopencli" = ["leaf_packages/**/*"]

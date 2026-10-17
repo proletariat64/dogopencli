@@ -6,11 +6,11 @@ import pytest
 
 from dogopencli.browser.environment import (
     DEFAULT_CDP_URL,
-    PAYMENT_STARTUP_URL,
     cdp_port,
     resolve_environment,
 )
 from dogopencli.browser.errors import AuthError
+from dogopencli.domain_contracts import PAYMENT_STARTUP_URL
 
 
 @pytest.fixture(autouse=True)

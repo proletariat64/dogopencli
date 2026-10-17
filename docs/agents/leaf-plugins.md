@@ -78,9 +78,10 @@ behavior and completeness limitations. Verify that each request is inquiry-only;
 HTTP method alone does not establish this. Preserve native values and unknown
 fields. Do not invent stable identities, totals or completeness to satisfy a schema.
 
-For a legacy migration, establish the current supported-leaf inventory and consumer
-list under [#218](https://github.com/proletariat64/dogopencli/issues/218) before
-selecting the next leaf. Create a bounded per-leaf ticket stating the old behavior,
+For a later migration, first resume the paused
+[migration map](https://github.com/proletariat64/dogopencli/issues/241) explicitly
+and establish the supported-leaf inventory and consumer list. Create a bounded
+per-leaf ticket stating the historical behavior,
 new dotted identity, supported list/get operations, dependencies, verification scope
 and eventual deletion candidates. Unsupported/deferred inquiries require their own
 qualification decision; copying their implementation is not qualification.
@@ -124,8 +125,10 @@ helper rejects invalid contents rather than silently making a distributable pack
 from private/runtime state.
 
 Packages execute Python in the host environment. There is no dependency installation
-or build phase. Existing pilots import verified host capability/parser modules;
-this coupling must be accounted for when updating the host or deleting old code.
+or build phase. Each pilot owns its native endpoint contract, request construction,
+parser and business collection policy. Shared host imports use side-effect-free
+contracts and generic transport, collection, evidence and serialization utilities.
+The host does not register or import a second business runtime.
 All four pilots currently consist of a manifest and one adapter; none is evidence
 for multi-module package loading. The handbook test separately installs a resource
 variant, deletes its source directory, and successfully reads the installed
@@ -218,8 +221,9 @@ Export the object named by `adapter`. Follow the
 
 ### Bridge the adapter to the shared collector
 
-`LeafAdapter` is only the entry interface. A newly written list also needs the
-native contract and parser that pilot wrappers import from host business modules.
+`LeafAdapter` is only the entry interface. A newly written list also needs its own
+native contract and parser. Import `EndpointContract` and `ParsedPage` from
+`dogopencli.contracts`; keep business behavior in the installed leaf.
 For the standard `collect_scope` path, define these in the adapter as the sample
 does:
 
@@ -232,8 +236,7 @@ does:
 | `parse_page(body)` | Validate the native success/error envelope, record shape, identity fields and pagination numbers; return `ParsedPage(records, page_num, page_size, total_count, total_pages)`. Use the host JSON parser to preserve exact decimal values. |
 | `identity_key(record)` | Return the proven hashable native identity used for collection consistency checks; agree with the manifest identity. |
 
-These are the members exercised by the sample/common collection path; not every
-method on the historical `Capability` protocol is required by this path. The
+These are the members exercised by the sample/common collection path. The
 [common collector](../../src/dogopencli/collect.py) constructs requests, applies
 bounded HTTP handling and validates paging/count/identity consistency. The parser
 still owns business-envelope interpretation: HTTP 200 can contain a failure, and
@@ -348,11 +351,19 @@ production inquiry.
 
 ## 7. Apply the evidence to a real rewrite
 
-The maintainer proposed using historical work as knowledge for rewrites against
-the current interface, starting with simple supported leaves and ending with full
-legacy cleanup. Treat the following as a per-leaf evaluation workflow. A complete
-inventory/order, data-disposal plan and all complex loading cases have not yet been
-established by this handbook exercise.
+[Spec #255](https://github.com/proletariat64/dogopencli/issues/255) defines the
+four-pilot independence and business acceptance gate. The evidence companion
+records which checks have actually passed. Required production evidence must be
+present before this pattern is described as proven. The broader migration map
+remains paused until separately resumed; this handbook does not resume it.
+
+The four pilots have now passed independent installed execution, isolated
+same-input release comparisons and per-leaf nonempty production UAT, as recorded
+in the [evidence companion](leaf-handbook-evidence.md). The resulting migration
+method is leaf-owned native business behavior under current contracts, direct
+imports of genuine host primitives, isolated release-tag comparison, retired-file
+and transitive-consumer checks, installed-artifact proof and per-leaf business UAT.
+These examples do not establish arbitrary module-loading or complex-leaf support.
 
 1. Identify a supported inquiry and its historical contract, tests and UAT. Use
    current dotted-name practice. Assess simplicity by actual behavior: verified
@@ -362,16 +373,20 @@ established by this handbook exercise.
 2. Write against the current leaf interface using that knowledge. Reproduce the
    native request/response contract with shared host mechanics, and verify business
    output parity: fields, types, identity, scope, detail and quality semantics.
-   Old CLI spelling/output envelopes need not survive; business-output differences
-   need explanation and evidence. Avoid leaving accidental dependencies on an old
-   leaf simply to make the new adapter short.
-3. Use freshly collected replacement state where appropriate. The maintainer's
-   proposed policy keeps old data only as a comparison/test reference, then removes
-   it after the rewrite and fresh synchronization. Before execution, identify the
-   exact old data, which comparisons consume it, what fresh synchronization means
-   (query cache versus explicit Duckdog ingestion), and the disposal gate. This
-   exercise has not validated or executed that plan. Normal uninstall still
-   retains Duckdog data; migration cleanup must be separate and scoped.
+   Retrieve historical Python only from a pinned GitHub release tag into an
+   isolated location outside the repository and new runtime. Never import, wrap,
+   call, re-export or copy the retired business runtime into the new distribution.
+   Replay identical inputs in separate historical/new environments and compare
+   fields, types, amounts, identity, counts and multiplicities. Verified native
+   business meaning takes precedence over historical defects; explain differences
+   and return unresolved business ambiguity to the owner.
+3. Use task-isolated configuration and freshly collected replacement state where
+   appropriate. Before any reset, inventory the exact configuration, query cache,
+   Duckdog database/tables and authentication profile it affects. Reset is optional
+   and requires task authorization. Ordinary uninstall retains Duckdog data;
+   refresh does not import business rows into Duckdog. Preserve the current daily
+   installation when validating #255; no global installation or deployment is
+   part of acceptance.
 4. Pass the public CLI tests and perform inquiry-only production UAT for the new
    leaf and native get if declared. Compare full records under matching bounded
    scope and investigate changing data instead of enforcing historical counts.
@@ -381,17 +396,19 @@ established by this handbook exercise.
    unused allowed CDP port, human SSO where required, never ports 9330–9340 or
    borrowed sessions. Keep raw data/authentication private; publish sanitized
    evidence. No business mutations or automatic dataset ingestion.
-6. Resolve every retained caller/import before removing old code. Current pilots
-   still depend on host business modules. A final clean legacy removal therefore
-   needs new ownership for required contracts/parsers and a reachability check;
-   detached CLI registration alone is insufficient. Keep shared host facilities
-   separate from superseded business-leaf code in that audit.
+6. Inventory every retired implementation and retained host primitive. Check
+   direct and transitive consumers and remove obsolete code, registration, tests,
+   scripts and active guidance. Inspect wheel and sdist contents; install outside
+   the checkout, install the packages through public lifecycle commands and run
+   positive inquiries in fresh processes with controlled transport. Reject retired
+   imports and verify module origins. Static checks and positive execution jointly
+   establish independence; neither replaces production business UAT.
 7. Record actual auxiliary-file/multi-module requirements for complex leaves,
    validate each needed loading pattern, and update this handbook from the results.
    Complete per-leaf checks/review and evidence before progressing. Track the
-   remaining inventory and final cleanup under
-   [#218](https://github.com/proletariat64/dogopencli/issues/218).
+   remaining inventory only after the paused migration map is explicitly resumed.
 
 Normal installation does not run production UAT. The synthetic exercise validates
-the standard development path; real inquiry rewriting, fresh synchronization,
-legacy data/code deletion and complex-case support remain separately evidenced work.
+the standard development path; each real inquiry still needs its own installed
+artifact, same-input comparison and production evidence. Unknown FX business
+identity and total semantics remain explicit limitations, not completeness proof.

@@ -300,9 +300,9 @@ class Registry:
         validate_manifest(value)
         if value["domain"] != folder.parent.name or value["name"] != folder.name:
             raise _invalid("manifest identity must match domain and leaf folder")
-        from ..plugins import domain_plugins
+        from ..domain_contracts import domain_declarations
 
-        if value["domain"] not in {domain.id for domain in domain_plugins()}:
+        if value["domain"] not in {domain.id for domain in domain_declarations()}:
             raise _invalid("unknown domain")
         binding = value["adapter"]
         if not isinstance(binding, str) or binding.count(":") != 1:

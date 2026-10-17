@@ -4,6 +4,8 @@ Observed: 2026-10-12
 Scope: general
 Status: snapshot
 
+Retired source references: local links removed by #255 now point to pinned release v0.4.3; this historical snapshot does not describe the current installed runtime.
+
 ## Findings
 
 1. Keep `--live` online, default reads offline, and explicit refresh as the only cache writer. `--from-date` / `--to-date` must mean the same inclusive source business-date window online and offline, not capture time.
@@ -17,7 +19,7 @@ This is design research, not implemented-feature or full production CLI UAT evid
 
 ## Primary sources and method
 
-- Current code at commit `0a3c460b191d`: [latest contract](../../../src/dogopencli/plugins/liquidity/cash_forecast.py), [entity/account contracts](../../../src/dogopencli/plugins/liquidity/leaves.py), [offset acquisition](../../../src/dogopencli/plugins/liquidity/collect.py), [result policy](../../adr/0019-usable-incomplete-acquisitions.md), and [capture profiles](../../adr/0018-liquidity-capture-store-and-retention.md).
+- Current code at commit `0a3c460b191d`: [latest contract](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/cash_forecast.py), [entity/account contracts](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/leaves.py), [offset acquisition](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/collect.py), [result policy](../../adr/0019-usable-incomplete-acquisitions.md), and [capture profiles](../../adr/0018-liquidity-capture-store-and-retention.md).
 - Independently verified Liquidity authentication at `https://iliquidity.alipay.com/GUAPW3SG/menu/PortfolioMgmt`, dedicated profile, headless Chrome, CDP `127.0.0.1:9222`. No forbidden CDP port, login automation, credential extraction or business mutation.
 - Current native bundle: `https://gw.alipayobjects.com/render/p/yuyan/180020010000002482/S090011910164/umi.js`; 15,763,128 bytes; SHA-256 `cd59b985d544dff8fb7ab89c6081fd1d9713187886db9abccdc554d82eddbf03`. Matches the [October 2 source proof](2026-10-02-cash-forecast-business-probe.md), but API behavior was probed again rather than inferred from that match.
 - Zero-based character offsets in that bundle: service `he` / latest query near 1513803; services `Le` / `tt` for statistical inquiry near 1514300–1514900; daily chart renderer near 4088900; daily date/alias callers near 4105915–4107420; latest list caller near 4110239–4111800. Daily renderer uses `statisticalDate` as x-axis, `balance` as value and `data` as account series.

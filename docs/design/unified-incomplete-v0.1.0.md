@@ -1,5 +1,6 @@
 # 统一 incomplete 架构规格 v0.1.0
 
+历史设计：旧业务运行时已由 [#255](https://github.com/proletariat64/dogopencli/issues/255) 退役；以下原生业务知识及 release 源码引用不代表当前实现指导。当前接口见 [leaf handbook](../agents/leaf-plugins.md)。
 日期：2026-10-03（Asia/Shanghai）。状态：当前 feature branch 已完成实施与离线验收；新策略生产只读 UAT 为 82/83 个目标命令通过，Payment channel EXTERNAL 源端阻塞，ledger balances 按用户要求跳过；尚未发布。完整记录见[生产 UAT](../research/general/2026-10-03-unified-incomplete-production-uat.md)。
 规格版本独立于 Python 包版本。实施工作树：`refact-incomplete-unify-process`。
 权威规格：[GitHub Issue #78](https://github.com/proletariat64/dogopencli/issues/78)。本文件为仓库阅读副本。
@@ -22,7 +23,7 @@
 
 ## 当前源码基线与研究边界
 
-本工作树注册表经实际导入验证为 **46 个 Liquidity list 路由、47 个请求 variant**；holdings 页宽为 **500**。原报告是研究快照，当前 single-response 已同时检查原始行数与唯一行数，不再存在它描述的未修复样例，见 [single collector](../../src/dogopencli/plugins/liquidity/collect.py#L143)。必须保留这项回归。
+本工作树注册表经实际导入验证为 **46 个 Liquidity list 路由、47 个请求 variant**；holdings 页宽为 **500**。原报告是研究快照，当前 single-response 已同时检查原始行数与唯一行数，不再存在它描述的未修复样例，见 [single collector](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/collect.py#L143)。必须保留这项回归。
 
 研究时 code-review-graph 在该 root 返回 0 文件/节点，不能用于推断关系或测试覆盖；只读研究不重建索引，采用报告指向文件的定向源码核查。graphify 已查询内部知识图谱，命中历史分页/报表概念，未提供本 CLI 的直接契约证据，故不据此声称后端语义已验证。源码依据补充见[核查记录](../research/general/2026-10-03-incomplete-source-evidence.md)。研究阶段不调用生产系统、不修改业务代码、不执行生产 UAT；实施阶段已另建源码/测试图并分析影响。
 
@@ -60,7 +61,7 @@
 
 ## 最小公共模型
 
-复用 [CollectedScope 与 execute_bounded](../../src/dogopencli/collect.py#L55)、[collector 注册与分派](../../src/dogopencli/plugins/__init__.py#L157)；新增小型 `result_policy.py`，不另建采集框架，不强行合并 pageNo、offset 与 single-response 循环。
+复用 [CollectedScope 与 execute_bounded](../../src/dogopencli/collect.py#L55)、[collector 注册与分派](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/__init__.py#L157)；新增小型 `result_policy.py`，不另建采集框架，不强行合并 pageNo、offset 与 single-response 循环。
 
 建议模型为实施目标，不是现有 API：
 
@@ -127,11 +128,11 @@ missing_count/coverage_ratio 仅在 total 单位可信且分子同单位时计�
 
 ## 缓存证据必须与数据一起保存
 
-只删 refresh 的拒绝分支会产生假完整：当前 [plan_capture_publish](../../src/dogopencli/plugins/liquidity/store.py#L360) 与 trim 元数据写死完整性为 true；[CaptureEntry](../../src/dogopencli/plugins/liquidity/store.py#L37) 尚无采集质量；[select_captures/covers_window](../../src/dogopencli/plugins/liquidity/store.py#L634) 主要依据范围/留存推断完整。必须在同一迁移阶段改造 store 和 read，不可先发布 partial 再补读路径。
+只删 refresh 的拒绝分支会产生假完整：当前 [plan_capture_publish](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/store.py#L360) 与 trim 元数据写死完整性为 true；[CaptureEntry](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/store.py#L37) 尚无采集质量；[select_captures/covers_window](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/plugins/liquidity/store.py#L634) 主要依据范围/留存推断完整。必须在同一迁移阶段改造 store 和 read，不可先发布 partial 再补读路径。
 
 1. capture/index 和 snapshot 持久化真实 scope/dataset 完整性、采集原因、原始 total/计数摘要。`row_count` 始终等于实际存储主记录数；后端 total 单独保存。现有 [SnapshotMeta](../../src/dogopencli/cache.py#L56) 已有两个完整性字段，复用它们；新增证据通过窄元数据迁移，所有已迁移域的缓存读取须能取回。
 2. 数据、证据、index、trim、deletes、retention 在既有 [publish_many](../../src/dogopencli/cache.py#L269) 事务内原子落库。无法持久化/回读证据的能力，不得先放行 partial 发布。
-3. 普通缓存读先验证来源与内部存储完整性，再评估来源质量并告警。保持 [validated_records](../../src/dogopencli/cached_query.py#L58) 的实际行数/身份校验；它检查缓存是否损坏，不应要求实际行数等于后端 total。
+3. 普通缓存读先验证来源与内部存储完整性，再评估来源质量并告警。保持 [validated_records](https://github.com/proletariat64/dogopencli/blob/a7e5c5ead675487646eb9a53d73ec9e0aeb944f9/src/dogopencli/cached_query.py#L58) 的实际行数/身份校验；它检查缓存是否损坏，不应要求实际行数等于后端 total。
 4. 历史缓存无新增 evidence 时，复用其已有 backend/dataset flags，不根据“行数相等”升级为完整；false 缺理由则使用 `COVERAGE_UNPROVEN`。旧 Liquidity capture/index 原本只允许完整采集，缺新增字段可按旧格式语义兼容，retention holes 仍必须检查。读时不写库；新增记录不得丢字段后被旧逻辑读成 true。
 5. 缓存来源、simulated、fetched_at/stale 与完整性独立。`--require-fresh` 保留原规则，不通过换质量标记更新采集时间或业务观测时间。
 

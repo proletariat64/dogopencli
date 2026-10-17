@@ -6,10 +6,10 @@ from typing import Any
 
 from dogopencli import __version__, config
 from dogopencli.command_model import Parser
+from dogopencli.domain_contracts import domain_declarations
 from dogopencli.domains import DomainService
 from dogopencli.errors import CliError
 from dogopencli.jsonutil import canonical
-from dogopencli.plugins import domain_plugins
 
 from .registry import Leaf, Registry
 from .runtime import execute
@@ -109,7 +109,7 @@ def main(argv: list[str]) -> int:
             # Preserve the established missing-leaf execution error envelope.
             if (
                 len(tokens) >= 3
-                and tokens[0] in {domain.id for domain in domain_plugins()}
+                and tokens[0] in {domain.id for domain in domain_declarations()}
                 and tokens[1] in {"list", "get", "refresh", "prune", "describe"}
                 and not any(token in {"-h", "--help"} for token in tokens)
             ):

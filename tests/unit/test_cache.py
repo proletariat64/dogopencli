@@ -1,10 +1,12 @@
 """Unit tests for the SQLite snapshot cache."""
 
+import threading
 from dataclasses import replace
 
 import pytest
 
-from dogopencli.cache import Cache, SnapshotMeta, namespace
+from dogopencli.cache import Cache, SnapshotMeta
+from dogopencli.jsonutil import canonical, parse
 
 
 def meta(ns: str, snapshot_id: str = "snap-1", row_count: int = 2) -> SnapshotMeta:
@@ -54,7 +56,7 @@ def test_missing_cache_read_does_not_create_database(tmp_path):
 
 def test_publish_and_read_roundtrip(tmp_path):
     store = Cache(tmp_path / "db" / "cache.sqlite3")
-    ns = namespace("payment.channel.list", "EXTERNAL", "snapshot")
+    ns = "leaf:sample.rows"
     store.publish(meta(ns), ROWS)
     snapshot = store.current(ns)
     assert snapshot is not None
@@ -66,8 +68,8 @@ def test_publish_and_read_roundtrip(tmp_path):
 
 def test_namespaces_are_isolated(tmp_path):
     store = Cache(tmp_path / "cache.sqlite3")
-    ns_a = namespace("payment.channel.list", "EXTERNAL", "snapshot")
-    ns_b = namespace("payment.channel.list", "EXTERNAL", "cdp")
+    ns_a = "leaf:sample.rows"
+    ns_b = "leaf:sample.other"
     store.publish(meta(ns_a), ROWS)
     assert store.current(ns_b) is None
     assert store.records(ns_b) == []
@@ -75,7 +77,7 @@ def test_namespaces_are_isolated(tmp_path):
 
 def test_replace_keeps_single_current_snapshot(tmp_path):
     store = Cache(tmp_path / "cache.sqlite3")
-    ns = namespace("payment.channel.list", "EXTERNAL", "snapshot")
+    ns = "leaf:sample.rows"
     store.publish(meta(ns, snapshot_id="old"), ROWS)
     store.publish(meta(ns, snapshot_id="new", row_count=1), ROWS[:1])
     snapshot = store.current(ns)
@@ -86,7 +88,7 @@ def test_replace_keeps_single_current_snapshot(tmp_path):
 
 def test_failed_publish_preserves_previous_snapshot(tmp_path):
     store = Cache(tmp_path / "cache.sqlite3")
-    ns = namespace("payment.channel.list", "EXTERNAL", "snapshot")
+    ns = "leaf:sample.rows"
     store.publish(meta(ns), ROWS)
 
     def broken():
@@ -324,3 +326,80 @@ def test_wal_initialization_retries_only_within_deadline(
     with connect(path) as connection:
         assert connection.execute("SELECT * FROM existing").fetchall() == []
     assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_concurrent_reads_see_complete_snapshots(tmp_path):
+    store = Cache(tmp_path / "cache.sqlite3")
+
+    def snapshot(ns: str, rows: int, marker: str) -> SnapshotMeta:
+        return SnapshotMeta(
+            namespace=ns,
+            capability="sample.rows",
+            scope="sample",
+            source_kind="cdp",
+            snapshot_id=marker,
+            dataset_id=None,
+            simulated=False,
+            backend_complete=True,
+            dataset_complete=True,
+            fetched_at="2026-09-11T00:00:00+00:00",
+            loaded_at="2026-09-11T00:00:00+00:00",
+            source_observed_from=None,
+            source_observed_to=None,
+            row_count=rows,
+        )
+
+    ns = "leaf:sample.rows"
+    failures: list[str] = []
+    writer_errors: list[BaseException] = []
+    stop = threading.Event()
+    first_checked = threading.Event()
+    checks = 0
+
+    def writer() -> None:
+        try:
+            for round_no in range(40):
+                rows = 3 if round_no % 2 == 0 else 5
+                keyed = [
+                    (index, canonical({"seq": index, "round": round_no}))
+                    for index in range(1, rows + 1)
+                ]
+                store.publish(snapshot(ns, rows, f"snap-{round_no}"), keyed)
+                if round_no == 0 and not first_checked.wait(timeout=5):
+                    raise AssertionError("reader did not check the first snapshot")
+        except BaseException as error:
+            writer_errors.append(error)
+        finally:
+            stop.set()
+
+    def reader() -> None:
+        nonlocal checks
+        while not stop.is_set():
+            meta, bodies = store.read(ns)
+            if meta is None:
+                continue
+            try:
+                if len(bodies) != meta.row_count:
+                    failures.append(
+                        f"row_count {meta.row_count} but {len(bodies)} records"
+                    )
+                    return
+                if [seq for seq, _ in bodies] != list(range(1, meta.row_count + 1)):
+                    failures.append("seqids are not continuous for one snapshot")
+                    return
+                rounds = {parse(body)["round"] for _, body in bodies}
+                if len(rounds) != 1:
+                    failures.append("records mix two published snapshots")
+                    return
+                checks += 1
+            finally:
+                first_checked.set()
+
+    thread = threading.Thread(target=writer)
+    thread.start()
+    reader()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert writer_errors == []
+    assert checks > 0
+    assert failures == []

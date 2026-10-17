@@ -1,14 +1,15 @@
 # 文档索引
 
 - [Leaf plugin development handbook](agents/leaf-plugins.md): manifest and adapter
-  contracts, verify/pack/install workflow, CLI testing and one-leaf-at-a-time
-  legacy migration under #218. Start here when developing or migrating a leaf.
+  contracts, verify/pack/install workflow, CLI testing and the four-pilot
+  independence/business gate #255. The broader migration map #241 remains paused.
+  Start here when developing or migrating a leaf.
 - [Leaf handbook validation](agents/leaf-handbook-evidence.md):
-  four-pilot source evidence, the independent simple-leaf exercise and tested
-  auxiliary-file loading boundaries.
+  four-pilot architecture/business evidence, the independent simple-leaf exercise
+  and tested auxiliary-file loading boundaries.
 
-- [Domain component development guide](agents/domain-components.md): shared interface,
-  registration, local controls, observations and runnable synthetic sample.
+- [Domain component development guide](agents/domain-components.md): side-effect-free
+  metadata, local controls, observations and shared authentication.
 
 - [Liquidity 白名单／黑名单契约](design/liquidity-access-lists-v0.1.0.md)：#176 / #168，主体与账户名单独立查询；银行名单原生身份仍待验证。
 - [Duckdog 初始设计 #160](design/duckdog-v0.1.0.md)：DuckDB＋Parquet、settings 全量覆盖、runtime 扩展边界；[settings 导入契约](design/duckdog-settings-import-v0.1.0.md)。`duckdog-import` 为本地安装的 skill，不随仓库分发，首期支持 banks、entities。
@@ -42,7 +43,7 @@
 - [Liquidity v0.2.1 inquiry specification (GitHub Issue #71)](https://github.com/proletariat64/dogopencli/issues/71): every business leaf has a kind; bounded live evidence, unresolved contracts and release gates. Verified inquiry slice implemented on the current source branch (#72); deferred leaves remain unsupported, and per-leaf production UAT/release are pending.
 
 - [v0.1.0 付款只读 CLI 规格（GitHub Issue #1）](https://github.com/proletariat64/dogopencli/issues/1)：已发布，标签 `ready-for-agent`；公开 CLI＋假 CDP 为 SIT，生产只读验收为 UAT。
-- [DI 风格渐进式 CLI 帮助（GitHub Issue #13）](https://github.com/proletariat64/dogopencli/issues/13)：计划与规格已发布，标签 `ready-for-agent`；无参数导航、JSON/text、完整命令目录及离线帮助验收，尚未实现。
+- [DI 风格渐进式 CLI 帮助（GitHub Issue #13）](https://github.com/proletariat64/dogopencli/issues/13)：计划与规格已发布，标签 `ready-for-agent`；当前渐进式帮助已由 manifest 驱动；实现与验证边界见 [help cleanup](agents/help-cleanup.md)。
 
 - [Data helper v1（GitHub Issue #16）](https://github.com/proletariat64/dogopencli/issues/16)：四个付款查询叶子的离线 schema、字段证据与读取指引；[可运行命令与版本化机器契约](../README.md#data-helper)。
 - [收款交易成本查询规划（GitHub Issue #21）](https://github.com/proletariat64/dogopencli/issues/21)：当前开发分支实现固定类型的交易成本列表、live、刷新及离线描述；VA 费用及池/实体账户等仍排除，VA 规则另见 #31。

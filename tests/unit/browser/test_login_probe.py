@@ -8,9 +8,10 @@ import pytest
 
 import dogopencli.browser.login as login_mod
 from dogopencli.browser import cdp
-from dogopencli.browser.environment import PAYMENT_STARTUP_URL, BrowserEnvironment
+from dogopencli.browser.environment import BrowserEnvironment
 from dogopencli.browser.errors import AuthError
 from dogopencli.browser.probe import _FETCH_SIGNAL, probe_login_completion
+from dogopencli.domain_contracts import PAYMENT_STARTUP_URL
 
 
 class Session:
@@ -336,7 +337,7 @@ def test_fetch_javascript_does_not_confuse_200_with_auth(response, expected):
 def test_liquidity_candidate_observes_existing_entry_without_fetch(setup):
     from dataclasses import replace
 
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
     env, transport = setup
     env = replace(env, startup_url=LIQUIDITY_STARTUP_URL)
@@ -356,7 +357,7 @@ def test_liquidity_candidate_observes_existing_entry_without_fetch(setup):
 def test_liquidity_old_entry_does_not_interrupt_pending_sso(setup):
     from dataclasses import replace
 
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
     env, transport = setup
     env = replace(env, startup_url=LIQUIDITY_STARTUP_URL)
@@ -384,7 +385,7 @@ def test_liquidity_old_entry_does_not_interrupt_pending_sso(setup):
 def test_liquidity_candidate_rejects_invalid_document_identity(setup, document_id):
     from dataclasses import replace
 
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
     env, transport = setup
     env = replace(env, startup_url=LIQUIDITY_STARTUP_URL)
@@ -404,7 +405,7 @@ def test_liquidity_candidate_rejects_invalid_document_identity(setup, document_i
 def test_liquidity_completed_other_tab_is_not_hidden_by_old_tab(setup, monkeypatch):
     from dataclasses import replace
 
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
     env, transport = setup
     env = replace(env, startup_url=LIQUIDITY_STARTUP_URL)
@@ -451,7 +452,7 @@ def test_liquidity_rejected_old_ready_tab_does_not_hide_new_candidate(
 ):
     from dataclasses import replace
 
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
     env, transport = setup
     env = replace(env, startup_url=LIQUIDITY_STARTUP_URL)

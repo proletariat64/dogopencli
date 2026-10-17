@@ -19,7 +19,7 @@ packaged entry points, internal consumers and test fixtures.
 | `helpspec.py` old node renderer and help parser | Old router and domain shell consumed the renderer; only old router used `HelpParser` and `validate_help_options`. | Replace the renderer with document/width input; remove the obsolete help parser. Current `parse_options` retains validation. |
 | Domain and GUI shell help branches | Root normally intercepts help, but direct module callers can still reach these branches. | Forward to current resolve/emit instead of static catalog or bespoke documents. Keep domain execution and GUI server behavior. |
 | Leaf shell help branch | Public root and direct leaf shell callers share resolution. | Forward the resolved invocation to the single help output boundary. Keep generic result/error `emit` and `_text`. |
-| Static catalog, business declarations and describe renderers | Legacy business modules, tests, describe and GUI preview still consume them. | Keep. This cleanup does not perform the separate #218 business migration. |
+| Static catalog, business declarations and describe renderers | Retained only during the original #248 cleanup. | Superseded by #255: retire these owners with the legacy business runtime. Current manifest discovery, operation rules and documentation editor own help/describe/GUI behavior. |
 
 No business tests were deleted. Five historical fixture imports and monkeypatches
 were removed because they only targeted the discarded help router. Existing
