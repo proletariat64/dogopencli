@@ -48,7 +48,7 @@ All actions follow the domain and use the same dotted leaf name:
 dogopencli login
 dogopencli auth check
 dogopencli domain list
-dogopencli payment help sla.baselines --format text
+dogopencli payment list sla.baselines --help --format text
 dogopencli payment describe sla.baselines --format json
 dogopencli payment list sla.baselines --live
 dogopencli payment get sla.baselines NATIVE_ID
@@ -56,6 +56,15 @@ dogopencli payment refresh sla.baselines
 dogopencli payment list sla.baselines --limit 0
 dogopencli payment prune sla.baselines
 ```
+
+Discover commands progressively with `dogopencli -h`, `dogopencli payment -h`,
+`dogopencli payment list -h`, then `dogopencli payment list sla.baselines -h`.
+Help uses `-h` or `--help` only; positional `help` commands are unsupported.
+Root and navigation groups list their immediate children; executable command help
+shows that invocation's arguments and options. Help reads local declarations
+without loading adapters, initializing storage, changing caches, or opening a
+browser. `describe` explains the leaf's business meaning and record fields;
+adding `-h` documents the describe invocation instead.
 
 | Domain | Leaf | Operations |
 | --- | --- | --- |
