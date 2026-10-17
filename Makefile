@@ -1,13 +1,13 @@
 PYTHON ?= python3
 DEV_PYTHON = .venv/bin/python
-BOOTSTRAP_DOMAIN ?= payment
+BOOTSTRAP_DOMAIN ?=
 
 .PHONY: bootstrap test lint doc-guard test-doc-guard
 
 bootstrap:
 	$(PYTHON) -B scripts/bootstrap.py
 	rtk code-review-graph update --repo "$(CURDIR)" --brief
-	$(DEV_PYTHON) -B scripts/bootstrap_browser.py --domain "$(BOOTSTRAP_DOMAIN)"
+	$(DEV_PYTHON) -B scripts/bootstrap_browser.py $(if $(strip $(BOOTSTRAP_DOMAIN)),--domain "$(BOOTSTRAP_DOMAIN)")
 
 test:
 	$(DEV_PYTHON) -m pytest -q --durations=20
