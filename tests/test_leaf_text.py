@@ -10,19 +10,16 @@ from dogopencli.jsonutil import canonical
 from dogopencli.leaves.cli import emit
 
 
-@pytest.mark.parametrize("help_flag", ["-h", "--help", "help"])
+@pytest.mark.parametrize("help_flag", ["-h", "--help"])
 def test_root_text_help_structure(run_cli, help_flag):
     code, output, error = run_cli([help_flag, "--format", "text"])
     assert code == 0
     assert error == ""
-    assert output == (
-        "usage: dogopencli <domain> <action> <dotted-leaf>\n"
-        "domains:\n  - collection\n  - fx\n  - liquidity\n  - payment\n"
-        "actions:\n  - list\n  - get\n  - refresh\n  - prune\n"
-        "  - help\n  - describe\n"
-        "installation: plugins install-pilots\n"
-        "diagnostics:\n  (empty list)\n"
-    )
+    assert "command: dogopencli\n" in output
+    assert "name: plugins" in output and "name: gui" in output
+    assert "name: payment" in output
+    assert "dogopencli plugins --help" in output
+    assert "name: help\n" in output  # documented flag, not a child command
 
 
 def test_version_install_and_domain_text(run_cli):
@@ -37,9 +34,9 @@ def test_version_install_and_domain_text(run_cli):
     assert "\n  - payment/sla.baselines\n" in output
     code, output, error = run_cli(["payment", "--format", "text"])
     assert (code, error) == (0, "")
-    assert output == (
-        "domain: payment\nleaves:\n  - sla.baselines\ndiagnostics:\n  (empty list)\n"
-    )
+    assert "command: dogopencli payment\n" in output
+    assert "name: list" in output and "name: describe" in output
+    assert "sla.baselines" not in output  # domain shows actions, not descendants
 
 
 def test_registry_diagnostics_remain_visible(run_cli, tmp_path):

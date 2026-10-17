@@ -28,7 +28,7 @@ def main(argv: list[str]) -> int:
     format = "json"
     command = "domain"
     try:
-        args = parser.parse_args(argv)
+        args = parser.parse_intermixed_args(argv)
         format = args.format
         if args.help or args.action is None:
             from .catalog import NODES

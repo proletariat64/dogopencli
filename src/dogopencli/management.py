@@ -27,6 +27,11 @@ GUI_DECLARATION = BizNode(
     ("gui",),
     "Serve domain controls and leaf documentation editing on localhost.",
     handler="cmd_gui",
+    options=(
+        *DOMAIN_OPTIONS,
+        opt("port", "Loopback port; 0 chooses an available port.", "int", default=0),
+    ),
+    output=DOMAIN_OUTPUT,
     effects={**NO_EFFECTS, "mutates": True, "network": True},
     constraints=(
         "Serves HTTP only on localhost; never contacts production systems.",

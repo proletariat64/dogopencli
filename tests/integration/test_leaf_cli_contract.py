@@ -46,12 +46,14 @@ def test_superseded_paths_and_output_spellings_are_rejected(
 def test_same_dotted_leaf_name_drives_help_describe_and_offline_list(
     run_cli, installed_contract, domain, leaf
 ):
-    for action in ("help", "describe"):
-        code, output, _ = run_cli([domain, action, leaf])
-        assert code == 0
-        document = json.loads(output)["data"]
-        assert document["id"] == f"{domain}.{leaf}"
-        assert document["name"] == leaf
+    code, output, _ = run_cli([domain, "list", leaf, "--help"])
+    assert code == 0
+    assert json.loads(output)["data"]["command"] == f"dogopencli {domain} list {leaf}"
+    code, output, _ = run_cli([domain, "describe", leaf])
+    assert code == 0
+    document = json.loads(output)["data"]
+    assert document["id"] == f"{domain}.{leaf}"
+    assert document["name"] == leaf
     code, output, _ = run_cli([domain, "list", leaf])
     assert code == 1
     assert json.loads(output)["error"]["code"] == "CACHE_MISS"

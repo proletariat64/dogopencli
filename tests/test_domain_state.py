@@ -6,25 +6,24 @@ from types import SimpleNamespace
 import pytest
 
 from dogopencli import plugins
-from dogopencli.leaves import cli as leaf_cli
 
 
 @pytest.mark.parametrize(
     "action", [None, "list", "show", "leaves", "enable", "disable"]
 )
 @pytest.mark.parametrize("format", ["json", "text"])
-@pytest.mark.parametrize("entrance", ["direct", "help"])
+@pytest.mark.parametrize("entrance", ["-h", "--help"])
 def test_domain_help_describes_inputs_in_both_formats(
     run_cli, monkeypatch, action, format, entrance
 ):
     monkeypatch.setenv("DOGOPENCLI_CONFIG", "")
     path = ["domain", *([action] if action else [])]
-    arguments = [*path, "--help"] if entrance == "direct" else ["help", *path]
+    arguments = [*path, entrance]
     code, output, error = run_cli([*arguments, "--format", format])
     assert code == 0, error
     requires_domain = action in {"show", "leaves", "enable", "disable"}
     if format == "json":
-        document = json.loads(output)
+        document = json.loads(output)["data"]
         options = {option["name"]: option for option in document["options"]}
         assert options["config_dir"]["flags"] == ["--config-dir"]
         assert options["format"]["choices"] == ["json", "text"]
@@ -36,11 +35,11 @@ def test_domain_help_describes_inputs_in_both_formats(
     else:
         assert "--config-dir" in output
         assert "--format" in output
-        assert ("Arguments:" in output) is requires_domain
+        assert ("    name: domain\n" in output) is requires_domain
         if requires_domain:
-            assert "domain" in output.split("Arguments:", 1)[1].split("Options:", 1)[0]
+            assert "domain" in output.split("arguments:", 1)[1].split("options:", 1)[0]
             assert (
-                "required" in output.split("Arguments:", 1)[1].split("Options:", 1)[0]
+                "required" in output.split("arguments:", 1)[1].split("options:", 1)[0]
             )
 
 
@@ -63,9 +62,9 @@ def test_domain_help_parses_format_and_option_values_offline(
     code, output, error = run_cli(["domain", *arguments])
     assert code == 0, error
     if format == "json":
-        assert json.loads(output)["command"] == command
+        assert json.loads(output)["data"]["command"] == command
     else:
-        assert output.startswith(command + "\n")
+        assert f"command: {command}\n" in output
 
 
 @pytest.fixture
@@ -75,7 +74,6 @@ def declarations(monkeypatch, tmp_path):
         SimpleNamespace(id="demo", entry_point="https://example.test/", leaves=()),
     )
     monkeypatch.setattr(plugins, "domain_plugins", lambda: domains, raising=False)
-    monkeypatch.setattr(leaf_cli, "domain_plugins", lambda: domains)
     monkeypatch.setenv("DOGOPENCLI_CONFIG", str(tmp_path / "config.toml"))
     folder = tmp_path / "plugins/demo/items"
     folder.mkdir(parents=True)

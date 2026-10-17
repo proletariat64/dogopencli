@@ -173,6 +173,7 @@ class OptionSpec:
     # preferred_format, accepted_formats, modes, ...); emitted in help JSON
     # as ``argument_contract`` (Issue #127 decision 6).
     argument_contract: dict[str, Any] | None = None
+    value_type: str | None = None
 
     @property
     def flags(self) -> tuple[str, ...]:
@@ -284,6 +285,9 @@ class BizNode:
     cache_capability: str | None = None
     # Positional input metadata for commands with their own parser (management).
     arguments: tuple[dict[str, Any], ...] = ()
+    exit_codes: dict[int, str] = field(
+        default_factory=lambda: dict(BUSINESS_EXIT_CODES)
+    )
 
 
 # Shared query options (declared once, reused by every query leaf).
@@ -438,9 +442,19 @@ def add_options(
             kwargs["default"] = option.default
         elif option.kind == "append":
             kwargs["action"] = "append"
-            kwargs["default"] = [] if option.default is None else option.default
+            kwargs["default"] = (
+                option.default
+                if option.value_type is not None
+                else []
+                if option.default is None
+                else option.default
+            )
         else:
             kwargs["default"] = option.default
+        if option.value_type is not None:
+            from .command_model import value_parser
+
+            kwargs["type"] = value_parser(option.value_type)
         if option.choices:
             kwargs["choices"] = option.choices
         if option.required:
@@ -474,7 +488,8 @@ def _describe(option: OptionSpec) -> dict[str, Any]:
     value: dict[str, Any] = {
         "name": option.name,
         "summary": option.summary,
-        "type": option.kind,
+        "type": option.value_type or option.kind,
+        "repeatable": option.kind == "append",
         "required": option.required,
         "default": option.effective_default,
     }
@@ -517,7 +532,9 @@ def document(node: BizNode) -> dict[str, Any]:
             _copy_variant(variant) for variant in node.effects_variants
         ]
     doc["output"] = dict(node.output)
-    doc["exit_codes"] = dict(BUSINESS_EXIT_CODES)
+    doc["exit_codes"] = {
+        str(code): summary for code, summary in node.exit_codes.items()
+    }
     doc["errors"] = list(node.errors)
     doc["examples"] = list(node.examples)
     doc["next"] = list(node.next)
@@ -547,10 +564,12 @@ def render_text(node: BizNode) -> str:
             metadata = []
             if entry["type"] != "bool":
                 flags += " <" + entry["name"].strip("_").upper() + ">"
-            if entry["type"] == "append":
+            if entry.get("repeatable") or entry["type"] == "append":
                 metadata.append("repeatable")
             if entry.get("choices"):
-                metadata.append("choices: " + ", ".join(entry["choices"]))
+                metadata.append(
+                    "choices: " + ", ".join(str(choice) for choice in entry["choices"])
+                )
             if entry["required"]:
                 metadata.append("required")
             if entry.get("default") is not None:
