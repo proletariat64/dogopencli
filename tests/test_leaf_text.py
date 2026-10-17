@@ -15,11 +15,12 @@ def test_root_text_help_structure(run_cli, help_flag):
     code, output, error = run_cli([help_flag, "--format", "text"])
     assert code == 0
     assert error == ""
-    assert "command: dogopencli\n" in output
-    assert "name: plugins" in output and "name: gui" in output
-    assert "name: payment" in output
-    assert "dogopencli plugins --help" in output
-    assert "name: help\n" in output  # documented flag, not a child command
+    assert output.startswith("Usage: dogopencli <command>")
+    assert "plugins" in output and "gui" in output.split("Commands:", 1)[1]
+    assert "payment" in output.split("Commands:", 1)[1]
+    assert "dogopencli <command> --help --format text" in output
+    assert "--help, -h" in output  # documented flag, not a child command
+    assert "Effects:" not in output and "Errors:" not in output
 
 
 def test_version_install_and_domain_text(run_cli):
@@ -35,8 +36,8 @@ def test_version_install_and_domain_text(run_cli):
     assert "payment.sla.baselines" in output
     code, output, error = run_cli(["payment", "--format", "text"])
     assert (code, error) == (0, "")
-    assert "command: dogopencli payment\n" in output
-    assert "name: list" in output and "name: describe" in output
+    assert output.startswith("Usage: dogopencli payment <command>")
+    assert "list" in output and "describe" in output.split("Commands:", 1)[1]
     assert "sla.baselines" not in output  # domain shows actions, not descendants
 
 
@@ -50,10 +51,10 @@ def test_registry_diagnostics_remain_visible(run_cli, tmp_path):
     assert code == 0 and diagnostics
     code, output, error = run_cli([*args, "--format", "text"])
     assert (code, error) == (0, "")
-    assert "diagnostics:\n  -\n" in output
+    assert "Diagnostics:\n" in output
     for item in diagnostics:
         for key, value in item.items():
-            assert f"{key}: {value}" in output
+            assert f"{key}: {value}" in " ".join(output.split())
 
 
 def test_exact_business_values_and_metadata(capsys):

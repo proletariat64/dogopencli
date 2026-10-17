@@ -124,13 +124,9 @@ def main(argv: list[str]) -> int:
             emit({"version": __version__}, output_format=output_format)
             return 0
         if invocation.help_requested or node.handler is None:
-            from ..helpspec import document
+            from ..command_model import emit_help
 
-            emit(
-                {**document(node), "diagnostics": invocation.registry.diagnostics},
-                output_format=output_format,
-            )
-            return 0
+            return emit_help(invocation)
         if node.path[:1] == ("plugins",):
             if node.path[1] == "list":
                 from .discovery import list_plugins

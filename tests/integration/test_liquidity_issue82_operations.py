@@ -9,7 +9,7 @@ from dataclasses import replace
 
 import pytest
 
-from dogopencli import catalog, helptree
+from dogopencli import catalog
 from dogopencli.plugins.liquidity import leaves
 from dogopencli.plugins.liquidity.operations_batch import SWAP_ORDERS
 
@@ -39,7 +39,6 @@ def swap_candidate_catalog(monkeypatch):
         declarations[node.path] = node
     nodes = catalog.build_catalog(declarations.values())
     monkeypatch.setattr(catalog, "NODES", nodes)
-    monkeypatch.setattr(helptree, "NODES", nodes)
 
 
 def swap(index, **overrides):

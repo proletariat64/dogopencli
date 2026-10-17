@@ -332,40 +332,9 @@ def main(argv: list[str]) -> int:
     except SystemExit as error:
         return int(error.code)
     if args.help:
-        from .management import GUI_DECLARATION
+        from .command_model import emit_help, resolve
 
-        description = {
-            "help_version": 1,
-            "command": "dogopencli gui",
-            "summary": "Run local domain controls and leaf documentation editor",
-            "effects": dict(GUI_DECLARATION.effects),
-            "constraints": list(GUI_DECLARATION.constraints),
-            "options": [
-                {
-                    "name": "--config-dir",
-                    "description": "Shared configuration directory",
-                },
-                {
-                    "name": "--port",
-                    "description": "Loopback port; 0 chooses available port",
-                },
-                {
-                    "name": "--format",
-                    "description": "Help output: json (default) or text",
-                },
-            ],
-            "children": [],
-        }
-        if args.format == "json":
-            print(json.dumps(description))
-        else:
-            print(description["command"] + " — " + description["summary"])
-            print("Effects: " + str(description["effects"]))
-            for constraint in description["constraints"]:
-                print(constraint)
-            for option in description["options"]:
-                print(option["name"] + "  " + option["description"])
-        return 0
+        return emit_help(resolve(["gui", *argv]))
     if not 0 <= args.port <= 65535:
         print(
             json.dumps(

@@ -35,11 +35,11 @@ def test_domain_help_describes_inputs_in_both_formats(
     else:
         assert "--config-dir" in output
         assert "--format" in output
-        assert ("    name: domain\n" in output) is requires_domain
+        assert ("Arguments:" in output) is requires_domain
         if requires_domain:
-            assert "domain" in output.split("arguments:", 1)[1].split("options:", 1)[0]
+            assert "domain" in output.split("Arguments:", 1)[1].split("Options:", 1)[0]
             assert (
-                "required" in output.split("arguments:", 1)[1].split("options:", 1)[0]
+                "required" in output.split("Arguments:", 1)[1].split("Options:", 1)[0]
             )
 
 
@@ -64,7 +64,7 @@ def test_domain_help_parses_format_and_option_values_offline(
     if format == "json":
         assert json.loads(output)["data"]["command"] == command
     else:
-        assert f"command: {command}\n" in output
+        assert output.startswith(f"Usage: {command}")
 
 
 @pytest.fixture

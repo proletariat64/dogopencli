@@ -14,6 +14,7 @@ from typing import NoReturn
 from . import config
 from .errors import CliError
 from .helpspec import NO_EFFECTS, BizNode, OptionSpec, add_options, opt
+from .leaves.operation_rules import known_errors
 from .leaves.registry import Leaf, Registry
 
 OUTPUT = {
@@ -72,6 +73,46 @@ def value_parser(kind: str):
     return {"string": str, "integer": int}[kind]
 
 
+def parameter_modes(definition: dict, operation: str) -> dict:
+    """Project the runtime's acquisition and explicit offline-filter rules."""
+    required = definition.get("required", False)
+    acquisition = {
+        "available": True,
+        "role": "acquisition-scope" if operation == "refresh" else "native-request",
+        "required": required,
+        "cardinality": {
+            "min": int(required),
+            "max": None if definition.get("multiple") else 1,
+        },
+    }
+    if operation != "list":
+        return {operation: acquisition}
+    cached = {"available": False}
+    if definition.get("local_field"):
+        cached = {
+            "available": True,
+            "role": "local-filter",
+            "required": False,
+            "cardinality": {"min": 0, "max": None if definition.get("multiple") else 1},
+        }
+    return {"cache": cached, "live": acquisition}
+
+
+def host_modes(option: OptionSpec, operation: str) -> OptionSpec:
+    modes = ("cache", "live") if operation == "list" else (operation,)
+    role = (
+        "display"
+        if option.name in {"fields", "limit", "offset"}
+        else ("mode-selector" if option.name == "live" else "cache-policy")
+    )
+    entries = {mode: {"available": True, "role": role} for mode in modes}
+    # Runtime accepts --require-fresh with --live, but only cached replay
+    # checks staleness. Describe the no-op without inventing a rejection.
+    if option.name == "require_fresh" and "live" in entries:
+        entries["live"]["effective"] = False
+    return replace(option, argument_contract={"modes": entries})
+
+
 def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
     host = (
         WINDOW
@@ -99,11 +140,12 @@ def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
             argument_contract={
                 "value_type": item["type"],
                 "required_for_acquisition": item.get("required", False),
+                "modes": parameter_modes(item, operation),
             },
         )
         for item in definitions
     )
-    return (*host, *parameters, *COMMON)
+    return (*(host_modes(option, operation) for option in host), *parameters, *COMMON)
 
 
 def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
@@ -270,6 +312,9 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                 path,
                 summary,
                 handler="leaf",
+                errors=known_errors(
+                    operation, has_list="list" in leaf.manifest["operations"]
+                ),
                 options=leaf_options(leaf, operation),
                 arguments=arguments,
                 effects={
@@ -537,11 +582,51 @@ def resolve(argv: list[str]) -> Invocation:
     return Invocation(node, args, registry, config_file, remaining, help_requested)
 
 
+# Options that may legally precede the first command word (auth globals and
+# help controls); anything else stops the command-word scan.
+_PRE_COMMAND_VALUE_OPTIONS = {"--config-dir", "--format"}
+_PRE_COMMAND_FLAGS = {"--verbose", "--quiet", "--no-color", "--version", "-h", "--help"}
+
+
+def leading_command(tokens: list[str]) -> tuple[str | None, int]:
+    """First command word and its index; known pre-command options only."""
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--":
+            return None, len(tokens)
+        flag, separator, _value = token.partition("=")
+        if flag in _PRE_COMMAND_VALUE_OPTIONS:
+            index += 1 if separator else 2
+            continue
+        if token in _PRE_COMMAND_FLAGS:
+            index += 1
+            continue
+        if token.startswith("-"):
+            return None, index
+        return token, index
+    return None, len(tokens)
+
+
 def emit_help(invocation: Invocation) -> int:
-    from .helpspec import document
+    import os
+    import sys
+
+    from .helpspec import document, render_text
     from .leaves.cli import emit
 
     doc = document(invocation.node)
     doc["diagnostics"] = invocation.registry.diagnostics
-    emit(doc, output_format=invocation.args.format or "json")
+    if invocation.args.format == "text":
+        width = 88
+        try:
+            if sys.stdout.isatty():
+                width = os.get_terminal_size(sys.stdout.fileno()).columns
+                if width <= 0:
+                    width = 88
+        except (OSError, ValueError):
+            pass
+        sys.stdout.write(render_text(doc, width))
+    else:
+        emit(doc, output_format="json")
     return 0

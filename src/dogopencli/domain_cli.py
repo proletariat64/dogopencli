@@ -31,16 +31,9 @@ def main(argv: list[str]) -> int:
         args = parser.parse_intermixed_args(argv)
         format = args.format
         if args.help or args.action is None:
-            from .catalog import NODES
-            from .helpspec import document, render_text
+            from .command_model import emit_help, resolve
 
-            action = args.action
-            path = ("domain", action) if action else ("domain",)
-            if format == "text":
-                print(render_text(NODES[path]), end="")
-            else:
-                print(json.dumps(document(NODES[path])))
-            return 0
+            return emit_help(resolve(["domain", *argv]))
         command = "domain " + args.action
         service = DomainService(config.config_path(args.config_dir))
         if args.action != "list" and args.domain is None:

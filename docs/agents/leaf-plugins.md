@@ -177,6 +177,26 @@ offline filter through the runtime gate; the adapter's filter still implements t
 verified selection. It does not automatically filter records or prove coverage.
 Reject unsupported offline scope expansion and document native filter semantics.
 
+Progressive help is assembled once from the current command model, including
+bounded discovery diagnostics. JSON serializes that document; one deterministic
+text renderer formats it. Text uses the terminal's actual width, or 88 columns
+when redirected or when terminal sizing is unavailable. It has no color, paging
+or extra output flags. Help never activates adapters or initializes runtime state.
+
+Parameter `argument_contract.modes` describes the current operation: list has
+cache/live modes, refresh has refresh, and get has get. A nonempty `local_field`
+permits an explicit cached-list filter; other business parameters are unavailable
+for cache filtering. Acquisition modes retain manifest requirements and repeated
+values. Host controls describe their current roles; accepted controls are not
+marked unavailable merely because their policy has no effect in a given mode.
+
+Help `errors` is the declared set of known host/runtime errors, not an exhaustive
+list of arbitrary adapter failures. Consumers must handle unknown error codes.
+Shared operation rules distinguish cached list, live acquisition, get, prune and
+describe; correcting documentation does not change execution or exit codes.
+See the [help cleanup record](help-cleanup.md) for the replacement boundary and
+compatibility verification.
+
 Help, describe and GUI-editable prose come from this manifest. README is optional
 supporting documentation. GUI saves update only the installed manifest, not your
 source or original ZIP. Before deliberate reinstallation, reconcile any desired
