@@ -15,7 +15,7 @@ leaf registration and syntax would leave two active owners of the same inquiries
 A configuration owns `plugins/<domain>/<dotted-leaf-name>/leaf.json` and a local
 Python inquiry adapter. Folder and declared identity must agree. The global ID is
 `domain.name`. Startup discovers valid leaves and reports broken ones independently.
-There is no package/version manager, hot loading or separate leaf enable switch.
+There is no version manager, hot loading or separate leaf enable switch.
 Domain enablement and authentication remain authoritative.
 
 All actions follow the domain: `payment list sla.baselines`,
@@ -63,3 +63,33 @@ The pilots are payment `sla.baselines` list/get, collection `cost` list, liquidi
 GUI interaction evidence are required independently of automated checks. FX's
 166-row reference reproduction is comparison evidence, never a fixed future count
 or proof of completeness. Later migration and old-code deletion remain #218.
+
+## Amendment: explicit portable installation (#239)
+
+The general lifecycle in [spec #239](https://github.com/proletariat64/dogopencli/issues/239)
+extends directory-only pilot delivery. `plugins install` accepts one local
+directory, ordinary ZIP, direct HTTP(S) ZIP, or explicit `bundled:domain.name`.
+One shared static validator checks root layout, manifest, adapter presence and
+bounded safe payloads without executing adapters. Installation then checks the
+adapter interface and host-owned storage bindings before publishing an independent
+snapshot. Duplicate identities are rejected; reinstall is uninstall then install.
+
+The four bundled leaves are application resources available for explicit install,
+including from an installed wheel. Discovery and progressive help read declarations
+without adapter execution, storage initialization or lifecycle reconciliation.
+The former `plugins install-pilots` copying entry point is removed. Availability,
+installation and production qualification remain separate facts.
+
+Lifecycle operations synchronize filesystem publication, binding history and cache
+ownership. Uninstall accepts the global identity, works for broken or disabled
+leaves, and is idempotent only when absence is established. It removes the installed
+directory and owned temporary cache, preserving Duckdog data and ownership for
+compatibility validation on reinstall. Older refreshes cannot republish removed
+cache. Domain enablement, credentials and inquiry-only execution remain host-owned.
+
+A repository `plugin-helper` skill exposes local static verify/pack scripts using
+the same validator. Pack validates before and after ZIP creation and refuses output
+overwrite or source self-inclusion. Runtime checks and production UAT remain
+separate acceptance gates. This amendment permits portable package lifecycle only;
+versions, updates, dependency resolution, catalogs and automatic installation
+remain outside scope. ADRs 0019 and 0020 retain their result/cache semantics.

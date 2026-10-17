@@ -48,4 +48,7 @@ select = ["E", "F", "I", "UP", "B"]
 "src/dogopencli/plugins/liquidity/fields.py" = ["E501"]
 
 [tool.setuptools.package-data]
-"dogopencli" = ["leaf_packages/*/*/*.json", "leaf_packages/*/*/adapter.py"]
+"dogopencli" = ["leaf_packages/**/*"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["**/__pycache__/*", "**/*.pyc"]
