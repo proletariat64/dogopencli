@@ -17,9 +17,25 @@ def test_install_is_explicit_and_default_list_is_offline(
     run_cli, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("DOGOPENCLI_CONFIG_DIR", str(tmp_path))
-    code, output, _ = run_cli(["plugins", "install-pilots"])
-    assert code == 0
-    assert len(json.loads(output)["data"]["installed"]) == 4
+    for identity in (
+        "payment.sla.baselines",
+        "collection.cost",
+        "liquidity.reference.entities",
+        "fx.trade",
+    ):
+        code, output, _ = run_cli(["plugins", "install", "bundled:" + identity])
+        assert code == 0, output
+    code, output, _ = run_cli(["plugins", "list"])
+    assert (
+        len(
+            [
+                row
+                for row in json.loads(output)["data"]["plugins"]
+                if row["state"] == "installed"
+            ]
+        )
+        == 4
+    )
     code, output, _ = run_cli(["payment", "list", "sla.baselines"])
     assert code == 1
     assert json.loads(output)["error"]["code"] == "CACHE_MISS"
@@ -273,7 +289,7 @@ def test_failed_install_removes_its_partial_folder(run_cli, tmp_path, monkeypatc
         raise OSError("disk full")
 
     monkeypatch.setattr(shutil, "copytree", failing_copy)
-    code, out, _ = run_cli(["plugins", "install-pilots"])
+    code, out, _ = run_cli(["plugins", "install", "bundled:payment.sla.baselines"])
     assert code == 1 and json.loads(out)["error"]["code"] == "IO_ERROR"
     assert not list((tmp_path / "plugins").glob("*/*"))
 

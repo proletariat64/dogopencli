@@ -160,15 +160,70 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
     nodes[("plugins",)] = BizNode(
         ("plugins",), "Manage local leaf installations.", options=COMMON
     )
-    nodes[("plugins", "install-pilots")] = BizNode(
-        ("plugins", "install-pilots"),
-        "Install bundled pilot leaves into the local configuration directory.",
+    nodes[("plugins", "install")] = BizNode(
+        ("plugins", "install"),
+        "Install one leaf from a directory, ZIP, HTTP(S) ZIP URL or bundled identity.",
         options=COMMON,
-        handler="install-pilots",
+        arguments=(
+            {
+                "name": "source",
+                "type": "string",
+                "required": True,
+                "summary": "Directory, ZIP, HTTP(S) ZIP URL or bundled:identity.",
+            },
+        ),
+        handler="plugin-install",
         effects={**NO_EFFECTS, "mutates": True},
+        effects_variants=(
+            {
+                "when": "source is an HTTP(S) URL",
+                "summary": "Downloads one bounded ZIP into temporary storage.",
+                "effects": {**NO_EFFECTS, "mutates": True, "network": True},
+            },
+        ),
         constraints=(
-            "Existing destination folders are preserved; installation fails "
-            "if any exists.",
+            "One leaf per invocation; existing installations are never overwritten.",
+            "Domain must already be enabled; installation does not authenticate "
+            "or query business data.",
+        ),
+        examples=("dogopencli plugins install bundled:collection.cost",),
+        next=("dogopencli plugins list",),
+    )
+    nodes[("plugins", "uninstall")] = BizNode(
+        ("plugins", "uninstall"),
+        "Remove one installed leaf and its temporary query cache; retain Duckdog data.",
+        options=COMMON,
+        arguments=(
+            {
+                "name": "identity",
+                "type": "string",
+                "required": True,
+                "summary": "Global identity: domain.dotted-leaf.",
+            },
+        ),
+        handler="plugin-uninstall",
+        effects={**NO_EFFECTS, "mutates": True, "destructive": True},
+        constraints=(
+            "No prompt; truly absent installations succeed idempotently.",
+            "Retains Duckdog data, binding history, credentials and source packages.",
+        ),
+        examples=("dogopencli plugins uninstall collection.cost",),
+        next=("dogopencli plugins list",),
+    )
+    nodes[("plugins", "list")] = BizNode(
+        ("plugins", "list"),
+        "List bundled availability, installed declarations and diagnostics "
+        "without executing adapters.",
+        options=COMMON,
+        handler="plugin-list",
+        effects=NO_EFFECTS,
+        constraints=(
+            "Availability is not installation; installation is not "
+            "production qualification.",
+        ),
+        next=(
+            "dogopencli plugins install --help",
+            "dogopencli plugins uninstall --help",
         ),
     )
     for domain in domain_plugins():

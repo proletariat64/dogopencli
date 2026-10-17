@@ -8,7 +8,13 @@ import pytest
 @pytest.fixture
 def installed_contract(run_cli, tmp_path, monkeypatch):
     monkeypatch.setenv("DOGOPENCLI_CONFIG_DIR", str(tmp_path))
-    assert run_cli(["plugins", "install-pilots"])[0] == 0
+    for identity in (
+        "payment.sla.baselines",
+        "collection.cost",
+        "liquidity.reference.entities",
+        "fx.trade",
+    ):
+        assert run_cli(["plugins", "install", "bundled:" + identity])[0] == 0
 
 
 @pytest.mark.parametrize(

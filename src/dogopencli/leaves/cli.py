@@ -2,9 +2,7 @@
 
 import argparse
 import math
-import shutil
 import sys
-from pathlib import Path
 from typing import Any, NoReturn
 
 from dogopencli import __version__, config
@@ -61,42 +59,6 @@ def _text(value: Any, depth: int = 0) -> str:
         return "\n".join(lines)
     scalar = value if isinstance(value, str) and value else canonical(value)
     return "\n".join(padding + line for line in scalar.split("\n"))
-
-
-def _install(config_file: Path) -> dict:
-    source = Path(__file__).parents[1] / "leaf_packages"
-    target = config_file.parent / "plugins"
-    folders = sorted(source.glob("*/*/leaf.json"))
-    destinations = [
-        (manifest.parent, target / manifest.parent.parent.name / manifest.parent.name)
-        for manifest in folders
-    ]
-    if any(destination.exists() for _, destination in destinations):
-        raise CliError(
-            "PLUGIN_EXISTS",
-            "pilot destination already exists; replace folders explicitly",
-        )
-    installed = []
-    try:
-        for origin, destination in destinations:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.mkdir()
-            installed.append(destination)
-            shutil.copytree(
-                origin,
-                destination,
-                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-                dirs_exist_ok=True,
-            )
-    except OSError as exc:
-        for destination in installed:
-            shutil.rmtree(destination)
-        raise CliError("IO_ERROR", "pilot installation failed") from exc
-    registry = Registry(config_file).scan()
-    return {
-        "installed": [str(path.relative_to(target)) for path in installed],
-        "diagnostics": registry.diagnostics,
-    }
 
 
 def _record_execution(
@@ -166,9 +128,6 @@ def main(argv: list[str]) -> int:
         if invocation.args.version:
             emit({"version": __version__}, output_format=output_format)
             return 0
-        if node.path == ("plugins", "install-pilots") and not invocation.help_requested:
-            emit(_install(config_file), output_format=output_format)
-            return 0
         if invocation.help_requested or node.handler is None:
             from ..helpspec import document
 
@@ -176,6 +135,21 @@ def main(argv: list[str]) -> int:
                 {**document(node), "diagnostics": invocation.registry.diagnostics},
                 output_format=output_format,
             )
+            return 0
+        if node.path[:1] == ("plugins",):
+            if node.path[1] == "list":
+                from .discovery import list_plugins
+
+                data = list_plugins(config_file, registry=invocation.registry)
+            else:
+                from .lifecycle import install, uninstall
+
+                data = (
+                    install(config_file, invocation.args.source)
+                    if node.path[1] == "install"
+                    else uninstall(config_file, invocation.args.identity)
+                )
+            emit(data, output_format=output_format)
             return 0
         if len(node.path) != 3:
             raise CliError("INVALID_ARGUMENT", "Use dogopencli --help", exit_code=2)
