@@ -4,6 +4,7 @@ import io
 import json
 import stat
 import threading
+import time
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -118,12 +119,24 @@ def http_source():
                 return
             self.send_response(404 if self.path.split("?")[0] == "/missing" else 200)
             body = b"not zip" if self.path.split("?")[0] == "/invalid" else payload
-            self.send_header(
-                "Content-Length",
-                str(len(body) + (1 if self.path.split("?")[0] == "/truncated" else 0)),
-            )
+            if self.path == "/slow":
+                time.sleep(0.2)
+            if self.path != "/stream":
+                self.send_header(
+                    "Content-Length",
+                    str(
+                        len(body)
+                        + (1 if self.path.split("?")[0] == "/truncated" else 0)
+                    ),
+                )
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                if self.path == "/stream":
+                    self.wfile.write(body * 2)
+                else:
+                    self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
         def log_message(self, *args):
             pass
@@ -168,3 +181,25 @@ def test_http_stream_limit(http_source, monkeypatch):
     with pytest.raises(CliError, match="HTTP ZIP download failed"):
         with prepare_package(http_source[0] + "/artifact"):
             pytest.fail("download limit ignored")
+
+
+def test_http_total_deadline(http_source, monkeypatch):
+    monkeypatch.setattr(delivery, "DOWNLOAD_TIMEOUT", 0.05)
+    with pytest.raises(CliError, match="HTTP ZIP download failed"):
+        with prepare_package(http_source[0] + "/slow"):
+            pytest.fail("deadline ignored")
+    assert http_source[1] == ["/slow"]
+
+
+def test_streamed_http_limit_without_content_length(http_source, monkeypatch):
+    monkeypatch.setattr(delivery, "MAX_ARCHIVE_BYTES", len(archive_bytes()) + 1)
+    with pytest.raises(CliError, match="HTTP ZIP download failed"):
+        with prepare_package(http_source[0] + "/stream"):
+            pytest.fail("streamed limit ignored")
+
+
+def test_explicit_bundled_resource_works_statically():
+    with prepare_package("bundled:payment.sla.baselines") as package:
+        assert package.manifest["domain"] == "payment"
+        assert package.manifest["name"] == "sla.baselines"
+        assert (package.path / "adapter.py").is_file()

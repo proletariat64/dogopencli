@@ -100,10 +100,9 @@ def _copy_directory(source: Path, destination: Path) -> None:
         raise _invalid("Package root cannot be a symlink")
     count = size = 0
 
-    # scandir does not follow directory symlinks; every entry is checked first.
-    def copy(folder: Path, relative: Path) -> None:
+    def copy(descriptor: int, relative: Path) -> None:
         nonlocal count, size
-        with os.scandir(folder) as entries:
+        with os.scandir(descriptor) as entries:
             for entry in entries:
                 count += 1
                 if count > MAX_ENTRIES:
@@ -113,14 +112,25 @@ def _copy_directory(source: Path, destination: Path) -> None:
                 info = entry.stat(follow_symlinks=False)
                 target = destination / local
                 if stat.S_ISDIR(info.st_mode):
-                    target.mkdir()
-                    copy(Path(entry.path), local)
+                    child = os.open(
+                        entry.name,
+                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=descriptor,
+                    )
+                    try:
+                        target.mkdir()
+                        copy(child, local)
+                    finally:
+                        os.close(child)
                 elif stat.S_ISREG(info.st_mode):
-                    with open(
-                        entry.path,
-                        "rb",
-                        opener=lambda name, flags: os.open(name, flags | os.O_NOFOLLOW),
-                    ) as handle:
+                    child = os.open(
+                        entry.name,
+                        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                        dir_fd=descriptor,
+                    )
+                    with os.fdopen(child, "rb") as handle:
+                        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                            raise _invalid("Package file changed while copying")
                         size += _stream_file(handle, target, MAX_EXPANDED_BYTES - size)
                 else:
                     raise _invalid(
@@ -128,7 +138,11 @@ def _copy_directory(source: Path, destination: Path) -> None:
                         "symlinks are forbidden"
                     )
 
-    copy(source, Path())
+    descriptor = os.open(source, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        copy(descriptor, Path())
+    finally:
+        os.close(descriptor)
 
 
 def _extract_archive(source: Path, destination: Path) -> None:
@@ -269,6 +283,7 @@ def _download(url: str, destination: Path) -> None:
                 return
             finally:
                 watchdog.cancel()
+                watchdog.join()
                 connection.close()
         raise ValueError
     except (OSError, ValueError, http.client.HTTPException, AttributeError):
@@ -325,7 +340,7 @@ def prepare_package(source: str | Path):
         with resources.as_file(resource) as path:
             with validate_package(path) as package:
                 yield package
-    elif urlsplit(value).scheme.lower() in {"http", "https"}:
+    elif value.lower().startswith(("http:", "https:")):
         with tempfile.TemporaryDirectory(prefix="dogopencli-download-") as temporary:
             archive = Path(temporary) / "download.zip"
             _download(value, archive)
