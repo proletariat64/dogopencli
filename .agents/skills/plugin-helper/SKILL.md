@@ -18,6 +18,8 @@ Choose an output outside the source directory with an existing parent directory.
 Existing output is preserved and rejected, including symlinks. Verify accepts
 local directories and ZIPs only. Pack validates an isolated source snapshot,
 creates an ordinary ZIP, validates it again, and publishes only on success.
+Identical package contents produce identical ZIP bytes regardless of source
+timestamps and permissions. Keep the tested ZIP unchanged for HTTP delivery.
 Success reports the manifest identity and `verified` or `packed`; failures exit
 nonzero with a diagnostic. Preserve the source and correct the reported problem
 before retrying with a new output path.
@@ -32,3 +34,7 @@ Static verification does not import adapters or prove runtime or production
 behavior. This helper performs no install, storage initialization, network
 publication, dependency management or UAT. Installation and UAT remain separate
 explicit operations.
+
+For batch delivery and a short HTTP install/uninstall smoke, use the repository's
+[migration procedure](../../../docs/agents/leaf-migration.md). Reuse a matching
+verified host; leaf-only packages do not require rebuilding its wheel.

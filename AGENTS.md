@@ -8,7 +8,7 @@
 - Retrieve old Python source from GitHub release tags when needed. Delete obsolete code/tests/docs; keep no legacy copies in the repo.
 
 ## Scope and Architecture
-Dogopencli is a Python CLI for querying the product operations platform, intended for one person on one machine. The bundled business scope is four installed leaves: payment.sla.baselines list/get, collection.cost list, liquidity.reference.entities list and fx.trade list. Spec #255 defines their independence and production acceptance. Historical inquiries are not current registrations; later implementation requires a bounded ticket and isolated pinned-release reference. The broader migration map #241 remains paused. Other collection capabilities, including VA fees, pools and physical accounts, remain deferred.
+Dogopencli is a Python CLI for querying the product operations platform, intended for one person on one machine. Four bundled pilot packages are available for explicit installation: payment.sla.baselines list/get, collection.cost list, liquidity.reference.entities list and fx.trade list. Each leaf owns its native contracts and is accepted independently. Historical inquiries are not current registrations; later implementation requires a bounded ticket and isolated pinned-release reference. Further migrations proceed through assigned bounded batch tickets. Read the leaf migration procedure before starting another batch. Other collection capabilities, including VA fees, pools and physical accounts, remain deferred.
 
 Payment production scope starts at `https://ifundcontrol.alipay.com/productOperation/paymentProductManagement/`. The current collection pilot covers the verified `collectionProductManagement/productPriceManagement/channelCost` transaction-cost inquiry. Historical SLA/VA rule entries are reference material for later explicitly scoped work, not current installed capabilities. Confirm actual menus and API contracts before implementation; historical knowledge-base designs do not prove current production behavior.
 
@@ -23,11 +23,12 @@ The application uses the following layout:
 - `src/dogopencli/contracts.py`: neutral endpoint, capability and parsed-result contracts.
 - `src/dogopencli/domain_contracts.py`: side-effect-free domain identity and auth declarations.
 - `src/dogopencli/leaf_packages/<domain>/<dotted-leaf>/`: bundled manifests and self-contained business adapters.
+- `leaf_packages/<domain>/<dotted-leaf>/`: independent migration packages delivered as ZIPs, outside the host wheel.
 - `src/dogopencli/leaves/`: package lifecycle, registry, shared runtime, documentation and temporary cache.
 - `tests/`: unit and integration tests with sanitized fixtures.
-- `docs/`: verified API contracts and design decisions.
+- `docs/`: current contracts and development guides.
 
-Keep domain queries in plugins; centralize authentication, request restrictions, pagination conventions, and error reporting.
+Keep native business queries in independent leaf packages; centralize authentication, request restrictions, pagination conventions, and error reporting.
 
 ## Browser and Configuration
 Use headed Chrome for interactive OAuth/SSO login and headless Chrome for routine CDP queries. Reuse a dedicated profile with only one Chrome process owning it.
@@ -64,10 +65,12 @@ See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Use single-context domain documentation: root `CONTEXT.md`
-and `docs/adr/`. See `docs/agents/domain.md`.
+Maintain business terms in `CONTEXT.md` and current contracts in the responsible
+guide. See `docs/agents/domain.md`; keep execution and version history out of
+current development documents.
 
 ### Leaf development
 
-When authoring, packaging or migrating a leaf, read
-`docs/agents/leaf-plugins.md` for adapter contracts, acceptance and removal gates.
+When authoring or packaging a leaf, read `docs/agents/leaf-plugins.md` for adapter
+contracts. For batch migration, also read `docs/agents/leaf-migration.md` and the
+assigned batch ticket for scope, shared tools and acceptance gates.

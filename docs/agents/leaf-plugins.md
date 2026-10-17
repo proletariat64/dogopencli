@@ -1,19 +1,14 @@
 # Leaf plugin development handbook
 
-Use this guide when authoring, packaging or migrating a dogopencli business leaf.
-The [leaf ADR](../adr/0022-installed-leaf-pilots.md) defines the architecture;
-[spec #239](https://github.com/proletariat64/dogopencli/issues/239) defines portable
-installation. This handbook explains the current implementation and development
-workflow. Domain terminology comes from [CONTEXT.md](../../CONTEXT.md).
+This guide owns the current package and adapter contracts. For migration work,
+start with the [migration procedure](leaf-migration.md) and the assigned batch
+ticket. Business terms live in [CONTEXT.md](../../CONTEXT.md).
 
-The primary path below is a standard list leaf: one verified endpoint, a known
+The standard list path has one verified endpoint, a known
 native identity, fixed total semantics and ordinary pagination, without backend
-workarounds or multi-request assembly. The executable
-[sample package](../../examples/leaf_simple/) and
-[public CLI exercise](../../tests/integration/test_leaf_handbook.py) establish this
-path. The [pilot research](leaf-handbook-evidence.md)
-explains which parts the four pilots actually demonstrate. Neither a synthetic
-exercise nor earlier pilot success qualifies a new production endpoint.
+workarounds or multi-request assembly. Use the executable [sample package](../../examples/leaf_simple/) and
+[public CLI exercise](../../tests/integration/test_leaf_handbook.py) for this path.
+A new production endpoint still requires its own business qualification.
 
 ## Walk through a complete simple leaf
 
@@ -78,13 +73,10 @@ behavior and completeness limitations. Verify that each request is inquiry-only;
 HTTP method alone does not establish this. Preserve native values and unknown
 fields. Do not invent stable identities, totals or completeness to satisfy a schema.
 
-For a later migration, first resume the paused
-[migration map](https://github.com/proletariat64/dogopencli/issues/241) explicitly
-and establish the supported-leaf inventory and consumer list. Create a bounded
-per-leaf ticket stating the historical behavior,
-new dotted identity, supported list/get operations, dependencies, verification scope
-and eventual deletion candidates. Unsupported/deferred inquiries require their own
-qualification decision; copying their implementation is not qualification.
+For migration, the assigned ticket defines exact dotted identities, supported
+list/get operations, native semantics, dependencies and acceptance scope.
+Unsupported inquiries require their own qualification; a historical declaration
+is reference knowledge rather than current support.
 
 Finish this step with an explicit request/result contract and a retained comparison
 reference, not just a list of old source files.
@@ -104,8 +96,7 @@ Independent migration packages are maintained under
 `leaf_packages/<domain>/<dotted-name>/` at the repository root and delivered as
 separate ZIPs. This keeps them outside automatic bundled-pilot discovery and the
 host wheel. Their package README files receive the same title and link checks
-as other repository documentation. Batch B01 evidence is recorded in
-[migration B01](migration-b01-evidence.md).
+as other repository documentation.
 
 Develop in a source directory separate from the installed snapshot. A package has
 exactly one root layout:
@@ -204,8 +195,6 @@ Help `errors` is the declared set of known host/runtime errors, not an exhaustiv
 list of arbitrary adapter failures. Consumers must handle unknown error codes.
 Shared operation rules distinguish cached list, live acquisition, get, prune and
 describe; correcting documentation does not change execution or exit codes.
-See the [help cleanup record](help-cleanup.md) for the replacement boundary and
-compatibility verification.
 
 Help, describe and GUI-editable prose come from this manifest. README is optional
 supporting documentation. GUI saves update only the installed manifest, not your
@@ -356,66 +345,24 @@ Apply the current repository review workflow. Report local tests/review, remote 
 production UAT and release independently; automated passing tests do not qualify a
 production inquiry.
 
-## 7. Apply the evidence to a real rewrite
+## 7. Preserve business meaning
 
-[Spec #255](https://github.com/proletariat64/dogopencli/issues/255) defines the
-four-pilot independence and business acceptance gate. The evidence companion
-records which checks have actually passed. Required production evidence must be
-present before this pattern is described as proven. The broader migration map
-remains paused until separately resumed; this handbook does not resume it.
+Write the native contract against the current host primitives. Keep endpoint and
+request allowlisting, scope, raw field values/types, exact amounts, identities,
+unknown fields and honest completeness. HTTP 200 with a failed business envelope
+is a failure. Null, empty text and zero are distinct business values.
 
-The four pilots have now passed independent installed execution, isolated
-same-input release comparisons and per-leaf nonempty production UAT, as recorded
-in the [evidence companion](leaf-handbook-evidence.md). The resulting migration
-method is leaf-owned native business behavior under current contracts, direct
-imports of genuine host primitives, isolated release-tag comparison, retired-file
-and transitive-consumer checks, installed-artifact proof and per-leaf business UAT.
-These examples do not establish arbitrary module-loading or complex-leaf support.
+Use the simple sample for ordinary list mechanics. A specialized collector needs
+concrete native evidence: backend capacity/retry rules, multi-source assembly,
+compound scope or totals that cannot use the common collector. Short code does
+not prove simple behavior. Keep native detail queries and typed identity checks
+separate from list row lookup; get-only packages remain get-only.
 
-1. Identify a supported inquiry and its historical contract, tests and UAT. Use
-   current dotted-name practice. Assess simplicity by actual behavior: verified
-   endpoint/envelope/identity, ordinary paging, no backend workaround, custom
-   assembly or auxiliary-loader requirement. Short adapter code alone is not
-   evidence of simplicity. Record the reason for its place in the proposed order.
-2. Write against the current leaf interface using that knowledge. Reproduce the
-   native request/response contract with shared host mechanics, and verify business
-   output parity: fields, types, identity, scope, detail and quality semantics.
-   Retrieve historical Python only from a pinned GitHub release tag into an
-   isolated location outside the repository and new runtime. Never import, wrap,
-   call, re-export or copy the retired business runtime into the new distribution.
-   Replay identical inputs in separate historical/new environments and compare
-   fields, types, amounts, identity, counts and multiplicities. Verified native
-   business meaning takes precedence over historical defects; explain differences
-   and return unresolved business ambiguity to the owner.
-3. Use task-isolated configuration and freshly collected replacement state where
-   appropriate. Before any reset, inventory the exact configuration, query cache,
-   Duckdog database/tables and authentication profile it affects. Reset is optional
-   and requires task authorization. Ordinary uninstall retains Duckdog data;
-   refresh does not import business rows into Duckdog. Preserve the current daily
-   installation when validating #255; no global installation or deployment is
-   part of acceptance.
-4. Pass the public CLI tests and perform inquiry-only production UAT for the new
-   leaf and native get if declared. Compare full records under matching bounded
-   scope and investigate changing data instead of enforcing historical counts.
-   Record revision/package, capture time, scope, counts and quality limitations.
-   Prove live, refresh and offline behavior separately. Blocked UAT is incomplete.
-5. Follow repository browser instructions before UAT: task-owned config/profile,
-   unused allowed CDP port, human SSO where required, never ports 9330–9340 or
-   borrowed sessions. Keep raw data/authentication private; publish sanitized
-   evidence. No business mutations or automatic dataset ingestion.
-6. Inventory every retired implementation and retained host primitive. Check
-   direct and transitive consumers and remove obsolete code, registration, tests,
-   scripts and active guidance. Inspect wheel and sdist contents; install outside
-   the checkout, install the packages through public lifecycle commands and run
-   positive inquiries in fresh processes with controlled transport. Reject retired
-   imports and verify module origins. Static checks and positive execution jointly
-   establish independence; neither replaces production business UAT.
-7. Record actual auxiliary-file/multi-module requirements for complex leaves,
-   validate each needed loading pattern, and update this handbook from the results.
-   Complete per-leaf checks/review and evidence before progressing. Track the
-   remaining inventory only after the paused migration map is explicitly resumed.
+When a source representation contains derived fields or defects, document the
+native meaning and prove each deliberate difference with the same captured input.
+Unexplained field, identity, amount or scope differences block acceptance. Keep
+legacy reference code outside the repository and new runtime; use separate
+processes for business comparison.
 
-Normal installation does not run production UAT. The synthetic exercise validates
-the standard development path; each real inquiry still needs its own installed
-artifact, same-input comparison and production evidence. Unknown FX business
-identity and total semantics remain explicit limitations, not completeness proof.
+The [migration procedure](leaf-migration.md) owns the verification sequence,
+installed-host reuse, short HTTP lifecycle check, evidence and parallel ownership.

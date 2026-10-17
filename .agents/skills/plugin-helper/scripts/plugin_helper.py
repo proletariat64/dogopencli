@@ -26,7 +26,12 @@ def pack(source: Path, output: Path) -> dict:
             archive_path = Path(temporary) / "package.zip"
             with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
                 for path in sorted(package.path.rglob("*")):
-                    archive.write(path, path.relative_to(package.path).as_posix())
+                    name = path.relative_to(package.path).as_posix()
+                    entry = zipfile.ZipInfo(name + "/" if path.is_dir() else name)
+                    entry.create_system = 3
+                    entry.external_attr = (0o40755 if path.is_dir() else 0o100644) << 16
+                    entry.compress_type = zipfile.ZIP_DEFLATED
+                    archive.writestr(entry, b"" if path.is_dir() else path.read_bytes())
             with validate_package(archive_path) as verified:
                 identity = f"{verified.manifest['domain']}.{verified.manifest['name']}"
             # Stage on the destination filesystem. Hard-link publication is atomic

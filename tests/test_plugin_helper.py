@@ -154,3 +154,17 @@ def test_helper_pack_respects_artifact_umask(source, tmp_path, umask, permission
     assert stat.S_IMODE(output.stat().st_mode) == permissions
     assert invoke("verify", output).returncode == 0
     assert list(tmp_path.glob(".dogopencli-pack-*")) == []
+
+
+def test_same_contents_produce_same_zip_despite_source_metadata(source, tmp_path):
+    first, second = tmp_path / "one.zip", tmp_path / "two.zip"
+    assert invoke("pack", source, "--output", first).returncode == 0
+    for path in source.rglob("*"):
+        os.utime(path, (1_700_000_000, 1_700_000_000))
+        path.chmod(0o700 if path.is_dir() else 0o600)
+    assert invoke("pack", source, "--output", second).returncode == 0
+    assert first.read_bytes() == second.read_bytes()
+    (source / "resources/help.txt").write_text("changed ordinary resource\n")
+    third = tmp_path / "three.zip"
+    assert invoke("pack", source, "--output", third).returncode == 0
+    assert third.read_bytes() != first.read_bytes()
