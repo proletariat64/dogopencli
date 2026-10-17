@@ -299,6 +299,15 @@ def test_version_never_bypasses_invalid_command_paths(run_cli):
             assert "--help" in json.loads(out)["error"]["message"]
 
 
+def test_core_argument_errors_are_not_reported_as_missing_leaves(run_cli):
+    for root in ("domain", "gui", "plugins", "unknown"):
+        code, out, _ = run_cli([root, "list", "extra"])
+        error = json.loads(out)["error"]
+        assert code == 2, (root, out)
+        assert error["code"] == "INVALID_ARGUMENT"
+        assert "--help" in error["message"]
+
+
 def test_common_option_spellings_remain_literal_business_values(
     run_cli, monkeypatch, tmp_path
 ):
