@@ -25,6 +25,13 @@ MAX_ENTRIES = 1000
 DOWNLOAD_TIMEOUT = 60
 MAX_REDIRECTS = 5
 _CHUNK = 64 * 1024
+# ZIP imports compression backends optionally; unavailable codecs must not
+# prevent directory or stored-ZIP validation on a minimal Python installation.
+_ZIP_CODEC_ERRORS = tuple(
+    getattr(codec, error)
+    for codec, error in ((zipfile.zlib, "error"), (zipfile.lzma, "LZMAError"))
+    if codec is not None
+)
 _RUNTIME_NAMES = {
     ".env",
     ".git",
@@ -347,6 +354,7 @@ def validate_package(path: Path):
             zipfile.BadZipFile,
             RuntimeError,
             RecursionError,
+            *_ZIP_CODEC_ERRORS,
         ):
             raise _invalid(
                 "Cannot validate package; check root layout, manifest and ZIP integrity"

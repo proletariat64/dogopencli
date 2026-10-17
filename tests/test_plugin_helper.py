@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import zipfile
@@ -98,3 +99,46 @@ def test_helper_pack_install_preserves_empty_directories(source, tmp_path, run_c
     installed = tmp_path / "plugins/payment/sla.baselines"
     assert (installed / "resources/empty/nested").is_dir()
     assert (installed / "resources/help.txt").read_text() == "ordinary resource\n"
+
+
+@pytest.mark.parametrize("compression", [zipfile.ZIP_DEFLATED, zipfile.ZIP_LZMA])
+@pytest.mark.parametrize("entry_point", ["helper", "install"])
+def test_corrupt_compressed_zip_has_static_diagnostics(
+    source, tmp_path, run_cli, compression, entry_point
+):
+    if compression == zipfile.ZIP_LZMA:
+        pytest.importorskip("lzma")
+    archive_path = tmp_path / "corrupt-content.zip"
+    with zipfile.ZipFile(archive_path, "w", compression) as archive:
+        archive.write(source / "leaf.json", "leaf.json")
+        archive.write(source / "adapter.py", "adapter.py")
+        header = archive.getinfo("leaf.json").header_offset
+    data = bytearray(archive_path.read_bytes())
+    name_length, extra_length = struct.unpack_from("<HH", data, header + 26)
+    payload = header + 30 + name_length + extra_length
+    if compression == zipfile.ZIP_DEFLATED:
+        # Reserved block type, leaving central directory and local header intact.
+        data[payload] = (data[payload] & ~7) | 7
+    else:
+        # ZIP LZMA header: version (2), property length (2), properties.
+        data[payload + 4] = 255
+    archive_path.write_bytes(data)
+    original = archive_path.read_bytes()
+    scope = tmp_path / "operator"
+    if entry_point == "helper":
+        result = invoke("verify", archive_path)
+        assert result.returncode == 1
+        assert result.stderr == ""
+        diagnostic = json.loads(result.stdout)
+        assert diagnostic["error"] == "INVALID_PACKAGE"
+    else:
+        code, output, error = run_cli(
+            ["--config-dir", str(scope), "plugins", "install", str(archive_path)]
+        )
+        assert (code, error) == (1, "")
+        diagnostic = json.loads(output)["error"]
+        assert diagnostic["code"] == "INVALID_PACKAGE"
+    assert "ZIP integrity" in diagnostic["message"]
+    assert archive_path.read_bytes() == original
+    assert not (scope / "plugins").exists()
+    assert not (scope / "duckdog.duckdb").exists()
