@@ -1,0 +1,48 @@
+{
+  "domain": "liquidity",
+  "name": "rules.forecast",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List cash forecast rule configurations in the verified fixed Z21 scope.",
+      "parameters": []
+    }
+  },
+  "summary": "Cash forecast rule configurations for Z21.",
+  "purpose": "Inspect existing bank cash forecast configuration without executing a forecast or changing rules.",
+  "fields": [
+    {
+      "name": "ruleId",
+      "type": "string",
+      "meaning": "Native rule identity; never replaced by an ordinal or hash."
+    },
+    {
+      "name": "instId",
+      "type": "string",
+      "meaning": "Native institution scope of the rule."
+    }
+  ],
+  "identity": [
+    "ruleId"
+  ],
+  "identity_description": "Native ruleId identifies each forecast rule.",
+  "limitations": [
+    "Fixed tenant GUAPW3SG and instId=[\"Z21\"]; no arbitrary entity or user filter.",
+    "Native rowStart pagination uses pageSize=10; result.count is the reported total.",
+    "List configuration only; no getter or forecast execution.",
+    "Current production qualification is tracked separately in issue #257."
+  ],
+  "examples": [
+    {
+      "title": "Read live rules",
+      "command": "dogopencli liquidity list rules.forecast --live"
+    },
+    {
+      "title": "Refresh temporary cache",
+      "command": "dogopencli liquidity refresh rules.forecast"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_rules_forecast"
+  }
+}

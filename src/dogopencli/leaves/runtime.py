@@ -150,6 +150,12 @@ def execute(
             "fetched_at": now().isoformat(),
             "returned_count": 1,
         }
+    definitions = leaf.manifest["operations"]["list"].get("parameters", [])
+    local_parameters = {
+        definition["name"].replace("-", "_")
+        for definition in definitions
+        if definition.get("local_field")
+    }
     live = operation == "refresh" or args.live
     ttl = _ttl(config_file)
     with store.refresh_lock() if operation == "refresh" else nullcontext():
@@ -190,7 +196,19 @@ def execute(
             check_complete(
                 evidence, require_complete=args.require_complete, mode=operation
             )
-            _project(window_rows(rows, limit, offset), fields)
+            selected = (
+                leaf.adapter.filter(
+                    rows,
+                    {
+                        key: value
+                        for key, value in parameters.items()
+                        if key in local_parameters
+                    },
+                )
+                if operation == "list"
+                else rows
+            )
+            _project(window_rows(selected, limit, offset), fields)
             published = operation == "refresh" and bool(rows)
             if published:
                 snapshot = SnapshotMeta(
@@ -220,6 +238,7 @@ def execute(
                     snapshot,
                     [(index, canonical(row)) for index, row in enumerate(rows, 1)],
                 )
+            rows = selected
         else:
             snapshot, stored = store.read(namespace)
             if snapshot is None:
@@ -261,7 +280,6 @@ def execute(
             check_complete(
                 evidence, require_complete=args.require_complete, mode="cache"
             )
-            definitions = leaf.manifest["operations"]["list"].get("parameters", [])
             for definition in definitions:
                 key = definition["name"].replace("-", "_")
                 if key in args.explicit_parameters and not definition.get(
@@ -285,8 +303,20 @@ def execute(
         source_acquisition = evidence.record()
         requested_coverage = True
         if not live:
+            requested_parameters = {
+                **query,
+                **{
+                    key: value
+                    for key, value in parameters.items()
+                    if key in args.explicit_parameters
+                },
+            }
+            same_native_scope = leaf.adapter.scope(
+                requested_parameters
+            ) == leaf.adapter.scope(query)
             requested_coverage = all(
                 key not in args.explicit_parameters
+                or (key in local_parameters and same_native_scope)
                 or parameters.get(key) == value
                 or canonical(parameters.get(key)) == canonical(value)
                 for key, value in query.items()

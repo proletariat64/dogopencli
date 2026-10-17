@@ -100,6 +100,13 @@ Current bundled sources live under [leaf_packages](../../src/dogopencli/leaf_pac
 | [liquidity/reference.entities](../../src/dogopencli/leaf_packages/liquidity/reference.entities/) | Reference records using the shared collection contract. |
 | [fx/trade](../../src/dogopencli/leaf_packages/fx/trade/) | Bounded parameters and honest incomplete-result limitations. |
 
+Independent migration packages are maintained under
+`leaf_packages/<domain>/<dotted-name>/` at the repository root and delivered as
+separate ZIPs. This keeps them outside automatic bundled-pilot discovery and the
+host wheel. Their package README files receive the same title and link checks
+as other repository documentation. Batch B01 evidence is recorded in
+[migration B01](migration-b01-evidence.md).
+
 Develop in a source directory separate from the installed snapshot. A package has
 exactly one root layout:
 

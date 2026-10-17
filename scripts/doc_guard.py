@@ -56,6 +56,11 @@ def valid_layout(relative: Path) -> bool:
     parts = relative.parts
     if len(parts) == 1:
         return relative.name in ROOT_DOCS
+    if len(parts) == 4 and parts[0] == "leaf_packages" and parts[3] == "README.md":
+        return bool(
+            re.fullmatch(SLUG, parts[1])
+            and re.fullmatch(r"[a-z0-9]+(?:[._-][a-z0-9]+)*", parts[2])
+        )
     if parts == ("docs", "README.md"):
         return True
     if len(parts) == 3 and parts[:2] == ("docs", "design"):

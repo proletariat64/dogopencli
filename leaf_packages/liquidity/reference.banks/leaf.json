@@ -1,0 +1,73 @@
+{
+  "domain": "liquidity",
+  "name": "reference.banks",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List native bank reference records; country selects cityCode locally after acquisition.",
+      "parameters": [
+        {
+          "name": "country",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "cityCode",
+          "description": "Exact local cityCode match; repeat for alternative values. Applied after full acquisition in live and cached modes; never sent to the backend."
+        }
+      ]
+    }
+  },
+  "summary": "Bank reference records with exact local country selection.",
+  "purpose": "Inspect maintained bank reference records and native bank codes without changing bank configuration.",
+  "fields": [
+    {
+      "name": "bankId",
+      "type": "string",
+      "meaning": "Native bank identity."
+    },
+    {
+      "name": "bankName",
+      "type": "string",
+      "meaning": "Native bank name."
+    },
+    {
+      "name": "bankSwiftCode",
+      "type": "string",
+      "meaning": "Native SWIFT code, without normalization."
+    },
+    {
+      "name": "cityCode",
+      "type": "string",
+      "meaning": "Native country/location code used by the local country filter."
+    },
+    {
+      "name": "state",
+      "type": "string",
+      "meaning": "Native configuration state."
+    }
+  ],
+  "identity": [
+    "bankId"
+  ],
+  "identity_description": "Native bankId identifies a bank reference record; no synthetic identity is created.",
+  "limitations": [
+    "List only; no detail inquiry.",
+    "Fixed GUAPW3SG tenant, native rowStart offsets and pageSize=5000.",
+    "Country is an exact case-sensitive local match on cityCode; repeated values select alternatives, without duplicate output.",
+    "Native endpoint has no page echoes. Completeness uses fixed total, identity and arrival evidence.",
+    "Pinned v0.4.3 contract is historical provenance; current production qualification is recorded separately."
+  ],
+  "examples": [
+    {
+      "title": "Read saved banks for Singapore or United States",
+      "command": "dogopencli liquidity list reference.banks --country SG --country US"
+    },
+    {
+      "title": "Acquire live bank references",
+      "command": "dogopencli liquidity list reference.banks --live"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_reference_banks"
+  }
+}
