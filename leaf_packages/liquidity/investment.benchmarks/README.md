@@ -35,5 +35,8 @@ business request. Refresh does not import records into Duckdog.
 Automated evidence is in `tests/integration/test_investment_benchmarks.py` and uses
 installed directory/ZIP packages, the public CLI and controlled CDP responses.
 The tests prove request/parsing and host lifecycle behavior, not production
-availability. Local and cn.ant nonempty production comparison, Duckdog import and
-final data cleanup/uninstall remain separate acceptance gates under spec #257.
+availability. The dated production comparison, explicit Duckdog readback and
+artifact acceptance are recorded under
+[spec #257](https://github.com/proletariat64/dogopencli/issues/257). Production
+acceptance runs locally; cn.ant hosts only HTTP artifacts. Accepted leaves remain
+installed on merged master; business data/cache are cleared while SSO is retained.

@@ -28,7 +28,9 @@ The business reference is release `v0.4.3`, resolved commit
 package and is never imported. The knowledge-base document “匡算介绍”
 (2023-04-17, 245795715), sections 1–2 and 9, explains forecast models and rule-time
 configuration; it does not establish current API availability or permission.
-Issue #257 separately owns positive production qualification on both hosts.
+[Issue #257](https://github.com/proletariat64/dogopencli/issues/257) records dated
+local production qualification and isolated historical comparison. cn.ant hosts
+HTTP artifacts only; it does not execute this inquiry.
 Controlled CDP tests establish request, parser, paging and lifecycle behavior only.
 
 Install this directory or pack its root contents as one ZIP with the existing

@@ -13,7 +13,7 @@ from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 from dogopencli.jsonutil import parse
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "src/dogopencli/leaf_packages/liquidity/investment.benchmarks"
+SOURCE = ROOT / "leaf_packages/liquidity/investment.benchmarks"
 ROW = {
     "id": 0,
     "value": Decimal("0.123456789012345678901"),

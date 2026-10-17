@@ -13,7 +13,7 @@ from dogopencli.browser import cdp
 from dogopencli.jsonutil import parse
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "src/dogopencli/leaf_packages/liquidity/reference.banks"
+SOURCE = ROOT / "leaf_packages/liquidity/reference.banks"
 ROWS = [
     {
         "bankId": "a",

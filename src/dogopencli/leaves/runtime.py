@@ -150,6 +150,12 @@ def execute(
             "fetched_at": now().isoformat(),
             "returned_count": 1,
         }
+    definitions = leaf.manifest["operations"]["list"].get("parameters", [])
+    local_parameters = {
+        definition["name"].replace("-", "_")
+        for definition in definitions
+        if definition.get("local_field")
+    }
     live = operation == "refresh" or args.live
     ttl = _ttl(config_file)
     with store.refresh_lock() if operation == "refresh" else nullcontext():
@@ -191,7 +197,16 @@ def execute(
                 evidence, require_complete=args.require_complete, mode=operation
             )
             selected = (
-                leaf.adapter.filter(rows, parameters) if operation == "list" else rows
+                leaf.adapter.filter(
+                    rows,
+                    {
+                        key: value
+                        for key, value in parameters.items()
+                        if key in local_parameters
+                    },
+                )
+                if operation == "list"
+                else rows
             )
             _project(window_rows(selected, limit, offset), fields)
             published = operation == "refresh" and bool(rows)
@@ -265,7 +280,6 @@ def execute(
             check_complete(
                 evidence, require_complete=args.require_complete, mode="cache"
             )
-            definitions = leaf.manifest["operations"]["list"].get("parameters", [])
             for definition in definitions:
                 key = definition["name"].replace("-", "_")
                 if key in args.explicit_parameters and not definition.get(
@@ -289,11 +303,6 @@ def execute(
         source_acquisition = evidence.record()
         requested_coverage = True
         if not live:
-            local_parameters = {
-                definition["name"].replace("-", "_")
-                for definition in definitions
-                if definition.get("local_field")
-            }
             requested_parameters = {
                 **query,
                 **{

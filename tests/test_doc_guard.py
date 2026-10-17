@@ -48,6 +48,22 @@ class DocGuardTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("PASS (3 Markdown files)", result.stdout)
 
+    def test_standalone_leaf_readme_keeps_prose_and_link_checks(self) -> None:
+        name = "leaf_packages/liquidity/reference.banks/README.md"
+        result = self.run_guard(
+            {
+                name: "# Banks\n\n[Manifest](leaf.json)\n",
+                name.replace("README.md", "leaf.json"): "{}",
+            }
+        )
+        self.assertEqual(result.returncode, 0, result.stdout)
+        broken = self.run_guard({name: "# Banks\n\n[Missing](missing.json)\n"})
+        self.assertEqual(broken.returncode, 1)
+        self.assertIn("broken local link", broken.stdout)
+        invalid = self.run_guard({name.replace("README.md", "notes.md"): "# Notes\n"})
+        self.assertEqual(invalid.returncode, 1)
+        self.assertIn("invalid documentation", invalid.stdout)
+
     def test_invalid_names_and_locations_fail(self) -> None:
         for name in (
             "notes.md",

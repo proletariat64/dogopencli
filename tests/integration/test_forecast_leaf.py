@@ -12,10 +12,7 @@ from dogopencli.browser import cdp
 from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 from dogopencli.jsonutil import parse
 
-SOURCE = (
-    Path(__file__).resolve().parents[2]
-    / "src/dogopencli/leaf_packages/liquidity/rules.forecast"
-)
+SOURCE = Path(__file__).resolve().parents[2] / "leaf_packages/liquidity/rules.forecast"
 ROWS = [
     {
         "ruleId": f"rule-{i}",
