@@ -220,8 +220,8 @@ class Leaf:
     name: str
     path: Path
     manifest: dict
-    adapter: Any
-    adapter_sha256: str
+    adapter: Any = None
+    adapter_sha256: str = ""
 
     @property
     def id(self) -> str:
@@ -285,7 +285,7 @@ class Registry:
         path = Path(raw).expanduser()
         return (self.config_file.parent / path).resolve()
 
-    def _load(self, folder: Path) -> Leaf:
+    def _declaration(self, folder: Path) -> Leaf:
         if folder.is_symlink() or folder.parent.is_symlink():
             raise _invalid("domain and leaf folders must be direct local directories")
         if not folder.is_dir():
@@ -313,6 +313,62 @@ class Registry:
             or not location.is_file()
         ):
             raise _invalid("adapter must resolve to a Python file inside its leaf")
+        return Leaf(value["domain"], value["name"], folder, value)
+
+    def discover(self) -> "Registry":
+        """Read local declarations only: no adapters, configuration or lifecycle IO."""
+        self.leaves = {}
+        self.diagnostics = []
+        try:
+            domains = sorted(self.root.iterdir())
+        except FileNotFoundError:
+            return self
+        except OSError:
+            self.diagnostics.append(
+                {
+                    "id": "plugins",
+                    "code": "LEAF_LOAD_ERROR",
+                    "message": "Cannot read installation directories",
+                }
+            )
+            return self
+        for domain in domains:
+            try:
+                if domain.is_symlink() or not domain.is_dir():
+                    raise _invalid("invalid installation directory")
+                folders = sorted(domain.iterdir())
+            except (OSError, CliError):
+                self.diagnostics.append(
+                    {
+                        "id": domain.name[:128],
+                        "code": "INVALID_LEAF",
+                        "message": "Invalid installation directory",
+                    }
+                )
+                continue
+            for folder in folders:
+                try:
+                    leaf = self._declaration(folder)
+                    self.leaves[leaf.id] = leaf
+                except Exception as error:
+                    self.diagnostics.append(
+                        {
+                            "id": f"{domain.name}.{folder.name}"[:256],
+                            "code": "INVALID_LEAF"
+                            if isinstance(error, (CliError, ValueError))
+                            else "LEAF_LOAD_ERROR",
+                            "message": "Invalid local leaf declaration"
+                            if isinstance(error, (CliError, ValueError))
+                            else "Cannot read local leaf declaration",
+                        }
+                    )
+        return self
+
+    def _load(self, folder: Path) -> Leaf:
+        declaration = self._declaration(folder)
+        value = declaration.manifest
+        filename, attribute = value["adapter"].split(":")
+        location = (folder / filename).resolve()
         # Execute fresh source rather than timestamp-based bytecode: a replacement
         # with equal size and timestamp must still take effect next invocation.
         module_name = "_dogopencli_leaf_" + uuid.uuid4().hex

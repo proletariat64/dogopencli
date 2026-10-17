@@ -355,7 +355,7 @@ def test_logout_invalid_arguments(run_cli, logout_setup, argv):
 def test_logout_help_is_json_by_default(run_cli, logout_setup):
     code, out, _ = run_cli(["logout", "--help"])
     assert code == 0
-    document = json.loads(out)
+    document = json.loads(out)["data"]
     assert document["command"] == "dogopencli logout"
     names = [option["name"] for option in document["options"]]
     assert "timeout_seconds" not in names

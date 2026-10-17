@@ -11,7 +11,7 @@ Use the public CLI for inquiry-only access. This skill does not authorize change
 
 Use installed `dogopencli`; in its checkout use `uv run dogopencli`. If unavailable, report the missing executable rather than installing dependencies implicitly. Apply the host's shell wrapper convention, such as `rtk proxy`, to these examples.
 
-Start with `dogopencli help payment`, then request only the relevant leaf's help. Bare root and groups disclose navigation; bare executable leaves run queries. Read current JSON help for accepted flags, constraints, effects, and examples instead of inventing filters or copying backend requests.
+Start with `dogopencli payment --help`, then inspect an action such as `dogopencli payment list --help` and the relevant installed dotted leaf with `-h` or `--help`. Help is flag-only; positional `help` commands are unsupported. Bare root and groups disclose navigation; bare executable leaves run queries. Read current JSON help for accepted flags, constraints, effects, and examples instead of inventing filters or copying backend requests.
 
 | Need | Command |
 | --- | --- |
@@ -42,9 +42,9 @@ Channel mock data can be a complete curated dataset while `simulated=true` and `
 
 ## Recover within scope
 
-For CACHE_MISS, inspect `dogopencli help refresh payment DOMAIN` and refresh when within the requested task. Refresh writes local snapshots; its source may be an export or CDP. Preserve existing source configuration and let the CLI enforce publication quality.
+For CACHE_MISS, inspect `dogopencli payment refresh DOTTED_LEAF --help` and refresh when within the requested task. Refresh writes local snapshots; its source may be an export or CDP. Preserve existing source configuration and let the CLI enforce publication quality.
 
-For AUTH_REQUIRED or BROWSER_UNAVAILABLE, inspect `dogopencli help auth` and the relevant auth leaf. Use the existing session check first; use `dogopencli login` when login is needed and authorized, leaving interactive SSO to the user. Keep DI-compatible auth arguments as advertised by current help. Never use CDP ports 9330–9340.
+For AUTH_REQUIRED or BROWSER_UNAVAILABLE, inspect `dogopencli auth --help` and the relevant auth leaf. Use the existing session check first; use `dogopencli login` when login is needed and authorized, leaving interactive SSO to the user. Keep DI-compatible auth arguments as advertised by current help. Never use CDP ports 9330–9340.
 
 On persistent collection or source errors, report the error and available coverage; do not loop indefinitely or bypass the CLI with arbitrary CDP JavaScript or backend requests. Keep cookies, tokens, and unrequested sensitive record content out of logs. Save requested exports under a persistent user-selected path or repository `tmp/`, not system `/tmp`.
 

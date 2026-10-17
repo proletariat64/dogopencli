@@ -63,14 +63,6 @@ def _text(value: Any, depth: int = 0) -> str:
     return "\n".join(padding + line for line in scalar.split("\n"))
 
 
-def _boolean(value: str) -> bool:
-    if value.lower() in ("true", "1"):
-        return True
-    if value.lower() in ("false", "0"):
-        return False
-    raise argparse.ArgumentTypeError("expected true or false")
-
-
 def _install(config_file: Path) -> dict:
     source = Path(__file__).parents[1] / "leaf_packages"
     target = config_file.parent / "plugins"
@@ -148,62 +140,48 @@ def main(argv: list[str]) -> int:
         common.add_argument("--format", choices=("json", "text"), default="json")
         controls, tokens = common.parse_known_args(argv)
         output_format = controls.format
-        if controls.version:
+        from ..command_model import resolve
+
+        # Discover and validate the entire invocation before activating runtime.
+        # The same declarations drive public help and this execution parser.
+        if len(tokens) >= 2:
+            operation = tokens[1]
+        try:
+            invocation = resolve(argv)
+        except CliError:
+            # Preserve the established missing-leaf execution error envelope.
+            if (
+                len(tokens) >= 3
+                and tokens[0] in {domain.id for domain in domain_plugins()}
+                and tokens[1] in {"list", "get", "refresh", "prune", "describe"}
+                and not any(token in {"-h", "--help"} for token in tokens)
+            ):
+                Registry(config.config_path(controls.config_dir)).discover().get(
+                    tokens[0], tokens[2]
+                )
+            raise
+        output_format = invocation.args.format
+        config_file = invocation.config_file
+        node = invocation.node
+        if invocation.args.version:
             emit({"version": __version__}, output_format=output_format)
             return 0
-        config_file = config.config_path(controls.config_dir)
-        if tokens == ["plugins", "install-pilots"]:
+        if node.path == ("plugins", "install-pilots") and not invocation.help_requested:
             emit(_install(config_file), output_format=output_format)
             return 0
-        registry = Registry(config_file).scan()
-        domains = {domain.id: domain for domain in domain_plugins()}
-        if not tokens or tokens in (["--help"], ["-h"], ["help"]):
+        if invocation.help_requested or node.handler is None:
+            from ..helpspec import document
+
             emit(
-                {
-                    "usage": "dogopencli <domain> <action> <dotted-leaf>",
-                    "domains": sorted(domains),
-                    "actions": ["list", "get", "refresh", "prune", "help", "describe"],
-                    "installation": "plugins install-pilots",
-                    "diagnostics": registry.diagnostics,
-                },
+                {**document(node), "diagnostics": invocation.registry.diagnostics},
                 output_format=output_format,
             )
             return 0
-        if len(tokens) == 1 and tokens[0] in domains:
-            emit(
-                {
-                    "domain": tokens[0],
-                    "leaves": [
-                        item.name
-                        for item in registry.leaves.values()
-                        if item.domain == tokens[0]
-                    ],
-                    "diagnostics": registry.diagnostics,
-                },
-                output_format=output_format,
-            )
-            return 0
-        if (
-            len(tokens) < 3
-            or tokens[0] not in domains
-            or tokens[1] not in {"list", "get", "refresh", "prune", "help", "describe"}
-        ):
-            raise CliError(
-                "INVALID_ARGUMENT",
-                "use <domain> <action> <dotted-leaf-name>",
-                exit_code=2,
-            )
-        domain, operation, name, *remaining = tokens
-        leaf = registry.get(domain, name)
-        if (
-            operation in {"help", "describe"}
-            or "--help" in remaining
-            or "-h" in remaining
-        ):
-            if any(token not in {"--help", "-h"} for token in remaining):
-                raise CliError(
-                    "INVALID_ARGUMENT", "Unsupported documentation option", exit_code=2
-                )
+        if len(node.path) != 3:
+            raise CliError("INVALID_ARGUMENT", "Use dogopencli --help", exit_code=2)
+        domain, operation, name = node.path
+        leaf = invocation.registry.get(domain, name)
+        if operation == "describe":
             from .documentation import describe, render_text
 
             document = describe(leaf)
@@ -213,58 +191,25 @@ def main(argv: list[str]) -> int:
                 emit(document, output_format=output_format)
             return 0
         declared_operation = "list" if operation in {"refresh", "prune"} else operation
-        if declared_operation not in leaf.manifest["operations"]:
-            raise CliError(
-                "UNSUPPORTED_CAPABILITY",
-                f"{leaf.id} does not support {operation}",
-                exit_code=2,
-            )
-        parser = Parser(
-            prog=f"dogopencli {domain} {operation} {name}",
-            add_help=False,
-            allow_abbrev=False,
-        )
-        parser.add_argument("--fields")
-        parser.add_argument("--limit", type=int, default=100)
-        parser.add_argument("--offset", type=int, default=0)
-        parser.add_argument("--require-complete", action="store_true")
-        parser.add_argument("--require-fresh", action="store_true")
-        parser.add_argument("--live", action="store_true")
-        if operation == "get":
-            parser.add_argument("detail_identity")
         definitions = (
             leaf.manifest["operations"][declared_operation].get("parameters", [])
             if operation != "prune"
             else []
         )
-        types = {"string": str, "integer": int, "number": float, "boolean": _boolean}
-        for definition in definitions:
-            kwargs = {
-                "type": types[definition["type"]],
-                "default": definition.get("default"),
-            }
-            if "choices" in definition:
-                kwargs["choices"] = definition["choices"]
-            if definition.get("multiple"):
-                kwargs["action"] = "append"
-            parser.add_argument("--" + definition["name"], **kwargs)
-        args = parser.parse_args(remaining)
-        if operation in {"get", "prune"}:
-            unsupported = {
-                "--limit",
-                "--offset",
-                "--live",
-                "--require-fresh",
-                "--require-complete",
-            }
-            if operation == "prune":
-                unsupported.add("--fields")
-            if any(token.partition("=")[0] in unsupported for token in remaining):
-                raise CliError(
-                    "INVALID_ARGUMENT",
-                    "Option does not apply to this action",
-                    exit_code=2,
-                )
+        remaining = invocation.remaining
+        args = invocation.args
+        # Runtime expects all host controls, even where an action does not accept
+        # a public spelling. Defaults are applied only after syntax validation.
+        for key, value in {
+            "fields": None,
+            "limit": 100,
+            "offset": 0,
+            "require_complete": False,
+            "require_fresh": False,
+            "live": False,
+        }.items():
+            if not hasattr(args, key):
+                setattr(args, key, value)
         args.explicit_parameters = {
             token.partition("=")[0][2:].replace("-", "_")
             for token in remaining
@@ -298,6 +243,8 @@ def main(argv: list[str]) -> int:
                 raise CliError(
                     "INVALID_ARGUMENT", "numeric parameters must be finite", exit_code=2
                 )
+        registry = Registry(config_file).scan()
+        leaf = registry.get(domain, name)
         service = DomainService(config_file, registry=registry)
         domain_row = service.inventory(domain)[0]
         if operation != "prune" and not domain_row["enabled"]:

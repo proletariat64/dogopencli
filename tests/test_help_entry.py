@@ -14,33 +14,38 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _env() -> dict[str, str]:
+def _env(tmp_path) -> dict[str, str]:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    env["DOGOPENCLI_CONFIG"] = str(tmp_path / "config.toml")
+    env["DOGOPENCLI_CONFIG_DIR"] = str(tmp_path)
     return env
 
 
-def test_python_m_entry_returns_root_json() -> None:
+def test_python_m_entry_returns_root_json(tmp_path) -> None:
     result = subprocess.run(
         [sys.executable, "-m", "dogopencli"],
         capture_output=True,
         text=True,
-        env=_env(),
+        env=_env(tmp_path),
         cwd=REPO_ROOT,
     )
     assert result.returncode == 0
     assert result.stderr == ""
     doc = json.loads(result.stdout)
-    assert doc["data"]["usage"] == "dogopencli <domain> <action> <dotted-leaf>"
-    assert doc["data"]["domains"] == ["collection", "fx", "liquidity", "payment"]
-    assert doc["data"]["actions"] == [
-        "list",
-        "get",
-        "refresh",
-        "prune",
-        "help",
-        "describe",
-    ]
+    assert doc["data"]["command"] == "dogopencli"
+    assert {child["name"] for child in doc["data"]["children"]} == {
+        "auth",
+        "collection",
+        "domain",
+        "fx",
+        "gui",
+        "liquidity",
+        "login",
+        "logout",
+        "payment",
+        "plugins",
+    }
 
 
 def test_python_m_help_path(tmp_path) -> None:
@@ -56,25 +61,26 @@ def test_python_m_help_path(tmp_path) -> None:
             "-m",
             "dogopencli",
             "payment",
-            "help",
+            "list",
             "sla.baselines",
+            "--help",
             "--config-dir",
             str(tmp_path),
         ],
         capture_output=True,
         text=True,
-        env=_env(),
+        env=_env(tmp_path),
         cwd=REPO_ROOT,
     )
     assert result.returncode == 0
     assert result.stderr == ""
     document = json.loads(result.stdout)["data"]
-    assert document["id"] == "payment.sla.baselines"
-    assert set(document["operations"]) == {"list", "get"}
-    assert "--format json|text" in document["guidance"]
+    assert document["command"] == "dogopencli payment list sla.baselines"
+    assert document["children"] == []
+    assert "options" in document and "fields" not in document
 
 
-def test_installed_console_script() -> None:
+def test_installed_console_script(tmp_path) -> None:
     script = REPO_ROOT / ".venv" / "bin" / "dogopencli"
     dogopencli = shutil.which("dogopencli") or (
         str(script) if script.exists() else None
@@ -85,15 +91,13 @@ def test_installed_console_script() -> None:
         pytest.skip("dogopencli console script is not installed")
     result = subprocess.run(
         [dogopencli, "--format", "text"],
-        env=_env(),
+        env=_env(tmp_path),
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
     )
     assert result.returncode == 0
     assert result.stderr == ""
-    assert result.stdout.startswith(
-        "usage: dogopencli <domain> <action> <dotted-leaf>\n"
-        "domains:\n  - collection\n  - fx\n  - liquidity\n  - payment\n"
-    )
-    assert "\ninstallation: plugins install-pilots\n" in result.stdout
+    assert "command: dogopencli\n" in result.stdout
+    assert "name: plugins" in result.stdout
+    assert "dogopencli plugins --help" in result.stdout

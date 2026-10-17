@@ -348,7 +348,7 @@ def test_login_expired_session_enters_human_flow_and_succeeds(
 def test_login_default_timeout_is_600_seconds(run_cli, auth_setup):
     code, out, _ = run_cli([*auth_setup.argv, "login", "--help"])
     assert code == 0
-    document = json.loads(out)
+    document = json.loads(out)["data"]
     (option,) = [o for o in document["options"] if o["name"] == "timeout_seconds"]
     assert option["default"] == 600.0
     assert option["type"] == "positive"
@@ -709,7 +709,7 @@ def test_probe_targets_payment_entry_not_di(run_cli, auth_setup):
 def test_bare_auth_shows_help_and_exits_0(run_cli, auth_setup):
     code, out, _ = run_cli([*auth_setup.argv, "auth"])
     assert code == 0
-    document = json.loads(out)
+    document = json.loads(out)["data"]
     assert document["help_version"] == 1
     assert document["command"] == "dogopencli auth"
     assert [child["name"] for child in document["children"]] == ["check"]
@@ -719,7 +719,7 @@ def test_bare_auth_shows_help_and_exits_0(run_cli, auth_setup):
 def test_login_help_is_json_by_default(run_cli, auth_setup):
     code, out, _ = run_cli(["login", "--help"])
     assert code == 0
-    document = json.loads(out)
+    document = json.loads(out)["data"]
     assert document["command"] == "dogopencli login"
     names = [option["name"] for option in document["options"]]
     assert "timeout_seconds" in names
@@ -745,7 +745,7 @@ def test_help_text_format(run_cli, auth_setup):
 def test_auth_check_help(run_cli, auth_setup):
     code, out, _ = run_cli(["auth", "check", "-h"])
     assert code == 0
-    assert json.loads(out)["command"] == "dogopencli auth check"
+    assert json.loads(out)["data"]["command"] == "dogopencli auth check"
 
 
 def test_version_envelope(run_cli, auth_setup):
@@ -1176,7 +1176,9 @@ def test_liquidity_text_and_help_report_domain(run_cli, auth_setup):
     assert "domain: liquidity" in out
     code, out, _ = run_cli(["login", "--help"])
     assert code == 0
-    domain = next(o for o in json.loads(out)["options"] if o["name"] == "domain")
+    domain = next(
+        o for o in json.loads(out)["data"]["options"] if o["name"] == "domain"
+    )
     assert domain["choices"] == ["payment", "collection", "fx", "liquidity"]
     assert domain["default"] is None
     assert domain["type"] == "append"

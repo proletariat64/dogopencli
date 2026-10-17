@@ -18,9 +18,9 @@ def test_control_help_discloses_local_writes_without_creating_state(
     run_cli, monkeypatch, tmp_path, path, network, browser
 ):
     monkeypatch.setenv("DOGOPENCLI_CONFIG", str(tmp_path / "config.toml"))
-    code, out, error = run_cli(["help", *path])
+    code, out, error = run_cli([*path, "--help"])
     assert code == 0 and error == ""
-    document = json.loads(out)
+    document = json.loads(out)["data"]
     assert document["effects"] == {
         "mutates": True,
         "network": network,

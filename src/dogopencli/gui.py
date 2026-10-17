@@ -323,9 +323,10 @@ def main(argv: list[str]) -> int:
     """Run the local control interface until interrupted."""
     parser = argparse.ArgumentParser(prog="dogopencli gui", add_help=False)
     parser.add_argument("--help", "-h", action="store_true")
-    parser.add_argument("--config-dir")
-    parser.add_argument("--port", type=int, default=0)
-    parser.add_argument("--format", choices=("json", "text"), default="json")
+    from .helpspec import add_options
+    from .management import GUI_DECLARATION
+
+    add_options(parser, GUI_DECLARATION.options)
     try:
         args = parser.parse_args(argv)
     except SystemExit as error:

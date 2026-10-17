@@ -33,6 +33,8 @@ class CliError(Exception):
         retryable: bool = False,
         exit_code: int = EXIT_FAILURE,
         meta: dict | None = None,
+        *,
+        command_path: tuple[str, ...] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -40,3 +42,4 @@ class CliError(Exception):
         self.retryable = retryable
         self.exit_code = exit_code
         self.meta = meta
+        self.command_path = command_path
