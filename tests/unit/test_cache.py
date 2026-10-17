@@ -353,6 +353,8 @@ def test_concurrent_reads_see_complete_snapshots(tmp_path):
     failures: list[str] = []
     writer_errors: list[BaseException] = []
     stop = threading.Event()
+    first_checked = threading.Event()
+    checks = 0
 
     def writer() -> None:
         try:
@@ -363,26 +365,35 @@ def test_concurrent_reads_see_complete_snapshots(tmp_path):
                     for index in range(1, rows + 1)
                 ]
                 store.publish(snapshot(ns, rows, f"snap-{round_no}"), keyed)
+                if round_no == 0 and not first_checked.wait(timeout=5):
+                    raise AssertionError("reader did not check the first snapshot")
         except BaseException as error:
             writer_errors.append(error)
         finally:
             stop.set()
 
     def reader() -> None:
+        nonlocal checks
         while not stop.is_set():
             meta, bodies = store.read(ns)
             if meta is None:
                 continue
-            if len(bodies) != meta.row_count:
-                failures.append(f"row_count {meta.row_count} but {len(bodies)} records")
-                return
-            if [seq for seq, _ in bodies] != list(range(1, meta.row_count + 1)):
-                failures.append("seqids are not continuous for one snapshot")
-                return
-            rounds = {parse(body)["round"] for _, body in bodies}
-            if len(rounds) != 1:
-                failures.append("records mix two published snapshots")
-                return
+            try:
+                if len(bodies) != meta.row_count:
+                    failures.append(
+                        f"row_count {meta.row_count} but {len(bodies)} records"
+                    )
+                    return
+                if [seq for seq, _ in bodies] != list(range(1, meta.row_count + 1)):
+                    failures.append("seqids are not continuous for one snapshot")
+                    return
+                rounds = {parse(body)["round"] for _, body in bodies}
+                if len(rounds) != 1:
+                    failures.append("records mix two published snapshots")
+                    return
+                checks += 1
+            finally:
+                first_checked.set()
 
     thread = threading.Thread(target=writer)
     thread.start()
@@ -390,4 +401,5 @@ def test_concurrent_reads_see_complete_snapshots(tmp_path):
     thread.join(timeout=10)
     assert not thread.is_alive()
     assert writer_errors == []
+    assert checks > 0
     assert failures == []
