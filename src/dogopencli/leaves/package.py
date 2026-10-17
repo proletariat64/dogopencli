@@ -1,0 +1,336 @@
+"""Static, bounded portable leaf preparation. Never imports package adapters."""
+
+import http.client
+import json
+import os
+import re
+import socket
+import stat
+import tempfile
+import threading
+import time
+import zipfile
+from contextlib import contextmanager
+from dataclasses import dataclass
+from importlib import resources
+from pathlib import Path, PurePosixPath
+from urllib.parse import urljoin, urlsplit
+
+from ..errors import CliError
+from .registry import validate_manifest
+
+MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
+MAX_EXPANDED_BYTES = 100 * 1024 * 1024
+MAX_ENTRIES = 1000
+DOWNLOAD_TIMEOUT = 60
+MAX_REDIRECTS = 5
+_CHUNK = 64 * 1024
+_RUNTIME_NAMES = {
+    ".env",
+    ".git",
+    ".aws",
+    ".ssh",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "config.toml",
+    "settings.toml",
+    "cookies",
+    "cookies.json",
+    "credentials",
+    "credentials.json",
+    "tokens.json",
+    "cache",
+    "caches",
+    "chrome",
+    "profile",
+    "leaf-cache.sqlite3",
+    "duckdog",
+    "datasets",
+}
+_RUNTIME_SUFFIXES = {".sqlite", ".sqlite3", ".db", ".duckdb", ".parquet", ".pyc"}
+
+
+@dataclass(frozen=True)
+class PreparedPackage:
+    path: Path
+    manifest: dict
+
+
+def _invalid(message: str) -> CliError:
+    return CliError("INVALID_PACKAGE", message)
+
+
+def _safe_name(name: str) -> PurePosixPath:
+    path = PurePosixPath(name)
+    if (
+        not name
+        or "\\" in name
+        or "\x00" in name
+        or path.is_absolute()
+        or any(part in {"", ".", ".."} for part in name.rstrip("/").split("/"))
+        or re.match(r"^[A-Za-z]:", name)
+    ):
+        raise _invalid("Package contains an unsafe path")
+    if any(
+        part.lower() in _RUNTIME_NAMES or part.lower().startswith(".env.")
+        for part in path.parts
+    ):
+        raise _invalid("Package contains runtime configuration or private state")
+    if path.suffix.lower() in _RUNTIME_SUFFIXES:
+        raise _invalid("Package contains runtime cache or business data")
+    if path.name == "leaf.json" and len(path.parts) != 1:
+        raise _invalid("Package must contain exactly one leaf at its root")
+    return path
+
+
+def _stream_file(source, destination: Path, remaining: int) -> int:
+    copied = 0
+    with destination.open("xb") as target:
+        while chunk := source.read(min(_CHUNK, remaining - copied + 1)):
+            copied += len(chunk)
+            if copied > remaining:
+                raise _invalid("Package exceeds 100 MiB expanded-content limit")
+            target.write(chunk)
+    return copied
+
+
+def _copy_directory(source: Path, destination: Path) -> None:
+    if source.is_symlink():
+        raise _invalid("Package root cannot be a symlink")
+    count = size = 0
+
+    # scandir does not follow directory symlinks; every entry is checked first.
+    def copy(folder: Path, relative: Path) -> None:
+        nonlocal count, size
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                count += 1
+                if count > MAX_ENTRIES:
+                    raise _invalid("Package exceeds 1000-entry limit")
+                local = relative / entry.name
+                _safe_name(local.as_posix())
+                info = entry.stat(follow_symlinks=False)
+                target = destination / local
+                if stat.S_ISDIR(info.st_mode):
+                    target.mkdir()
+                    copy(Path(entry.path), local)
+                elif stat.S_ISREG(info.st_mode):
+                    with open(
+                        entry.path,
+                        "rb",
+                        opener=lambda name, flags: os.open(name, flags | os.O_NOFOLLOW),
+                    ) as handle:
+                        size += _stream_file(handle, target, MAX_EXPANDED_BYTES - size)
+                else:
+                    raise _invalid(
+                        "Package entries must be regular files or directories; "
+                        "symlinks are forbidden"
+                    )
+
+    copy(source, Path())
+
+
+def _extract_archive(source: Path, destination: Path) -> None:
+    if source.is_symlink() or source.stat().st_size > MAX_ARCHIVE_BYTES:
+        raise _invalid("ZIP must be a local file within 50 MiB archive limit")
+    with zipfile.ZipFile(source) as archive:
+        entries = archive.infolist()
+        if len(entries) > MAX_ENTRIES:
+            raise _invalid("Package exceeds 1000-entry limit")
+        seen = set()
+        size = 0
+        for entry in entries:
+            path = _safe_name(entry.filename)
+            key = path.as_posix()
+            if key in seen:
+                raise _invalid("ZIP contains duplicate or ambiguous paths")
+            seen.add(key)
+            mode = entry.external_attr >> 16
+            kind = stat.S_IFMT(mode)
+            if kind not in {0, stat.S_IFREG, stat.S_IFDIR}:
+                raise _invalid(
+                    "ZIP entries must be regular files or directories; "
+                    "symlinks are forbidden"
+                )
+            target = destination.joinpath(*path.parts)
+            if entry.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(entry) as handle:
+                size += _stream_file(handle, target, MAX_EXPANDED_BYTES - size)
+
+
+def _manifest(root: Path) -> dict:
+    path = root / "leaf.json"
+    if not path.is_file():
+        raise _invalid("Package requires leaf.json directly at its root")
+    value = json.loads(path.read_text(encoding="utf-8"))
+    validate_manifest(value)
+    binding = value["adapter"]
+    if binding.count(":") != 1:
+        raise _invalid("Adapter must bind local-file.py:attribute")
+    filename, attribute = binding.split(":")
+    if (
+        not filename
+        or Path(filename).name != filename
+        or "\\" in filename
+        or Path(filename).suffix != ".py"
+        or not attribute.isidentifier()
+        or not (root / filename).is_file()
+    ):
+        raise _invalid(
+            "Declared adapter must be a Python file directly at package root"
+        )
+    return value
+
+
+def _download(url: str, destination: Path) -> None:
+    deadline = time.monotonic() + DOWNLOAD_TIMEOUT
+    try:
+        for redirects in range(MAX_REDIRECTS + 1):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            parsed = urlsplit(url)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError
+            connection_type = (
+                http.client.HTTPSConnection
+                if parsed.scheme == "https"
+                else http.client.HTTPConnection
+            )
+            connection = connection_type(
+                parsed.hostname, parsed.port, timeout=remaining
+            )
+
+            active_socket = []
+
+            def interrupt_download(connection=connection, active_socket=active_socket):
+                stream = active_socket[0] if active_socket else connection.sock
+                if stream is not None:
+                    try:
+                        stream.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
+                connection.close()
+
+            watchdog = threading.Timer(remaining, interrupt_download)
+            watchdog.daemon = True
+            watchdog.start()
+            try:
+                target = parsed.path or "/"
+                if parsed.query:
+                    target += "?" + parsed.query
+                connection.request(
+                    "GET", target, headers={"Accept-Encoding": "identity"}
+                )
+                active_socket.append(connection.sock)
+                response = connection.getresponse()
+                if response.status in {301, 302, 303, 307, 308}:
+                    location = response.getheader("Location")
+                    if redirects == MAX_REDIRECTS or not location:
+                        raise ValueError
+                    url = urljoin(url, location)
+                    continue
+                if response.status != 200:
+                    raise ValueError
+                length = response.getheader("Content-Length")
+                expected = int(length) if length is not None else None
+                if expected is not None and (
+                    expected < 0 or expected > MAX_ARCHIVE_BYTES
+                ):
+                    raise ValueError
+                size = 0
+                with destination.open("xb") as output:
+                    while not response.isclosed():
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError
+                        # A close-delimited response may detach connection.sock.
+                        response.fp.raw._sock.settimeout(remaining)
+                        chunk = response.read1(
+                            min(_CHUNK, MAX_ARCHIVE_BYTES - size + 1)
+                        )
+                        if not chunk:
+                            break
+                        size += len(chunk)
+                        if size > MAX_ARCHIVE_BYTES or time.monotonic() > deadline:
+                            raise ValueError
+                        output.write(chunk)
+                if expected is not None and size != expected:
+                    raise ValueError
+                return
+            finally:
+                watchdog.cancel()
+                connection.close()
+        raise ValueError
+    except (OSError, ValueError, http.client.HTTPException, AttributeError):
+        raise CliError(
+            "DOWNLOAD_FAILED",
+            "HTTP ZIP download failed; "
+            "check source, transfer limits, redirects or deadline",
+        ) from None
+
+
+@contextmanager
+def validate_package(path: Path):
+    """Yield an isolated validated snapshot of a local directory or ZIP."""
+    with tempfile.TemporaryDirectory(prefix="dogopencli-package-") as temporary:
+        root = Path(temporary) / "leaf"
+        root.mkdir()
+        try:
+            path = Path(path)
+            if path.is_dir():
+                _copy_directory(path, root)
+            else:
+                _extract_archive(path, root)
+            manifest = _manifest(root)
+        except CliError:
+            raise
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            zipfile.BadZipFile,
+            RuntimeError,
+            RecursionError,
+        ):
+            raise _invalid(
+                "Cannot validate package; check root layout, manifest and ZIP integrity"
+            ) from None
+        yield PreparedPackage(root, manifest)
+
+
+@contextmanager
+def prepare_package(source: str | Path):
+    """Prepare local, direct HTTP(S), or explicit bundled leaf sources."""
+    value = str(source)
+    if value.startswith("bundled:"):
+        identity = value.removeprefix("bundled:")
+        domain, separator, name = identity.partition(".")
+        if (
+            not separator
+            or not re.fullmatch(r"[a-z][a-z0-9_]*", domain)
+            or not re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*", name)
+        ):
+            raise _invalid("Bundled source requires domain.leaf identity")
+        resource = resources.files("dogopencli").joinpath("leaf_packages", domain, name)
+        with resources.as_file(resource) as path:
+            with validate_package(path) as package:
+                yield package
+    elif urlsplit(value).scheme.lower() in {"http", "https"}:
+        with tempfile.TemporaryDirectory(prefix="dogopencli-download-") as temporary:
+            archive = Path(temporary) / "download.zip"
+            _download(value, archive)
+            with validate_package(archive) as package:
+                yield package
+    else:
+        with validate_package(Path(source).expanduser()) as package:
+            yield package
