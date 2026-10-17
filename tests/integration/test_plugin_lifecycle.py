@@ -186,30 +186,11 @@ def test_uninstall_owned_cache_preserves_unrelated_cache_and_reinstall(
 ):
     from dataclasses import replace
 
-    from dogopencli.cache import Cache, SnapshotMeta
-
     scope = tmp_path / "scope"
     monkeypatch.setenv("DOGOPENCLI_CONFIG_DIR", str(scope))
     source = package(tmp_path)
     assert call(run_cli, "plugins", "install", str(source))[0] == 0
-    cache = Cache(scope / "leaf-cache.sqlite3")
-    snapshot = SnapshotMeta(
-        namespace="leaf:payment.sample",
-        capability="payment.sample",
-        scope="all",
-        source_kind="live",
-        snapshot_id="synthetic",
-        dataset_id=None,
-        simulated=False,
-        backend_complete=True,
-        dataset_complete=True,
-        fetched_at="2026-10-17T00:00:00Z",
-        loaded_at="2026-10-17T00:00:00Z",
-        source_observed_from=None,
-        source_observed_to=None,
-        row_count=1,
-    )
-    cache.publish(snapshot, [(1, '{"id":"owned"}')])
+    cache, snapshot = seed_cache(scope)
     other = replace(snapshot, namespace="leaf:collection.other", capability="other")
     cache.publish(other, [(1, '{"id":"keep"}')])
     code, result = call(run_cli, "plugins", "uninstall", "payment.sample")
@@ -252,3 +233,102 @@ def test_stale_refresh_after_removal_cannot_publish_or_query(
     assert result["meta"]["published"] is False
     assert Cache(scope / "leaf-cache.sqlite3").current("leaf:payment.sample") is None
     assert (scope / "plugins/payment/sample/leaf.json").is_file()
+
+
+def seed_cache(scope):
+    from dogopencli.cache import Cache, SnapshotMeta
+
+    cache = Cache(scope / "leaf-cache.sqlite3")
+    snapshot = SnapshotMeta(
+        namespace="leaf:payment.sample",
+        capability="payment.sample",
+        scope="all",
+        source_kind="live",
+        snapshot_id="synthetic",
+        dataset_id=None,
+        simulated=False,
+        backend_complete=True,
+        dataset_complete=True,
+        fetched_at="2026-10-17T00:00:00Z",
+        loaded_at="2026-10-17T00:00:00Z",
+        source_observed_from=None,
+        source_observed_to=None,
+        row_count=1,
+    )
+    cache.publish(snapshot, [(1, '{"id":"owned"}')])
+    return cache, snapshot
+
+
+def test_uninstall_registry_commit_failure_preserves_install_and_cache(
+    run_cli, tmp_path, monkeypatch
+):
+    scope = tmp_path / "scope"
+    monkeypatch.setenv("DOGOPENCLI_CONFIG_DIR", str(scope))
+    source = package(tmp_path)
+    assert call(run_cli, "plugins", "install", str(source))[0] == 0
+    installed = scope / "plugins/payment/sample"
+    original = {p.name: p.read_bytes() for p in installed.iterdir() if p.is_file()}
+    cache, snapshot = seed_cache(scope)
+    saved = cache.read(snapshot.namespace)
+    reader = sqlite3.connect(scope / "leaf-registry.sqlite3")
+    try:
+        reader.execute("BEGIN")
+        assert reader.execute("SELECT active FROM bindings").fetchall() == [(1,)]
+        code, result = call(run_cli, "plugins", "uninstall", "payment.sample")
+        assert code == 1 and result["error"]["code"] == "LOCKED"
+    finally:
+        reader.close()
+    assert cache.read(snapshot.namespace) == saved
+    assert {
+        p.name: p.read_bytes() for p in installed.iterdir() if p.is_file()
+    } == original
+    with sqlite3.connect(scope / "leaf-registry.sqlite3") as database:
+        assert database.execute("SELECT active FROM bindings").fetchall() == [(1,)]
+    assert list(scope.glob(".leaf-uninstall-*")) == []
+
+
+@pytest.mark.parametrize("failure", ["cache", "cleanup"])
+def test_uninstall_after_commit_failure_never_restores_removed_tree(
+    run_cli, tmp_path, monkeypatch, failure
+):
+    from dogopencli.errors import CliError
+    from dogopencli.leaves import lifecycle
+
+    scope = tmp_path / "scope"
+    monkeypatch.setenv("DOGOPENCLI_CONFIG_DIR", str(scope))
+    source = package(tmp_path)
+    assert call(run_cli, "plugins", "install", str(source))[0] == 0
+    installed = scope / "plugins/payment/sample"
+    cache, snapshot = seed_cache(scope)
+    saved = cache.read(snapshot.namespace)
+    if failure == "cleanup":
+        original = lifecycle.shutil.rmtree
+
+        def partial_delete(path, *args, **kwargs):
+            if Path(path).name == "removed":
+                (Path(path) / "adapter.py").unlink()
+                raise OSError("synthetic partial deletion")
+            return original(path, *args, **kwargs)
+
+        monkeypatch.setattr(lifecycle.shutil, "rmtree", partial_delete)
+    else:
+
+        def reject_remove(self, namespace):
+            raise CliError("CACHE_ERROR", "synthetic cache failure")
+
+        monkeypatch.setattr(lifecycle.Cache, "remove", reject_remove)
+    code, result = call(run_cli, "plugins", "uninstall", "payment.sample")
+    assert code == 1
+    assert result["error"]["code"] == (
+        "IO_ERROR" if failure == "cleanup" else "CACHE_ERROR"
+    )
+    assert not installed.exists()
+    with sqlite3.connect(scope / "leaf-registry.sqlite3") as database:
+        assert database.execute("SELECT active FROM bindings").fetchall() == [(0,)]
+    leftovers = list(scope.glob(".leaf-uninstall-*/removed"))
+    assert len(leftovers) == 1
+    assert (leftovers[0] / "adapter.py").exists() == (failure == "cache")
+    if failure == "cleanup":
+        assert cache.current(snapshot.namespace) is None
+    else:
+        assert cache.read(snapshot.namespace) == saved

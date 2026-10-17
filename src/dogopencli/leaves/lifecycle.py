@@ -171,31 +171,43 @@ def uninstall(config_file: Path, identity: str) -> dict:
             # The leaf itself may be broken, including a symlink. Move the entry
             # without following it; no manifest or adapter needs to be loaded.
             with Cache(registry.cache_path).refresh_lock():
-                with tempfile.TemporaryDirectory(
-                    prefix=".leaf-uninstall-", dir=registry.config_file.parent
-                ) as temporary:
-                    tombstone = Path(temporary) / "removed"
-                    if present:
-                        destination.rename(tombstone)
-                        removed = True
+                temporary = Path(
+                    tempfile.mkdtemp(
+                        prefix=".leaf-uninstall-", dir=registry.config_file.parent
+                    )
+                )
+                tombstone = temporary / "removed"
+                try:
+                    committed = False
                     try:
+                        if present:
+                            destination.rename(tombstone)
+                            removed = True
                         with _state(registry) as state:
-                            cache_removed = Cache(registry.cache_path).remove(
-                                "leaf:" + identity
-                            )
                             state.execute(
                                 "UPDATE bindings SET active=0 WHERE leaf_id=?",
                                 (identity,),
                             )
+                        committed = True
+                        # Binding commit can fail under a SQLite reader lock.
+                        # Do not delete saved results before that boundary.
+                        cache_removed = Cache(registry.cache_path).remove(
+                            "leaf:" + identity
+                        )
                         if removed:
                             if tombstone.is_symlink() or not tombstone.is_dir():
                                 tombstone.unlink()
                             else:
                                 shutil.rmtree(tombstone)
                     except BaseException:
-                        if removed and os.path.lexists(tombstone):
+                        # Cleanup may already have deleted part of the tree.
+                        # Once committed, retain failures outside discovery.
+                        if not committed and removed and os.path.lexists(tombstone):
                             tombstone.rename(destination)
                         raise
+                finally:
+                    if not os.path.lexists(tombstone):
+                        temporary.rmdir()
         return {
             "uninstalled": identity,
             "removed": removed,

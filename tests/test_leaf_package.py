@@ -241,3 +241,33 @@ def test_install_deadline_bounds_dns_and_reaps_transfer(run_cli, tmp_path, monke
     with pytest.raises(ProcessLookupError):
         os.kill(int(marker.read_text()), 0)
     assert not (tmp_path / "plugins/payment").exists()
+
+
+def test_zip_counts_implied_directories_toward_entry_limit(tmp_path):
+    archive = tmp_path / "many-paths.zip"
+    archive.write_bytes(
+        archive_bytes({f"resource{index}/nested/data.txt": "x" for index in range(998)})
+    )
+    with pytest.raises(CliError, match="1000-entry limit"):
+        with prepare_package(archive):
+            pytest.fail("implied directories bypassed the entry limit")
+
+
+@pytest.mark.parametrize("explicit_directories", [False, True])
+def test_zip_shared_parents_count_once_at_boundary(
+    tmp_path, monkeypatch, explicit_directories
+):
+    monkeypatch.setattr(delivery, "MAX_ENTRIES", 6)
+    extra = {"assets/": "", "assets/shared/": ""} if explicit_directories else {}
+    extra.update({"assets/shared/a.txt": "a", "assets/shared/b.txt": "b"})
+    archive = tmp_path / "boundary.zip"
+    archive.write_bytes(archive_bytes(extra))
+    with prepare_package(archive) as prepared:
+        assert len(list(prepared.path.rglob("*"))) == 6
+        with prepare_package(prepared.path) as copied:
+            assert len(list(copied.path.rglob("*"))) == 6
+    extra["empty/"] = ""
+    archive.write_bytes(archive_bytes(extra))
+    with pytest.raises(CliError, match="1000-entry limit"):
+        with prepare_package(archive):
+            pytest.fail("one extra directory accepted")

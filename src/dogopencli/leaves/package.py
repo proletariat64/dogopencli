@@ -160,6 +160,7 @@ def _extract_archive(source: Path, destination: Path) -> None:
         if len(entries) > MAX_ENTRIES:
             raise _invalid("Package exceeds 1000-entry limit")
         seen = set()
+        materialized = set()
         size = 0
         for entry in entries:
             path = _safe_name(entry.filename)
@@ -167,6 +168,12 @@ def _extract_archive(source: Path, destination: Path) -> None:
             if key in seen:
                 raise _invalid("ZIP contains duplicate or ambiguous paths")
             seen.add(key)
+            # ZIPs can omit directory members; count every extracted path,
+            # including shared parents exactly once, before creating them.
+            for depth in range(1, len(path.parts) + 1):
+                materialized.add(PurePosixPath(*path.parts[:depth]))
+                if len(materialized) > MAX_ENTRIES:
+                    raise _invalid("Package exceeds 1000-entry limit")
             mode = entry.external_attr >> 16
             kind = stat.S_IFMT(mode)
             if kind not in {0, stat.S_IFREG, stat.S_IFDIR}:
