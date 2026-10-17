@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 from dogopencli.cache import Cache, SnapshotMeta
-from dogopencli.cached_query import is_stale
 from dogopencli.collect import collect_scope
 from dogopencli.config import DEFAULT_TTL_HOURS, tomllib
 from dogopencli.errors import CliError
@@ -22,7 +21,7 @@ from dogopencli.result_policy import (
     evidence_for,
     prepare_result,
 )
-from dogopencli.temporary_query import display_options, window_rows
+from dogopencli.temporary_query import display_options, is_stale, window_rows
 
 from .registry import Leaf
 

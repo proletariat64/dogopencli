@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from dogopencli import plugins
+from dogopencli import domain_contracts, domains
 
 
 @pytest.mark.parametrize(
@@ -73,7 +73,8 @@ def declarations(monkeypatch, tmp_path):
     domains = (
         SimpleNamespace(id="demo", entry_point="https://example.test/", leaves=()),
     )
-    monkeypatch.setattr(plugins, "domain_plugins", lambda: domains, raising=False)
+    monkeypatch.setattr(domain_contracts, "domain_declarations", lambda: domains)
+    monkeypatch.setattr("dogopencli.domains.domain_declarations", lambda: domains)
     monkeypatch.setenv("DOGOPENCLI_CONFIG", str(tmp_path / "config.toml"))
     folder = tmp_path / "plugins/demo/items"
     folder.mkdir(parents=True)
@@ -235,9 +236,9 @@ def test_absent_registration_does_not_return_from_retained_state(
     service.record_execution(
         "demo", "demo.items", outcome="failed", operation="get", error_code="NOT_FOUND"
     )
-    monkeypatch.setattr(plugins, "domain_plugins", lambda: ())
+    monkeypatch.setattr(domains, "domain_declarations", lambda: ())
     assert service.inventory() == []
-    monkeypatch.setattr(plugins, "domain_plugins", lambda: declarations)
+    monkeypatch.setattr(domains, "domain_declarations", lambda: declarations)
     assert service.inventory()[0]["enabled"] is False
     assert (
         service.inventory()[0]["leaves"][0]["last_execution"]["error_code"]

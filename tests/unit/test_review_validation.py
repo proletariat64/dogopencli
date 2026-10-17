@@ -1,55 +1,13 @@
 """Negative contract and configuration regressions from the second review."""
 
-import json
 from pathlib import Path
 
 import pytest
+from synthetic_capability import SAMPLE
 
 from dogopencli import config
 from dogopencli.auth.cli import resolve_config_dir
 from dogopencli.browser.environment import resolve_environment
-from dogopencli.errors import CliError
-from dogopencli.plugins.payment.cost import COST_CAPABILITY
-from dogopencli.plugins.payment.sla import SLA_CAPABILITY, parse_detail
-
-
-@pytest.mark.parametrize("capability", [COST_CAPABILITY, SLA_CAPABILITY])
-@pytest.mark.parametrize(
-    "field,value",
-    [("pageNo", "0"), ("pageSize", 0), ("pageSize", -1), ("totalCount", True)],
-)
-def test_invalid_pagination_is_rejected(capability, field, value):
-    data = {
-        "success": True,
-        "pageNo": 0,
-        "pageSize": 5000,
-        "totalCount": 0,
-        "resultDataList": [],
-    }
-    data[field] = value
-    with pytest.raises(CliError) as caught:
-        capability.parse_page(json.dumps(data).encode())
-    assert caught.value.code == "INVALID_RESPONSE"
-
-
-@pytest.mark.parametrize("capability", [COST_CAPABILITY, SLA_CAPABILITY])
-def test_page_cannot_exceed_page_size(capability):
-    data = {
-        "success": True,
-        "pageNo": 0,
-        "pageSize": 1,
-        "totalCount": 2,
-        "resultDataList": [{}, {}],
-    }
-    with pytest.raises(CliError) as caught:
-        capability.parse_page(json.dumps(data).encode())
-    assert caught.value.code == "INVALID_RESPONSE"
-
-
-def test_detail_id_mismatch_is_rejected():
-    with pytest.raises(CliError) as caught:
-        parse_detail(b'{"success":true,"resultData":{"id":"other"}}', "wanted")
-    assert caught.value.code == "INVALID_RESPONSE"
 
 
 def test_configuration_resolution_is_shared(tmp_path, monkeypatch):
@@ -111,16 +69,14 @@ def test_dead_cdp_session_is_recreated_on_retry():
             self.closed_targets.append(target_id)
 
     browser = Browser()
-    transport = CdpQueryTransport(
-        browser, COST_CAPABILITY, page_url="https://example.invalid"
-    )
-    contract = COST_CAPABILITY.contract
+    transport = CdpQueryTransport(browser, SAMPLE, page_url="https://example.invalid")
+    contract = SAMPLE.contract
     request = QueryRequest(
-        COST_CAPABILITY.name,
+        SAMPLE.name,
         contract.method,
         contract.host,
         contract.path,
-        COST_CAPABILITY.page_body(COST_CAPABILITY.default_scope, 0, 5000),
+        SAMPLE.page_body(SAMPLE.default_scope, 0, 5000),
     )
     with pytest.raises(FetchFailed):
         transport.execute(request)

@@ -30,6 +30,7 @@ from time import monotonic, sleep
 from typing import Any
 from urllib.parse import urlparse
 
+from ..domain_contracts import PAYMENT_STARTUP_URL
 from .cdp import (
     BrowserLoss,
     CdpError,
@@ -38,11 +39,7 @@ from .cdp import (
     probe_final_url,
     url_origin,
 )
-from .environment import (
-    PAYMENT_STARTUP_URL,
-    BrowserEnvironment,
-    authentication_policy,
-)
+from .environment import BrowserEnvironment, authentication_policy
 from .errors import (
     AUTH_REQUIRED,
     BROWSER_UNAVAILABLE,

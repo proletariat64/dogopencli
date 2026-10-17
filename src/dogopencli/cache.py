@@ -1,6 +1,6 @@
 """SQLite snapshot cache (ADR 0003, ADR 0005).
 
-Namespaces isolate capability + scope + source_kind; each namespace holds
+Each installed leaf owns one namespace; each namespace holds
 one current snapshot published atomically. Readers only ever see the
 complete old or the complete new snapshot. No cookies or tokens are ever
 stored here.
@@ -50,10 +50,6 @@ CREATE TABLE IF NOT EXISTS records (
     PRIMARY KEY (namespace, seqid)
 );
 """
-
-
-def namespace(capability: str, scope: str, source_kind: str) -> str:
-    return f"{capability}:{scope}:{source_kind}"
 
 
 @dataclass(frozen=True)
@@ -255,39 +251,6 @@ class Cache:
         finally:
             # Keep the inode: unlinking a flock file permits concurrent owners.
             os.close(fd)
-
-    @_sqlite_errors
-    def ensure_temporary_format(self) -> None:
-        """Discard disposable legacy query data once; never create an absent DB."""
-        if not self._path.exists():
-            return
-        connection = self._connect_readonly()
-        try:
-            marker = connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table'"
-                " AND name = 'cache_format'"
-            ).fetchone()
-            if marker is not None and connection.execute(
-                "SELECT version FROM cache_format"
-            ).fetchone() == (157,):
-                return
-        finally:
-            connection.close()
-        connection = self._connect()
-        try:
-            connection.execute("BEGIN IMMEDIATE")
-            connection.execute(
-                "CREATE TABLE IF NOT EXISTS cache_format (version INTEGER NOT NULL)"
-            )
-            row = connection.execute("SELECT version FROM cache_format").fetchone()
-            if row != (157,):
-                connection.execute("DELETE FROM records")
-                connection.execute("DELETE FROM snapshots")
-                connection.execute("DELETE FROM cache_format")
-                connection.execute("INSERT INTO cache_format VALUES (157)")
-            connection.execute("COMMIT")
-        finally:
-            connection.close()
 
     @_sqlite_errors
     def remove(self, namespace_name: str) -> bool:

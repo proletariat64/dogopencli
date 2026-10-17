@@ -15,7 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import config, plugins
+from . import config
+from .domain_contracts import DomainDeclaration, domain_declarations
 from .errors import CliError
 
 
@@ -40,7 +41,7 @@ class DomainService:
         )
 
     def inventory(self, domain_id: str | None = None) -> list[dict[str, Any]]:
-        domains = plugins.domain_plugins()
+        domains = domain_declarations()
         if domain_id is not None and not any(d.id == domain_id for d in domains):
             raise CliError("DOMAIN_NOT_FOUND", f"Unknown domain: {domain_id}")
         settings, executions, auth = self._read()
@@ -320,24 +321,12 @@ class DomainService:
                         ),
                     )
 
-    def require_execution(self, path: tuple[str, ...]) -> tuple[str, str] | None:
-        """Take one eligibility snapshot before entering the public leaf handler."""
-        owner = execution_owner(path)
-        if owner is None:
-            return None
-        domain_id, leaf_id = owner
-        row = self.inventory(domain_id)[0]
-        if not row["enabled"]:
-            raise CliError("DOMAIN_DISABLED", f"Domain is disabled: {domain_id}")
-        leaf = next(item for item in row["leaves"] if item["id"] == leaf_id)
-        if not leaf["enabled"]:
-            raise CliError("LEAF_DISABLED", f"Leaf is disabled: {leaf_id}")
-        return owner
-
-    def select_domains(self, selectors: list[str] | None = None) -> tuple[Any, ...]:
+    def select_domains(
+        self, selectors: list[str] | None = None
+    ) -> tuple[DomainDeclaration, ...]:
         """Validate an entire selection before browser recovery can start."""
         inventory = {row["id"]: row for row in self.inventory()}
-        declarations = {domain.id: domain for domain in plugins.domain_plugins()}
+        declarations = {domain.id: domain for domain in domain_declarations()}
         if selectors is not None:
             selected = tuple(dict.fromkeys(selectors))
             for domain_id in selected:
@@ -352,14 +341,3 @@ class DomainService:
         if not selected:
             raise CliError("DOMAIN_SELECTION_ERROR", "No enabled domains selected")
         return tuple(declarations[key] for key in selected)
-
-
-def execution_owner(path: tuple[str, ...]) -> tuple[str, str] | None:
-    """Resolve registered business ownership without inspecting configuration."""
-    for domain in plugins.domain_plugins():
-        for leaf in domain.leaves:
-            if any(
-                node.path == path for node in (*leaf.commands, *leaf.refresh_commands)
-            ):
-                return domain.id, leaf.id
-    return None

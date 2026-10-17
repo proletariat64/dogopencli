@@ -179,10 +179,10 @@ def test_positional_help_is_rejected_with_flag_guidance(run_cli):
 
 
 def test_bare_gui_executes_but_help_does_not(run_cli, monkeypatch):
-    from dogopencli import cli
+    from dogopencli import gui
 
     calls = []
-    monkeypatch.setattr(cli, "cmd_gui", lambda args: calls.append(args.tokens) or 0)
+    monkeypatch.setattr(gui, "main", lambda tokens: calls.append(tokens) or 0)
     assert run_cli(["gui", "-h"])[0] == 0
     assert calls == []
     assert run_cli(["gui"])[0] == 0
@@ -327,30 +327,14 @@ def test_auth_errors_keep_resolved_path_with_interleaved_global_options(run_cli)
         assert document["error"]["next"] == ["dogopencli auth check --help"]
 
 
-def test_domain_registration_preserves_core_installation_help(run_cli):
-    import runpy
-    from pathlib import Path
-
-    from dogopencli import plugins
-
-    sample = runpy.run_path(
-        str(Path(__file__).parents[1] / "examples/domain_component.py")
-    )
-    original = plugins.domain_plugins()
-    try:
-        try:
-            plugins.register_domains((*original, sample["component"]("plugins")))
-        except ValueError:
-            pass
-        code, out, _ = run_cli(["plugins", "--help"])
-        document = json.loads(out)["data"]
-        assert code == 0
-        assert document["summary"] == "Manage local leaf installations."
-        assert {"install", "uninstall", "list"} <= {
-            child["name"] for child in document["children"]
-        }
-    finally:
-        plugins.register_domains(original)
+def test_core_installation_help_remains_available_without_installed_leaves(run_cli):
+    code, output, _ = run_cli(["plugins", "--help"])
+    document = json.loads(output)["data"]
+    assert code == 0
+    assert document["summary"] == "Manage local leaf installations."
+    assert {"install", "uninstall", "list"} <= {
+        child["name"] for child in document["children"]
+    }
 
 
 def test_common_option_spellings_remain_literal_business_values(

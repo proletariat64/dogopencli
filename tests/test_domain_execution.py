@@ -70,7 +70,7 @@ def test_describe_and_prune_do_not_replace_execution_observation(run_cli, instal
 def test_usable_incomplete_result_records_warning_independent_of_rendering(
     run_cli, installed, format
 ):
-    from dogopencli.browser.environment import FX_STARTUP_URL
+    from dogopencli.domain_contracts import FX_STARTUP_URL
 
     installed.href = FX_STARTUP_URL
     installed.business_script.append(

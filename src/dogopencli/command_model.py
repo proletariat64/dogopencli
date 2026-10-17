@@ -150,8 +150,8 @@ def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
 
 def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
     from .auth.spec import COMMANDS, EXIT_CODES, GLOBALS
+    from .domain_contracts import domain_declarations
     from .management import DECLARATIONS
-    from .plugins import domain_plugins
 
     nodes = {
         (): BizNode((), "Discover inquiry commands and local controls.", options=COMMON)
@@ -167,7 +167,7 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                 a.kind if a.kind != "positive" else "str",
                 default=a.default,
                 help_default=a.default,
-                choices=tuple(domain.id for domain in domain_plugins())
+                choices=tuple(domain.id for domain in domain_declarations())
                 if a.name == "domain"
                 else a.choices,
                 legacy_flags=a.flags[1:],
@@ -269,7 +269,7 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
             "dogopencli plugins uninstall --help",
         ),
     )
-    for domain in domain_plugins():
+    for domain in domain_declarations():
         nodes[(domain.id,)] = BizNode(
             (domain.id,), "Discover " + domain.id + " inquiries.", options=COMMON
         )

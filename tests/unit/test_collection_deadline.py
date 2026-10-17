@@ -1,10 +1,10 @@
 """Remaining budget applies to each request and successful responses."""
 
 import pytest
+from synthetic_capability import SAMPLE, SCOPE
 
 from dogopencli import collect
 from dogopencli.errors import CliError
-from dogopencli.plugins.payment.cost import COST_CAPABILITY, COST_TYPE
 from dogopencli.transport import TransportResponse
 from dogopencli.transport.cdp import ORIGIN_CDP
 
@@ -21,7 +21,7 @@ def test_deadline_is_passed_and_late_success_rejected(monkeypatch):
             return TransportResponse(200, b"{}", ORIGIN_CDP)
 
     with pytest.raises(CliError) as error:
-        collect.collect_scope(COST_CAPABILITY, Transport(), COST_TYPE, budget_seconds=1)
+        collect.collect_scope(SAMPLE, Transport(), SCOPE, budget_seconds=1)
     assert error.value.code == "TIMEOUT"
     assert observed == [1.0]
 
@@ -68,15 +68,15 @@ def test_cdp_setup_and_fetch_receive_remaining_budget(monkeypatch):
             return Session()
 
     transport = transport_mod.CdpQueryTransport(
-        Browser(), COST_CAPABILITY, page_url="https://example.invalid"
+        Browser(), SAMPLE, page_url="https://example.invalid"
     )
-    contract = COST_CAPABILITY.contract
+    contract = SAMPLE.contract
     request = QueryRequest(
-        COST_CAPABILITY.name,
+        SAMPLE.name,
         contract.method,
         contract.host,
         contract.path,
-        COST_CAPABILITY.page_body(COST_TYPE, 0, 5000),
+        SAMPLE.page_body(SCOPE, 0, 5000),
     )
     transport.execute(request, timeout=1.0)
     assert observed == [

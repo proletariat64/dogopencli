@@ -618,7 +618,7 @@ def test_public_saved_input_command_and_invalid_json(tmp_path):
 
 
 def b02_candidate(owner, *, route=True):
-    from dogopencli.plugins.liquidity.spec import TENANT
+    TENANT = "GUAPW3SG"
 
     root = {
         "id": "1",

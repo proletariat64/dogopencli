@@ -1,11 +1,11 @@
 """Bounded collection and recovery for real CDP business queries (ADR 0003).
 
-Core owns the recovery mechanics; plugins keep pagination semantics and the
+Core owns the recovery mechanics; leaves keep pagination semantics and the
 completeness judgment. Each candidate is built independently from the
 backend: the default page size first, bounded retries (1s, 2s; a valid
 Retry-After that fits the remaining budget wins) for network failures and
 HTTP 429/502/503/504, and, only for contracts that declare a verified
-larger capacity (Cost/SLA at 10000; Channel has no rebuild clause), exactly
+larger capacity, exactly
 one full-candidate rebuild when business success shows capacity truncation
 or coverage gaps. No fallback to small overlapping pages, no merging across
 candidates. Authentication, permission, unknown-schema and generic
@@ -13,7 +13,7 @@ business errors are never hidden by retries or page shrinking.
 
 Contracts with a fixed total stop at the page range the first total
 declares and reject any later change. Contracts that set
-``running_total=True`` (VA capacity) instead treat interim totals as
+``running_total=True`` instead treat interim totals as
 backend estimates: they acquire until the first short page, tolerate
 changing interim totals, and let only the final converged total validate
 completeness.
@@ -25,6 +25,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
+from .contracts import Capability, TransportCapability
 from .errors import (
     AUTH_REQUIRED,
     BUSINESS_QUERY_FAILED,
@@ -33,7 +34,6 @@ from .errors import (
     CliError,
 )
 from .jsonutil import canonical
-from .plugins import Capability, TransportCapability
 from .result_policy import AcquisitionEvidence
 from .transport import QueryRequest, TransportResponse, validate_request
 from .transport.cdp import FetchFailed
