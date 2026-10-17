@@ -58,3 +58,8 @@ See `docs/agents/triage-labels.md`.
 
 Use single-context domain documentation: root `CONTEXT.md`
 and `docs/adr/`. See `docs/agents/domain.md`.
+
+### Leaf development
+
+When authoring, packaging or migrating a leaf, read
+`docs/agents/leaf-plugins.md` for adapter contracts, acceptance and removal gates.

@@ -1,0 +1,27 @@
+{
+  "domain": "collection",
+  "name": "sample.records",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read synthetic paginated records in the handbook tests.",
+      "parameters": []
+    }
+  },
+  "summary": "Synthetic standard list for learning the leaf interface.",
+  "purpose": "Demonstrate a self-contained request contract and parser with shared collection, cache and help.",
+  "fields": [
+    {"name": "id", "type": "string", "meaning": "Unique synthetic record identity."},
+    {"name": "amount", "type": "string", "meaning": "Native decimal text, preserved without conversion."}
+  ],
+  "identity": ["id"],
+  "identity_description": "The synthetic endpoint guarantees unique nonempty string IDs.",
+  "limitations": [
+    "Educational fixture only; leaf-handbook.invalid is not a production endpoint.",
+    "No business filters or get operation; run inquiries only through the offline test harness."
+  ],
+  "examples": [
+    {"title": "Inspect the installed declaration", "command": "dogopencli collection list sample.records -h --format text"}
+  ],
+  "dataset": {"relation": "collection_sample_records"}
+}

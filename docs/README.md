@@ -1,5 +1,12 @@
 # 文档索引
 
+- [Leaf plugin development handbook](agents/leaf-plugins.md): manifest and adapter
+  contracts, verify/pack/install workflow, CLI testing and one-leaf-at-a-time
+  legacy migration under #218. Start here when developing or migrating a leaf.
+- [Leaf handbook validation](agents/leaf-handbook-evidence.md):
+  four-pilot source evidence, the independent simple-leaf exercise and tested
+  auxiliary-file loading boundaries.
+
 - [Domain component development guide](agents/domain-components.md): shared interface,
   registration, local controls, observations and runnable synthetic sample.
 

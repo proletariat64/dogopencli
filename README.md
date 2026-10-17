@@ -1,40 +1,139 @@
 # Dogopencli
 
-An inquiry-only CLI for payment, collection, liquidity and FX operations, for one
-person on one machine. Business inquiries read production; refresh and prune
-change local cache only. Output formats are **json** and **text**.
+An inquiry-only CLI for payment, collection, liquidity and FX operations, intended
+for one person on one machine. Install the leaves you need, discover their commands
+with progressive help, and query live data or replay a local snapshot.
 
-## Install and configure
+**Developing or migrating a leaf?** Start with the
+[Leaf plugin development handbook](docs/agents/leaf-plugins.md). It covers the
+manifest, adapter contract, package helper, testing and one-leaf-at-a-time migration.
+Its [runnable simple example](examples/leaf_simple/) owns its request contract and
+parser; the handbook includes an offline CLI exercise to verify the full workflow.
 
-Python 3.10+ is required; live inquiries also require Google Chrome and platform
-access. Install the project and explicitly install each desired bundled leaf:
+## Get started
+
+Python 3.10+ is required. Live inquiries also require Google Chrome and access to
+the relevant platform application. From a checkout:
 
 ```bash
-python -m pip install -e .
-dogopencli plugins list
-dogopencli plugins install bundled:payment.sla.baselines
-dogopencli plugins install bundled:collection.cost
-dogopencli plugins install bundled:liquidity.reference.entities
-dogopencli plugins install bundled:fx.trade
+uv sync --extra dev
+uv run dogopencli -h --format text
+uv run dogopencli plugins list --format text
+uv run dogopencli domain list --format text
 ```
 
-Each install accepts one local directory, ordinary ZIP, direct HTTP(S) ZIP URL or
-`bundled:<domain>.<dotted-leaf>` identity. The package root contains `leaf.json` and
-its declared adapter; README and ordinary resources are optional. Installation
-creates an independent snapshot and validates the adapter and storage bindings
-without querying business data. The domain must already be enabled.
+Examples below use `dogopencli`; prefix it with `uv run` when using the checkout's
+environment. An editable pip installation is also supported:
+`python -m pip install -e '.[dev]'`.
 
-Existing identities are never overwritten, including edited installed manifests.
-To reinstall deliberately, run `dogopencli plugins uninstall <domain>.<dotted-leaf>`
-then install again. Uninstall needs no prompt and retains Duckdog datasets, binding
-history, credentials and source packages. It removes only that installed leaf and
-its temporary query cache. Valid installed leaves become available on the next
-invocation. `plugins list` distinguishes bundled availability, installed declarations
-and invalid declarations; it does not execute adapters or qualify production use.
+Enable the domain if necessary, then explicitly install one bundled leaf:
 
-`--config-dir` overrides `DOGOPENCLI_CONFIG_DIR`, then `DOGOPENCLI_CONFIG` (file),
-then the default `~/.config/dogopencli/config.toml`.
-A basic optional configuration is:
+```bash
+dogopencli domain enable payment
+dogopencli plugins install bundled:payment.sla.baselines
+dogopencli payment -h --format text
+dogopencli payment list -h --format text
+dogopencli payment list sla.baselines -h --format text
+dogopencli payment describe sla.baselines --format text
+```
+
+Bundled availability does not mean installed. The current bundled inquiries are:
+
+| Domain | Dotted leaf name | Business operations |
+| --- | --- | --- |
+| payment | sla.baselines | list, get |
+| collection | cost | list |
+| liquidity | reference.entities | list |
+| fx | trade | list |
+
+Each list also receives host-owned refresh and prune commands; describe is shared.
+Only installed declarations appear in domain/operation help. Use `-h` or `--help`;
+positional `help` commands are unsupported. Navigation help shows immediate
+children; leaf-action help shows that invocation's arguments and options.
+
+## Install and remove leaves
+
+Install accepts exactly one local directory, ordinary ZIP, direct HTTP(S) ZIP URL
+or bundled identity:
+
+```bash
+dogopencli plugins install /path/to/leaf-directory
+dogopencli plugins install /path/to/leaf.zip
+dogopencli plugins install https://example.com/leaf.zip
+dogopencli plugins install bundled:collection.cost
+dogopencli plugins list --format text
+dogopencli plugins uninstall collection.cost
+```
+
+Source names are arbitrary; identity comes from the root `leaf.json`. Install
+creates an independent snapshot, validates the adapter interface and registers or
+validates storage. The domain must already be enabled. Normal installation does
+not log in, acquire business data or run production UAT.
+
+Existing identities are rejected without overwriting installed code or local
+manifest edits. To reinstall deliberately, uninstall then install. Uninstall is
+noninteractive and idempotent for an absent leaf; it also works for broken or
+disabled leaves. It removes the installed files and owned temporary query cache,
+preserving Duckdog data, binding history, credentials and original source packages.
+There is no update, replace or plugin-version command. The former
+`plugins install-pilots` entry point has been removed.
+
+`plugins list` reports bundled availability, installed declarations and diagnostics.
+List and help read declarations without loading adapters, initializing storage,
+cleaning caches or opening a browser. Installation is not proof of production
+qualification.
+
+## Authenticate and query
+
+```bash
+dogopencli login --domain payment
+dogopencli auth check --domain payment
+dogopencli payment list sla.baselines --live
+dogopencli payment get sla.baselines NATIVE_ID
+dogopencli payment refresh sla.baselines
+dogopencli payment list sla.baselines --limit 0
+dogopencli payment prune sla.baselines
+```
+
+Replace `NATIVE_ID` with an actual identity obtained from the list. Read the leaf's
+help for query parameters and describe for business meanings and limitations.
+
+| Command | Behavior |
+| --- | --- |
+| `list` | Replays the saved local snapshot; no snapshot returns `CACHE_MISS`. |
+| `list --live` | Acquires current data without publishing cache. |
+| `get` | Reads native detail for a supported leaf; no detail cache. |
+| `refresh` | Acquires data and publishes an accepted nonempty snapshot. |
+| `prune` | Clears that list leaf's temporary query cache. |
+| `describe` | Explains the leaf, record fields, identity and limitations. |
+
+Refresh replaces the entire saved scope, rather than accumulating history. Empty
+acquisition, strict-completeness rejection and hard failure preserve the previous
+rows and capture time. Queries and refresh do not import records into Duckdog.
+
+Business output uses `data`, `meta`, `error`; formats are `json` (default) and
+`text`. `--limit` defaults to 100; zero displays all remaining rows after `--offset`.
+`--fields` projects native fields. These display options do not truncate acquisition
+or cache publication. Native values and unknown fields are retained.
+
+Valid incomplete results remain usable with warnings. `--require-complete` rejects
+incomplete acquisitions; unknown identity or total semantics remain unknown.
+`--require-fresh` rejects stale cache; otherwise stale records remain readable and
+marked. Supported offline filters select saved rows and do not establish backend
+absence or extend the captured scope. FX individual-trade identity/total semantics
+remain unproven; collection cost has a verified single-request capacity boundary.
+
+Login uses a dedicated Chrome profile and shared SSO, verifying each enabled
+application independently. Human role/MFA input stays manual. `auth check` does not
+launch or repair Chrome. Domain enable/disable controls access and preserves cache
+and observations. Browser settings live under `[auth]`; never use CDP ports
+9330–9340 in this repository.
+
+## Configuration and local storage
+
+Configuration precedence is `--config-dir`, `DOGOPENCLI_CONFIG_DIR`,
+`DOGOPENCLI_CONFIG` (a file), then `~/.config/dogopencli/config.toml`.
+For an isolated workspace, pass the same `--config-dir` to every command.
 
 ```toml
 [cache]
@@ -44,128 +143,58 @@ ttl_hours = 72
 path = "duckdog.duckdb"
 ```
 
-New leaf cache is `leaf-cache.sqlite3` beside the effective config. Duckdog defaults
-to `duckdog.duckdb` there. First installation creates one empty `_record VARCHAR`
-table per list leaf; later loading validates the binding and table. No business
-records are imported. Uninstall removes only that leaf and its managed cache,
-preserving Duckdog tables/data. Malformed folders and unavailable roots do not
-count as confirmed removal. Retained bindings validate existing data on reinstall.
+Locations relative to the effective configuration directory:
 
-## Query the pilots
+| Location | Purpose |
+| --- | --- |
+| `plugins/<domain>/<dotted-leaf>/` | Installed manifest, adapter and resources. |
+| `leaf-registry.sqlite3` | Persistent storage bindings and ownership history. |
+| `leaf-cache.sqlite3` | Temporary query snapshots, one slot per list leaf. |
+| `duckdog.duckdb` | Default retained dataset database; configurable via `[duckdog].path`. |
 
-All actions follow the domain and use the same dotted leaf name:
+Each list leaf initializes one empty `_record VARCHAR` table on first installation.
+Subsequent loading/reinstallation validates the retained binding and table.
+Duckdog and cache are shared host foundations, not separately installed plugins.
+
+## Edit leaf documentation
 
 ```bash
-dogopencli login
-dogopencli auth check
-dogopencli domain list
-dogopencli payment list sla.baselines --help --format text
-dogopencli payment describe sla.baselines --format json
-dogopencli payment list sla.baselines --live
-dogopencli payment get sla.baselines NATIVE_ID
-dogopencli payment refresh sla.baselines
-dogopencli payment list sla.baselines --limit 0
-dogopencli payment prune sla.baselines
+dogopencli gui
 ```
 
-Discover commands progressively with `dogopencli -h`, `dogopencli payment -h`,
-`dogopencli payment list -h`, then `dogopencli payment list sla.baselines -h`.
-Help uses `-h` or `--help` only; positional `help` commands are unsupported.
-Root and navigation groups list their immediate children; executable command help
-shows that invocation's arguments and options. Help reads local declarations
-without loading adapters, initializing storage, changing caches, or opening a
-browser. `describe` explains the leaf's business meaning and record fields;
-adding `-h` documents the describe invocation instead.
+Open the printed localhost URL and choose an installed leaf's **Edit documentation**
+form. Preview shares CLI rendering; save validates and atomically updates the
+installed `leaf.json`. Stale edits require reload. Technical declarations are
+read-only in the form. README, source directories and original ZIPs are independent
+and are not synchronized. Changes apply on later invocations. The GUI has no
+business-query, login, import or package-management buttons.
 
-| Domain | Leaf | Operations |
-| --- | --- | --- |
-| payment | sla.baselines | list, get |
-| collection | cost | list |
-| liquidity | reference.entities | list |
-| fx | trade | list |
+## Develop and migrate
 
-Only these four business leaves are installed by the pilot helper. Legacy leaf
-command paths and top-level refresh/describe/prune paths are detached. Later
-migration and old-code removal are tracked separately in
-[#218](https://github.com/proletariat64/dogopencli/issues/218).
-
-Default list is offline cache replay; a miss returns `CACHE_MISS`. `--live` does
-not publish. Refresh atomically replaces the whole slot with an accepted nonempty
-acquisition, including scope and quality evidence. Empty refresh, strict rejection
-and hard failures preserve the previous rows and capture time. Different scopes
-replace rather than accumulate. Get performs native detail lookup with no cache.
-
-`--limit` defaults to 100; zero shows all remaining rows after `--offset`.
-`--fields` projects native fields. Display controls do not truncate acquisition
-or cache publication. Native values and unknown fields are preserved.
-
-Business output has `data`, `meta`, `error`. Valid incomplete records return with
-warnings; `--require-complete` rejects incomplete results. Unknown identity or
-native total semantics remain unknown. `--require-fresh` rejects stale cache;
-otherwise stale data remains readable and visibly marked. Supported offline
-filters only select saved records and cannot extend their acquisition scope.
-
-Collection cost uses its verified single-request capacity. FX individual-trade
-identity and total semantics remain unproven: do not interpret its reported total
-or a page count as proof of completeness. Read each leaf's help/description before
-selecting a scope or interpreting business fields.
-
-## Authentication and domain controls
-
-Login targets enabled domains, using one dedicated Chrome profile and shared SSO
-while verifying each application's session. Human role/MFA input stays manual.
-Authentication in one domain does not prove another's access.
+The [development handbook](docs/agents/leaf-plugins.md) is the entry point for new
+leaves and legacy migration. [Issue #218](https://github.com/proletariat64/dogopencli/issues/218)
+tracks remaining-leaf migration: establish the current inventory, migrate and
+accept one supported leaf, then remove superseded code only after checking retained
+consumers. Unsupported placeholders are not automatic migration targets. Historical
+command examples in older reports are evidence of that revision, not current CLI
+registration.
 
 ```bash
-dogopencli login --domain payment --domain fx
-dogopencli auth check --domain liquidity
-dogopencli domain disable payment
-dogopencli domain enable payment
-```
-
-`auth check` does not launch or repair Chrome. Disabling a domain preserves its
-cache and recorded observations. Browser settings remain under `[auth]` (profile,
-cdp_url, chrome_bin). Never use CDP ports 9330–9340 in this repository.
-
-## Documentation editor
-
-```bash
-dogopencli gui --config-dir ~/.config/dogopencli
-```
-
-Open the printed localhost URL, select an installed leaf and choose **Edit
-documentation**. The basic schema renders a structured form for summary, purpose,
-limitations, parameter explanations, field meanings/units and examples. Technical
-declarations are read-only in the form; direct manifest editing remains possible.
-Preview uses the same renderer as CLI help/describe. Save validates and atomically
-replaces the manifest; a revision conflict requires reload. Avoid simultaneous
-manual writes during a save: unrelated editors do not participate in the GUI's
-advisory lock. Changes apply on later invocations. The GUI provides no business
-query, login, import or package-management buttons.
-
-## Development
-
-`make bootstrap` prepares the worktree environment, code graph and isolated
-Chrome/CDP profile, then checks enabled domains' authentication without starting
-SSO. Domain auth failures are reported in the final copyable startup prompt;
-they do not fail browser setup. Browser setup failures still fail bootstrap.
-Run `source tmp/bootstrap-browser/env.sh` to activate its configuration in your
-shell. To also log in, use `make bootstrap BOOTSTRAP_DOMAIN=payment` (or
-`liquidity` / `fx`); explicit login requires successful headless verification.
-
-```bash
-python -m pip install -e '.[dev]'
-python -m pytest -q
-ruff check .
-ruff format --check .
+uv run python -m pytest -q
+uv run ruff check .
+uv run ruff format --check .
 make doc-guard
 ```
 
-Tests exercise the new CLI with scripted browser/CDP responses and isolated real
-storage. Obsolete legacy command assertions are replaced; native parser, cache,
-transport and authentication checks remain. Production UAT and GUI interaction
-are separate evidence from automated tests.
+`make bootstrap` prepares the worktree environment, code graph and isolated Chrome
+profile, then checks authentication without starting SSO. Activate its settings
+with `source tmp/bootstrap-browser/env.sh`. For explicit login use
+`make bootstrap BOOTSTRAP_DOMAIN=payment` (or `liquidity` / `fx`). Read repository
+browser instructions before browser/authentication work. Local tests, review,
+production business UAT, merge and release are separate evidence.
 
-See [CONTEXT.md](CONTEXT.md), [ADRs](docs/adr/),
-[implementation spec](https://github.com/proletariat64/dogopencli/issues/219) and
-[installed-leaf decision](docs/adr/0022-installed-leaf-pilots.md).
+Further reading: [documentation index](docs/README.md), [domain vocabulary](CONTEXT.md),
+[leaf architecture ADR](docs/adr/0022-installed-leaf-pilots.md),
+[plugin lifecycle spec](https://github.com/proletariat64/dogopencli/issues/239),
+[domain component guide](docs/agents/domain-components.md) and
+[plugin-helper skill](.agents/skills/plugin-helper/SKILL.md).
