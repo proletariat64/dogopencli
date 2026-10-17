@@ -108,7 +108,7 @@ def test_bare_auth_selects_all_four_domains_with_separate_observations(
 def test_partial_domain_failure_still_checks_independent_remaining_domains(
     run_cli, auth_setup
 ):
-    from dogopencli.browser.environment import FX_STARTUP_URL
+    from dogopencli.domain_contracts import FX_STARTUP_URL
 
     _route_all_entries(auth_setup, failed_url=FX_STARTUP_URL)
     code, output, _ = run_cli([*auth_setup.argv, "auth", "check"])
@@ -195,7 +195,7 @@ def test_one_page_failure_does_not_skip_independent_auth_domains(
 ):
     from fake_cdp import FakeTransport
 
-    from dogopencli.browser.environment import FX_STARTUP_URL
+    from dogopencli.domain_contracts import FX_STARTUP_URL
 
     class EntryTransport(FakeTransport):
         def new_target(self, url, *, timeout=None):
@@ -897,7 +897,7 @@ def test_auth_uses_custom_config_filename(run_cli, auth_setup, monkeypatch):
 def test_peer_auth_reuses_authenticated_target_domain(
     run_cli, auth_setup, domain, command
 ):
-    from dogopencli.browser.environment import STARTUP_URLS
+    from dogopencli.domain_contracts import STARTUP_URLS
 
     entry_url = STARTUP_URLS[domain]
     auth_setup.state.href = entry_url
@@ -913,7 +913,7 @@ def test_peer_auth_reuses_authenticated_target_domain(
 
 @pytest.mark.parametrize("domain", ["liquidity", "fx"])
 def test_peer_auth_failure_keeps_domain_recovery_commands(run_cli, auth_setup, domain):
-    from dogopencli.browser.environment import STARTUP_URLS
+    from dogopencli.domain_contracts import STARTUP_URLS
 
     auth_setup.state.href = SSO_URL
     code, value, _ = invoke(
@@ -933,7 +933,7 @@ def install_domain_browser(auth_setup, domain="liquidity"):
 
     from fake_cdp import FakeTransport
 
-    from dogopencli.browser.environment import STARTUP_URLS
+    from dogopencli.domain_contracts import STARTUP_URLS
 
     entry_url = STARTUP_URLS[domain]
 
@@ -1013,7 +1013,7 @@ def install_domain_browser(auth_setup, domain="liquidity"):
 def test_peer_login_payment_valid_requires_domain_human_sso(
     run_cli, auth_setup, fast_clock, monkeypatch, domain
 ):
-    from dogopencli.browser.environment import STARTUP_URLS
+    from dogopencli.domain_contracts import STARTUP_URLS
 
     entry_url = STARTUP_URLS[domain]
     state, launch = install_domain_browser(auth_setup, domain)
@@ -1063,7 +1063,7 @@ def test_liquidity_rejected_unchanged_candidate_waits_quietly(
     run_cli, auth_setup, fast_clock, monkeypatch
 ):
     from dogopencli.browser import probe as probe_mod
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
     state, launch = install_domain_browser(auth_setup)
     state.complete_after = 1
@@ -1166,7 +1166,7 @@ def test_liquidity_interrupt_preserves_headed_domain_context(
 
 
 def test_liquidity_text_and_help_report_domain(run_cli, auth_setup):
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
     auth_setup.state.href = LIQUIDITY_STARTUP_URL
     code, out, _ = run_cli(
@@ -1280,7 +1280,7 @@ def candidate_retry_clock(monkeypatch, fast_clock):
 def test_liquidity_unchanged_candidate_recovers_after_transient_service_failure(
     run_cli, auth_setup, monkeypatch, candidate_retry_clock
 ):
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
     state, launch = install_domain_browser(auth_setup)
     state.complete_after = 1
@@ -1314,7 +1314,7 @@ def test_liquidity_unchanged_candidate_recovers_after_transient_service_failure(
 def test_liquidity_unchanged_candidate_verification_is_bounded(
     run_cli, auth_setup, monkeypatch, candidate_retry_clock, classification
 ):
-    from dogopencli.browser.environment import LIQUIDITY_STARTUP_URL
+    from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
     state, launch = install_domain_browser(auth_setup)
     state.complete_after = 1

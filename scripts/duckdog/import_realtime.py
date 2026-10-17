@@ -12,7 +12,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from dogopencli.plugins.liquidity.spec import TENANT
+TENANT = "GUAPW3SG"
 
 SELECTOR = "liquidity/network/realtime"
 ROOT_FIELDS = frozenset(

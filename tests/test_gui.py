@@ -10,7 +10,6 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -208,13 +207,12 @@ def test_gui_help_is_offline_and_supports_json_text(capsys):
 def test_cli_and_gui_share_durable_state_without_read_side_effects(
     monkeypatch, tmp_path, capsys
 ):
-    from dogopencli import domain_cli, plugins
+    from dogopencli import domain_cli
+    from dogopencli.domain_contracts import DomainDeclaration
     from dogopencli.domains import DomainService
 
-    domain = SimpleNamespace(
-        id="payment", entry_point="https://example.test/", leaves=()
-    )
-    monkeypatch.setattr(plugins, "domain_plugins", lambda: (domain,), raising=False)
+    domain = DomainDeclaration("payment", "https://example.test/")
+    monkeypatch.setattr("dogopencli.domains.domain_declarations", lambda: (domain,))
     service = DomainService(tmp_path / "config.toml")
     server = gui.create_server(service)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

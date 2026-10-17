@@ -1,19 +1,30 @@
 """Queries must wait for their own target, not rely on a separate auth probe."""
 
+from types import SimpleNamespace
+
 import pytest
 from fake_cdp import PAYMENT_URL, SSO_URL, FakeBrowser, FakeSession
 
 from dogopencli.browser import cdp
+from dogopencli.contracts import EndpointContract
 from dogopencli.errors import CliError
-from dogopencli.plugins.collection.cost import COLLECTION_COST_CAPABILITY
-from dogopencli.plugins.payment.cost import COST_CAPABILITY
 from dogopencli.transport import QueryRequest
 from dogopencli.transport.cdp import CdpQueryTransport
 
 
-@pytest.fixture(params=[COLLECTION_COST_CAPABILITY, COST_CAPABILITY])
-def capability(request):
-    return request.param
+@pytest.fixture
+def capability():
+    return SimpleNamespace(
+        name="sample.rows",
+        contract=EndpointContract(
+            "POST",
+            "example.test",
+            "/inquiry",
+            50,
+            False,
+            frozenset({"pageNo", "pageSize"}),
+        ),
+    )
 
 
 def request(capability):
@@ -23,7 +34,7 @@ def request(capability):
         contract.method,
         contract.host,
         contract.path,
-        capability.page_body(capability.default_scope, 0, contract.page_size),
+        {"pageNo": 0, "pageSize": contract.page_size},
     )
 
 
@@ -80,3 +91,30 @@ def test_redirect_never_sends_business_request(monkeypatch, url, code, capabilit
     finally:
         transport.close()
     assert len(state.transports[0].closed) == 1
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"host": "evil.example"},
+        {"path": "/save"},
+        {"method": "GET"},
+        {"capability": "sample.other"},
+        {"body": {"pageNo": 0, "pageSize": 50, "approve": True}},
+    ],
+)
+def test_allowlist_rejects_before_creating_browser_target(capability, changes):
+    from dataclasses import replace
+
+    state = FakeBrowser()
+    transport = CdpQueryTransport(
+        state.transport("unused"), capability, page_url=PAYMENT_URL
+    )
+    try:
+        with pytest.raises(CliError) as caught:
+            transport.execute(replace(request(capability), **changes))
+        assert caught.value.code == "REQUEST_NOT_ALLOWED"
+        assert not state.business_requests
+        assert not state.transports[0].created
+    finally:
+        transport.close()

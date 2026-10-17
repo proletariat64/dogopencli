@@ -1,5 +1,7 @@
 """Session ownership at the existing fake-CDP boundary, with real file locks."""
 
+from types import SimpleNamespace
+
 import pytest
 from fake_cdp import SSO_URL, FakeBrowser
 
@@ -7,9 +9,8 @@ from dogopencli import inquiry
 from dogopencli.browser import cdp
 from dogopencli.browser.coordination import acquire_browser_control
 from dogopencli.browser.errors import AuthError
+from dogopencli.contracts import EndpointContract
 from dogopencli.errors import CliError
-from dogopencli.plugins import get_capability
-from dogopencli.plugins.payment.sla import SLA_DETAIL, detail_body
 from dogopencli.transport import QueryRequest
 
 
@@ -38,7 +39,28 @@ def test_multiple_transports_release_targets_and_lease(
     session_setup, monkeypatch, failure
 ):
     config, profile, state = session_setup
-    capability = get_capability("payment.sla.baselines.list")
+    capability = SimpleNamespace(
+        name="sample.list",
+        contract=EndpointContract(
+            "POST",
+            "ifundcontrol.alipay.com",
+            "/inquiry/list",
+            50,
+            False,
+            frozenset({"pageNo", "pageSize"}),
+        ),
+    )
+    detail = SimpleNamespace(
+        name="sample.get",
+        contract=EndpointContract(
+            "POST",
+            "ifundcontrol.alipay.com",
+            "/inquiry/detail",
+            1,
+            False,
+            frozenset({"id"}),
+        ),
+    )
     state.business_handler = lambda payload, index: {"status": 200, "body": {}}
     error = RuntimeError("synthetic failure")
 
@@ -48,7 +70,7 @@ def test_multiple_transports_release_targets_and_lease(
             execute(
                 first,
                 capability,
-                capability.page_body(capability.default_scope, 0, 5000),
+                {"pageNo": 0, "pageSize": 50},
             )
             if failure == "second_transport":
 
@@ -56,8 +78,8 @@ def test_multiple_transports_release_targets_and_lease(
                     raise error
 
                 monkeypatch.setattr(inquiry, "CdpQueryTransport", fail)
-            second = session.transport(SLA_DETAIL)
-            execute(second, SLA_DETAIL, detail_body("1"))
+            second = session.transport(detail)
+            execute(second, detail, {"id": "1"})
             if failure == "query":
                 raise error
 

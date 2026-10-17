@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 from dogopencli.collect import CollectedScope
-from dogopencli.plugins import TransportCapability
+from dogopencli.contracts import TransportCapability
 
 
 class LeafAdapter(Protocol):

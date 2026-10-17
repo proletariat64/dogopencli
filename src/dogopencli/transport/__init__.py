@@ -11,8 +11,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from ..contracts import EndpointContract
 from ..errors import REQUEST_NOT_ALLOWED, CliError
-from ..plugins import EndpointContract
 
 
 @dataclass(frozen=True)

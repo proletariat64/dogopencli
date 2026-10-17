@@ -23,9 +23,9 @@ from ..browser.cdp import (
     url_origin,
 )
 from ..browser.probe import is_login_landing
+from ..contracts import TransportCapability
 from ..errors import AUTH_REQUIRED, INVALID_RESPONSE, REQUEST_NOT_ALLOWED, CliError
 from ..jsonutil import canonical
-from ..plugins import TransportCapability
 from . import OriginMetadata, QueryRequest, TransportResponse, validate_request
 
 QUERY_TIMEOUT_SECONDS = 60.0
