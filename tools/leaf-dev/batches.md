@@ -1,14 +1,15 @@
 # Leaf migration batches
 
 This is the current scope map. Business acceptance and isolated worker handoff
-follow the [migration procedure](workflow.md). [Tools #261](https://github.com/proletariat64/dogopencli/issues/261)
-must land before the remaining batches start. The user assigns worktrees/Codex;
+follow the [migration procedure](workflow.md). The user assigns worktrees/Codex;
 creating these tickets starts no leaf implementation.
 
-Delivered: **9/79 packages, 12/106 inquiry actions**. Remaining: **70 packages,
-94 actions in 22 batches**. The four bundled pilots are outside this denominator.
-B labels group scope rather than impose execution order. Each leaf keeps its
-complete list/get set; unresolved native/UAT evidence blocks acceptance.
+Original batch tally: **9/79 packages, 12/106 inquiry actions** marked delivered.
+The other 22 batches retain 70 packages/94 actions in the map, including the
+partial SDK List deliveries below. These are original batch membership counts,
+not counts of unimplemented actions. The four pilots are outside this denominator.
+B labels group scope rather than impose execution order. Original list/get sets
+stay intact; bounded List-only tickets do not complete their original batch.
 
 The [machine-readable map](batches.json) is the single membership/action source.
 Validate it before handing out or transferring work:
@@ -47,3 +48,28 @@ guides/helpers, integration, daily installation and the parent progress ledger.
 | B23 | [#282](https://github.com/proletariat64/dogopencli/issues/282) | `liquidity.forecast.results` L; `liquidity.forecast.cashflows` L; `liquidity.forecast.accuracy` L | 3/3 | planned |
 | B24 | [#283](https://github.com/proletariat64/dogopencli/issues/283) | `liquidity.investment.interest_rates` LG; `liquidity.investment.products` LG; `liquidity.investment.products.history` L | 3/5 | planned |
 | B25 | [#284](https://github.com/proletariat64/dogopencli/issues/284) | `liquidity.operations.decisions` LG; `liquidity.operations.decisions.history` L; `liquidity.operations.rule_status` L | 3/4 | planned |
+
+## SDK List delivery
+
+The inventory above tracks original complete action sets. A planned original
+batch may have accepted Lists below; deferred Gets and held leaves do not complete
+that batch or change its membership/counts. These deliveries comprise 34 SDK
+Lists; each new List-only ticket excludes Get acquisition. The four pilots are
+outside the inventory and were migrated in [#292](https://github.com/proletariat64/dogopencli/pull/292).
+
+| Batch | Accepted SDK Lists | Delivery | Held List scope |
+| --- | --- | --- | --- |
+| B01 | 3 | [#294](https://github.com/proletariat64/dogopencli/pull/294) | — |
+| B02 | 6 | [#296](https://github.com/proletariat64/dogopencli/pull/296) | — |
+| B03 | 9 | [#298](https://github.com/proletariat64/dogopencli/pull/298) | — |
+| B05 | 4 | [#302](https://github.com/proletariat64/dogopencli/pull/302) | returns: [#301](https://github.com/proletariat64/dogopencli/issues/301) |
+| B06 | 2 | [#307](https://github.com/proletariat64/dogopencli/pull/307) | — |
+| B07 | 2 | [#310](https://github.com/proletariat64/dogopencli/pull/310) | metrics: [#305](https://github.com/proletariat64/dogopencli/issues/305); anomalies: [#308](https://github.com/proletariat64/dogopencli/issues/308) |
+| B08 | 6 | [#313](https://github.com/proletariat64/dogopencli/pull/313) | — |
+| B09 | 1 | [#314](https://github.com/proletariat64/dogopencli/pull/314) | quotes: [#304](https://github.com/proletariat64/dogopencli/issues/304) |
+| B10 | 1 | [#311](https://github.com/proletariat64/dogopencli/issues/311) | — |
+
+Held leaves require their ticket evidence before implementation resumes. Frontend
+and PDKB research about List/Get relationships is retained in
+[#300](https://github.com/proletariat64/dogopencli/issues/300); it does not authorize
+Get fanout or SDK business joins.
