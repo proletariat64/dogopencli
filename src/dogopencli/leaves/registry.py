@@ -122,6 +122,35 @@ MANIFEST_SCHEMA = {
                 },
             },
         },
+        "collection": {
+            "type": "object",
+            "required": ["provider", "paging", "primary_id"],
+            "additionalProperties": False,
+            "properties": {
+                "provider": {"type": "string"},
+                "paging": {
+                    "type": "object",
+                    "required": ["mode", "page_sizes"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "mode": {"enum": ["offset", "page_number", "single"]},
+                        "page_sizes": {"type": "array"},
+                    },
+                },
+                "primary_id": {
+                    "type": "object",
+                    "required": ["type", "fields"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "type": {"enum": ["field", "hash", "unproven"]},
+                        "fields": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+                "latest_by": {"type": "string"},
+                "max_pages": {"type": "integer", "minimum": 1, "maximum": 1000},
+                "budget_seconds": {"type": "integer", "minimum": 1, "maximum": 900},
+            },
+        },
         "dataset": {
             "type": "object",
             "required": ["relation"],
@@ -145,11 +174,16 @@ def _validate(value: Any, schema: dict, path: str) -> None:
         "array": isinstance(value, list),
         "string": isinstance(value, str),
         "boolean": isinstance(value, bool),
+        "integer": type(value) is int,
     }
     if kind and not valid.get(kind, False):
         raise _invalid(f"{path} must be {kind}")
     if "enum" in schema and value not in schema["enum"]:
         raise _invalid(f"{path} has unsupported value")
+    if kind == "integer" and not schema.get("minimum", value) <= value <= schema.get(
+        "maximum", value
+    ):
+        raise _invalid(f"{path} is outside the allowed range")
     if kind == "string" and "pattern" in schema:
         if re.fullmatch(schema["pattern"], value) is None:
             raise _invalid(f"{path} has invalid spelling")
@@ -206,6 +240,38 @@ def validate_manifest(value: Any) -> None:
                     item not in parameter["choices"] for item in values
                 ):
                     raise _invalid(f"parameter {name} default is outside choices")
+    collection = value.get("collection")
+    if collection is not None:
+        from ..contracts import resolve_collection_provider
+
+        if "list" not in value["operations"]:
+            raise _invalid("get-only leaf cannot use a List collection provider")
+        try:
+            resolve_collection_provider(value["domain"], collection["provider"])
+        except CliError as error:
+            raise _invalid(error.message) from error
+        pages = collection["paging"]["page_sizes"]
+        if (
+            not pages
+            or len(pages) > 8
+            or any(type(size) is not int or not 0 < size <= 100000 for size in pages)
+            or pages != sorted(set(pages), reverse=True)
+            or collection["paging"]["mode"] == "single"
+            and len(pages) != 1
+        ):
+            raise _invalid("List page sizes must be unique, descending and qualified")
+        fields = collection["primary_id"]["fields"]
+        unproven = collection["primary_id"]["type"] == "unproven"
+        if (
+            (not fields and not unproven)
+            or (unproven and (fields or "latest_by" in collection or value["identity"]))
+            or len(fields) != len(set(fields))
+            or any(not field.strip() for field in fields)
+            or collection["primary_id"]["type"] == "field"
+            and len(fields) != 1
+            or not collection.get("latest_by", "present").strip()
+        ):
+            raise _invalid("List primary identity or timestamp declaration is invalid")
     names = [field["name"] for field in value["fields"]]
     if len(names) != len(set(names)):
         raise _invalid("duplicate field names")
@@ -385,7 +451,9 @@ class Registry:
             adapter = getattr(module, attribute)
             required = {"get", "capability"} if "get" in value["operations"] else set()
             if "list" in value["operations"]:
-                required |= {"capability", "scope", "collector", "filter"}
+                required |= {"capability", "scope", "filter"}
+                if "collection" not in value:
+                    required.add("collector")
             arguments = {
                 "capability": ({},),
                 "scope": ({},),

@@ -177,7 +177,15 @@ def installed(artifact, tmp_path):
     )
     for domain, leaf in PILOTS:
         success("plugins", "install", f"bundled:{domain}.{leaf}")
-        assert (root / "plugins" / domain / leaf / "adapter.py").is_file()
+        installed_leaf = root / "plugins" / domain / leaf
+        assert (installed_leaf / "adapter.py").is_file()
+        portable = tmp_path / f"{domain}.{leaf}.zip"
+        with zipfile.ZipFile(portable, "w") as archive:
+            for file in sorted(installed_leaf.rglob("*")):
+                if file.is_file():
+                    archive.write(file, file.relative_to(installed_leaf))
+        success("plugins", "uninstall", f"{domain}.{leaf}")
+        success("plugins", "install", str(portable))
     return call, success, root
 
 
@@ -207,7 +215,7 @@ def _page(domain, rows):
             "resultDataList": rows,
             "totalCount": len(rows),
             "pageNo": 0,
-            "pageSize": 1000 if domain == "collection" else 5000,
+            "pageSize": 1000 if domain == "collection" else 10000,
         }
     return {"status": 200, "body": body}
 
@@ -256,17 +264,13 @@ def test_all_installed_pilots_execute_without_retired_runtime(installed):
         assert missing.returncode == 1
         assert json.loads(missing.stdout)["error"]["code"] == "CACHE_MISS"
         assert report["requests"] == []
+        assert live["meta"]["complete"] is True
+        assert live["meta"]["unique_count"] == len(rows)
         refreshed, _ = success(domain, "refresh", leaf, response=response)
         assert refreshed["meta"]["published"] is True
         offline, report = success(domain, "list", leaf)
         assert offline["data"] == rows
         assert report["requests"] == []
-        if domain == "fx":
-            assert offline["meta"]["complete"] is False
-            assert offline["meta"]["unique_count"] is None
-            assert {"IDENTITY_UNPROVEN", "TOTAL_SEMANTICS_UNPROVEN"} <= set(
-                offline["meta"]["acquisition"]["reasons"]
-            )
         if domain == "payment":
             filtered, _ = success(domain, "list", leaf, "--status", "ACTIVE")
             assert filtered["data"] == rows

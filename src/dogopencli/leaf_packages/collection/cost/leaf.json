@@ -94,5 +94,20 @@
   ],
   "dataset": {
     "relation": "collection_cost"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "itemId"
+      ]
+    }
   }
 }

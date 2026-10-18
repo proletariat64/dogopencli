@@ -1,23 +1,18 @@
 """Maintained entities: native instId records and fixed-total rowStart paging."""
 
 import json
-import time
 from dataclasses import dataclass
 from typing import Any
 
-from dogopencli import collect
-from dogopencli.collect import CollectedScope
 from dogopencli.contracts import EndpointContract
 from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 from dogopencli.errors import (
     BUSINESS_QUERY_FAILED,
     INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
-    TIMEOUT,
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
-from dogopencli.result_policy import AcquisitionEvidence
 
 PAGE_SIZE = 5000
 TENANT = "GUAPW3SG"
@@ -34,11 +29,21 @@ class EntityInquiry:
         page_size=PAGE_SIZE,
         one_based=False,
         allowed_body_keys=frozenset({"tntInstId", "entityMaintQueryVO"}),
+        fixed_body_values=(("tntInstId", TENANT),),
+        json_body_contracts=(
+            (
+                "entityMaintQueryVO",
+                frozenset({"tntInstId", "rowStart", "pageSize"}),
+                (("tntInstId", TENANT),),
+                frozenset({PAGE_SIZE}),
+            ),
+        ),
     )
 
-    def page_body(self, scope: str, row_start: int) -> dict[str, Any]:
+    def page_body(self, scope: str, row_start: int, page_size: int) -> dict[str, Any]:
         if (
             scope
+            or page_size != PAGE_SIZE
             or type(row_start) is not int
             or row_start < 0
             or row_start % PAGE_SIZE
@@ -98,80 +103,6 @@ class Adapter:
 
     def scope(self, parameters: dict[str, Any]) -> str:
         return ""
-
-    def collector(
-        self, capability: Any, transport: Any, scope: str, *, progress: Any = None
-    ) -> CollectedScope:
-        deadline = time.monotonic() + collect.REFRESH_BUDGET_SECONDS
-        ordered: list[dict[str, Any]] = []
-        seen: dict[str, str] = {}
-        total: int | None = None
-        arrivals = 0
-        pages = 0
-        for page_no in range(collect.MAX_PAGES):
-            collect.remaining_seconds(deadline)
-            response = collect.execute_bounded(
-                capability,
-                transport,
-                capability.page_body(scope, page_no * PAGE_SIZE),
-                deadline,
-            )
-            rows, page_total = capability.parse_rows(response.body)
-            if total is None:
-                total = page_total
-                if total > collect.MAX_PAGES * PAGE_SIZE:
-                    raise CliError(
-                        TIMEOUT, "entity page budget exceeded", retryable=True
-                    )
-            elif page_total != total:
-                raise CliError(
-                    INVALID_RESPONSE, "backend total changed during collection"
-                )
-            if len(rows) > PAGE_SIZE:
-                raise CliError(
-                    INVALID_RESPONSE,
-                    "page returned more rows than the verified page size",
-                )
-            if not rows and arrivals < total:
-                raise CliError(
-                    INVALID_RESPONSE,
-                    "collection made no progress: empty page before the total",
-                )
-            pages += 1
-            arrivals += len(rows)
-            for row in rows:
-                identity, content = capability.identity_key(row), canonical(row)
-                if identity in seen:
-                    if seen[identity] != content:
-                        raise CliError(
-                            INVALID_RESPONSE, "conflicting content for native instId"
-                        )
-                    continue
-                seen[identity] = content
-                ordered.append(row)
-            if progress:
-                progress(pages, max(-(-total // PAGE_SIZE), pages))
-            if pages * PAGE_SIZE >= total:
-                break
-        else:
-            raise CliError(TIMEOUT, "entity page budget exceeded", retryable=True)
-        collect.remaining_seconds(deadline)
-        evidence = AcquisitionEvidence.for_collection(
-            complete=arrivals == total == len(ordered),
-            reported_total=total,
-            collected_total=len(ordered),
-            arrivals=arrivals,
-        )
-        return CollectedScope(
-            ordered,
-            evidence.scope_complete,
-            total,
-            PAGE_SIZE,
-            pages,
-            False,
-            deadline,
-            evidence,
-        )
 
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]

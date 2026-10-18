@@ -30,6 +30,7 @@ from .errors import (
     AUTH_REQUIRED,
     BUSINESS_QUERY_FAILED,
     INVALID_RESPONSE,
+    REQUEST_NOT_ALLOWED,
     TIMEOUT,
     CliError,
 )
@@ -366,7 +367,7 @@ def execute_bounded(
             if response.status == 200:
                 return response
             if response.status not in RETRYABLE_STATUSES:
-                if response.status == 401:
+                if response.status in (401, 403):
                     raise CliError(
                         AUTH_REQUIRED,
                         "the backend rejected the dedicated browser session;"
@@ -396,3 +397,380 @@ def execute_bounded(
             )
         _sleep(wait)
         attempt += 1
+
+
+# Opt-in List SDK: existing collectors above keep their accepted behavior.
+# Native business parsing, identity selection and request policy remain leaf-owned.
+
+
+def _list_identity(
+    row: dict[str, Any],
+    primary_id: dict[str, Any],
+    sources: dict[str, str],
+) -> str:
+    """Compute an internal, type-aware identity; never decorate a native row."""
+    import hashlib
+
+    values: list[Any] = []
+    for field in primary_id["fields"]:
+        value = row.get(field)
+        if (
+            value is None
+            or isinstance(value, (dict, list))
+            or (isinstance(value, str) and not value.strip())
+        ):
+            raise CliError(INVALID_RESPONSE, f"missing native identity field {field}")
+        values.append(value)
+    try:
+        encoded = canonical(values)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise CliError(INVALID_RESPONSE, "invalid native identity value") from error
+    if primary_id["type"] == "field":
+        return encoded
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    previous = sources.setdefault(digest, encoded)
+    if previous != encoded:
+        raise CliError(INVALID_RESPONSE, "composite primary identity hash collision")
+    return digest
+
+
+def _list_timestamp(value: Any) -> tuple[str, Any]:
+    """Comparable native times; do not infer time zones or coerce invalid values."""
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    if type(value) in (int, float, Decimal):
+        try:
+            number = Decimal(str(value))
+        except (ValueError, ArithmeticError) as error:
+            raise CliError(INVALID_RESPONSE, "invalid identity timestamp") from error
+        if not number.is_finite():
+            raise CliError(INVALID_RESPONSE, "non-finite identity timestamp")
+        return ("numeric", number)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise CliError(INVALID_RESPONSE, "invalid identity timestamp") from error
+        if parsed.tzinfo is None:
+            raise CliError(INVALID_RESPONSE, "timestamp requires explicit timezone")
+        return ("datetime", parsed.astimezone(timezone.utc))
+    raise CliError(INVALID_RESPONSE, "missing or invalid identity timestamp")
+
+
+def _list_allowed_sizes(capability: TransportCapability) -> set[int]:
+    contract = capability.contract
+    sizes = set(contract.allowed_page_sizes) or {contract.page_size}
+    for _key, _allowed, _fixed, page_sizes in contract.json_body_contracts:
+        sizes.update(page_sizes)
+    return sizes
+
+
+@dataclass
+class _PageBudget:
+    remaining: int
+
+
+def _list_candidate(
+    capability: Any,
+    transport: Any,
+    scope: str,
+    collection: dict[str, Any],
+    size: int,
+    deadline: float,
+    page_budget: _PageBudget,
+    progress: Callable[[int, int], None] | None,
+) -> CollectedScope:
+    """One independent native scope; positional pages are never cross-mixed."""
+    mode = collection["paging"]["mode"]
+    first_number = 1 if capability.contract.one_based else 0
+    primary_id = collection["primary_id"]
+    has_identity = primary_id["type"] != "unproven"
+    latest_by = collection.get("latest_by")
+    ordered: list[dict[str, Any]] = []
+    positions: dict[str, int] = {}
+    hashes: dict[str, str] = {}
+    observed: set[str] = set()
+    reported: int | None = None
+    arrivals = 0
+    duplicate_count = 0
+    conflict_count = 0
+    problems: list[str] = []
+    if not has_identity:
+        problems.append("IDENTITY_UNPROVEN")
+    if capability.contract.total_semantics != "unique_objects":
+        problems.append("TOTAL_SEMANTICS_UNPROVEN")
+    pages = 0
+
+    for index in range(page_budget.remaining):
+        remaining_seconds(deadline)
+        position = index * size if mode == "offset" else first_number + index
+        body = capability.page_body(scope, position, size)
+        # Reserve one logical page across ALL fallback attempts, including
+        # unsuccessful requests. HTTP-level retries remain a separate budget.
+        page_budget.remaining -= 1
+        response = execute_bounded(capability, transport, body, deadline)
+        if mode == "offset":
+            rows, page_total = capability.parse_rows(response.body)
+        else:
+            page = capability.parse_page(response.body)
+            rows, page_total = page.records, page.total_count
+            empty_echo = (
+                page_total == 0
+                and not rows
+                and page.page_num == 0
+                and page.total_pages == 0
+                and index == 0
+            )
+            if (
+                page.page_size != size
+                or (page.page_num != position and not empty_echo)
+                or (page.total_pages != math.ceil(page_total / size) and not empty_echo)
+            ):
+                raise CliError(INVALID_RESPONSE, "native page echo mismatch")
+
+        if (
+            type(page_total) is not int
+            or page_total < 0
+            or not isinstance(rows, list)
+            or any(not isinstance(row, dict) for row in rows)
+        ):
+            raise CliError(INVALID_RESPONSE, "invalid native List records or total")
+        if len(rows) > size:
+            raise CliError(INVALID_RESPONSE, "native page exceeded requested size")
+        if reported is None:
+            reported = page_total
+            # The initial request has already consumed one slot. A fallback
+            # cannot borrow the page allowance used by prior candidates.
+            if (
+                has_identity
+                and mode != "single"
+                and math.ceil(reported / size) > (1 + page_budget.remaining)
+            ):
+                raise CliError(
+                    TIMEOUT, "List global page budget exhausted", retryable=True
+                )
+        elif reported != page_total:
+            raise CliError(INVALID_RESPONSE, "native List total changed during read")
+        if capability.contract.scope_field is not None and any(
+            row.get(capability.contract.scope_field) != scope for row in rows
+        ):
+            raise CliError(INVALID_RESPONSE, "native row is outside requested scope")
+        scope_validator = getattr(capability, "validate_rows_scope", None)
+        if scope_validator is not None:
+            scope_validator(rows, scope)
+
+        expected_rows = min(size, max(0, reported - index * size))
+        if len(rows) < expected_rows:
+            reason = "EMPTY_INTERIOR_PAGE" if not rows else "SHORT_NATIVE_PAGE"
+            if reason not in problems:
+                problems.append(reason)
+        pages += 1
+        arrivals += len(rows)
+        for row in rows:
+            if not has_identity:
+                content = canonical(row)
+                if content in observed:
+                    if "UNEXPECTED_DUPLICATE_ROWS" not in problems:
+                        problems.append("UNEXPECTED_DUPLICATE_ROWS")
+                observed.add(content)
+                ordered.append(row)
+                continue
+            record_id = _list_identity(row, primary_id, hashes)
+            previous_index = positions.get(record_id)
+            if previous_index is None:
+                positions[record_id] = len(ordered)
+                ordered.append(row)
+                continue
+            duplicate_count += 1
+            previous = ordered[previous_index]
+            if canonical(row) == canonical(previous):
+                continue
+            conflict_count += 1
+            if latest_by is None:
+                ordered[previous_index] = row  # last arrival, not proven newest
+                continue
+            newer = _list_timestamp(row.get(latest_by))
+            older = _list_timestamp(previous.get(latest_by))
+            if newer[0] != older[0]:
+                raise CliError(INVALID_RESPONSE, "mixed native timestamp formats")
+            if newer[1] >= older[1]:
+                ordered[previous_index] = row
+
+        if progress is not None:
+            progress(pages, max(pages, math.ceil(reported / size)))
+        if mode == "single" or (index + 1) * size >= reported:
+            break
+        # An unqualified identity cannot diagnose or repair missing native rows.
+        # Retain every arrival, but stop at observed overlap or a short page.
+        if not has_identity and (
+            len(rows) < size or "UNEXPECTED_DUPLICATE_ROWS" in problems
+        ):
+            break
+    else:
+        if has_identity:
+            raise CliError(TIMEOUT, "List page budget exceeded", retryable=True)
+        problems.append("PAGE_BUDGET_EXHAUSTED")
+    remaining_seconds(deadline)
+    if duplicate_count:
+        problems.append("CROSS_PAGE_OR_INTRA_PAGE_DUPLICATES")
+    if conflict_count:
+        problems.append("IDENTITY_CONTENT_CONFLICT")
+        if latest_by is None:
+            problems.append("LAST_ARRIVAL_WINS")
+    if reported is not None and len(ordered) != reported:
+        problems.append("COUNT_MISMATCH")
+    if mode == "single" and reported is not None and reported > size:
+        problems.append("SINGLE_PAGE_CAPACITY")
+    complete = not problems and len(ordered) == reported
+    evidence = AcquisitionEvidence.for_collection(
+        complete=complete,
+        reported_total=reported,
+        collected_total=len(ordered),
+        arrivals=arrivals,
+        has_identity=has_identity,
+        total_semantics=capability.contract.total_semantics,
+        reasons=tuple(problems),
+        duplicate_policy="conservative",
+    )
+    evidence = replace(
+        evidence,
+        attempts=(
+            {
+                "page_size": size,
+                "pages": pages,
+                "arrivals": arrivals,
+                "unique_count": evidence.unique_count,
+                "duplicate_count": evidence.duplicate_count,
+                "conflict_count": conflict_count,
+                "reported_total": reported,
+                "complete": evidence.scope_complete,
+                "reasons": list(evidence.reasons),
+            },
+        ),
+    )
+    return CollectedScope(
+        records=ordered,
+        complete=evidence.scope_complete,
+        total_count=reported,
+        page_size=size,
+        pages=pages,
+        rebuilt=False,
+        deadline=deadline,
+        evidence=evidence,
+    )
+
+
+def collect_list(
+    capability: Any,
+    transport: Any,
+    scope: str,
+    collection: dict[str, Any],
+    *,
+    domain: str,
+    leaf_id: str,
+    state_file: Any = None,
+    budget_seconds: float | None = None,
+    max_pages: int | None = None,
+    progress: Callable[[int, int], None] | None = None,
+) -> CollectedScope:
+    """General List API for trusted, manifest-validated native Leaf contracts.
+
+    Width fallback always starts a fresh candidate. Backend-specific business
+    identity and page semantics are never inferred from JSON field names.
+    """
+    from .collection_state import (
+        preferred_page_size,
+        remember_page_size,
+        state_key,
+    )
+    from .contracts import resolve_collection_provider
+
+    resolve_collection_provider(domain, collection["provider"])
+    if (
+        collection["primary_id"]["type"] != "unproven"
+    ) != capability.contract.has_identity:
+        raise CliError(
+            INVALID_RESPONSE,
+            "List identity declaration disagrees with endpoint contract",
+        )
+    sizes = tuple(collection["paging"]["page_sizes"])
+    if not set(sizes).issubset(_list_allowed_sizes(capability)):
+        raise CliError(REQUEST_NOT_ALLOWED, "List page width is not endpoint-qualified")
+    if not sizes or max_pages is not None and max_pages < 1:
+        raise CliError(INVALID_RESPONSE, "invalid List acquisition limits")
+    preferred_key = state_key(leaf_id, capability, scope, sizes)
+    favored = preferred_page_size(state_file, preferred_key, sizes)
+    candidates = (
+        (favored, *(size for size in sizes if size != favored)) if favored else sizes
+    )
+    deadline = _monotonic() + (
+        collection.get("budget_seconds", REFRESH_BUDGET_SECONDS)
+        if budget_seconds is None
+        else budget_seconds
+    )
+    page_budget = _PageBudget(
+        collection.get("max_pages", MAX_PAGES) if max_pages is None else max_pages
+    )
+    attempts: list[dict[str, Any]] = []
+    last_partial: CollectedScope | None = None
+    last_timeout: CliError | None = None
+    for number, size in enumerate(candidates):
+        remaining = remaining_seconds(deadline)
+        slots = len(candidates) - number
+        # Allocate time to the next qualified width, not to endless first-width retries.
+        attempt_deadline = min(deadline, _monotonic() + remaining / slots)
+        started = _monotonic()
+        pages_before = page_budget.remaining
+        try:
+            result = _list_candidate(
+                capability,
+                transport,
+                scope,
+                collection,
+                size,
+                attempt_deadline,
+                page_budget,
+                progress,
+            )
+        except CliError as error:
+            attempts.append(
+                {
+                    "page_size": size,
+                    "pages": pages_before - page_budget.remaining,
+                    "complete": False,
+                    "error": error.code,
+                    "elapsed_seconds": round(_monotonic() - started, 3),
+                }
+            )
+            if error.code != TIMEOUT:
+                raise
+            last_timeout = error
+            continue
+        assert result.evidence is not None
+        attempt = {
+            **result.evidence.attempts[0],
+            "elapsed_seconds": round(_monotonic() - started, 3),
+        }
+        attempts.append(attempt)
+        if result.complete:
+            remember_page_size(state_file, preferred_key, size)
+            return replace(
+                result,
+                rebuilt=number > 0,
+                deadline=deadline,
+                evidence=replace(result.evidence, attempts=tuple(attempts)),
+            )
+        last_partial = result
+
+    if last_partial is not None:
+        assert last_partial.evidence is not None
+        return replace(
+            last_partial,
+            rebuilt=len(attempts) > 1,
+            deadline=deadline,
+            evidence=replace(last_partial.evidence, attempts=tuple(attempts)),
+        )
+    if last_timeout is not None:
+        raise last_timeout
+    raise CliError(TIMEOUT, "List collection exhausted all permitted widths")

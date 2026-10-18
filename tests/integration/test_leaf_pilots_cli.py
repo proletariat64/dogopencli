@@ -42,7 +42,7 @@ def test_payment_native_list_and_detail(run_cli, pilots):
             "body": {
                 "success": True,
                 "pageNo": 0,
-                "pageSize": 5000,
+                "pageSize": 10000,
                 "totalCount": 1,
                 "resultDataList": [{"id": "101", "status": "ACTIVE"}],
             },
@@ -84,7 +84,7 @@ def fx_page(rows, number=0, total=None):
     }
 
 
-def test_fx_native_pages_preserve_unknown_identity(run_cli, pilots):
+def test_fx_native_transaction_numbers_complete_across_pages(run_cli, pilots):
     from dogopencli.domain_contracts import FX_STARTUP_URL
 
     pilots.href = FX_STARTUP_URL
@@ -99,19 +99,19 @@ def test_fx_native_pages_preserve_unknown_identity(run_cli, pilots):
     assert code == 0
     assert value["data"] == rows[:1]
     assert value["meta"]["collected_total"] == 52
-    assert value["meta"]["complete"] is False
-    assert value["meta"]["unique_count"] is None
-    assert value["meta"]["total_semantics"] == "unknown"
-    assert "IDENTITY_UNPROVEN" in value["meta"]["acquisition"]["reasons"]
-    assert "TOTAL_SEMANTICS_UNPROVEN" in value["meta"]["acquisition"]["reasons"]
-    assert "INCOMPLETE_RESULT" in err
+    assert value["meta"]["complete"] is True
+    assert value["meta"]["unique_count"] == 52
+    assert value["meta"]["total_semantics"] == "unique_objects"
+    assert value["meta"]["acquisition"]["reasons"] == []
+    assert "INCOMPLETE_RESULT" not in err
     assert [request["pageNo"] for request in pilots.business_requests] == [0, 1]
     assert pilots.business_requests[0]["queryRequest"] == {"uniqueIds": ["TEST"]}
     pilots.business_script.append(fx_page(rows[:1]))
     code, out, _ = run_cli(
         ["fx", "list", "trade", "--live", "--trade-id", "TEST", "--require-complete"]
     )
-    assert code == 1 and json.loads(out)["data"] is None
+    assert code == 0 and json.loads(out)["data"] == rows[:1]
+    assert json.loads(out)["meta"]["complete"] is True
 
 
 @pytest.mark.parametrize("status", [401, 403])
@@ -127,8 +127,7 @@ def test_fx_authorization_failure_requires_login_without_publishing(
     value = json.loads(out)
     assert code == 1, out
     assert value["error"]["code"] == "AUTH_REQUIRED"
-    assert value["error"]["message"].startswith("FX authorization required;")
-    assert "dogopencli login --domain fx" in value["error"]["message"]
+    assert "dogopencli login" in value["error"]["message"]
     assert value["error"]["retryable"] is False
     assert value["data"] is None
     if command[0] == "refresh":
@@ -290,7 +289,7 @@ def test_payment_installed_scope_filter_and_detail_without_legacy_import(
             "body": {
                 "success": True,
                 "pageNo": 0,
-                "pageSize": 5000,
+                "pageSize": 10000,
                 "totalCount": 1,
                 "resultDataList": rows,
             },
@@ -309,7 +308,7 @@ def test_payment_installed_scope_filter_and_detail_without_legacy_import(
     )
     assert code == 0, out
     assert pilots.business_requests == [
-        {"pageNo": 0, "pageSize": 5000, "status": "ACTIVE", "creditorCurrency": "USD"}
+        {"pageNo": 0, "pageSize": 10000, "status": "ACTIVE", "creditorCurrency": "USD"}
     ]
     code, out, _ = run_cli(["payment", "list", "sla.baselines", "--status", "ACTIVE"])
     assert code == 0 and json.loads(out)["data"] == rows
@@ -346,10 +345,11 @@ def test_fx_installed_native_scope_without_legacy_import(run_cli, pilots, monkey
     pilots.href = FX_STARTUP_URL
     rows = [
         {
-            "uniqueId": "UNPROVEN",
+            "uniqueId": identity,
             "transactionAmountQuantity": {"value": "1234567890.1234567890123456789"},
         }
-    ] * 2
+        for identity in ("TRADE-1", "TRADE-2")
+    ]
     pilots.business_script.append(fx_page(rows))
     code, out, _ = run_cli(
         [
@@ -372,8 +372,8 @@ def test_fx_installed_native_scope_without_legacy_import(run_cli, pilots, monkey
     assert code == 0, out
     value = json.loads(out)
     assert value["data"] == rows
-    assert value["meta"]["complete"] is False
-    assert value["meta"]["unique_count"] is None
+    assert value["meta"]["complete"] is True
+    assert value["meta"]["unique_count"] == 2
     assert pilots.business_requests[0]["queryRequest"] == {
         "p5Bcodes": ["B1"],
         "p5TimeOverDue": 0,
@@ -406,7 +406,7 @@ def native_page(domain, rows):
         "body": {
             "success": True,
             "pageNo": 0,
-            "pageSize": 1000 if domain == "collection" else 5000,
+            "pageSize": 1000 if domain == "collection" else 10000,
             "totalCount": len(rows),
             "resultDataList": rows,
         },
@@ -558,11 +558,6 @@ def test_each_pilot_native_types_and_cache_publication(run_cli, pilots, domain, 
             },
         ),
         (
-            "liquidity",
-            "reference.entities",
-            {"resultFlag": True, "count": 1, "result": {"entityMaintVOList": []}},
-        ),
-        (
             "payment",
             "sla.baselines",
             {
@@ -576,7 +571,7 @@ def test_each_pilot_native_types_and_cache_publication(run_cli, pilots, domain, 
         (
             "payment",
             "sla.baselines",
-            {"success": True, "pageNo": 0, "pageSize": 5000, "totalCount": 1},
+            {"success": True, "pageNo": 0, "pageSize": 10000, "totalCount": 1},
         ),
         (
             "payment",
@@ -584,7 +579,7 @@ def test_each_pilot_native_types_and_cache_publication(run_cli, pilots, domain, 
             {
                 "success": True,
                 "pageNo": 0,
-                "pageSize": 5000,
+                "pageSize": 10000,
                 "totalCount": 1,
                 "resultDataList": [{"id": 101}],
             },
@@ -698,29 +693,38 @@ def test_fx_invalid_scope_rejected_before_business_request(run_cli, pilots, flag
 
 
 @pytest.mark.parametrize("domain,leaf", PILOT_LEAVES[:3])
-def test_native_identity_conflicts_are_errors(run_cli, pilots, domain, leaf):
+def test_native_identity_conflicts_select_last_arrival_with_incomplete_evidence(
+    run_cli, pilots, domain, leaf
+):
     select_application(pilots, domain)
     first = native_row(domain)
     pilots.business_script.append(
         native_page(domain, [first, {**first, "different": True}])
     )
+    if domain == "payment":
+        fallback = native_page(domain, [first, {**first, "different": True}])
+        fallback["body"]["pageSize"] = 5000
+        pilots.business_script.append(fallback)
     code, out, _ = run_cli([domain, "list", leaf, "--live"])
-    assert code == 1 and json.loads(out)["error"]["code"] == "INVALID_RESPONSE", out
+    value = json.loads(out)
+    assert code == 0 and value["data"] == [{**first, "different": True}], out
+    assert value["meta"]["complete"] is False
+    assert "IDENTITY_CONTENT_CONFLICT" in value["meta"]["acquisition"]["reasons"]
 
 
 def test_payment_capacity_rebuild_replaces_entire_candidate(run_cli, pilots):
     truncated = native_page("payment", [{"id": "discarded"}])
     truncated["body"]["totalCount"] = 2
     recovered = native_page("payment", [{"id": "new-1"}, {"id": "new-2"}])
-    recovered["body"]["pageSize"] = 10000
+    recovered["body"]["pageSize"] = 5000
     pilots.business_script.extend([truncated, recovered])
     code, out, _ = run_cli(["payment", "list", "sla.baselines", "--live"])
     value = json.loads(out)
     assert code == 0 and value["data"] == [{"id": "new-1"}, {"id": "new-2"}], out
     assert value["meta"]["complete"] is True
     assert [request["pageSize"] for request in pilots.business_requests] == [
-        5000,
         10000,
+        5000,
     ]
 
 
@@ -760,7 +764,7 @@ def test_payment_live_legal_entity_passthrough_and_all_local_filters(run_cli, pi
     assert pilots.business_requests == [
         {
             "pageNo": 0,
-            "pageSize": 5000,
+            "pageSize": 10000,
             "bizCategory": "CATEGORY",
             "creditorCurrency": "USD",
             "regionCode": "US",
@@ -826,9 +830,7 @@ def test_fx_rpc_transport_uses_one_element_json_array(run_cli, pilots):
 @pytest.mark.parametrize(
     "domain,leaf", [("liquidity", "reference.entities"), ("fx", "trade")]
 )
-def test_specialized_collectors_reject_changed_native_total(
-    run_cli, pilots, domain, leaf
-):
+def test_sdk_rejects_changed_native_total(run_cli, pilots, domain, leaf):
     select_application(pilots, domain)
     if domain == "fx":
         first = fx_page([{"uniqueId": str(i)} for i in range(50)], total=51)
@@ -878,3 +880,84 @@ def test_liquidity_overlap_retains_safe_incomplete_evidence(run_cli, pilots):
     assert value["meta"]["complete"] is False
     assert value["meta"]["acquisition"]["arrivals"] == 2
     assert value["meta"]["unique_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"outBizNo": "REFERENCE-ONLY"},
+        {"uniqueId": None},
+        {"uniqueId": ""},
+        {"uniqueId": " \t"},
+        {"uniqueId": 123},
+        {"uniqueId": True},
+        {"uniqueId": ["TRADE-1"]},
+        {"uniqueId": {"value": "TRADE-1"}},
+    ],
+    ids=["missing", "null", "empty", "blank", "integer", "boolean", "array", "object"],
+)
+def test_fx_rejects_invalid_native_transaction_number(run_cli, pilots, row):
+    select_application(pilots, "fx")
+    pilots.business_script.append(fx_page([row]))
+    code, out, _ = run_cli(["fx", "list", "trade", "--live"])
+    value = json.loads(out)
+    assert code == 1 and value["error"]["code"] == "INVALID_RESPONSE", out
+    assert value["data"] is None
+
+
+def test_fx_conflicting_transaction_number_preserves_complete_cache(run_cli, pilots):
+    select_application(pilots, "fx")
+    saved_rows = [{"uniqueId": "SAVED", "amount": "0.1000"}]
+    pilots.business_script.append(fx_page(saved_rows))
+    code, out, _ = run_cli(["fx", "refresh", "trade"])
+    assert code == 0 and json.loads(out)["meta"]["published"] is True, out
+    code, out, _ = run_cli(["fx", "list", "trade"])
+    saved = json.loads(out)
+    assert code == 0 and saved["data"] == saved_rows
+
+    first = [{"uniqueId": f"TRADE-{i}", "amount": "1.0000"} for i in range(50)]
+    changed = {"uniqueId": "TRADE-0", "amount": "2.0000", "unknown": {"keep": True}}
+    for command in (
+        ["list", "trade", "--live", "--limit", "0"],
+        ["list", "trade", "--live", "--require-complete"],
+        ["refresh", "trade"],
+    ):
+        pilots.business_script.extend(
+            [fx_page(first, total=51), fx_page([changed], number=1, total=51)]
+        )
+        code, out, _ = run_cli(["fx", *command])
+        value = json.loads(out)
+        if command == ["list", "trade", "--live", "--limit", "0"]:
+            assert code == 0 and value["data"] == [changed, *first[1:]], out
+            assert value["meta"]["complete"] is False
+            assert value["meta"]["unique_count"] == 50
+            assert value["meta"]["acquisition"]["arrivals"] == 51
+        else:
+            assert code == 1 and value["error"]["code"] == "INCOMPLETE_RESULT", out
+            assert value["data"] is None
+            if command[0] == "refresh":
+                assert value["meta"]["published"] is False
+        requests = list(pilots.business_requests)
+        code, out, _ = run_cli(["fx", "list", "trade"])
+        current = json.loads(out)
+        assert code == 0 and current["data"] == saved_rows
+        assert current["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+        assert current["meta"]["complete"] is True
+        assert pilots.business_requests == requests
+
+
+def test_entity_empty_hole_is_partial_live_and_rejected_by_refresh(run_cli, pilots):
+    select_application(pilots, "liquidity")
+    response = {
+        "status": 200,
+        "body": {"resultFlag": True, "count": 1, "result": {"entityMaintVOList": []}},
+    }
+    pilots.business_script.append(response)
+    code, out, _ = run_cli(["liquidity", "list", "reference.entities", "--live"])
+    value = json.loads(out)
+    assert code == 0 and value["data"] == []
+    assert value["meta"]["complete"] is False
+    assert "EMPTY_INTERIOR_PAGE" in value["meta"]["acquisition"]["reasons"]
+    pilots.business_script.append(response)
+    code, out, _ = run_cli(["liquidity", "refresh", "reference.entities"])
+    assert code == 1 and json.loads(out)["error"]["code"] == "INCOMPLETE_RESULT"

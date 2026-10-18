@@ -117,8 +117,9 @@ Valid incomplete results remain usable with warnings. `--require-complete` rejec
 incomplete acquisitions; unknown identity or total semantics remain unknown.
 `--require-fresh` rejects stale cache; otherwise stale records remain readable and
 marked. Supported offline filters select saved rows and do not establish backend
-absence or extend the captured scope. FX individual-trade identity/total semantics
-remain unproven; collection cost has a verified single-request capacity boundary.
+absence or extend the captured scope. FX uses the native transaction number
+`uniqueId` as record identity and checks unique arrivals against native `totalCount`;
+collection cost has a verified single-request capacity boundary.
 
 Login uses a dedicated Chrome profile and shared SSO, verifying each enabled
 application independently. Human role/MFA input stays manual. `auth check` does not

@@ -131,5 +131,21 @@
   ],
   "dataset": {
     "relation": "payment_sla_baselines"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "page_number",
+      "page_sizes": [
+        10000,
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
   }
 }

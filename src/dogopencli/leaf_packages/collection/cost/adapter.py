@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from typing import Any
 
-from dogopencli.collect import collect_scope
 from dogopencli.contracts import EndpointContract, ParsedPage
 from dogopencli.errors import (
     BUSINESS_QUERY_FAILED,
@@ -83,11 +82,6 @@ class Adapter:
 
     def scope(self, parameters: dict[str, Any]) -> str:
         return COST_TYPE
-
-    def collector(
-        self, capability: Any, transport: Any, scope: str, *, progress: Any = None
-    ) -> Any:
-        return collect_scope(capability, transport, scope, progress=progress)
 
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]

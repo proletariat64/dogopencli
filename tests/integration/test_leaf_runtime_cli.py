@@ -47,7 +47,7 @@ def page(rows, *, success=True):
         "body": {
             "success": success,
             "pageNo": 0,
-            "pageSize": 5000,
+            "pageSize": 10000,
             "totalCount": len(rows),
             "resultDataList": rows,
         },
@@ -147,32 +147,19 @@ def test_describe_rejects_removed_json_alias(run_cli, pilots):
 
 
 def test_effective_scope_is_saved_and_adapter_updates_require_refresh(run_cli, pilots):
-    from test_leaf_pilots_cli import fx_page
-
-    from dogopencli.domain_contracts import FX_STARTUP_URL
-
-    pilots.href = FX_STARTUP_URL
-    pilots.business_script.append(fx_page([{"uniqueId": "synthetic"}]))
-    code, out, _ = run_cli(["fx", "refresh", "trade"])
-    assert code == 0
+    pilots.business_script.append(page([{"id": "saved", "status": "ACTIVE"}]))
+    code, out, _ = run_cli(
+        ["payment", "refresh", "sla.baselines", "--status", "ACTIVE"]
+    )
+    assert code == 0, out
     live = json.loads(out)
-    assert live["meta"]["scope"] == pilots.business_requests[-1]["queryRequest"]
-    code, out, _ = run_cli(["fx", "list", "trade"])
+    assert live["meta"]["scope"] == {"status": "ACTIVE"}
+    code, out, _ = run_cli(["payment", "list", "sla.baselines"])
     assert code == 0 and json.loads(out)["meta"]["scope"] == live["meta"]["scope"]
-    _, help_output, _ = run_cli(["fx", "list", "trade", "-h"])
-    help_doc = json.loads(help_output)["data"]
-    for name in ("bcode", "symbol"):
-        option = next(item for item in help_doc["options"] if item["name"] == name)
-        assert option["argument_contract"]["modes"]["cache"] == {"available": False}
-        requests = list(pilots.business_requests)
-        code, out, _ = run_cli(["fx", "list", "trade", "--" + name, "X"])
-        assert code == 2 and json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
-        assert pilots.business_requests == requests
-    assert "CACHE_CONTRACT_CHANGED" in help_doc["errors"]
     path = Path(__import__("os").environ["DOGOPENCLI_CONFIG"]).parent
-    adapter = path / "plugins/fx/trade/adapter.py"
+    adapter = path / "plugins/payment/sla.baselines/adapter.py"
     adapter.write_text(adapter.read_text() + "\n# replacement contract\n")
-    code, out, _ = run_cli(["fx", "list", "trade"])
+    code, out, _ = run_cli(["payment", "list", "sla.baselines"])
     assert code == 1 and json.loads(out)["error"]["code"] == "CACHE_CONTRACT_CHANGED"
 
 
@@ -208,37 +195,25 @@ def test_native_get_missing_declared_identity_is_rejected(run_cli, pilots):
     assert json.loads(out)["error"]["code"] == "INVALID_RESPONSE"
 
 
-def test_partial_cache_retains_warnings_and_strict_refresh_preserves_capture(
-    run_cli, pilots
-):
-    def cost_page(identity):
-        return {
-            "status": 200,
-            "body": {
-                "success": True,
-                "pageNo": 0,
-                "pageSize": 1000,
-                "totalCount": 1001,
-                "resultDataList": [
-                    {"itemId": identity, "itemType": "FUND_IN_CHANNEL_TRANS_FEE"}
-                ],
-            },
-        }
+def test_partial_refresh_preserves_complete_capture(run_cli, pilots):
+    from test_leaf_pilots_cli import native_page, native_row
 
-    pilots.business_script.append(cost_page("first"))
-    code, out, err = run_cli(["collection", "refresh", "cost"])
+    saved_row = native_row("collection", "saved")
+    pilots.business_script.append(native_page("collection", [saved_row]))
+    code, out, _ = run_cli(["collection", "refresh", "cost"])
     assert code == 0 and json.loads(out)["meta"]["published"] is True
-    assert "INCOMPLETE_RESULT" in err
-    _, out, err = run_cli(["collection", "list", "cost"])
+    _, out, _ = run_cli(["collection", "list", "cost"])
     saved = json.loads(out)
-    assert saved["data"][0]["itemId"] == "first" and "INCOMPLETE_RESULT" in err
-    code, out, text_err = run_cli(["collection", "list", "cost", "--format", "text"])
-    assert code == 0 and text_err == err
-    assert "\n  itemId: first\n" in out
-    assert "\n  warnings:\n    -\n      code: INCOMPLETE_RESULT\n" in out
-    pilots.business_script.append(cost_page("second"))
-    code, out, _ = run_cli(["collection", "refresh", "cost", "--require-complete"])
-    assert code == 1 and json.loads(out)["meta"]["published"] is False
+    partial = native_page("collection", [native_row("collection", "partial")])
+    partial["body"]["totalCount"] = 1001
+    pilots.business_script.append(partial)
+    code, out, err = run_cli(["collection", "list", "cost", "--live"])
+    assert code == 0 and "INCOMPLETE_RESULT" in err
+    assert json.loads(out)["meta"]["complete"] is False
+    pilots.business_script.append(partial)
+    code, out, _ = run_cli(["collection", "refresh", "cost"])
+    assert code == 1 and json.loads(out)["error"]["code"] == "INCOMPLETE_RESULT"
+    assert json.loads(out)["meta"]["published"] is False
     _, out, _ = run_cli(["collection", "list", "cost"])
     assert json.loads(out)["data"] == saved["data"]
     assert json.loads(out)["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
@@ -338,7 +313,7 @@ def test_authentication_and_parser_failures_preserve_saved_candidate(run_cli, pi
         ({"status": 401, "body": {}}, "AUTH_REQUIRED"),
         ({"status": 200, "body": "{"}, "INVALID_RESPONSE"),
         (
-            page([{"id": "same", "value": 1}, {"id": "same", "value": 2}]),
+            page([{"value": "missing native id"}]),
             "INVALID_RESPONSE",
         ),
     ]

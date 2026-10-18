@@ -1,126 +1,103 @@
 # Leaf interfaces
 
-Current manifest and adapter contracts. Start with the [handbook](handbook.md)
-for a runnable example and development steps. Runtime definitions linked below
-remain authoritative.
+Use the [handbook](handbook.md) for development steps and
+[the sample](example/) for executable code. Runtime definitions are authoritative.
 
 ## Manifest
 
-The runtime schema and semantic checks are in
-[validate_manifest](../../src/dogopencli/leaves/registry.py). Do not maintain a copied
-validator in a helper or a new documentation loader. Use a bundled manifest as a
-starting point and run static verify after editing.
+[The schema and validator](../../src/dogopencli/leaves/registry.py) define accepted
+fields. Start from [leaf.json](example/leaf.json), then run `leaf.py verify`.
 
-| Declaration | Contract |
+| Declaration | Meaning |
 | --- | --- |
-| `domain`, `name` | Known host domain and dotted leaf name; global identity is `domain.name`. Installed folder and declaration must agree. |
-| `adapter` | Local root Python filename and exported attribute, for example `adapter.py:adapter`. |
-| `operations` | Nonempty declarations for `list` and/or `get`, each with `description` and `parameters`. Do not declare host maintenance/help actions as business operations. |
-| `summary`, `purpose` | Short discovery summary and business purpose. |
-| `fields` | Field name, type and meaning, optionally unit; field names are unique. This explains fields without projecting away unknown native fields. |
-| `identity`, `identity_description` | Proven native identity fields and their meaning; document unknown identity explicitly rather than inventing one. |
-| `limitations` | Query bounds, unresolved semantics and interpretation limits. |
-| `examples` | Objects containing a title and current action-first command. |
-| `dataset.relation` | Required for list leaves; a unique SQL relation binding. Get-only leaves must omit dataset. |
+| `domain`, `name` | Known host domain and dotted leaf name; identity is `domain.name`. |
+| `adapter` | Root Python file and exported object, e.g. `adapter.py:adapter`. |
+| `operations` | Verified `list` and/or `get`, each with description and parameters. Host provides refresh/prune/describe/help. |
+| `summary`, `purpose`, `fields` | Discovery and business field meanings; preserve unknown native fields in output. |
+| `identity`, `identity_description` | Native record identity and its meaning; align List identity with the SDK declaration. |
+| `limitations`, `examples` | Scope/interpretation limits and valid action-first commands. |
+| `dataset.relation` | Unique SQL binding for List; omit for get-only. |
+| `collection` | Host List SDK provider, native paging and primary ID; omit for get-only. |
 
-The [sample manifest](example/leaf.json) is the complete,
-executable starting point. Change identity, relation, operations and business prose
-alongside its adapter; do not invent a new manifest schema for each leaf.
+A standard SDK List declares:
 
-Parameter declarations require `name`, `type`, `required` and `description`.
-Supported types are string, integer, number and boolean; optional declarations
-include default, choices, multiple and local_field. Names use kebab-case CLI flags;
-adapter parameter keys use underscores. Boolean values are explicit true/false
-(or 1/0), not implicit toggle flags. Host controls such as format, live, limit,
-fields and completeness/freshness flags are reserved.
+```json
+{
+  "collection": {
+    "provider": "general",
+    "paging": {"mode": "page_number", "page_sizes": [50]},
+    "primary_id": {"type": "field", "fields": ["uniqueId"]}
+  }
+}
+```
 
-Use `required` for acquisition requirements; offline replay must remain possible
-without resupplying the saved scope. A declared `local_field` permits an explicit
-offline filter through the runtime gate; the adapter's filter still implements the
-verified selection. It does not automatically filter records or prove coverage.
-Reject unsupported offline scope expansion and document native filter semantics.
+Replace these illustrative values with the endpoint's verified contract.
+`page_sizes` is descending and endpoint-qualified. Paging modes are `page_number`,
+`offset` (absolute zero-based rowStart) and `single` (one request). A field identity
+has one native column; `hash` needs reviewed native columns and preserves native
+JSON. Optional `latest_by` selects the newest conflicting row; conflicts still
+leave coverage incomplete. Optional `max_pages` and `budget_seconds` narrow host
+bounds. Provider `general` works in any domain; `<domain>.collection` is private
+to its owner. Domain declarations do not register SDKs.
 
-Progressive help is assembled once from the current command model, including
-bounded discovery diagnostics. JSON serializes that document; one deterministic
-text renderer formats it. Text uses the terminal's actual width, or 88 columns
-when redirected or when terminal sizing is unavailable. It has no color, paging
-or extra output flags. Help never activates adapters or initializes runtime state.
+[The SDK contract](../../docs/agents/list-collection-sdk.md) owns provider isolation,
+identity rules, unknown semantics, fallback and quality evidence.
 
-Parameter `argument_contract.modes` describes the current operation: list has
-cache/live modes, refresh has refresh, and get has get. A nonempty `local_field`
-permits an explicit cached-list filter; other business parameters are unavailable
-for cache filtering. Acquisition modes retain manifest requirements and repeated
-values. Host controls describe their current roles; accepted controls are not
-marked unavailable merely because their policy has no effect in a given mode.
+Parameters require `name`, `type`, `required`, `description`. Types are string,
+integer, number or boolean; optional defaults, choices and multiple values follow
+the validator. CLI names use kebab-case; adapter keys use underscores. Host flags
+are reserved. `required` governs acquisition; replay uses the saved scope.
+`local_field` permits an explicit offline filter only when `filter` implements its
+verified mapping; it does not filter automatically or extend saved coverage.
 
-Help `errors` is the declared set of known host/runtime errors, not an exhaustive
-list of arbitrary adapter failures. Consumers must handle unknown error codes.
-Shared operation rules distinguish cached list, live acquisition, get, prune and
-describe; correcting documentation does not change execution or exit codes.
-
-Help, describe and GUI-editable prose come from this manifest. README is optional
-supporting documentation. GUI saves update only the installed manifest, not your
-source or original ZIP. Before deliberate reinstallation, reconcile any desired
-installed documentation edits into the maintained source.
+Help/describe/GUI prose comes from this manifest without activating adapters.
+Reconcile desired GUI edits into source before reinstallation.
 
 ## Adapter
 
-Export the object named by `adapter`. Follow the
-[LeafAdapter protocol](../../src/dogopencli/leaves/adapter.py) and the
-[common runtime](../../src/dogopencli/leaves/runtime.py):
+The [runtime](../../src/dogopencli/leaves/runtime.py) invokes these methods:
 
-| Method | Required for | Responsibility |
-| --- | --- | --- |
-| `capability(parameters)` | list or get | Return the verified TransportCapability; validate query values without making requests. |
-| `scope(parameters)` | list | Return the stable string describing the native acquisition scope; canonical JSON is useful for structured scope. |
-| `collector(capability, transport, scope, *, progress=None)` | list | Collect through the supplied restricted transport and return CollectedScope with truthful coverage evidence. Reuse collect_scope where suitable. |
-| `filter(records, parameters)` | list | Apply only supported offline filters to saved records. No requests or storage writes. |
-| `get(session, parameters, identity)` | get | Perform the verified native detail inquiry through the supplied session and return a business object. |
-
-### Bridge the adapter to the shared collector
-
-`LeafAdapter` is only the entry interface. A newly written list also needs its own
-native contract and parser. Import `EndpointContract` and `ParsedPage` from
-`dogopencli.contracts`; keep business behavior in the installed leaf.
-For the standard `collect_scope` path, define these in the adapter as the sample
-does:
-
-| Capability member | Required behavior |
+| Method | Responsibility |
 | --- | --- |
-| `name` | Stable capability identity for the request boundary. |
-| `contract` | An actual host `EndpointContract` dataclass: method, host, path, encoding, allowed body keys, page size/base and proven identity/total assumptions. The runtime fingerprints this dataclass. |
-| `page_url` | Verified authenticated application entry. It is distinct from API host/path; omitting it falls back to the payment entry. Supply the right entry for non-default applications. |
-| `page_body(scope, page_num, page_size)` | Build only the allowed native request, rejecting unsupported scope or widths. `fixed_body_values` pins verified invariant values. |
-| `parse_page(body)` | Validate the native success/error envelope, record shape, identity fields and pagination numbers; return `ParsedPage(records, page_num, page_size, total_count, total_pages)`. Use the host JSON parser to preserve exact decimal values. |
-| `identity_key(record)` | Return the proven hashable native identity used for collection consistency checks; agree with the manifest identity. |
+| `capability(parameters)` | Validate inputs and return a native transport capability. No inquiry. |
+| `scope(parameters)` | Stable string describing the native acquisition scope; canonical JSON suits structured inputs. |
+| `filter(records, parameters)` | Supported local filters only; return unchanged records when none are supported. |
+| `get(session, parameters, identity)` | Only for declared Get: issue the native detail request through the supplied session and validate its identity echo. |
 
-These are the members exercised by the sample/common collection path. The
-[common collector](../../src/dogopencli/collect.py) constructs requests, applies
-bounded HTTP handling and validates paging/count/identity consistency. The parser
-still owns business-envelope interpretation: HTTP 200 can contain a failure, and
-missing rows are not automatically an empty result. Its `CollectedScope` carries
-coverage evidence to the shared runtime. Do not return a bare record list from a
-collector or set complete=true merely because parsing succeeded.
+For SDK List, the capability supplies:
 
-Use a specialized collector only when the endpoint's verified behavior requires
-it. Consult payment for native get/filtering, liquidity for its response/offset
-contracts, and FX for explicit unknown identity/total handling. These are separate
-cases to test, not options to copy into every simple leaf. Current interfaces are
-the development contract; this guide introduces no SDK or compatibility-version
-framework.
+| Member | Responsibility |
+| --- | --- |
+| `name`, `page_url` | Stable inquiry name and verified authenticated application entry. |
+| `contract` | Actual host `EndpointContract`: endpoint, method/encoding, allowed/fixed keys, qualified widths and identity/total semantics. Nested inquiry JSON needs its own allowlist. |
+| `page_body(scope, position, page_size)` | Build one native allowlisted request. Position is a page number or absolute offset according to `paging.mode`. |
+| `parse_page(body)` | Numbered/single paging: validate native business status, rows and page metadata; return host `ParsedPage`. |
+| `parse_rows(body)` | Offset paging: validate business status, rows and native total; return `(rows, total)`. |
+| `validate_rows_scope(rows, scope)` | Optional native scope validation beyond a fixed `contract.scope_field`. |
 
-Keep module import and object construction free of browser/network/storage effects:
-installation imports adapter code and checks callable signatures, without invoking
-its inquiry methods. Static verify/pack and declaration-only help/list do not
-import it. Installation is local validation, not a sandbox or production UAT.
+Use neutral contracts from `dogopencli.contracts`. Primary identity comes from
+`collection.primary_id`; SDK List needs neither `identity_key` nor `collector`.
+The host calls `collect_list`, applies deadlines/retries/fallback, records quality,
+and gates refresh publication. The leaf owns native meaning and mapping.
 
-The host owns domain/auth gates, browser session, transport restrictions, common
-result/error rendering, record-identity validation, acquisition quality policy,
-cache publication, registry and Duckdog bindings. Return native business records
-and acquisition evidence; do not write a second CLI, login path, cache publisher,
-registry or dataset importer inside the adapter. Shared transport must reject
-unverified requests. Preserve authentication expiry and business-failure errors as
-failures, rather than converting them to usable incomplete or empty results.
+Authentication, business-envelope and schema failures are hard failures. Keep
+native fields/types/decimals intact; do not convert a failure into empty success.
+Get remains a native detail inquiry, separate from List row lookup.
 
-A list leaf receives host refresh/prune; all leaves receive describe. Commands keep
-the same action-first grammar: `dogopencli collection list sample.records`.
+An endpoint requiring custom acquisition or unresolved semantics needs a bounded
+ticket and explicit tests; consult the SDK contract first. Existing packages
+without `collection` require their own `collector`; this is not the standard
+SDK development path.
+
+## Package
+
+Package root contains `leaf.json`, its declared root adapter and optional ordinary
+resources/README. ZIP entries start at this root, with no enclosing wrapper.
+Installed identity comes from the manifest. Keep configuration, credentials,
+profiles, caches, bytecode, datasets, symlinks and generated output outside it.
+[The package validator](../../src/dogopencli/leaves/package.py) owns content/size limits.
+
+Installation imports and checks adapter signatures without querying business data;
+it initializes empty List storage or validates retained bindings. Static verify/pack and help
+are declaration-only. Uninstall retains Duckdog data; query/refresh do not import
+it. A valid ZIP is not evidence of working runtime methods or production data.

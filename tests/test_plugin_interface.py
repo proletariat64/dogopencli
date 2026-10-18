@@ -22,6 +22,12 @@ def test_install_rejects_wrong_signature_without_storage(
         / "src/dogopencli/leaf_packages/payment/sla.baselines",
         source,
     )
+    if broken == "collector":
+        # Independently maintained non-SDK leaves still require a collector.
+        manifest_path = source / "leaf.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest.pop("collection")
+        manifest_path.write_text(json.dumps(manifest))
     methods = []
     for name in ["capability", "scope", "collector", "filter", "get"]:
         parameters = "self" if name == broken else "self, *args, **kwargs"
