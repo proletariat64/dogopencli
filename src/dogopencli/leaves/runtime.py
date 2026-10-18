@@ -96,15 +96,21 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
         ]
         for name, operation in leaf.manifest["operations"].items()
     }
+    native_contract = asdict(capability.contract)
+    # An absent SDK declaration must not invalidate already-saved snapshots.
+    # This field was added with the opt-in SDK and did not exist in old hashes.
+    if not native_contract["allowed_page_sizes"]:
+        native_contract.pop("allowed_page_sizes")
     context = {
         "identity": leaf.manifest["identity"],
         "operations": operations,
         "adapter_binding": leaf.manifest["adapter"],
         "adapter_sha256": leaf.adapter_sha256,
         "capability": capability.name,
-        "native_contract": basic(asdict(capability.contract)),
-        "collection": leaf.manifest.get("collection"),
+        "native_contract": basic(native_contract),
     }
+    if "collection" in leaf.manifest:
+        context["collection"] = leaf.manifest["collection"]
     return hashlib.sha256(canonical(context).encode()).hexdigest()
 
 
