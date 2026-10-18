@@ -76,7 +76,8 @@ def remember_page_size(path: Path | None, key: str, size: int) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         lock_fd = os.open(str(path) + ".lock", os.O_CREAT | os.O_RDWR, 0o600)
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        # A best-effort preference write must never block a successful read.
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         values = _read(path)
         values.pop(key, None)
         values[key] = size
