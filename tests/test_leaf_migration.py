@@ -16,7 +16,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    "leaf_migration", ROOT / "tools/leaf-dev/leaf_migration.py"
+    "leaf_migration", ROOT / "tools/leaf-dev/leaf.py"
 )
 migration = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(migration)
@@ -75,19 +75,13 @@ def test_host_reuse_binds_payload_metadata_and_distribution_inputs(independent_h
     first = migration.host_check(repo)
     assert first["state"] == "verified"
     (repo / "leaf_packages/new.leaf").mkdir(parents=True)
-    assert (
-        migration.host_check(repo)["host_inputs_sha256"] == first["host_inputs_sha256"]
-    )
-    (repo / "uv.lock").write_text("version=2\n")
-    assert (
-        migration.host_check(repo)["host_inputs_sha256"] != first["host_inputs_sha256"]
-    )
+    assert migration.host_check(repo)["files_checked"] == first["files_checked"]
     distribution.requires = ["duckdb>=2"]
-    with pytest.raises(migration.MigrationError, match="metadata"):
+    with pytest.raises(migration.HelperError, match="metadata"):
         migration.host_check(repo)
     distribution.requires = ["duckdb>=1.1"]
     (package / "retired.py").write_text("# unexpected installed code\n")
-    with pytest.raises(migration.MigrationError, match="payload"):
+    with pytest.raises(migration.HelperError, match="payload"):
         migration.host_check(repo)
 
 
@@ -96,25 +90,17 @@ def test_host_reuse_rejects_new_uninstalled_source_and_editable(
 ):
     repo, package, _ = independent_host
     (repo / "src/dogopencli/new.py").write_text("# not installed\n")
-    with pytest.raises(migration.MigrationError, match="payload"):
+    with pytest.raises(migration.HelperError, match="payload"):
         migration.host_check(repo)
     monkeypatch.setattr(
         migration.dogopencli, "__file__", str(repo / "src/dogopencli/__init__.py")
     )
-    with pytest.raises(migration.MigrationError, match="source-independent"):
+    with pytest.raises(migration.HelperError, match="source-independent"):
         migration.host_check(repo)
 
 
 @pytest.fixture
 def delivery(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        migration,
-        "host_check",
-        lambda repo: {
-            "host_inputs_sha256": "tested-host",
-            "runtime_sha256": "tested-runtime",
-        },
-    )
     source = tmp_path / "source"
     shutil.copytree(ROOT / "tools/leaf-dev/example", source)
     (source / "adapter.py").write_text("""class Adapter:
@@ -129,7 +115,7 @@ def delivery(tmp_path, monkeypatch):
 adapter = Adapter()
 """)
     output = tmp_path / "delivery"
-    result = migration.pack(ROOT, [source], output)
+    result = migration.pack([source], output)
     assert result["packages"] == 1
     return output
 
@@ -164,10 +150,10 @@ def test_http_acceptance_is_checksum_install_uninstall_only(
 ):
     base, requests = http_server
     work = tmp_path / "smoke"
-    result = migration.http_smoke(ROOT, delivery, base, work)
+    result = migration.http_smoke(delivery, base, work)
     assert result["business_queries"] == 0
     assert result["packages"][0]["install"] and result["packages"][0]["uninstall"]
-    assert requests == ["/collection.sample.records.zip"] * 2
+    assert requests == ["/collection.sample.records.zip"]
     assert list(work.iterdir()) == [work / "http-smoke.json"]
     assert not (tmp_path / "plugins").exists()
     assert json.loads((work / "http-smoke.json").read_text()) == result
@@ -181,8 +167,8 @@ def test_changed_delivery_bytes_fail_before_install(
     monkeypatch.setattr(
         migration, "cli", lambda *args: pytest.fail("must not install changed ZIP")
     )
-    with pytest.raises(migration.MigrationError, match="ZIP changed"):
-        migration.http_smoke(ROOT, delivery, http_server[0], tmp_path / "smoke")
+    with pytest.raises(migration.HelperError, match="ZIP changed"):
+        migration.http_smoke(delivery, http_server[0], tmp_path / "smoke")
     assert not http_server[1]
 
 
@@ -197,23 +183,8 @@ def test_remote_wrong_checksum_fails_without_local_install(
     monkeypatch.setattr(
         migration, "cli", lambda *args: pytest.fail("must not install remote mismatch")
     )
-    with pytest.raises(migration.MigrationError, match="Remote HTTP ZIP checksum"):
-        migration.http_smoke(ROOT, delivery, http_server[0], tmp_path / "smoke")
-
-
-def test_host_change_invalidates_delivery_receipt(delivery, tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        migration,
-        "host_check",
-        lambda repo: {
-            "host_inputs_sha256": "changed-host",
-            "runtime_sha256": "tested-runtime",
-        },
-    )
-    work = tmp_path / "smoke"
-    with pytest.raises(migration.MigrationError, match="Host inputs changed"):
-        migration.http_smoke(ROOT, delivery, "http://127.0.0.1:1", work)
-    assert not work.exists()
+    with pytest.raises(migration.HelperError, match="Remote HTTP ZIP checksum"):
+        migration.http_smoke(delivery, http_server[0], tmp_path / "smoke")
 
 
 @pytest.mark.parametrize("different", ['{"n":true}', '{"n":"1"}', '{"n":1.0}'])
@@ -221,7 +192,7 @@ def test_comparison_preserves_json_types(tmp_path, different):
     expected, actual = tmp_path / "expected", tmp_path / "actual"
     expected.write_text('{"n":1}')
     actual.write_text(different)
-    with pytest.raises(migration.MigrationError, match="values/types"):
+    with pytest.raises(migration.HelperError, match="values/types"):
         migration.compare(expected, actual, "", "")
 
 
@@ -234,10 +205,10 @@ def test_comparison_preserves_full_records_decimals_order_and_multiplicity(tmp_p
     actual.write_text(
         '{"data":[{"v":0},{"v":12345678901234567890.00000000001,"unknown":{"x":null}}]}'
     )
-    with pytest.raises(migration.MigrationError):
+    with pytest.raises(migration.HelperError):
         migration.compare(expected, actual, "/records", "/data")
     actual.write_text('{"data":' + rows[:-1] + ',{"v":0}]}')
-    with pytest.raises(migration.MigrationError):
+    with pytest.raises(migration.HelperError):
         migration.compare(expected, actual, "/records", "/data")
 
 
@@ -301,28 +272,12 @@ def test_batch_handoff_covers_remaining_scope_once(tmp_path):
     plan["batches"][3]["members"][0] = plan["batches"][2]["members"][0]
     invalid = tmp_path / "duplicate-plan.json"
     invalid.write_text(json.dumps(plan))
-    with pytest.raises(migration.MigrationError, match="Duplicate leaf"):
+    with pytest.raises(migration.HelperError, match="Duplicate leaf"):
         migration.batches(invalid)
     plan["batches"][3]["members"].pop(0)
     invalid.write_text(json.dumps(plan))
-    with pytest.raises(migration.MigrationError, match="complete scope"):
+    with pytest.raises(migration.HelperError, match="complete scope"):
         migration.batches(invalid)
-
-
-def test_runtime_drift_invalidates_delivery_without_http(
-    delivery, tmp_path, monkeypatch
-):
-    monkeypatch.setattr(
-        migration,
-        "host_check",
-        lambda repo: {
-            "host_inputs_sha256": "tested-host",
-            "runtime_sha256": "changed-runtime",
-        },
-    )
-    monkeypatch.setattr(migration, "_download", lambda *a: pytest.fail("runtime drift"))
-    with pytest.raises(migration.MigrationError, match="Host inputs changed"):
-        migration.http_smoke(ROOT, delivery, "http://127.0.0.1:1", tmp_path / "smoke")
 
 
 @pytest.mark.parametrize(

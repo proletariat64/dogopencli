@@ -54,13 +54,17 @@ def benchmark(request, run_cli, tmp_path, monkeypatch, capsys):
 
         source = SOURCE
         if request.param == "zip":
-            helper = runpy.run_path(str(ROOT / "tools/leaf-dev/plugin_helper.py"))[
-                "main"
-            ]
-            source = tmp_path / "benchmarks.zip"
+            helper = runpy.run_path(str(ROOT / "tools/leaf-dev/leaf.py"))["main"]
+            source = tmp_path / "delivery/liquidity.investment.benchmarks.zip"
             monkeypatch.setattr(
                 "sys.argv",
-                ["plugin_helper.py", "pack", str(SOURCE), "--output", str(source)],
+                [
+                    "plugin_helper.py",
+                    "pack",
+                    str(SOURCE),
+                    "--output",
+                    str(source.parent),
+                ],
             )
             assert helper() == 0
             capsys.readouterr()

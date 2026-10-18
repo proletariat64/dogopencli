@@ -192,4 +192,4 @@ production business UAT, merge and release are separate evidence.
 Further reading: [documentation index](docs/README.md), [domain vocabulary](CONTEXT.md),
 [plugin lifecycle spec](https://github.com/proletariat64/dogopencli/issues/239),
 [domain component guide](docs/agents/domain-components.md) and
-[packaging helper](tools/leaf-dev/plugin-helper.md).
+[leaf development tool](tools/leaf-dev/README.md).

@@ -1,10 +1,9 @@
-"""Reuse an installed host and tested leaf ZIPs during independent migrations."""
+"""Leaf development: verify, pack, check HTTP delivery and capture evidence."""
 
 import argparse
 import contextlib
 import hashlib
 import importlib.metadata
-import importlib.util
 import io
 import json
 import os
@@ -13,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.parse
+import zipfile
 from pathlib import Path
 
 import dogopencli
@@ -26,7 +26,7 @@ else:
     import tomli as tomllib
 
 
-class MigrationError(ValueError):
+class HelperError(ValueError):
     """A failed helper check, without business response values."""
 
 
@@ -34,9 +34,9 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def tree(path: Path) -> dict[str, str]:
+def files(path: Path) -> dict[str, bytes]:
     return {
-        p.relative_to(path).as_posix(): sha(p.read_bytes())
+        p.relative_to(path).as_posix(): p.read_bytes()
         for p in sorted(path.rglob("*"))
         if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
     }
@@ -53,7 +53,7 @@ def host_check(repo: Path) -> dict:
     repo = repo.resolve()
     package = Path(dogopencli.__file__).resolve().parent
     if "site-packages" not in package.parts or package.is_relative_to(repo):
-        raise MigrationError("Use a source-independent installed host interpreter.")
+        raise HelperError("Use a source-independent installed host interpreter.")
     names = (
         subprocess.check_output(
             [
@@ -66,21 +66,18 @@ def host_check(repo: Path) -> dict:
                 "-z",
                 "--",
                 "src/dogopencli",
-                "pyproject.toml",
-                "uv.lock",
             ]
         )
         .decode()
         .split("\0")
     )
-    files = {name: sha((repo / name).read_bytes()) for name in names if name}
     expected = {
-        name.removeprefix("src/dogopencli/"): digest
-        for name, digest in files.items()
-        if name.startswith("src/dogopencli/")
+        name.removeprefix("src/dogopencli/"): (repo / name).read_bytes()
+        for name in names
+        if name
     }
-    if not expected or tree(package) != expected:
-        raise MigrationError(
+    if not expected or files(package) != expected:
+        raise HelperError(
             "HOST_REBUILD_REQUIRED: installed payload differs from source."
         )
     project = tomllib.loads((repo / "pyproject.toml").read_text())["project"]
@@ -99,44 +96,38 @@ def host_check(repo: Path) -> dict:
         or requirements != {normalize(s) for s in project["dependencies"]}
         or scripts != project["scripts"]
     ):
-        raise MigrationError(
+        raise HelperError(
             "HOST_REBUILD_REQUIRED: installed metadata differs from source."
         )
-    runtime = {
-        "python": sys.version,
-        "distributions": sorted(
-            (d.metadata["Name"], d.version) for d in importlib.metadata.distributions()
-        ),
-    }
     return {
         "state": "verified",
         "python": sys.executable,
         "package": str(package),
-        "host_inputs_sha256": sha(json.dumps(files, sort_keys=True).encode()),
-        "installed_payload_sha256": sha(json.dumps(expected, sort_keys=True).encode()),
-        "runtime_sha256": sha(json.dumps(runtime, sort_keys=True).encode()),
-        "revision": subprocess.check_output(
-            ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
-        ).strip(),
+        "version": distribution.version,
+        "files_checked": len(expected),
     }
 
 
-def pack(repo: Path, sources: list[Path], output: Path) -> dict:
-    """Publish one immutable delivery directory, using the existing pack helper."""
-    host = host_check(repo)
+def verify(source: Path) -> dict:
+    with validate_package(source) as package:
+        return {
+            "state": "verified",
+            "identity": f"{package.manifest['domain']}.{package.manifest['name']}",
+        }
+
+
+def pack(sources: list[Path], output: Path) -> dict:
+    """Create one new delivery directory; never import adapters or inspect the host."""
     output = output.absolute()
     if output.exists() or output.is_symlink():
-        raise MigrationError(
-            "Delivery output already exists; reuse it or choose a new directory."
-        )
-    helper_path = repo / "tools/leaf-dev/plugin_helper.py"
-    spec = importlib.util.spec_from_file_location(
-        "migration_package_helper", helper_path
-    )
-    helper = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(helper)
+        raise HelperError("Output already exists; choose a new directory.")
+    for source in sources:
+        if not source.is_dir():
+            raise HelperError("Pack requires local source directories.")
+        if output.resolve().is_relative_to(source.resolve()):
+            raise HelperError("Output must be outside source directories.")
     with tempfile.TemporaryDirectory(
-        prefix=".leaf-delivery-", dir=output.parent
+        prefix=".leaf-pack-", dir=output.parent
     ) as temporary:
         staging = Path(temporary) / "delivery"
         staging.mkdir()
@@ -145,17 +136,34 @@ def pack(repo: Path, sources: list[Path], output: Path) -> dict:
             with validate_package(source) as package:
                 identity = f"{package.manifest['domain']}.{package.manifest['name']}"
                 filename = identity + ".zip"
-                helper.pack(package.path, staging / filename)
-            with validate_package(staging / filename) as package:
-                packages.append(
-                    {
-                        "identity": identity,
-                        "filename": filename,
-                        "sha256": sha((staging / filename).read_bytes()),
-                        "files": tree(package.path),
-                    }
-                )
-        write_json(staging / "delivery.json", {"host": host, "packages": packages})
+                archive_path = staging / filename
+                with archive_path.open("xb") as output_file:
+                    with zipfile.ZipFile(
+                        output_file, "w", zipfile.ZIP_DEFLATED
+                    ) as archive:
+                        for path in sorted(package.path.rglob("*")):
+                            name = path.relative_to(package.path).as_posix()
+                            entry = zipfile.ZipInfo(
+                                name + "/" if path.is_dir() else name
+                            )
+                            entry.create_system = 3
+                            entry.external_attr = (
+                                0o40755 if path.is_dir() else 0o100644
+                            ) << 16
+                            entry.compress_type = zipfile.ZIP_DEFLATED
+                            archive.writestr(
+                                entry, b"" if path.is_dir() else path.read_bytes()
+                            )
+            with validate_package(archive_path):
+                pass
+            packages.append(
+                {
+                    "identity": identity,
+                    "filename": filename,
+                    "sha256": sha(archive_path.read_bytes()),
+                }
+            )
+        write_json(staging / "delivery.json", {"packages": packages})
         (staging / "SHA256SUMS").write_text(
             "".join(f"{p['sha256']}  {p['filename']}\n" for p in packages)
         )
@@ -189,18 +197,12 @@ def cli(arguments: list[str], config: Path) -> None:
     value = parse(result.stdout)
     if result.returncode or value.get("error"):
         code = (value.get("error") or {}).get("code", "CLI_FAILED")
-        raise MigrationError(f"Lifecycle command failed: {code}")
+        raise HelperError(f"Lifecycle command failed: {code}")
 
 
-def http_smoke(repo: Path, delivery: Path, base_url: str, work: Path) -> dict:
+def http_smoke(delivery: Path, base_url: str, work: Path) -> dict:
     """Check delivery bytes and local lifecycle only; never issue business queries."""
-    current = host_check(repo)
     manifest = json.loads((delivery / "delivery.json").read_text())
-    if any(
-        current[key] != manifest["host"][key]
-        for key in ("host_inputs_sha256", "runtime_sha256")
-    ):
-        raise MigrationError("Host inputs changed since this delivery was packed.")
     parsed = urllib.parse.urlsplit(base_url)
     if (
         parsed.scheme not in ("http", "https")
@@ -210,7 +212,7 @@ def http_smoke(repo: Path, delivery: Path, base_url: str, work: Path) -> dict:
         or parsed.query
         or parsed.fragment
     ):
-        raise MigrationError(
+        raise HelperError(
             "Use an HTTP(S) directory URL without credentials/query/fragment."
         )
     work.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -224,39 +226,28 @@ def http_smoke(repo: Path, delivery: Path, base_url: str, work: Path) -> dict:
                 not re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+", identity)
                 or filename != identity + ".zip"
             ):
-                raise MigrationError("Invalid delivery identity or filename.")
+                raise HelperError("Invalid delivery identity or filename.")
             archive = delivery / filename
             if sha(archive.read_bytes()) != item["sha256"]:
-                raise MigrationError("Local delivery ZIP changed.")
-            with validate_package(archive) as package:
-                if (
-                    f"{package.manifest['domain']}.{package.manifest['name']}"
-                    != identity
-                    or tree(package.path) != item["files"]
-                ):
-                    raise MigrationError(
-                        "Delivery manifest differs from validated ZIP."
-                    )
+                raise HelperError("Local delivery ZIP changed.")
             url = base_url.rstrip("/") + "/" + filename
             download = Path(temporary) / filename
             _download(url, download)
             if sha(download.read_bytes()) != item["sha256"]:
-                raise MigrationError(
+                raise HelperError(
                     "Remote HTTP ZIP checksum differs from tested delivery."
                 )
             domain, name = identity.split(".", 1)
             if domain not in enabled:
                 cli(["domain", "enable", domain], config)
                 enabled.add(domain)
-            cli(["plugins", "install", url], config)
+            cli(["plugins", "install", str(download)], config)
             installed = config / "plugins" / domain / name
-            if tree(installed) != item["files"]:
-                raise MigrationError(
-                    "HTTP-installed files differ from tested delivery."
-                )
+            if not installed.is_dir():
+                raise HelperError("Install did not create the leaf directory.")
             cli(["plugins", "uninstall", identity], config)
             if installed.exists() or installed.is_symlink():
-                raise MigrationError("Uninstall left an installed package.")
+                raise HelperError("Uninstall left an installed package.")
             summaries.append(
                 {
                     "identity": identity,
@@ -289,7 +280,7 @@ def capture(directory: Path, config: Path, arguments: list[str]) -> dict:
         or arguments[1] not in ("list", "get", "refresh")
         or any(a.split("=", 1)[0] in ("--config-dir", "--format") for a in arguments)
     ):
-        raise MigrationError(
+        raise HelperError(
             "Use domain list/get/refresh leaf; config/format are helper-owned."
         )
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -323,7 +314,7 @@ def capture(directory: Path, config: Path, arguments: list[str]) -> dict:
         (directory / "requests.json").write_text(canonical(calls))
         value = parse(output.getvalue())
         if code:
-            raise MigrationError(
+            raise HelperError(
                 f"Inquiry failed: {(value.get('error') or {}).get('code')}"
             )
         data, meta = value["data"], value.get("meta") or {}
@@ -341,25 +332,23 @@ def capture(directory: Path, config: Path, arguments: list[str]) -> dict:
 
 def select(value: object, pointer: str) -> object:
     if pointer and not pointer.startswith("/"):
-        raise MigrationError(
-            "JSON pointers start with / (empty selects the whole value)."
-        )
+        raise HelperError("JSON pointers start with / (empty selects the whole value).")
     for part in pointer.split("/")[1:]:
         if re.search(r"~(?![01])", part):
-            raise MigrationError("Invalid JSON pointer escape.")
+            raise HelperError("Invalid JSON pointer escape.")
         part = part.replace("~1", "/").replace("~0", "~")
         if isinstance(value, list):
             if not re.fullmatch(r"0|[1-9][0-9]*", part):
-                raise MigrationError(
+                raise HelperError(
                     "Use a canonical nonnegative JSON pointer array index."
                 )
             if len(part) > len(str(len(value))) or int(part) >= len(value):
-                raise MigrationError("JSON pointer array index is out of range.")
+                raise HelperError("JSON pointer array index is out of range.")
             value = value[int(part)]
         elif isinstance(value, dict) and part in value:
             value = value[part]
         else:
-            raise MigrationError("JSON pointer does not select a value.")
+            raise HelperError("JSON pointer does not select a value.")
     return value
 
 
@@ -377,7 +366,7 @@ def compare(
     left = select(parse(expected.read_text()), expected_pointer)
     right = select(parse(actual.read_text()), actual_pointer)
     if typed(left) != typed(right):
-        raise MigrationError(
+        raise HelperError(
             "JSON values/types/order/multiplicity differ; inspect private inputs."
         )
     return {
@@ -406,7 +395,7 @@ def batches(path: Path) -> dict:
                 "blocked",
             )
         ):
-            raise MigrationError("Duplicate batch ID or invalid batch status.")
+            raise HelperError("Duplicate batch ID or invalid batch status.")
         labels.add(label)
         actions = 0
         for member in batch["members"]:
@@ -422,9 +411,7 @@ def batches(path: Path) -> dict:
                 or len(operations) != len(set(operations))
                 or not set(operations) <= {"list", "get"}
             ):
-                raise MigrationError(
-                    "Duplicate leaf or invalid list/get action mapping."
-                )
+                raise HelperError("Duplicate leaf or invalid list/get action mapping.")
             identities.add(identity)
             actions += len(operations)
         count = len(batch["members"])
@@ -445,9 +432,7 @@ def batches(path: Path) -> dict:
         len(identities) != plan["expected_packages"]
         or total_actions != plan["expected_actions"]
     ):
-        raise MigrationError(
-            "Batch mapping does not cover the declared complete scope."
-        )
+        raise HelperError("Batch mapping does not cover the declared complete scope.")
     return {
         "packages": len(identities),
         "actions": total_actions,
@@ -465,18 +450,19 @@ def main() -> int:
     host = commands.add_parser(
         "host-check", help="Reuse a matching installed host; no build."
     )
-    host.add_argument("--repo", type=Path, required=True)
-    host.add_argument("--receipt", type=Path)
+    host.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[2])
+    verification = commands.add_parser(
+        "verify", help="Statically validate a directory or ZIP."
+    )
+    verification.add_argument("source", type=Path)
     packaging = commands.add_parser(
-        "pack", help="Pack once before per-leaf business acceptance."
+        "pack", help="Pack one or more leaves into a new delivery directory."
     )
     packaging.add_argument("sources", type=Path, nargs="+")
-    packaging.add_argument("--repo", type=Path, required=True)
     packaging.add_argument("--output", type=Path, required=True)
     http = commands.add_parser(
         "http-smoke", help="Check HTTP bytes and install/uninstall only."
     )
-    http.add_argument("--repo", type=Path, required=True)
     http.add_argument("--delivery", type=Path, required=True)
     http.add_argument("--base-url", required=True)
     http.add_argument("--work-dir", type=Path, required=True)
@@ -496,17 +482,19 @@ def main() -> int:
     listing = commands.add_parser(
         "batches", help="Validate batch scope and list tickets."
     )
-    listing.add_argument("--plan", type=Path, required=True)
+    listing.add_argument(
+        "--plan", type=Path, default=Path(__file__).with_name("batches.json")
+    )
     args = parser.parse_args()
     try:
         if args.action == "host-check":
             result = host_check(args.repo)
-            if args.receipt:
-                write_json(args.receipt, result)
+        elif args.action == "verify":
+            result = verify(args.source)
         elif args.action == "pack":
-            result = pack(args.repo, args.sources, args.output)
+            result = pack(args.sources, args.output)
         elif args.action == "http-smoke":
-            result = http_smoke(args.repo, args.delivery, args.base_url, args.work_dir)
+            result = http_smoke(args.delivery, args.base_url, args.work_dir)
         elif args.action == "capture":
             result = capture(args.directory, args.config_dir, args.arguments)
         elif args.action == "batches":
@@ -516,7 +504,7 @@ def main() -> int:
                 args.expected, args.actual, args.expected_pointer, args.actual_pointer
             )
     except (
-        MigrationError,
+        HelperError,
         CliError,
         OSError,
         ValueError,
@@ -528,9 +516,20 @@ def main() -> int:
         # Transport/OS exceptions can contain URLs or private values; only helper
         # diagnostics are safe for the public summary.
         message = (
-            str(error) if isinstance(error, MigrationError) else type(error).__name__
+            str(error)
+            if isinstance(error, HelperError)
+            or (args.action in ("verify", "pack") and isinstance(error, CliError))
+            else type(error).__name__
         )
-        print(json.dumps({"state": "failed", "message": message}))
+        print(
+            json.dumps(
+                {
+                    "state": "failed",
+                    "error": getattr(error, "code", "HELPER_FAILED"),
+                    "message": message,
+                }
+            )
+        )
         return 1
     print(json.dumps(result))
     return 0

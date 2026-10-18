@@ -1,7 +1,7 @@
 # Leaf migration procedure
 
 Use [the batch index](batches.md) to find the assigned ticket. Validate the
-current scope map with `tools/leaf-dev/leaf_migration.py batches --plan tools/leaf-dev/batches.json`.
+current scope map with `tools/leaf-dev/leaf.py batches --plan tools/leaf-dev/batches.json`.
 
 The assigned batch ticket defines the exact leaves and list/get actions. Read
 [the package/adapter handbook](handbook.md) and [CONTEXT.md](../../CONTEXT.md)
@@ -33,13 +33,14 @@ its interpreter once; keep that installation unchanged while workers use it:
 
 ```bash
 MIGRATION_PYTHON=/path/to/verified-host/bin/python
-rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf_migration.py host-check --repo "$PWD" --receipt /path/to/task/host.json
+rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf.py host-check --repo "$PWD"
 ```
 
-`host-check` compares installed package bytes, version, requirements and entry
-points with this worktree. It rejects editable/source imports and extra stale
-installed files. The receipt fingerprints host source/resources, pyproject and
-lockfile, plus a separate Python/dependency runtime fingerprint. Leaf packages under root `leaf_packages/` are outside those host inputs.
+`host-check` compares installed files directly with this worktree, plus version,
+requirements and entry points. It rejects editable/source imports and stale extra
+files. Run it once when choosing the host; keep that installation unchanged for
+the wave. It creates no fingerprints or receipts. Root `leaf_packages/` is outside
+the host. Packaging and HTTP smoke do not repeat the host check.
 A leaf change, ZIP upload, new worktree or HTTP lifecycle check does **not** require
 a host wheel. If host inputs change, coordinate the host fix and its tests, rebuild
 and validate that host once, then use the new baseline for affected work.
@@ -71,15 +72,15 @@ Do not repeat broad passing gates without changed code or unresolved risk.
 
 ## 3. Pack once and perform one business acceptance
 
-The [plugin-helper](plugin-helper.md) owns static package
-validation and deterministic ZIP creation. The batch helper calls it directly:
+Use the single `leaf.py pack` command for one or more leaves:
 
 ```bash
-rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf_migration.py pack --repo "$PWD" --output /path/to/task/delivery leaf_packages/liquidity/example.one leaf_packages/liquidity/example.two
+rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf.py pack --output /path/to/task/delivery leaf_packages/liquidity/example.one leaf_packages/liquidity/example.two
 ```
 
 Use actual assigned paths. The output directory must be new; it contains one ZIP
-per leaf, `SHA256SUMS` and `delivery.json` with file fingerprints and host receipt.
+per leaf, `SHA256SUMS` and `delivery.json` containing identities, filenames and ZIP
+SHA256 values. There are no per-file, host or dependency hashes.
 The same package contents produce the same ZIP bytes despite timestamps or source
 permissions. Keep the accepted delivery immutable. Changed source needs a new
 candidate and affected-leaf verification; unchanged leaves retain their evidence.
@@ -110,8 +111,8 @@ Perform the complete local business acceptance **once per exact candidate ZIP**:
 Use the generic recorder instead of writing a new capture script for every leaf:
 
 ```bash
-rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf_migration.py capture --directory /path/to/task/private/example-list --config-dir /path/to/task/config -- liquidity list example.one --live --limit 0 --require-complete
-rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf_migration.py compare /path/to/task/reference.json /path/to/task/private/example-list/envelope.json --expected-pointer /records --actual-pointer /data
+rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf.py capture --directory /path/to/task/private/example-list --config-dir /path/to/task/config -- liquidity list example.one --live --limit 0 --require-complete
+rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf.py compare /path/to/task/reference.json /path/to/task/private/example-list/envelope.json --expected-pointer /records --actual-pointer /data
 ```
 
 Supply the actual leaf/scope and task-owned browser environment. Capture accepts
@@ -133,14 +134,17 @@ existing server; do not run the CLI, browser, business queries or Duckdog there.
 Then run one local lifecycle smoke against the actual HTTP directory URL:
 
 ```bash
-rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf_migration.py http-smoke --repo "$PWD" --delivery /path/to/task/delivery --base-url http://file-server/batch/revision --work-dir /path/to/task/http-smoke
+rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf.py http-smoke --delivery /path/to/task/delivery --base-url http://file-server/batch/revision --work-dir /path/to/task/http-smoke
 ```
 
-An existing SSH local forward is an acceptable HTTP URL. The helper checks host
-inputs and local ZIPs, downloads/verifies server ZIP SHA256, installs via the
-public HTTP lifecycle into disposable local config, compares installed files and
-uninstalls. It uses the host's bounded downloader and validators. Only a sanitized
-`http-smoke.json` remains; no browser/profile is used and no business query runs.
+An existing SSH local forward is an acceptable HTTP URL. The helper checks the
+local ZIP checksum, downloads each remote ZIP once with the host's bounded
+downloader, and checks its SHA256 against the accepted delivery. It installs that
+exact downloaded file through public CLI into disposable local config, then
+uninstalls it. Package and adapter validation belong to the host installer.
+Only a sanitized `http-smoke.json` remains; no browser/profile or business query
+is used. This exercises HTTP download plus local install/uninstall; it does not
+make a second URL installation request.
 This completes HTTP acceptance. Do not rerun production UAT, historical replay,
 cache/Duckdog loops or rebuild a host merely because the same bytes traveled over
 HTTP. A checksum/content mismatch stops delivery; changed business code requires
@@ -154,16 +158,15 @@ opening the batch PR. CI, code review, business acceptance and HTTP lifecycle ar
 separate evidence fields; one does not substitute for another. Preserve the
 intentionally disabled OCR GitHub workflow; use the configured local OCR workflow.
 
-Publish compact sanitized evidence in the batch issue/PR: accepted host/package
-hashes, counts, capture time/scope, native comparison differences, checks and any
+Publish compact sanitized evidence in the batch issue/PR: chosen host and accepted ZIP
+SHA256 values, counts, capture time/scope, native comparison differences, checks and any
 limitations. Keep raw material private. Maintain current usage/contracts in the
 package README/manifest; do not add dated development diaries, version-process
 narratives, ADR copies or local per-batch acceptance histories.
 
 Integrate reviewed batches serially against their exact accepted revision. A
 leaf-only merge reuses the matching host and package acceptance: the coordinator
-installs the accepted ZIPs into daily config and checks installed identities/file
-fingerprints. It does not repeat the business loop on master for unchanged bytes.
+installs the accepted ZIPs into daily config and checks the installed identities. It does not repeat the business loop on master for unchanged bytes.
 Host changes get their own distribution proof once. Preserve all accepted daily
 installations and empty storage bindings; clean only task-owned business data,
 cache, Parquet and private responses. Uninstall alone does not delete retained

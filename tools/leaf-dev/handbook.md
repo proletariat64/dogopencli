@@ -48,11 +48,11 @@ For a manual static/package walkthrough, use a new temporary directory:
 ```bash
 leaf_work=$(mktemp -d)
 cp -R tools/leaf-dev/example "$leaf_work/source"
-uv run python tools/leaf-dev/plugin_helper.py verify "$leaf_work/source"
-uv run python tools/leaf-dev/plugin_helper.py pack "$leaf_work/source" --output "$leaf_work/sample.zip"
-uv run python tools/leaf-dev/plugin_helper.py verify "$leaf_work/sample.zip"
+uv run python tools/leaf-dev/leaf.py verify "$leaf_work/source"
+uv run python tools/leaf-dev/leaf.py pack "$leaf_work/source" --output "$leaf_work/delivery"
+uv run python tools/leaf-dev/leaf.py verify "$leaf_work/delivery/collection.sample.records.zip"
 uv run dogopencli domain enable collection --config-dir "$leaf_work/config"
-uv run dogopencli plugins install "$leaf_work/sample.zip" --config-dir "$leaf_work/config"
+uv run dogopencli plugins install "$leaf_work/delivery/collection.sample.records.zip" --config-dir "$leaf_work/config"
 uv run dogopencli collection list sample.records -h --format text --config-dir "$leaf_work/config"
 uv run dogopencli collection describe sample.records --format text --config-dir "$leaf_work/config"
 uv run dogopencli plugins uninstall collection.sample.records --config-dir "$leaf_work/config"
@@ -156,15 +156,15 @@ shared collector and host responsibility boundaries.
 From the repository root, with the project environment installed:
 
 ```bash
-uv run python tools/leaf-dev/plugin_helper.py verify /path/to/my-leaf
-uv run python tools/leaf-dev/plugin_helper.py pack /path/to/my-leaf --output /path/to/delivery.zip
-uv run python tools/leaf-dev/plugin_helper.py verify /path/to/delivery.zip
+uv run python tools/leaf-dev/leaf.py verify /path/to/my-leaf
+uv run python tools/leaf-dev/leaf.py pack /path/to/my-leaf --output /path/to/delivery
+uv run python tools/leaf-dev/leaf.py verify /path/to/delivery/<domain>.<name>.zip
 ```
 
-The output parent directory must exist; output must be outside the source and must
-not already exist. The [packaging helper](plugin-helper.md)
-uses the host static validator, validates before and after packing, and preserves
-source/existing output on failure. Passing it proves package validity, not adapter
+The output is always a new directory outside the source; its parent must exist.
+It contains `<domain>.<name>.zip`, `SHA256SUMS` and `delivery.json`.
+The tool uses the host static validator once for the source and once for the ZIP,
+and preserves source/existing output on failure. Passing it proves package validity, not adapter
 runtime or production correctness. There is no `plugins pack` CLI command.
 
 Use a dedicated configuration directory for local lifecycle checks:

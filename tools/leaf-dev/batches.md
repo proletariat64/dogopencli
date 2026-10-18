@@ -14,7 +14,7 @@ The [machine-readable map](batches.json) is the single membership/action source.
 Validate it before handing out or transferring work:
 
 ```bash
-rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf_migration.py batches --plan tools/leaf-dev/batches.json
+rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf.py batches
 ```
 
 L = list, G = get. Tickets own native contract pointers, special risks and evidence

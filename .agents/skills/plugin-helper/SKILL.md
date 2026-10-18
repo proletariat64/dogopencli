@@ -5,5 +5,6 @@ description: Verify a local dogopencli leaf package or pack a leaf directory int
 
 # Plugin helper
 
-Read [the helper instructions](../../../tools/leaf-dev/plugin-helper.md).
-All leaf development assets live in [tools/leaf-dev](../../../tools/leaf-dev/README.md).
+Use the single [leaf development tool](../../../tools/leaf-dev/README.md).
+Run `leaf.py verify` for static validation or `leaf.py pack` for a new delivery
+directory. Read each command's `--help`. Do not implement another packer or wrapper.
