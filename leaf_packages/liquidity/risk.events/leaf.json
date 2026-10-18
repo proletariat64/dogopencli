@@ -1,0 +1,69 @@
+{
+  "domain": "liquidity",
+  "name": "risk.events",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read complete native events within an adjacent-date request.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Native query start, valid YYYYMMDD; to-date must be one day later."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Native query end, valid YYYYMMDD; exactly one day after from-date."
+        }
+      ]
+    }
+  },
+  "summary": "Risk events.",
+  "purpose": "Inspect native risk events through bounded inquiry-only requests.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native nonempty record identity retained without conversion."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies rows within this leaf and acquisition scope.",
+  "limitations": [
+    "Inquiry-only native JSON and unknown nested fields are retained without projection. Native zero values remain unchanged.",
+    "Widths are based on historical successful requests, not measured backend maxima. SDK quality reports duplicate identities, count shortfall and page gaps; strict refresh publishes complete acquisitions only.",
+    "Conflicts keep the last arrival and remain incomplete. Rejected refresh preserves the prior saved capture.",
+    "Fixed tenant GUAPW3SG, riskMode=RISK_EVENT, timeZone=GMT+08. Adjacent YYYYMMDD CLI bounds map to native YYYY-MM-DD; unbounded acquisition is unsupported.",
+    "Native Risk Time gmtCreate and other GMT+08 source times are retained. Server boundary clock and inclusivity remain unproven; no local date membership or anomaly classification is inferred.",
+    "List only. Risk detail, sub-events and treatment histories are separate inquiries and are not acquired."
+  ],
+  "examples": [
+    {
+      "title": "Acquire a complete List",
+      "command": "dogopencli liquidity list risk.events --live --require-complete --from-date 20260925 --to-date 20260926"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_risk_events"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        10
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}
