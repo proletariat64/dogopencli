@@ -155,7 +155,8 @@ def test_handbook_failed_refresh_preserves_full_snapshot(handbook, failure):
         response, expected = page([{"amount": "1"}]), "INVALID_RESPONSE"
     elif failure == "identity":
         response = page([ROWS[0], {"id": "one", "amount": "different"}])
-        expected = "INVALID_RESPONSE"
+        # Opted-in SDK retains the last row, but rejects incomplete refresh.
+        expected = "INCOMPLETE_RESULT"
     elif failure == "strict":
         response = page([ROWS[0], ROWS[0]])
         expected = "INCOMPLETE_RESULT"
