@@ -114,7 +114,7 @@ def resolve_collection_provider(domain: str, name: str) -> str:
     from .errors import CliError
 
     if name not in _COLLECTION_PROVIDERS:
-        raise CliError("COLLECTION_PROVIDER_NOT_FOUND", "unknown List collection provider")
+        raise CliError(\n            "COLLECTION_PROVIDER_NOT_FOUND", "unknown List collection provider"\n        )
     owner = _COLLECTION_PROVIDERS[name]
     if owner is not None and owner != domain:
         raise CliError(
