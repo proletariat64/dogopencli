@@ -21,6 +21,8 @@ class EndpointContract:
     # Verified larger capacity allowing one full-candidate rebuild on
     # business-success coverage gaps. None means no rebuild clause.
     rebuild_page_size: int | None = None
+    # Explicitly verified widths for opt-in List collection; zero extra assumptions.
+    allowed_page_sizes: tuple[int, ...] = ()
     scope_field: str | None = None
     # A repeated business identifier with differing content prevents proof of
     # completeness without making that identifier a deduplication key.
@@ -95,3 +97,28 @@ class Capability(TransportCapability, Protocol):
     def parse_page(self, body: bytes) -> ParsedPage:
         """Parse and validate the native envelope without changing field values."""
         ...
+
+
+# A fixed built-in provider catalogue; no Domain SDK registration or versioning.
+_COLLECTION_PROVIDERS: dict[str, str | None] = {
+    "general": None,
+    "payment.collection": "payment",
+    "collection.collection": "collection",
+    "fx.collection": "fx",
+    "liquidity.collection": "liquidity",
+}
+
+
+def resolve_collection_provider(domain: str, name: str) -> str:
+    """Resolve a single trusted provider and enforce its owner-domain boundary."""
+    from .errors import CliError
+
+    if name not in _COLLECTION_PROVIDERS:
+        raise CliError("COLLECTION_PROVIDER_NOT_FOUND", "unknown List collection provider")
+    owner = _COLLECTION_PROVIDERS[name]
+    if owner is not None and owner != domain:
+        raise CliError(
+            "COLLECTION_PROVIDER_DOMAIN_MISMATCH",
+            "List collection provider does not belong to the leaf domain",
+        )
+    return name
