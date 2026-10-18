@@ -14,8 +14,15 @@ Native list: `POST JSON /api/risk/benchmark/riskEventBenchmarkQuery.json`, `rowS
 `pageSize=10`. Fixed GUAPW3SG tenant; no timeZone.
 Native `benchmarkId` is retained with its original JSON type. Full records retain
 unknown fields and exact decimals. No page echoes exist; completeness requires a
-stable total and agreement of arrival and unique identity counts. Empty or rejected
-refresh preserves the preceding snapshot and capture time.
+stable total and agreement of arrival and unique identity counts.
+
+The manifest selects the host List SDK: general provider, native offset paging
+and the declared native identity/width. The leaf builds requests and parses native
+responses; the host owns the collection loop and quality evidence. Duplicates,
+conflicts and short or empty interior pages remain incomplete. Conflicts retain
+the last arrival without claiming it is newest. Strict queries and refresh reject
+incomplete acquisitions; empty or failed refresh preserves the preceding snapshot
+and capture time.
 
 The pinned v0.4.3 release establishes historical provenance. Production UAT and
 same-input replay qualify current behavior separately; synthetic tests alone do

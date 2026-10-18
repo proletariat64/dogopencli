@@ -60,5 +60,20 @@
   ],
   "dataset": {
     "relation": "liquidity_rules_action_mapping"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        10
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
   }
 }

@@ -80,5 +80,20 @@
   ],
   "dataset": {
     "relation": "liquidity_rules_fx_settlement"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
   }
 }

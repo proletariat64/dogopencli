@@ -14,8 +14,15 @@ Native list: `POST JSON /api/realtime/rule/getAll.json`, `rowStart` offsets,
 `pageSize=10`. No tenant or timeZone field.
 Native `id` is retained with its original JSON type. Full records retain
 unknown fields and exact decimals. No page echoes exist; completeness requires a
-stable total and agreement of arrival and unique identity counts. Empty or rejected
-refresh preserves the preceding snapshot and capture time.
+stable total and agreement of arrival and unique identity counts.
+
+The manifest selects the host List SDK: general provider, native offset paging
+and the declared native identity/width. The leaf builds requests and parses native
+responses; the host owns the collection loop and quality evidence. Duplicates,
+conflicts and short or empty interior pages remain incomplete. Conflicts retain
+the last arrival without claiming it is newest. Strict queries and refresh reject
+incomplete acquisitions; empty or failed refresh preserves the preceding snapshot
+and capture time.
 
 The pinned v0.4.3 release establishes historical provenance. Production UAT and
 same-input replay qualify current behavior separately; synthetic tests alone do

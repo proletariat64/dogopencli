@@ -3,6 +3,7 @@
 import json
 from decimal import Decimal
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 from integration.fake_cdp import FakeBrowser
@@ -76,8 +77,13 @@ def page(leaf, records, total=None):
     return {"status": 200, "body": body}
 
 
+@pytest.fixture(params=["directory", "zip"])
+def source_format(request):
+    return request.param
+
+
 @pytest.fixture(params=LEAVES)
-def installed(request, run_cli, tmp_path, monkeypatch):
+def installed(request, run_cli, tmp_path, monkeypatch, source_format):
     leaf = request.param
     config = tmp_path / "config"
     config.mkdir()
@@ -97,7 +103,15 @@ def installed(request, run_cli, tmp_path, monkeypatch):
 
     try:
         cli("domain", "enable", "liquidity")
-        cli("plugins", "install", str(ROOT / "leaf_packages/liquidity" / leaf))
+        source = ROOT / "leaf_packages/liquidity" / leaf
+        if source_format == "zip":
+            package = tmp_path / "leaf.zip"
+            with ZipFile(package, "w") as archive:
+                for item in source.iterdir():
+                    if item.is_file():
+                        archive.write(item, item.name)
+            source = package
+        cli("plugins", "install", str(source))
         yield leaf, cli, browser, config
     finally:
         cdp.set_transport_factory(None)
@@ -224,6 +238,8 @@ def test_rejected_refresh_preserves_records_and_capture(
             page(leaf, [{identity: n} for n in range(size)], size + 1)
         )
         response = page(leaf, [], size + (2 if failure == "changed-total" else 1))
+        if failure == "early-empty":
+            expected = "INCOMPLETE_RESULT"
     elif failure == "overfull":
         response = page(leaf, [{identity: n} for n in range(size + 1)])
     elif failure == "duplicate-strict":
@@ -231,6 +247,7 @@ def test_rejected_refresh_preserves_records_and_capture(
         expected, flags = "INCOMPLETE_RESULT", ["--require-complete"]
     elif failure == "conflict":
         response = page(leaf, [records[0], {**records[0], "amount": "different"}])
+        expected = "INCOMPLETE_RESULT"
     elif failure == "auth":
         response, expected = {"status": 401, "body": {}}, "AUTH_REQUIRED"
     elif failure == "transport":
@@ -255,6 +272,56 @@ def test_identical_duplicates_remain_incomplete(installed):
     result = cli("liquidity", "list", leaf, "--live", "--limit", "0")
     assert result["data"] == [record]
     assert result["meta"]["complete"] is False
+
+
+def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(installed):
+    leaf, cli, browser, _ = installed
+    _, vo, size, identity, _ = LEAVES[leaf]
+    first = [{identity: n, "value": "original"} for n in range(size)]
+    changed = {**first[0], "value": "changed"}
+    browser.business_script.append(page(leaf, [first[0]]))
+    cli("liquidity", "refresh", leaf)
+    before = cli("liquidity", "list", leaf, "--limit", "0")
+
+    def queue_conflict():
+        browser.business_script.extend(
+            [page(leaf, first, size + 1), page(leaf, [changed], size + 1)]
+        )
+
+    queue_conflict()
+    partial = cli("liquidity", "list", leaf, "--live", "--limit", "0")
+    assert partial["data"] == [changed, *first[1:]]
+    assert partial["meta"]["complete"] is False
+    assert partial["meta"]["duplicate_count"] == 1
+    attempt = partial["meta"]["acquisition"]["attempts"][0]
+    assert attempt["conflict_count"] == 1 and attempt["pages"] == 2
+    assert "LAST_ARRIVAL_WINS" in attempt["reasons"]
+    requests = browser.business_requests[-2:]
+    native = [json.loads(item[vo]) if vo else item for item in requests]
+    assert [item["rowStart"] for item in native] == [0, size]
+    queue_conflict()
+    strict = cli("liquidity", "list", leaf, "--live", "--require-complete", code=1)
+    assert strict["error"]["code"] == "INCOMPLETE_RESULT"
+    queue_conflict()
+    rejected = cli("liquidity", "refresh", leaf, code=1)
+    assert rejected["error"]["code"] == "INCOMPLETE_RESULT"
+    after = cli("liquidity", "list", leaf, "--limit", "0")
+    assert after["data"] == before["data"]
+    assert after["meta"]["fetched_at"] == before["meta"]["fetched_at"]
+
+
+def test_sdk_short_interior_page_retains_explicit_partial_result(installed):
+    leaf, cli, browser, _ = installed
+    identity, size = LEAVES[leaf][3], LEAVES[leaf][2]
+    first, last = {identity: 0}, {identity: size}
+    browser.business_script.extend(
+        [page(leaf, [first], size + 1), page(leaf, [last], size + 1)]
+    )
+    result = cli("liquidity", "list", leaf, "--live", "--limit", "0")
+    assert result["data"] == [first, last]
+    assert result["meta"]["complete"] is False
+    assert "SHORT_NATIVE_PAGE" in result["meta"]["acquisition"]["reasons"]
+    assert result["meta"]["reported_total"] == size + 1
 
 
 @pytest.mark.parametrize("mutation", ["extra", "tenant", "size"])
