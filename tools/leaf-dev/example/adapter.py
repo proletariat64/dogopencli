@@ -34,9 +34,6 @@ class SampleCapability:
             raise CliError(REQUEST_NOT_ALLOWED, "Unsupported sample request")
         return {"scope": scope, "pageNo": page_num, "pageSize": page_size}
 
-    def identity_key(self, record: dict[str, Any]) -> str:
-        return record["id"]
-
     def parse_page(self, body: bytes) -> ParsedPage:
         try:
             value = parse(body)

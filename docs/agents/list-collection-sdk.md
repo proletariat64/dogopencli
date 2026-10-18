@@ -72,7 +72,7 @@ Source manifest config represents **policy**; it never stores a learned page siz
 3. Offset and numbered paging validate total/echo and make exactly qualified requests. Same-width duplicate, short/empty interior page and count mismatch yield `complete=false`, not silent success. Changing totals, schema failure and authorization are hard failures.
 4. Page-size fallback restarts from zero; attempts are never merged; unknown widths fail at restricted transport. Global deadline and total logical-page cap terminate; fallback cannot reuse another candidate's allowance.
 5. A complete candidate persists a preferred width when its optional state lock is available; separate run loads it; corrupt/busy state is harmless. Partial/failure does not change preference or cached business snapshot. Current-contract snapshots replay offline; no historical-hash fallback exists.
-6. All four bundled pilots execute via the SDK with no leaf-owned collector. Exercise native values, scope, normal/strict live, refresh/offline, portable install and declaration-only help. The FX pilot retains unproven identity/total evidence and rejects refresh. Production migration needs independent acceptance.
+6. All four bundled pilots execute via the SDK with no leaf-owned collector. Exercise native values, scope, normal/strict live, refresh/offline, portable install and declaration-only help. The FX pilot uses the native transaction number `uniqueId` and compares unique rows with native `totalCount`; complete acquisitions support refresh/offline, while duplicate/conflicting/short candidates are rejected by strict modes. Production migration needs independent acceptance.
 7. Test with fake transport and local Python checks. No production CDP/SSO/network mutation, migration completion count, release or automatic PR merge.
 
 ## Implementation posture
@@ -86,7 +86,7 @@ Prefer small edits to `collect.py`, `contracts.py`, the first-party manifest/reg
 | payment.sla.baselines | Native zero-based pages, 10000 then 5000 | Native `id`; filters stay in the native request; get retains its own endpoint. |
 | collection.cost | Single fixed request, 1000 | Native `itemId`, fixed `FUND_IN_CHANNEL_TRANS_FEE`; no invented second page. |
 | liquidity.reference.entities | Native rowStart offsets, 5000 | Native `instId`; tenant and nested inquiry fields are allowlisted. |
-| fx.trade | Native zero-based pages, 50; 100 pages / 120 seconds | Explicitly unproven identity and totals; preserve rows, incomplete live, no refresh publication. |
+| fx.trade | Native zero-based pages, 50; 100 pages / 120 seconds | Native transaction number `uniqueId`; compare unique rows to `totalCount`. Broad queries may fail; use a qualified BCode/scene/symbol/type/fulfilled/date scope. |
 
 Only existing endpoint-qualified widths are declared. Neither this table nor fake
 transport acceptance qualifies production ordering or snapshot consistency.

@@ -264,18 +264,13 @@ def test_all_installed_pilots_execute_without_retired_runtime(installed):
         assert missing.returncode == 1
         assert json.loads(missing.stdout)["error"]["code"] == "CACHE_MISS"
         assert report["requests"] == []
-        if domain == "fx":
-            rejected, _ = call(domain, "refresh", leaf, response=response)
-            assert rejected.returncode == 1
-            assert json.loads(rejected.stdout)["error"]["code"] == "INCOMPLETE_RESULT"
-            assert live["meta"]["complete"] is False
-            assert live["meta"]["unique_count"] is None
-        else:
-            refreshed, _ = success(domain, "refresh", leaf, response=response)
-            assert refreshed["meta"]["published"] is True
-            offline, report = success(domain, "list", leaf)
-            assert offline["data"] == rows
-            assert report["requests"] == []
+        assert live["meta"]["complete"] is True
+        assert live["meta"]["unique_count"] == len(rows)
+        refreshed, _ = success(domain, "refresh", leaf, response=response)
+        assert refreshed["meta"]["published"] is True
+        offline, report = success(domain, "list", leaf)
+        assert offline["data"] == rows
+        assert report["requests"] == []
         if domain == "payment":
             filtered, _ = success(domain, "list", leaf, "--status", "ACTIVE")
             assert filtered["data"] == rows

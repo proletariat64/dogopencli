@@ -82,7 +82,7 @@ def test_usable_incomplete_result_records_warning_independent_of_rendering(
                     "success": True,
                     "value": {
                         "items": [{"uniqueId": "native-1"}],
-                        "totalCount": 1,
+                        "totalCount": 2,
                         "currentPage": 0,
                         "pageSize": 50,
                     },

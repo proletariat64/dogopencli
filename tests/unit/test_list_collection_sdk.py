@@ -544,6 +544,8 @@ def test_unproven_identity_cannot_claim_native_identity(change):
     manifest = json.loads(
         (root / "src/dogopencli/leaf_packages/fx/trade/leaf.json").read_text()
     )
+    manifest["identity"] = []
+    manifest["collection"]["primary_id"] = {"type": "unproven", "fields": []}
     if change == "fields":
         manifest["collection"]["primary_id"]["fields"] = ["uniqueId"]
     elif change == "latest_by":

@@ -1,4 +1,4 @@
-"""Bounded RiskStandardTrade inquiry; identity and totals remain unproven."""
+"""Bounded RiskStandardTrade inquiry keyed by the native transaction number."""
 
 import re
 from dataclasses import dataclass
@@ -124,8 +124,8 @@ class TradeInquiry:
         allowed_body_keys=frozenset({"queryRequest", "pageSize", "pageNo"}),
         encoding="json-array",
         nested_body_keys=(("queryRequest", QUERY_FIELDS),),
-        has_identity=False,
-        total_semantics="unknown",
+        has_identity=True,
+        total_semantics="unique_objects",
     )
 
     def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
@@ -163,6 +163,13 @@ class TradeInquiry:
             not isinstance(row, dict) or not row for row in rows
         ):
             raise CliError(INVALID_RESPONSE, "invalid FX trade records")
+        if any(
+            not isinstance(row.get("uniqueId"), str) or not row["uniqueId"].strip()
+            for row in rows
+        ):
+            raise CliError(
+                INVALID_RESPONSE, "FX record is missing transaction number uniqueId"
+            )
         size, total = value["pageSize"], value["totalCount"]
         if len(rows) > size or len(rows) > total:
             raise CliError(INVALID_RESPONSE, "FX page exceeds reported capacity")

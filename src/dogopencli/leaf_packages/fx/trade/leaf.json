@@ -17,7 +17,7 @@
           "name": "trade-id",
           "type": "string",
           "required": false,
-          "description": "Native trade lookup identifier; stable record identity remains unproven.",
+          "description": "Native transaction number, queried through uniqueIds.",
           "multiple": true
         },
         {
@@ -85,7 +85,7 @@
     {
       "name": "uniqueId",
       "type": "string",
-      "meaning": "Native trade lookup identifier; uniqueness as a record identity is unproven.",
+      "meaning": "Native transaction number; the primary identity of an FX trade record.",
       "unit": "not applicable"
     },
     {
@@ -221,15 +221,18 @@
       "unit": "native representation"
     }
   ],
-  "identity": [],
-  "identity_description": "Stable record identity has not been established.",
+  "identity": [
+    "uniqueId"
+  ],
+  "identity_description": "Native uniqueId is the transaction number and identifies each FX trade record; outBizNo is the separate customer order reference.",
   "limitations": [
     "Individual records, not TradeBatch aggregates.",
-    "Identity and native total semantics remain unproven; complete=false and strict completeness rejects.",
     "Business filters are online only; cached mappings are unverified.",
     "Acquisition is bounded to 100 pages and 120 seconds.",
     "Field types describe verified native representations; fields may be absent or null, unknown fields are preserved, and documentation never coerces records.",
-    "SDK refresh requires proven completeness; this leaf cannot publish a cache until identity and total semantics are qualified."
+    "Native totalCount counts transaction-number records in the requested scope. Duplicate identities, content conflicts or count gaps leave the result incomplete and prevent refresh publication.",
+    "Use a narrow qualified scope with BCode, scene, symbol, transaction type, fulfilled status and paired dates. Broad date-only or BCode-only inquiries may fail in the backend.",
+    "Repeated acquisitions cannot prove an immutable backend snapshot or stable ordering for every scope."
   ],
   "examples": [
     {
@@ -249,8 +252,10 @@
       ]
     },
     "primary_id": {
-      "type": "unproven",
-      "fields": []
+      "type": "field",
+      "fields": [
+        "uniqueId"
+      ]
     },
     "max_pages": 100,
     "budget_seconds": 120
