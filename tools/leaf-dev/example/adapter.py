@@ -4,10 +4,8 @@ The .invalid endpoint exists only in the offline handbook test harness.
 No legacy business module or production endpoint is used by this example.
 """
 
-from collections.abc import Callable
 from typing import Any
 
-from dogopencli.collect import CollectedScope, collect_scope
 from dogopencli.contracts import EndpointContract, ParsedPage
 from dogopencli.errors import (
     BUSINESS_QUERY_FAILED,
@@ -80,16 +78,6 @@ class Adapter:
 
     def scope(self, parameters: dict[str, Any]) -> str:
         return "all"
-
-    def collector(
-        self,
-        capability: SampleCapability,
-        transport: Any,
-        scope: str,
-        *,
-        progress: Callable[[int, int], None] | None = None,
-    ) -> CollectedScope:
-        return collect_scope(capability, transport, scope, progress=progress)
 
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]
