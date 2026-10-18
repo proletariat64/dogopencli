@@ -1,0 +1,64 @@
+{
+  "domain": "liquidity",
+  "name": "cash.credit_usage",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native credit line usage and account member states.",
+      "parameters": []
+    }
+  },
+  "summary": "Native credit line usage snapshots.",
+  "purpose": "Inspect source credit limits, used and available amounts without calculating or changing them.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Typed native credit line identity."
+    },
+    {
+      "name": "amount",
+      "type": "number",
+      "meaning": "Native line limit; source representation and currency remain unchanged."
+    },
+    {
+      "name": "usedAmount",
+      "type": "number",
+      "meaning": "Source usage amount; never derived from limits."
+    },
+    {
+      "name": "availableAmount",
+      "type": "number",
+      "meaning": "Source available amount; never derived from usage."
+    },
+    {
+      "name": "bankAccountCreditLineList",
+      "type": "array",
+      "meaning": "Native account members; creditCurrency and currency describe distinct currency grains."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native string or integer id, preserving identity types; nested members use parent id and member id.",
+  "limitations": [
+    "Fixed tenant GUAPW3SG, native GET with rowStart offsets and pageSize=100; no arbitrary filters or detail action.",
+    "Both outer count and result.count must agree; duplicate identities, changing totals and malformed envelopes fail.",
+    "Full native records retain unknown fields, null, empty text and exact amounts. Legacy whitelist field loss is corrected; no amount scaling, arithmetic or member aggregation.",
+    "Usage observation time is unknown; gmtModified and validity dates do not establish usage freshness.",
+    "Shared account flags are source values; no inferred limits or currency conversion."
+  ],
+  "examples": [
+    {
+      "title": "Read live usage",
+      "command": "dogopencli liquidity list cash.credit_usage --live --limit 0"
+    },
+    {
+      "title": "Refresh usage cache",
+      "command": "dogopencli liquidity refresh cash.credit_usage"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_cash_credit_usage"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "domain": "liquidity",
+  "name": "cash.waterlevels",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read latest observed buffer state for one explicit native account alias.",
+      "parameters": [
+        {
+          "name": "account-alias",
+          "type": "string",
+          "required": true,
+          "description": "Native account alias; sent in aliasNameList."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "currency",
+          "description": "Exact local currency filter; repeated values form a union."
+        }
+      ]
+    }
+  },
+  "summary": "Native account buffer and waterlevel state.",
+  "purpose": "Read account buffer balances by native account alias and currency without modifying configuration.",
+  "fields": [
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native account alias."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native balance currency."
+    },
+    {
+      "name": "curAvlBal",
+      "type": "string",
+      "meaning": "Unscaled native available balance."
+    },
+    {
+      "name": "valueDate",
+      "type": "string",
+      "meaning": "Source business date."
+    },
+    {
+      "name": "timeZone",
+      "type": "string",
+      "meaning": "Source timezone; retained without conversion."
+    }
+  ],
+  "identity": [
+    "aliasName",
+    "currency"
+  ],
+  "identity_description": "Native account alias and currency jointly identify each buffer row.",
+  "limitations": [
+    "POST /bufferReportList.json through the Liquidity PortfolioMgmt entry, scoped by aliasNameList; rowStart offsets and pageSize=1000.",
+    "Boolean success, data.data rows and fixed integer data.totalCount are required; missing identity, duplicate/conflicting rows and contradictory alias fail.",
+    "Native values, amounts, timestamps and unknown fields remain unchanged; capture time is not balance observation time.",
+    "Default list reads cache, live does not publish, refresh saves the complete account scope. Currency is a local filter and never narrows refresh publication."
+  ],
+  "examples": [
+    {
+      "title": "Read account buffer state",
+      "command": "dogopencli liquidity list cash.waterlevels --live --account-alias ACCOUNT_ALIAS --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_cash_waterlevels"
+  }
+}

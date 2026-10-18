@@ -1,0 +1,59 @@
+{
+  "domain": "liquidity",
+  "name": "cash.credit_lines",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native credit line settings and account member configurations.",
+      "parameters": []
+    }
+  },
+  "summary": "Native credit line configuration.",
+  "purpose": "Inspect native credit limits, validity, status and account membership without changing settings.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Typed native credit line identity."
+    },
+    {
+      "name": "amount",
+      "type": "number",
+      "meaning": "Native credit line limit; amount representation and currency remain unchanged."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native credit line currency; distinct from member account currency."
+    },
+    {
+      "name": "bankAccountCreditLineList",
+      "type": "array",
+      "meaning": "Unmodified native account configuration and parent links."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native string or integer id, preserving identity types; nested members use parent id and member id.",
+  "limitations": [
+    "Fixed tenant GUAPW3SG, native GET with rowStart offsets and pageSize=100; no arbitrary filters or detail action.",
+    "Both outer count and result.count must agree; duplicate identities, changing totals and malformed envelopes fail.",
+    "Full native records retain unknown fields, null, empty text and exact amounts. Legacy whitelist field loss is corrected; no amount scaling, arithmetic or member aggregation.",
+    "Shared account flags are source values; no inferred limits or currency conversion.",
+    "Settings interpretation focuses on configuration fields. Other native source fields are retained without deriving usage or treating configuration timestamps as usage observation times."
+  ],
+  "examples": [
+    {
+      "title": "Read live settings",
+      "command": "dogopencli liquidity list cash.credit_lines --live --limit 0"
+    },
+    {
+      "title": "Refresh settings cache",
+      "command": "dogopencli liquidity refresh cash.credit_lines"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_cash_credit_lines"
+  }
+}

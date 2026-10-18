@@ -1,0 +1,81 @@
+{
+  "domain": "liquidity",
+  "name": "cash.pool_balances",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List native BANK cash pool balances and nested members.",
+      "parameters": []
+    }
+  },
+  "summary": "BANK cash pool balance snapshots.",
+  "purpose": "Inspect native pool summary balances and member balances without aggregating or converting currencies.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "native",
+      "meaning": "Native pool identity; original string or integer type retained."
+    },
+    {
+      "name": "currentBalance",
+      "type": "native",
+      "meaning": "Pool book balance; native UI summary currency is USD."
+    },
+    {
+      "name": "currentAviBalance",
+      "type": "native",
+      "meaning": "Pool amount available for payments; native UI summary currency is USD."
+    },
+    {
+      "name": "closeBalance",
+      "type": "native",
+      "meaning": "Pool book balance for the previous statement day."
+    },
+    {
+      "name": "closeAviBalance",
+      "type": "native",
+      "meaning": "Pool available balance for the previous statement day."
+    },
+    {
+      "name": "mainCurrency",
+      "type": "native",
+      "meaning": "Pool configuration currency; does not describe summary balance currency."
+    },
+    {
+      "name": "valueDate",
+      "type": "native",
+      "meaning": "Pool balance date; no member observation time is inferred."
+    },
+    {
+      "name": "cashPoolMemberVOS",
+      "type": "native",
+      "meaning": "Native members: original amounts use currency; equivalent amounts use bankCurrency."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies each pool; string and integer identities remain distinct.",
+  "limitations": [
+    "Fixed GUAPW3SG tenant and BANK category; pageSize=100 with zero-based rowStart offsets.",
+    "No native page echo; completeness requires stable total, arrival and unique identity agreement.",
+    "Native values, unknown fields, decimal precision and null/empty/zero distinctions are retained without historical whitelisting.",
+    "One row per pool; members are identified within their pool. Pool totals remain independent source values and are never added to members.",
+    "Native UI pool summary amounts use USD; mainCurrency is configuration. Member currencies remain native, including null or empty unknown currency values.",
+    "Current and available balances need not agree or be ordered; previous close means previous statement day, not necessarily yesterday.",
+    "No member observation time is inferred from valueDate or capture time. Native flags masterAccount/isShare remain member values."
+  ],
+  "examples": [
+    {
+      "title": "Read saved pool balances",
+      "command": "dogopencli liquidity list cash.pool_balances"
+    },
+    {
+      "title": "Acquire pool balances",
+      "command": "dogopencli liquidity list cash.pool_balances --live"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_cash_pool_balances"
+  }
+}

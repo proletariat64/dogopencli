@@ -1,0 +1,109 @@
+{
+  "domain": "liquidity",
+  "name": "cash.group_balances",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List native group balance snapshots in verified USD-equivalent scope.",
+      "parameters": [
+        {
+          "name": "group-code",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "userGroupCode",
+          "description": "Optional native group codes; repeated values select an exact set."
+        },
+        {
+          "name": "equi-currency",
+          "type": "string",
+          "required": false,
+          "default": "USD",
+          "choices": [
+            "USD"
+          ],
+          "description": "Native equivalent-currency scope; only USD is verified."
+        }
+      ]
+    }
+  },
+  "summary": "Native account group balance snapshots.",
+  "purpose": "Inspect native group balances and independently timed member observations without summing original currencies.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "native",
+      "meaning": "Native group identity; string and integer types stay distinct."
+    },
+    {
+      "name": "userGroupCode",
+      "type": "native",
+      "meaning": "Native group code used for exact group selection."
+    },
+    {
+      "name": "currentBalance",
+      "type": "native",
+      "meaning": "Native group current balance in requested equivalent scope; no summing or conversion."
+    },
+    {
+      "name": "forecastBalance",
+      "type": "native",
+      "meaning": "Native forecast balance, independent of current balance."
+    },
+    {
+      "name": "lastDayClosingBalance",
+      "type": "native",
+      "meaning": "Native previous statement closing balance."
+    },
+    {
+      "name": "valueDate",
+      "type": "native",
+      "meaning": "Native group date; does not establish independent member observation times."
+    },
+    {
+      "name": "memberList",
+      "type": "native",
+      "meaning": "Native members with original currencyCode balances and equivalent balances in requested USD scope."
+    },
+    {
+      "name": "equiCurrency",
+      "type": "native",
+      "meaning": "Native currency field when returned; absent remains absent."
+    },
+    {
+      "name": "forecastTime",
+      "type": "native",
+      "meaning": "Native member forecast observation time when returned; absent remains absent."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies each pool; string and integer identities remain distinct.",
+  "limitations": [
+    "Fixed GUAPW3SG tenant; GET /bankAccountGroupQuery.json with JSON bankAccountManageUnitQueryVO and pageSize=100, zero-based rowStart.",
+    "Verified equivalent-currency request scope is USD; optional native userGroupCode is a JSON array.",
+    "Inner result.success must be true and result.count must agree with top-level count. No native page echo; completeness requires stable totals, arrivals and unique identities.",
+    "Retain every native field, exact amount, original type and null/empty/zero distinction without historical whitelisting.",
+    "Original member balances use currencyCode; equivalent member balances use the requested USD scope. Native original currencies are never summed.",
+    "Member observation times are independent; gmtModified and capture time do not establish balance observation time. Missing equiCurrency or forecastTime fields stay absent.",
+    "Offline group-code filters select exact codes from saved records; no new equivalent-currency scope is acquired offline."
+  ],
+  "examples": [
+    {
+      "title": "Read saved group balances",
+      "command": "dogopencli liquidity list cash.group_balances"
+    },
+    {
+      "title": "Acquire group balances",
+      "command": "dogopencli liquidity list cash.group_balances --live"
+    },
+    {
+      "title": "Select a saved group",
+      "command": "dogopencli liquidity list cash.group_balances --group-code GROUP_CODE"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_cash_group_balances"
+  }
+}

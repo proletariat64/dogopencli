@@ -1,0 +1,120 @@
+{
+  "domain": "liquidity",
+  "name": "cash.statements.intraday",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read intraday statements for explicit account, currency and date scope.",
+      "parameters": [
+        {
+          "name": "inst-id",
+          "type": "string",
+          "required": false,
+          "default": "Z21",
+          "description": "Institution identifier; Z21 is the qualified reference scope."
+        },
+        {
+          "name": "account-alias",
+          "type": "string",
+          "required": true,
+          "description": "Explicit account alias sent as one native array member."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": true,
+          "description": "Native statement currency."
+        },
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive value date start, YYYY-MM-DD or YYYYMMDD."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive value date end, YYYY-MM-DD or YYYYMMDD."
+        },
+        {
+          "name": "timezone",
+          "type": "string",
+          "required": false,
+          "default": "GMT+08",
+          "choices": [
+            "GMT+08"
+          ],
+          "description": "Only verified source timezone."
+        },
+        {
+          "name": "fund-direction",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "fundDirection",
+          "description": "Exact native fundDirection match; repeated values select their union locally."
+        }
+      ]
+    }
+  },
+  "summary": "Native intraday cash statements.",
+  "purpose": "Inspect scoped intraday bank movements, exact amounts and native fund directions.",
+  "fields": [
+    {
+      "name": "instId",
+      "type": "string",
+      "meaning": "Native institution identity."
+    },
+    {
+      "name": "bankAccountAliasName",
+      "type": "string",
+      "meaning": "Native account alias."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native statement currency; no conversion."
+    },
+    {
+      "name": "valueDate",
+      "type": "string",
+      "meaning": "Source value date; distinct from transaction date and capture time."
+    },
+    {
+      "name": "bankTransNo",
+      "type": "string",
+      "meaning": "Native transaction number; retained in composite identity."
+    },
+    {
+      "name": "amount",
+      "type": "string",
+      "meaning": "Unscaled native amount; null, empty text and zero are distinct."
+    },
+    {
+      "name": "fundDirection",
+      "type": "string",
+      "meaning": "Source fund direction; never inferred from the amount sign."
+    }
+  ],
+  "identity": [
+    "bankTransNo"
+  ],
+  "identity_description": "Typed native bank transaction number within the acquired account/currency/date scope.",
+  "limitations": [
+    "Fixed tenant GUAPW3SG, POST /bankAccountDetailQuery.json, rowStart offsets and pageSize=1000; timezone GMT+08.",
+    "Explicit account alias, currency and inclusive date bounds are required for acquisition. Z21 is the default institution; no scope inference from alias.",
+    "Native amounts, dates, timezones and unknown fields retain their values and types. Capture time does not replace transaction or value date.",
+    "Total is data.totalCount and must remain fixed; duplicate transaction identities and contradictory scope fail.",
+    "fund-direction is a local exact filter. Refresh saves the entire acquired scope; cached replay needs no acquisition parameters."
+  ],
+  "examples": [
+    {
+      "title": "Read scoped native intraday statements",
+      "command": "dogopencli liquidity list cash.statements.intraday --live --account-alias ACCOUNT_ALIAS --currency USD --from-date 2026-10-01 --to-date 2026-10-01 --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_cash_statements_intraday"
+  }
+}

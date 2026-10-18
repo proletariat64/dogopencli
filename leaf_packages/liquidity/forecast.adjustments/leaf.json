@@ -1,0 +1,65 @@
+{
+  "domain": "liquidity",
+  "name": "forecast.adjustments",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read the full current native adjustment set with null date bounds.",
+      "parameters": []
+    }
+  },
+  "summary": "Native forecast adjustment records.",
+  "purpose": "Inspect the full current adjustment set without changing adjustments or aggregating amounts.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native adjustment identity."
+    },
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native account alias."
+    },
+    {
+      "name": "amount",
+      "type": "string",
+      "meaning": "Unscaled native adjustment amount."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native amount currency."
+    },
+    {
+      "name": "valueDate",
+      "type": "string",
+      "meaning": "Native adjustment value date."
+    },
+    {
+      "name": "valueTime",
+      "type": "string",
+      "meaning": "Native adjustment time; no inferred timezone."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Typed native adjustment id, preserving string/integer distinction.",
+  "limitations": [
+    "GET /bankCashForecastAdjustmentQuery.json through the Liquidity PortfolioMgmt entry; tenant GUAPW3SG and JSON-string bankCashForecastAdjustmentQueryVO.",
+    "Native startValueDate and endValueDate are always null; no date filtering is introduced. Fixed rowStart offsets and pageSize=1000.",
+    "Boolean resultFlag=true and result.dataValue rows with integer result.count are required; an explicit inner failure rejects acquisition.",
+    "Full native records and types remain unchanged. No scaling, date conversion or amount aggregation; capture time does not establish observation time.",
+    "Default list reads cache; live does not publish; refresh saves the current set. No filters or native detail action."
+  ],
+  "examples": [
+    {
+      "title": "Read live adjustments",
+      "command": "dogopencli liquidity list forecast.adjustments --live --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_forecast_adjustments"
+  }
+}
