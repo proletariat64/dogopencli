@@ -58,7 +58,9 @@ def _read(path: Path) -> dict[str, int]:
     return dict(list(result.items())[-MAX_ENTRIES:])
 
 
-def preferred_page_size(\n    path: Path | None, key: str, allowed: tuple[int, ...]\n) -> int | None:
+def preferred_page_size(
+    path: Path | None, key: str, allowed: tuple[int, ...]
+) -> int | None:
     if path is None:
         return None
     value = _read(path).get(key)
