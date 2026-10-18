@@ -180,9 +180,7 @@ def test_offset_two_pages_complete_without_unqualified_requests():
 
 def test_numbered_and_single_page_modes():
     rows = [{"id": n} for n in range(3)]
-    numbered_stream = Script(
-        numbered(rows[:2], 3, 0, 2), numbered(rows[2:], 3, 1, 2)
-    )
+    numbered_stream = Script(numbered(rows[:2], 3, 0, 2), numbered(rows[2:], 3, 1, 2))
     complete = collect(
         Native(sizes=(2,), mode="page_number"),
         numbered_stream,
@@ -210,9 +208,7 @@ def test_hash_identity_is_type_sensitive_and_does_not_mutate_native_rows():
     assert all("primaryId" not in row for row in value.records)
 
 
-@pytest.mark.parametrize(
-    "record", [{"id": None}, {"id": []}, {"id": ""}, {}]
-)
+@pytest.mark.parametrize("record", [{"id": None}, {"id": []}, {"id": ""}, {}])
 def test_missing_or_non_scalar_identity_is_rejected(record):
     with pytest.raises(CliError) as error:
         collect(Native(sizes=(2,)), Script(offset([record], 1)), config((2,)))
