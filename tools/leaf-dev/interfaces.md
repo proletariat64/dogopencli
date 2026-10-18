@@ -73,9 +73,13 @@ Export the object named by `adapter`. Follow the
 | --- | --- | --- |
 | `capability(parameters)` | list or get | Return the verified TransportCapability; validate query values without making requests. |
 | `scope(parameters)` | list | Return the stable string describing the native acquisition scope; canonical JSON is useful for structured scope. |
-| `collector(capability, transport, scope, *, progress=None)` | list | Collect through the supplied restricted transport and return CollectedScope with truthful coverage evidence. Reuse collect_scope where suitable. |
+| `collector(capability, transport, scope, *, progress=None)` | legacy list without `collection` | Leaf-owned acquisition when no SDK declaration exists. Opted-in Lists do not implement this loop. |
 | `filter(records, parameters)` | list | Apply only supported offline filters to saved records. No requests or storage writes. |
 | `get(session, parameters, identity)` | get | Perform the verified native detail inquiry through the supplied session and return a business object. |
+
+### Opt in to the common List collection API
+
+For a standard List, declare `collection` in the manifest: `provider` (`general` or the owning domain's private `<domain>.collection`), `paging.mode` (`offset`, `page_number`, `single`), ordered verified `page_sizes`, and `primary_id` (`field` or SHA-256 `hash` of reviewed native columns). Optional `latest_by` selects the newest conflicting native row; otherwise last arrival wins, with incomplete coverage evidence. The host calls `collect_list` automatically; no `collector` method is needed. Page-width learning is kept in a separate local runtime-state file; no provider version field or Domain SDK registration exists. Read [the contract](../../docs/spec/list-collection-sdk.md).
 
 ### Bridge the adapter to the shared collector
 
@@ -90,8 +94,8 @@ does:
 | `name` | Stable capability identity for the request boundary. |
 | `contract` | An actual host `EndpointContract` dataclass: method, host, path, encoding, allowed body keys, page size/base and proven identity/total assumptions. The runtime fingerprints this dataclass. |
 | `page_url` | Verified authenticated application entry. It is distinct from API host/path; omitting it falls back to the payment entry. Supply the right entry for non-default applications. |
-| `page_body(scope, page_num, page_size)` | Build only the allowed native request, rejecting unsupported scope or widths. `fixed_body_values` pins verified invariant values. |
-| `parse_page(body)` | Validate the native success/error envelope, record shape, identity fields and pagination numbers; return `ParsedPage(records, page_num, page_size, total_count, total_pages)`. Use the host JSON parser to preserve exact decimal values. |
+| `page_body(scope, position, page_size)` | Build only the allowed native request. `position` is `rowStart` for offset mode or native page number for numbered mode. `fixed_body_values` and nested JSON limits pin verified values/widths. |
+| `parse_page(body)` or `parse_rows(body)` | Page-number/single mode returns `ParsedPage`; offset mode returns `(rows, total)`. Validate the native envelope and keep exact decimal values. |
 | `identity_key(record)` | Return the proven hashable native identity used for collection consistency checks; agree with the manifest identity. |
 
 These are the members exercised by the sample/common collection path. The
