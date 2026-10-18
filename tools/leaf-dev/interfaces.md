@@ -79,7 +79,7 @@ Export the object named by `adapter`. Follow the
 
 ### Opt in to the common List collection API
 
-For a standard List, declare `collection` in the manifest: `provider` (`general` or the owning domain's private `<domain>.collection`), `paging.mode` (`offset`, `page_number`, `single`), ordered verified `page_sizes`, and `primary_id` (`field` or SHA-256 `hash` of reviewed native columns). Optional `latest_by` selects the newest conflicting native row; otherwise last arrival wins, with incomplete coverage evidence. The host calls `collect_list` automatically; no `collector` method is needed. Page-width learning is kept in a separate local runtime-state file; no provider version field or Domain SDK registration exists. Read [the contract](../../docs/spec/list-collection-sdk.md).
+For a standard List, declare `collection` in the manifest: `provider` (`general` or the owning domain's private `<domain>.collection`), `paging.mode` (`offset`, `page_number`, `single`), ordered verified `page_sizes`, and `primary_id` (`field` or SHA-256 `hash` of reviewed native columns). Optional `latest_by` selects the newest conflicting native row; otherwise last arrival wins, with incomplete coverage evidence. The host calls `collect_list` automatically; no `collector` method is needed. Page-width learning is kept in a separate local runtime-state file; no provider version field or Domain SDK registration exists. Read [the contract](../../docs/agents/list-collection-sdk.md).
 
 ### Bridge the adapter to the shared collector
 
