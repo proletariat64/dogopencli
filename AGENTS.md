@@ -71,6 +71,6 @@ current development documents.
 
 ### Leaf development
 
-When authoring or packaging a leaf, read `docs/agents/leaf-plugins.md` for adapter
-contracts. For batch migration, also read `docs/agents/leaf-migration.md` and the
+When authoring or packaging a leaf, read `tools/leaf-dev/handbook.md` for adapter
+contracts. For batch migration, also read `tools/leaf-dev/workflow.md` and the
 assigned batch ticket for scope, shared tools and acceptance gates.

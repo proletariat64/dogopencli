@@ -129,7 +129,7 @@ def pack(repo: Path, sources: list[Path], output: Path) -> dict:
         raise MigrationError(
             "Delivery output already exists; reuse it or choose a new directory."
         )
-    helper_path = repo / ".agents/skills/plugin-helper/scripts/plugin_helper.py"
+    helper_path = repo / "tools/leaf-dev/plugin_helper.py"
     spec = importlib.util.spec_from_file_location(
         "migration_package_helper", helper_path
     )

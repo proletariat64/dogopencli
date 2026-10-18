@@ -69,6 +69,8 @@ def valid_layout(relative: Path) -> bool:
         )
     if parts == ("docs", "README.md"):
         return True
+    if len(parts) == 3 and parts[:2] == ("tools", "leaf-dev"):
+        return parts[2] == "README.md" or bool(re.fullmatch(SLUG + r"\.md", parts[2]))
     if len(parts) == 3 and parts[:2] == ("docs", "agents"):
         return bool(re.fullmatch(SLUG + r"\.md", parts[2]))
     return False

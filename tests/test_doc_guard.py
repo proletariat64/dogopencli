@@ -43,10 +43,12 @@ class DocGuardTests(unittest.TestCase):
                     "[Remote](https://invalid.example/doc)\n"
                 ),
                 ".code-review-graph/wiki/Anything.md": "# Ignored\n",
+                "tools/leaf-dev/README.md": "# Leaf development\n\n[Interfaces](interfaces.md)\n",
+                "tools/leaf-dev/interfaces.md": "# Interfaces\n",
             }
         )
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn("PASS (3 Markdown files)", result.stdout)
+        self.assertIn("PASS (5 Markdown files)", result.stdout)
 
     def test_standalone_leaf_readme_keeps_prose_and_link_checks(self) -> None:
         name = "leaf_packages/liquidity/reference.banks/README.md"

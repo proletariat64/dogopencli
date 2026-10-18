@@ -16,7 +16,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    "leaf_migration", ROOT / "scripts/leaf_migration.py"
+    "leaf_migration", ROOT / "tools/leaf-dev/leaf_migration.py"
 )
 migration = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(migration)
@@ -116,7 +116,7 @@ def delivery(tmp_path, monkeypatch):
         },
     )
     source = tmp_path / "source"
-    shutil.copytree(ROOT / "examples/leaf_simple", source)
+    shutil.copytree(ROOT / "tools/leaf-dev/example", source)
     (source / "adapter.py").write_text("""class Adapter:
     def capability(self, parameters):
         raise AssertionError("business inquiry forbidden in delivery smoke")
@@ -291,7 +291,7 @@ def test_capture_keeps_original_private_bytes_and_restores_transport(
 
 
 def test_batch_handoff_covers_remaining_scope_once(tmp_path):
-    path = ROOT / "docs/agents/leaf-batches.json"
+    path = ROOT / "tools/leaf-dev/batches.json"
     result = migration.batches(path)
     assert (result["packages"], result["actions"]) == (79, 106)
     assert (result["delivered_packages"], result["delivered_actions"]) == (9, 12)

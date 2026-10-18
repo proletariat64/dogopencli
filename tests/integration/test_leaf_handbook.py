@@ -15,7 +15,7 @@ from dogopencli.jsonutil import parse
 from dogopencli.leaves.package import validate_package
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "examples/leaf_simple"
+SOURCE = ROOT / "tools/leaf-dev/example"
 ROWS = [
     {
         "id": "one",
@@ -63,9 +63,7 @@ def handbook(request, run_cli, tmp_path, monkeypatch, capsys):
     cdp.set_transport_factory(browser.transport)
     try:
         source = SOURCE
-        helper = runpy.run_path(
-            str(ROOT / ".agents/skills/plugin-helper/scripts/plugin_helper.py")
-        )["main"]
+        helper = runpy.run_path(str(ROOT / "tools/leaf-dev/plugin_helper.py"))["main"]
 
         def helper_cli(*args):
             monkeypatch.setattr("sys.argv", ["plugin_helper.py", *map(str, args)])

@@ -1,7 +1,7 @@
 # Leaf migration batches
 
 This is the current scope map. Business acceptance and isolated worker handoff
-follow the [migration procedure](leaf-migration.md). [Tools #261](https://github.com/proletariat64/dogopencli/issues/261)
+follow the [migration procedure](workflow.md). [Tools #261](https://github.com/proletariat64/dogopencli/issues/261)
 must land before the remaining batches start. The user assigns worktrees/Codex;
 creating these tickets starts no leaf implementation.
 
@@ -10,11 +10,11 @@ Delivered: **9/79 packages, 12/106 inquiry actions**. Remaining: **70 packages,
 B labels group scope rather than impose execution order. Each leaf keeps its
 complete list/get set; unresolved native/UAT evidence blocks acceptance.
 
-The [machine-readable map](leaf-batches.json) is the single membership/action source.
+The [machine-readable map](batches.json) is the single membership/action source.
 Validate it before handing out or transferring work:
 
 ```bash
-rtk proxy /path/to/host/bin/python -I scripts/leaf_migration.py batches --plan docs/agents/leaf-batches.json
+rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf_migration.py batches --plan tools/leaf-dev/batches.json
 ```
 
 L = list, G = get. Tickets own native contract pointers, special risks and evidence

@@ -2,7 +2,7 @@
 
 阅读根目录 [CONTEXT.md](../../CONTEXT.md) 和与任务相关的当前开发指南。
 CONTEXT 只定义业务对象、身份、时间和质量含义；实现协议放入
-[leaf 手册](leaf-plugins.md)，领域与认证协议放入
+[leaf 手册](../../tools/leaf-dev/handbook.md)，领域与认证协议放入
 [domain 指南](domain-components.md)。
 
 术语确定时直接更新 CONTEXT；当前行为改变时更新唯一负责该行为的指南和示例。

@@ -1,10 +1,10 @@
 # Leaf migration procedure
 
-Use [the batch index](leaf-batches.md) to find the assigned ticket. Validate the
-current scope map with `scripts/leaf_migration.py batches --plan docs/agents/leaf-batches.json`.
+Use [the batch index](batches.md) to find the assigned ticket. Validate the
+current scope map with `tools/leaf-dev/leaf_migration.py batches --plan tools/leaf-dev/batches.json`.
 
 The assigned batch ticket defines the exact leaves and list/get actions. Read
-[the package/adapter handbook](leaf-plugins.md) and [CONTEXT.md](../../CONTEXT.md)
+[the package/adapter handbook](handbook.md) and [CONTEXT.md](../../CONTEXT.md)
 for current contracts. This document owns the execution sequence; tickets contain
 only their specific business scope, evidence pointers and blockers.
 
@@ -33,7 +33,7 @@ its interpreter once; keep that installation unchanged while workers use it:
 
 ```bash
 MIGRATION_PYTHON=/path/to/verified-host/bin/python
-rtk proxy "$MIGRATION_PYTHON" -I scripts/leaf_migration.py host-check --repo "$PWD" --receipt /path/to/task/host.json
+rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf_migration.py host-check --repo "$PWD" --receipt /path/to/task/host.json
 ```
 
 `host-check` compares installed package bytes, version, requirements and entry
@@ -71,11 +71,11 @@ Do not repeat broad passing gates without changed code or unresolved risk.
 
 ## 3. Pack once and perform one business acceptance
 
-The [plugin-helper](../../.agents/skills/plugin-helper/SKILL.md) owns static package
+The [plugin-helper](plugin-helper.md) owns static package
 validation and deterministic ZIP creation. The batch helper calls it directly:
 
 ```bash
-rtk proxy "$MIGRATION_PYTHON" -I scripts/leaf_migration.py pack --repo "$PWD" --output /path/to/task/delivery leaf_packages/liquidity/example.one leaf_packages/liquidity/example.two
+rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf_migration.py pack --repo "$PWD" --output /path/to/task/delivery leaf_packages/liquidity/example.one leaf_packages/liquidity/example.two
 ```
 
 Use actual assigned paths. The output directory must be new; it contains one ZIP
@@ -110,8 +110,8 @@ Perform the complete local business acceptance **once per exact candidate ZIP**:
 Use the generic recorder instead of writing a new capture script for every leaf:
 
 ```bash
-rtk proxy "$MIGRATION_PYTHON" -I scripts/leaf_migration.py capture --directory /path/to/task/private/example-list --config-dir /path/to/task/config -- liquidity list example.one --live --limit 0 --require-complete
-rtk proxy "$MIGRATION_PYTHON" -I scripts/leaf_migration.py compare /path/to/task/reference.json /path/to/task/private/example-list/envelope.json --expected-pointer /records --actual-pointer /data
+rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf_migration.py capture --directory /path/to/task/private/example-list --config-dir /path/to/task/config -- liquidity list example.one --live --limit 0 --require-complete
+rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf_migration.py compare /path/to/task/reference.json /path/to/task/private/example-list/envelope.json --expected-pointer /records --actual-pointer /data
 ```
 
 Supply the actual leaf/scope and task-owned browser environment. Capture accepts
@@ -133,7 +133,7 @@ existing server; do not run the CLI, browser, business queries or Duckdog there.
 Then run one local lifecycle smoke against the actual HTTP directory URL:
 
 ```bash
-rtk proxy "$MIGRATION_PYTHON" -I scripts/leaf_migration.py http-smoke --repo "$PWD" --delivery /path/to/task/delivery --base-url http://file-server/batch/revision --work-dir /path/to/task/http-smoke
+rtk proxy "$MIGRATION_PYTHON" -I tools/leaf-dev/leaf_migration.py http-smoke --repo "$PWD" --delivery /path/to/task/delivery --base-url http://file-server/batch/revision --work-dir /path/to/task/http-smoke
 ```
 
 An existing SSH local forward is an acceptable HTTP URL. The helper checks host
@@ -172,5 +172,5 @@ Duckdog rows. Keep configuration, SSO/profile and unrelated worktrees/data.
 Count a leaf only after its complete declared action set passes all required
 gates. Transfer blocked whole leaves with evidence and a destination issue;
 never shrink the total inventory or count an incomplete leaf delivered. The
-coordinator updates the [batch index](leaf-batches.md) and parent ticket. Launching
+coordinator updates the [batch index](batches.md) and parent ticket. Launching
 another batch requires its own assignment; preparing these tools starts no leaves.

@@ -4,7 +4,7 @@
 `src/dogopencli/leaf_packages/<domain>/<dotted-leaf>/` 是显式安装的 bundled 资源；
 根目录 `leaf_packages/<domain>/<dotted-leaf>/` 是单独交付的迁移包，不进入宿主 wheel。
 每个 adapter 自行拥有原生请求、解析、身份、过滤和采集策略。
-`examples/leaf_simple/` 提供合成示例，`tests/` 保存公开 CLI 和共享宿主测试。
+`tools/leaf-dev/example/` 提供合成示例，`tests/` 保存公开 CLI 和共享宿主测试。
 
 Python 使用四空格缩进、类型注解、`snake_case` 模块/函数和 `PascalCase` 类。
 测试文件名为 `test_<module>.py`，使用项目 pytest/Ruff 配置。
@@ -18,6 +18,7 @@ Python 使用四空格缩进、类型注解、`snake_case` 模块/函数和 `Pas
 | `CONTEXT.md` | 业务术语，不记录实现过程 |
 | `docs/README.md` | 当前指南导航 |
 | `docs/agents/<slug>.md` | 当前契约和操作方法，每项规则有一个维护位置 |
+| `tools/leaf-dev/` | Leaf 开发手册、接口、流程、样例、批次清单和 helper |
 | Leaf `README.md` / `leaf.json` | 包内说明 / 机器声明及 CLI、GUI 文档 |
 | GitHub Issue | 需求、规格、范围、验收与执行状态 |
 

@@ -52,6 +52,6 @@ Parquet 保留完整 JSON；视图暴露字符串身份列与 `_record`。
 多重性都需匹配真实来源。`--input` 文件需要可核验的来源和范围，不能用临时缓存替代。
 
 外部 helper 属于本机独立工具，可能未分发到新工作树；缺失时报告并按批次工具指导准备。
-当前 helper 的契约与补丁验证以 [迁移流程](leaf-migration.md) 为入口；
+当前 helper 的契约与补丁验证以 [迁移流程](workflow.md) 为入口；
 不得为支持新 envelope 合成或改写原始 metadata。新增 runtime 导入须另有业务日期分区、
 身份和重采集策略，settings helper 不推定这些能力。

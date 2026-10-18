@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / ".agents/skills/plugin-helper/scripts/plugin_helper.py"
+SCRIPT = ROOT / "tools/leaf-dev/plugin_helper.py"
 
 
 def invoke(*arguments, umask=-1):

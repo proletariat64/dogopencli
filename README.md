@@ -5,10 +5,10 @@ for one person on one machine. Install the leaves you need, discover their comma
 with progressive help, and query live data or replay a local snapshot.
 
 **Developing or migrating a leaf?** Start with the
-[Leaf plugin development handbook](docs/agents/leaf-plugins.md). It covers the
+[Leaf plugin development handbook](tools/leaf-dev/handbook.md). It covers the
 manifest, adapter contract, package helper and testing. For a batch, also read the
-[migration procedure](docs/agents/leaf-migration.md) and its assigned ticket.
-Its [runnable simple example](examples/leaf_simple/) owns its request contract and
+[migration procedure](tools/leaf-dev/workflow.md) and its assigned ticket.
+Its [runnable simple example](tools/leaf-dev/example/) owns its request contract and
 parser; the handbook includes an offline CLI exercise to verify the full workflow.
 
 ## Get started
@@ -172,8 +172,8 @@ business-query, login, import or package-management buttons.
 
 ## Develop and migrate
 
-Use the [development handbook](docs/agents/leaf-plugins.md) for adapter contracts
-and the [migration procedure](docs/agents/leaf-migration.md) with the assigned
+Use the [development handbook](tools/leaf-dev/handbook.md) for adapter contracts
+and the [migration procedure](tools/leaf-dev/workflow.md) with the assigned
 batch ticket for scope and acceptance. Standalone migration packages live under
 root `leaf_packages/`; four bundled pilot resources remain under the host source.
 Each inquiry requires its own native business proof. Unsupported placeholders
@@ -196,4 +196,4 @@ production business UAT, merge and release are separate evidence.
 Further reading: [documentation index](docs/README.md), [domain vocabulary](CONTEXT.md),
 [plugin lifecycle spec](https://github.com/proletariat64/dogopencli/issues/239),
 [domain component guide](docs/agents/domain-components.md) and
-[plugin-helper skill](.agents/skills/plugin-helper/SKILL.md).
+[packaging helper](tools/leaf-dev/plugin-helper.md).
