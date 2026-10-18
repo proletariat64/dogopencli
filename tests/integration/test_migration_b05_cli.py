@@ -28,7 +28,7 @@ ENDPOINTS = {
     "accrual": "/accrualBaseList.json",
     "cash": "/cashBaseList.json",
 }
-SIZES = dict(zip(CASES, (500, 5000, 10, 10, 5000, 5000), strict=True))
+SIZES = dict(zip(CASES, (500, 5000, 5000, 5000, 5000, 5000), strict=True))
 IDENTITIES = {
     "holdings": ("investmentNo",),
     "transactions": ("orderId",),

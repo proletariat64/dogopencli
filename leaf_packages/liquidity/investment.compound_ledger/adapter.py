@@ -109,7 +109,7 @@ class Adapter:
 
     def capability(self, parameters: dict[str, Any]) -> Inquiry:
         values = parse(self.scope(parameters))
-        return inquiry(values, "/compoundOrderList.json", 10, ("orderNo",))
+        return inquiry(values, "/compoundOrderList.json", 5000, ("orderNo",))
 
     def collector(
         self, capability: Any, transport: Any, scope: str, *, progress: Any = None

@@ -135,7 +135,7 @@ class Adapter:
         return inquiry(
             values,
             "/queryStrategyBenchmarkList.json",
-            10,
+            5000,
             ("effectiveDate", "strategyBenchmarkType", "currency", "colorType"),
         )
 

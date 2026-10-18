@@ -2,7 +2,7 @@
 
 Inspect native investment business records through inquiry-only endpoints.
 
-JSON POST /queryStrategyBenchmarkList.json; fixed tenant GUAPW3SG; rowStart offsets of width 10; data.data and fixed data.totalCount.
+JSON POST /queryStrategyBenchmarkList.json; fixed tenant GUAPW3SG; rowStart offsets of width 5000; data.data and fixed data.totalCount.
 
 Native fields, amounts, rates, nulls, unknown fields and response order are retained without conversion.
 
