@@ -58,7 +58,7 @@ class EndpointContract:
         tuple[
             str,
             frozenset[str],
-            tuple[tuple[str, str | int | list[str]], ...],
+            tuple[tuple[str, str | int | list[str] | None], ...],
             frozenset[int],
         ],
         ...,

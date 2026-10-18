@@ -1,0 +1,79 @@
+{
+  "domain": "liquidity",
+  "name": "cash.pools",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List native BANK cash pool settings.",
+      "parameters": []
+    }
+  },
+  "summary": "BANK cash pool settings List.",
+  "purpose": "Inspect pool configuration, member configuration and native sweep rules without changing them.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string or integer",
+      "meaning": "Native List identity, retaining its original JSON type."
+    },
+    {
+      "name": "cashPoolName",
+      "type": "native",
+      "meaning": "Native pool name."
+    },
+    {
+      "name": "cashPoolCategory",
+      "type": "native",
+      "meaning": "Fixed BANK pool category."
+    },
+    {
+      "name": "mainCurrency",
+      "type": "native",
+      "meaning": "Pool configuration currency; not the pool summary amount currency."
+    },
+    {
+      "name": "cashPoolMemberVOS",
+      "type": "native",
+      "meaning": "Native pool members and nested sweep configuration; original fields retained."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies each pool; string and integer identities remain distinct.",
+  "limitations": [
+    "Fixed GUAPW3SG tenant and BANK category; pageSize=100 with zero-based rowStart offsets.",
+    "No native page echo; completeness requires stable total, arrival and unique identity agreement.",
+    "Native values, unknown fields, decimal precision and null/empty/zero distinctions are retained without historical whitelisting.",
+    "Settings meaning comes from native configuration fields; balance fields returned by the native object are retained without deriving values.",
+    "List only in this delivery; native Get is deferred."
+  ],
+  "examples": [
+    {
+      "title": "Read saved pools",
+      "command": "dogopencli liquidity list cash.pools"
+    },
+    {
+      "title": "Acquire native pools",
+      "command": "dogopencli liquidity list cash.pools --live"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_cash_pools"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        100
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}
