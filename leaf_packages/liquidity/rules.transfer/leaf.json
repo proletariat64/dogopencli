@@ -1,0 +1,54 @@
+{
+  "domain": "liquidity",
+  "name": "rules.transfer",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read full native configuration records.",
+      "parameters": []
+    }
+  },
+  "summary": "Transfer rules.",
+  "purpose": "Inspect native configuration through inquiry-only requests.",
+  "fields": [
+    {
+      "name": "ruleId",
+      "type": "string",
+      "meaning": "Native row identity, retained without conversion."
+    }
+  ],
+  "identity": [
+    "ruleId"
+  ],
+  "identity_description": "Native ruleId identifies configuration rows.",
+  "limitations": [
+    "Fixed GUAPW3SG tenant. Native fields, nested values, exact decimals and unknown fields are retained.",
+    "Single GET with fixed rowStart=0, pageSize=5000 and empty debitEntity/creditEntity arrays; no offset fallback.",
+    "All native conditions and nested values remain intact. SDK collection reports duplicates and count shortfall as incomplete; strict refresh publishes complete acquisitions only.",
+    "The qualified historical request width 5000 is a starting value, not a measured backend maximum. SDK conflict resolution keeps the last arrival and marks coverage incomplete; strict refresh preserves the prior cache on rejection."
+  ],
+  "examples": [
+    {
+      "title": "Read saved records",
+      "command": "dogopencli liquidity list rules.transfer"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_rules_transfer"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "ruleId"
+      ]
+    }
+  }
+}
