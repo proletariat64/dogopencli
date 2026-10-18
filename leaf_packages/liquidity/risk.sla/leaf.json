@@ -1,0 +1,55 @@
+{
+  "domain": "liquidity",
+  "name": "risk.sla",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read complete native SLA configuration records.",
+      "parameters": []
+    }
+  },
+  "summary": "Risk sla.",
+  "purpose": "Inspect native risk sla through bounded inquiry-only requests.",
+  "fields": [
+    {
+      "name": "slaConfigId",
+      "type": "string",
+      "meaning": "Native nonempty record identity retained without conversion."
+    }
+  ],
+  "identity": [
+    "slaConfigId"
+  ],
+  "identity_description": "Native slaConfigId identifies rows within this leaf and acquisition scope.",
+  "limitations": [
+    "Inquiry-only native JSON and unknown nested fields are retained without projection. Native zero values remain unchanged.",
+    "Widths are based on historical successful requests, not measured backend maxima. SDK quality reports duplicate identities, count shortfall and page gaps; strict refresh publishes complete acquisitions only.",
+    "Conflicts keep the last arrival and remain incomplete. Rejected refresh preserves the prior saved capture.",
+    "One POST with only rowStart=0 and pageSize=5000. No tenant/filter keys, offset fallback, detail query or rule/recipient enrichment.",
+    "Native totalCount and native string slaConfigId establish observed List coverage. Source version remains a separate native string."
+  ],
+  "examples": [
+    {
+      "title": "Acquire a complete List",
+      "command": "dogopencli liquidity list risk.sla --live --require-complete"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_risk_sla"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "slaConfigId"
+      ]
+    }
+  }
+}
