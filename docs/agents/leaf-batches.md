@@ -6,7 +6,7 @@ must land before the remaining batches start. The user assigns worktrees/Codex;
 creating these tickets starts no leaf implementation.
 
 Delivered: **9/79 packages, 12/106 inquiry actions**. Remaining: **70 packages,
-94 actions in 23 batches**. The four bundled pilots are outside this denominator.
+94 actions in 22 batches**. The four bundled pilots are outside this denominator.
 B labels group scope rather than impose execution order. Each leaf keeps its
 complete list/get set; unresolved native/UAT evidence blocks acceptance.
 
@@ -25,8 +25,7 @@ guides/helpers, integration, daily installation and the parent progress ledger.
 | --- | --- | --- | --- | --- |
 | B01 | [#257](https://github.com/proletariat64/dogopencli/issues/257) | `liquidity.reference.banks` L; `liquidity.investment.benchmarks` L; `liquidity.rules.forecast` L | 3/3 | delivered |
 | B02 | [#259](https://github.com/proletariat64/dogopencli/issues/259) | `liquidity.rules.action_mapping` L; `liquidity.rules.funding` L; `liquidity.rules.fx_settlement` L; `liquidity.rules.operation` LG; `liquidity.rules.realtime` LG; `liquidity.risk.thresholds` LG | 6/9 | delivered |
-| B03 | [#262](https://github.com/proletariat64/dogopencli/issues/262) | `liquidity.cash.waterlevels` L; `liquidity.forecast.adjustments` L; `liquidity.cash.statements.intraday` L; `liquidity.cash.statements.end_of_day` L | 4/4 | planned |
-| B04 | [#263](https://github.com/proletariat64/dogopencli/issues/263) | `liquidity.cash.credit_lines` L; `liquidity.cash.credit_usage` L; `liquidity.cash.group_balances` L; `liquidity.cash.pool_balances` L; `liquidity.cash.pools` LG | 5/6 | planned |
+| B03 | [#262](https://github.com/proletariat64/dogopencli/issues/262) | `liquidity.cash.waterlevels` L; `liquidity.forecast.adjustments` L; `liquidity.cash.statements.intraday` L; `liquidity.cash.statements.end_of_day` L; `liquidity.cash.credit_lines` L; `liquidity.cash.credit_usage` L; `liquidity.cash.group_balances` L; `liquidity.cash.pool_balances` L; `liquidity.cash.pools` LG | 9/10 | planned |
 | B05 | [#264](https://github.com/proletariat64/dogopencli/issues/264) | `liquidity.investment.holdings` LG; `liquidity.investment.transactions` LG; `liquidity.investment.compound_ledger` LG; `liquidity.investment.benchmark_values` L; `liquidity.investment.returns` L | 5/8 | planned |
 | B06 | [#265](https://github.com/proletariat64/dogopencli/issues/265) | `liquidity.rules.notification` G; `liquidity.rules.transfer` LG; `liquidity.rules.waterlevel` LG | 3/5 | planned |
 | B07 | [#266](https://github.com/proletariat64/dogopencli/issues/266) | `liquidity.risk.anomalies` LG; `liquidity.risk.events` LG; `liquidity.risk.metrics` L; `liquidity.risk.sla` LG | 4/7 | planned |
