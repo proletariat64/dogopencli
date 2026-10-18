@@ -1,0 +1,77 @@
+{
+  "domain": "liquidity",
+  "name": "investment.benchmark_values",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Query native investment records in the declared scope.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native business date start (YYYY-MM-DD)."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native business date end (YYYY-MM-DD)."
+        }
+      ]
+    }
+  },
+  "summary": "Investment benchmark values.",
+  "purpose": "Inspect native investment business records through inquiry-only endpoints.",
+  "fields": [
+    {
+      "name": "effectiveDate",
+      "type": "native JSON value",
+      "meaning": "Native effectiveDate; retained without conversion."
+    },
+    {
+      "name": "strategyBenchmarkType",
+      "type": "native JSON value",
+      "meaning": "Native strategyBenchmarkType; retained without conversion."
+    },
+    {
+      "name": "currency",
+      "type": "native JSON value",
+      "meaning": "Native currency; retained without conversion."
+    },
+    {
+      "name": "colorType",
+      "type": "native JSON value",
+      "meaning": "Native colorType; retained without conversion."
+    },
+    {
+      "name": "amount",
+      "type": "native JSON value",
+      "meaning": "Native amount; retained without conversion."
+    }
+  ],
+  "identity": [
+    "effectiveDate",
+    "strategyBenchmarkType",
+    "currency",
+    "colorType"
+  ],
+  "identity_description": "Native identity: effectiveDate, strategyBenchmarkType, currency, colorType.",
+  "limitations": [
+    "JSON POST /queryStrategyBenchmarkList.json; fixed tenant GUAPW3SG; rowStart offsets of width 10; data.data and fixed data.totalCount.",
+    "Native fields, amounts, rates, nulls, unknown fields and response order are retained without conversion.",
+    "Refresh retains one nonempty acquisition. Empty or failed refresh preserves the previous snapshot; live never publishes.",
+    "Runtime/date-partition Duckdog import has no supported contract for this leaf; installation initializes an empty binding only.",
+    "Identity is effectiveDate, strategyBenchmarkType, currency and colorType; blank native id is retained. Values are native percent strings without scaling.",
+    "Fixed timeZone=GMT+08; valueDateStart/End bound effectiveDate (YYYYMMDD). Full native fields are retained; no synthetic primaryId is generated."
+  ],
+  "examples": [
+    {
+      "title": "Show inquiry parameters",
+      "command": "dogopencli liquidity list investment.benchmark_values -h"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_benchmark_values"
+  }
+}

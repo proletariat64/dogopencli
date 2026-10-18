@@ -1,0 +1,77 @@
+{
+  "domain": "liquidity",
+  "name": "investment.holdings",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Query native investment records in the declared scope.",
+      "parameters": [
+        {
+          "name": "date",
+          "type": "string",
+          "required": true,
+          "description": "Portfolio snapshot date (YYYY-MM-DD), independent of row valueDate."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "description": "Exact native currency; repeatable local selection.",
+          "multiple": true,
+          "local_field": "currency"
+        },
+        {
+          "name": "product-code",
+          "type": "string",
+          "required": false,
+          "description": "Exact native product code; repeatable local selection.",
+          "multiple": true,
+          "local_field": "productCode"
+        }
+      ]
+    },
+    "get": {
+      "description": "Query native detail using orderId; response echoes orderId.",
+      "parameters": []
+    }
+  },
+  "summary": "Investment holdings.",
+  "purpose": "Inspect native investment business records through inquiry-only endpoints.",
+  "fields": [
+    {
+      "name": "investmentNo",
+      "type": "native JSON value",
+      "meaning": "Native investmentNo; retained without conversion."
+    },
+    {
+      "name": "currency",
+      "type": "native JSON value",
+      "meaning": "Native currency; retained without conversion."
+    },
+    {
+      "name": "amount",
+      "type": "native JSON value",
+      "meaning": "Native amount; retained without conversion."
+    }
+  ],
+  "identity": [],
+  "identity_description": "List identity is native investmentNo; get sends it as orderId and validates the native orderId echo. There is no common response identity field across the two actions; the adapter enforces both native identities.",
+  "limitations": [
+    "JSON POST /portfolioQueryList.json; fixed tenant GUAPW3SG; rowStart offsets of width 500; data.data and fixed data.totalCount.",
+    "Native fields, amounts, rates, nulls, unknown fields and response order are retained without conversion.",
+    "Refresh retains one nonempty acquisition. Empty or failed refresh preserves the previous snapshot; live never publishes.",
+    "Runtime/date-partition Duckdog import has no supported contract for this leaf; installation initializes an empty binding only.",
+    "Fixed status=[ACTIVE, INACTIVE]. date selects the complete portfolio snapshot, never a row valueDate filter. get sends investmentNo as orderId.",
+    "get uses form POST /queryIncrementOrderDetail.json, only orderId, and requires matching native orderId.",
+    "The manifest declares no shared response identity because native detail can omit investmentNo. No alias field is injected into native detail."
+  ],
+  "examples": [
+    {
+      "title": "Show inquiry parameters",
+      "command": "dogopencli liquidity list investment.holdings -h"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_holdings"
+  }
+}

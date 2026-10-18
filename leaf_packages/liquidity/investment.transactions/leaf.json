@@ -1,0 +1,71 @@
+{
+  "domain": "liquidity",
+  "name": "investment.transactions",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Query native investment records in the declared scope.",
+      "parameters": [
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "description": "Exact native currency; repeatable local selection.",
+          "multiple": true,
+          "local_field": "currency"
+        },
+        {
+          "name": "product-code",
+          "type": "string",
+          "required": false,
+          "description": "Exact native product code; repeatable local selection.",
+          "multiple": true,
+          "local_field": "productCode"
+        }
+      ]
+    },
+    "get": {
+      "description": "Query native detail using orderId; response echoes orderId.",
+      "parameters": []
+    }
+  },
+  "summary": "Investment transactions.",
+  "purpose": "Inspect native investment business records through inquiry-only endpoints.",
+  "fields": [
+    {
+      "name": "orderId",
+      "type": "native JSON value",
+      "meaning": "Native orderId; retained without conversion."
+    },
+    {
+      "name": "currency",
+      "type": "native JSON value",
+      "meaning": "Native currency; retained without conversion."
+    },
+    {
+      "name": "amount",
+      "type": "native JSON value",
+      "meaning": "Native amount; retained without conversion."
+    }
+  ],
+  "identity": [
+    "orderId"
+  ],
+  "identity_description": "Native identity: orderId.",
+  "limitations": [
+    "JSON POST /queryIncrementOrderList.json; fixed tenant GUAPW3SG; rowStart offsets of width 5000; data.data and fixed data.totalCount.",
+    "Native fields, amounts, rates, nulls, unknown fields and response order are retained without conversion.",
+    "Refresh retains one nonempty acquisition. Empty or failed refresh preserves the previous snapshot; live never publishes.",
+    "Runtime/date-partition Duckdog import has no supported contract for this leaf; installation initializes an empty binding only.",
+    "get uses form POST /queryIncrementOrderDetail.json, only orderId, and requires matching native orderId."
+  ],
+  "examples": [
+    {
+      "title": "Show inquiry parameters",
+      "command": "dogopencli liquidity list investment.transactions -h"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_transactions"
+  }
+}
