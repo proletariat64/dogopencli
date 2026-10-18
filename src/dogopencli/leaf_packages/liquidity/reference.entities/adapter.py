@@ -34,26 +34,14 @@ class EntityInquiry:
         page_size=PAGE_SIZE,
         one_based=False,
         allowed_body_keys=frozenset({"tntInstId", "entityMaintQueryVO"}),
-        fixed_body_values=(("tntInstId", TENANT),),
-        json_body_contracts=(
-            (
-                "entityMaintQueryVO",
-                frozenset({"tntInstId", "rowStart", "pageSize"}),
-                (("tntInstId", TENANT),),
-                frozenset({PAGE_SIZE}),
-            ),
-        ),
     )
 
-    def page_body(
-        self, scope: str, row_start: int, page_size: int = PAGE_SIZE
-    ) -> dict[str, Any]:
+    def page_body(self, scope: str, row_start: int) -> dict[str, Any]:
         if (
             scope
             or type(row_start) is not int
             or row_start < 0
             or row_start % PAGE_SIZE
-            or page_size != PAGE_SIZE
         ):
             raise CliError(REQUEST_NOT_ALLOWED, "unverified entity request")
         return {
