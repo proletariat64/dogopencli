@@ -654,9 +654,7 @@ def collect_list(
     preferred_key = state_key(leaf_id, capability, scope, sizes)
     favored = preferred_page_size(state_file, preferred_key, sizes)
     candidates = (
-        (favored, *(size for size in sizes if size != favored))
-        if favored
-        else sizes
+        (favored, *(size for size in sizes if size != favored)) if favored else sizes
     )
     deadline = _monotonic() + (
         REFRESH_BUDGET_SECONDS if budget_seconds is None else budget_seconds
