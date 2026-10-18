@@ -3,6 +3,7 @@
 import json
 from argparse import Namespace
 from contextlib import contextmanager
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
@@ -263,6 +264,66 @@ def test_short_and_empty_native_pages_do_not_hide_holes():
     assert [q["rowStart"] for q in stream.requests] == [0, 2, 4]
 
 
+def test_fallbacks_share_one_global_logical_page_budget():
+    rows = [{"id": n} for n in range(4)]
+    limited = Script(offset(rows[:3], 4), offset(rows[:2], 4))
+    partial = collect_list(
+        Native(),
+        limited,
+        "owned",
+        config(),
+        domain="payment",
+        leaf_id="payment.fake",
+        budget_seconds=10,
+        max_pages=2,
+    )
+    assert not partial.complete
+    assert partial.records == rows[:3]
+    assert [(q["rowStart"], q["pageSize"]) for q in limited.requests] == [
+        (0, 4),
+        (0, 2),
+    ]
+    assert sum(attempt["pages"] for attempt in partial.evidence.attempts) == 2
+    assert partial.evidence.attempts[-1]["error"] == "TIMEOUT"
+
+    permitted = Script(
+        offset(rows[:3], 4), offset(rows[:2], 4), offset(rows[2:], 4)
+    )
+    complete = collect_list(
+        Native(),
+        permitted,
+        "owned",
+        config(),
+        domain="payment",
+        leaf_id="payment.fake",
+        budget_seconds=10,
+        max_pages=3,
+    )
+    assert complete.complete and complete.records == rows
+    assert len(permitted.requests) == 3
+    assert sum(attempt["pages"] for attempt in complete.evidence.attempts) == 3
+
+
+def test_preference_writes_skip_busy_lock_and_remain_best_effort(tmp_path):
+    import fcntl
+    import os
+
+    from dogopencli.collection_state import preferred_page_size, remember_page_size
+
+    state = tmp_path / "collection-state.json"
+    key = "a" * 64
+    owner = os.open(str(state) + ".lock", os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        remember_page_size(state, key, 2)
+        assert not state.exists()
+    finally:
+        os.close(owner)
+
+    remember_page_size(state, key, 2)
+    assert preferred_page_size(state, key, (4, 2)) == 2
+
+
 def test_fallback_restarts_from_zero_then_persists_width(tmp_path):
     rows = [{"id": n} for n in range(4)]
     state = tmp_path / "collection-state.json"
@@ -339,6 +400,36 @@ def test_real_entity_pilot_contract_can_run_through_generic_offset_engine():
         capability = module.EntityInquiry()
     finally:
         sys.modules.pop(spec.name, None)
+    # Qualify an adapter only inside this fake-transport test. The existing
+    # installed pilot's source and old cache hash must remain unchanged.
+    native_capability = capability
+
+    class QualifiedEntity:
+        def __init__(self, native_capability):
+            self.native = native_capability
+            self.name = native_capability.name
+            self.contract = replace(
+                native_capability.contract,
+                fixed_body_values=(("tntInstId", "GUAPW3SG"),),
+                json_body_contracts=(
+                    (
+                        "entityMaintQueryVO",
+                        frozenset({"tntInstId", "rowStart", "pageSize"}),
+                        (("tntInstId", "GUAPW3SG"),),
+                        frozenset({5000}),
+                    ),
+                ),
+            )
+
+        def page_body(self, scope, row_start, page_size):
+            if page_size != 5000:
+                raise CliError(REQUEST_NOT_ALLOWED, "unqualified page size")
+            return self.native.page_body(scope, row_start)
+
+        def parse_rows(self, body):
+            return self.native.parse_rows(body)
+
+    capability = QualifiedEntity(native_capability)
     native = {
         "resultFlag": True,
         "result": {"entityMaintVOList": [{"instId": "ACME"}]},
@@ -425,3 +516,116 @@ def test_opted_in_refresh_rejects_partial_and_preserves_saved_rows(
     after, current_meta = runtime.execute(leaf, "list", {}, args, config_file)
     assert after == before
     assert current_meta["fetched_at"] == meta["fetched_at"]
+
+
+def test_existing_snapshot_keeps_pre_sdk_contract_hash_and_replays_offline(tmp_path):
+    import hashlib
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from dogopencli.cache import SnapshotMeta
+    from dogopencli.jsonutil import canonical
+    from dogopencli.leaves import runtime
+    from dogopencli.result_policy import AcquisitionEvidence
+
+    # A concrete native contract with no SDK declaration is modeled as it
+    # existed before EndpointContract gained allowed_page_sizes.
+    contract = EndpointContract(
+        method="GET",
+        host="fixture.invalid",
+        path="/native-list",
+        page_size=100,
+        one_based=False,
+        allowed_body_keys=frozenset({"pageNo", "pageSize"}),
+    )
+    capability = SimpleNamespace(name="payment.old.list", contract=contract)
+
+    class SavedAdapter:
+        def capability(self, parameters):
+            return capability
+
+        def scope(self, parameters):
+            return ""
+
+        def filter(self, records, parameters):
+            return records
+
+    leaf = Leaf(
+        domain="payment",
+        name="old",
+        path=tmp_path,
+        adapter=SavedAdapter(),
+        adapter_sha256="unchanged-leaf-source",
+        manifest={
+            "adapter": "adapter.py:adapter",
+            "operations": {"list": {"parameters": []}},
+            "identity": ["id"],
+        },
+    )
+
+    def old_basic(value):
+        if isinstance(value, dict):
+            return {key: old_basic(item) for key, item in value.items()}
+        if isinstance(value, (set, frozenset)):
+            return sorted(old_basic(item) for item in value)
+        if isinstance(value, (tuple, list)):
+            return [old_basic(item) for item in value]
+        return value
+
+    native_contract = asdict(contract)
+    assert native_contract.pop("allowed_page_sizes") == ()
+    legacy_context = {
+        "identity": ["id"],
+        "operations": {"list": []},
+        "adapter_binding": "adapter.py:adapter",
+        "adapter_sha256": "unchanged-leaf-source",
+        "capability": capability.name,
+        "native_contract": old_basic(native_contract),
+    }
+    original_hash = hashlib.sha256(canonical(legacy_context).encode()).hexdigest()
+    assert runtime._contract_id(leaf, capability) == original_hash
+    opted_in = replace(leaf, manifest={**leaf.manifest, "collection": config((100,))})
+    assert runtime._contract_id(opted_in, capability) != original_hash
+
+    config_file = tmp_path / "settings.toml"
+    snapshot_time = datetime.now(timezone.utc).isoformat()
+    snapshot = SnapshotMeta(
+        namespace="leaf:payment.old",
+        capability="payment.old",
+        scope=canonical(
+            {
+                "parameters": {},
+                "native_scope": "",
+                "contract_id": original_hash,
+            }
+        ),
+        source_kind="cdp",
+        snapshot_id="existing",
+        dataset_id=None,
+        simulated=False,
+        backend_complete=True,
+        dataset_complete=True,
+        fetched_at=snapshot_time,
+        loaded_at=snapshot_time,
+        source_observed_from=None,
+        source_observed_to=None,
+        row_count=1,
+        acquisition=AcquisitionEvidence.for_collection(
+            complete=True, reported_total=1, collected_total=1, arrivals=1
+        ).record(),
+    )
+    runtime.cache_for(config_file).publish(
+        snapshot, [(1, canonical({"id": "existing"}))]
+    )
+    args = Namespace(
+        limit=100,
+        offset=0,
+        fields=None,
+        require_complete=False,
+        require_fresh=False,
+        live=False,
+        explicit_parameters=set(),
+    )
+    records, metadata = runtime.execute(leaf, "list", {}, args, config_file)
+    assert records == [{"id": "existing"}]
+    assert metadata["source"] == "cache"
