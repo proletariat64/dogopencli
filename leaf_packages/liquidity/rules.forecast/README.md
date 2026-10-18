@@ -15,9 +15,12 @@ All native fields and JSON types are preserved, including null, empty strings,
 zero, decimal precision and timestamp text. `ruleName`, `ruleType`, `accountNo`,
 `currency` and `ruleStatus` remain source fields rather than projected columns.
 
-Changed totals, malformed identities, conflicting rows, premature empty pages and
-oversized pages fail collection. Repeated identities do not establish coverage;
-the shared result policy reports incomplete evidence and enforces strict mode.
+The manifest selects the host List SDK with offset paging, width 10 and native
+`ruleId`. The leaf owns the fixed Z21 request and native parser. Changed totals,
+malformed identities and oversized pages fail collection. Duplicate/conflicting
+rows and short or empty interior pages retain incomplete evidence. Conflicts use
+the last arrival without claiming it is newest. Strict queries and refresh reject
+incomplete acquisitions.
 Live does not publish cache. A qualified nonempty refresh replaces only this
 leaf's cache. Errors, empty results and strict rejection preserve the last cache.
 Offline reads make no business request. Dataset relation: `liquidity_rules_forecast`.

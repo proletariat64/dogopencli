@@ -25,10 +25,13 @@ how a native benchmark `value` should be interpreted; the package performs no
 unit, rate, currency or timezone conversion. These configured rules are not
 realized investment returns.
 
-Collection checks fixed totals, page capacity, progress and native identities.
-Identical duplicate identities yield incomplete evidence; conflicting duplicate
-content fails. Strict acquisition refuses incomplete results. Live does not
-publish cache; a qualified nonempty refresh replaces this leaf's temporary cache.
+The manifest selects the host List SDK with offset paging, width 5000 and native
+`id`. The leaf owns the fixed request and native response parser. The SDK checks
+fixed totals, capacity, identities and gaps. Duplicate/conflicting identities and
+short or empty interior pages yield incomplete evidence. Conflicts retain the last
+arrival without claiming it is newest. Strict acquisition and refresh refuse
+incomplete results. Live does not publish cache; a qualified nonempty refresh
+replaces this leaf's temporary cache.
 Empty or failed refresh preserves the previous snapshot. Offline list performs no
 business request. Refresh does not import records into Duckdog.
 
