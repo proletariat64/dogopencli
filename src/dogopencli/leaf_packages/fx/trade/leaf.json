@@ -228,7 +228,8 @@
     "Identity and native total semantics remain unproven; complete=false and strict completeness rejects.",
     "Business filters are online only; cached mappings are unverified.",
     "Acquisition is bounded to 100 pages and 120 seconds.",
-    "Field types describe verified native representations; fields may be absent or null, unknown fields are preserved, and documentation never coerces records."
+    "Field types describe verified native representations; fields may be absent or null, unknown fields are preserved, and documentation never coerces records.",
+    "SDK refresh requires proven completeness; this leaf cannot publish a cache until identity and total semantics are qualified."
   ],
   "examples": [
     {
@@ -238,5 +239,20 @@
   ],
   "dataset": {
     "relation": "fx_trade"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "page_number",
+      "page_sizes": [
+        50
+      ]
+    },
+    "primary_id": {
+      "type": "unproven",
+      "fields": []
+    },
+    "max_pages": 100,
+    "budget_seconds": 120
   }
 }

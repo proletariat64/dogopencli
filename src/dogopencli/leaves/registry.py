@@ -142,11 +142,13 @@ MANIFEST_SCHEMA = {
                     "required": ["type", "fields"],
                     "additionalProperties": False,
                     "properties": {
-                        "type": {"enum": ["field", "hash"]},
+                        "type": {"enum": ["field", "hash", "unproven"]},
                         "fields": {"type": "array", "items": {"type": "string"}},
                     },
                 },
                 "latest_by": {"type": "string"},
+                "max_pages": {"type": "integer", "minimum": 1, "maximum": 1000},
+                "budget_seconds": {"type": "integer", "minimum": 1, "maximum": 900},
             },
         },
         "dataset": {
@@ -172,11 +174,16 @@ def _validate(value: Any, schema: dict, path: str) -> None:
         "array": isinstance(value, list),
         "string": isinstance(value, str),
         "boolean": isinstance(value, bool),
+        "integer": type(value) is int,
     }
     if kind and not valid.get(kind, False):
         raise _invalid(f"{path} must be {kind}")
     if "enum" in schema and value not in schema["enum"]:
         raise _invalid(f"{path} has unsupported value")
+    if kind == "integer" and not schema.get("minimum", value) <= value <= schema.get(
+        "maximum", value
+    ):
+        raise _invalid(f"{path} is outside the allowed range")
     if kind == "string" and "pattern" in schema:
         if re.fullmatch(schema["pattern"], value) is None:
             raise _invalid(f"{path} has invalid spelling")
@@ -254,8 +261,10 @@ def validate_manifest(value: Any) -> None:
         ):
             raise _invalid("List page sizes must be unique, descending and qualified")
         fields = collection["primary_id"]["fields"]
+        unproven = collection["primary_id"]["type"] == "unproven"
         if (
-            not fields
+            (not fields and not unproven)
+            or (unproven and (fields or "latest_by" in collection or value["identity"]))
             or len(fields) != len(set(fields))
             or any(not field.strip() for field in fields)
             or collection["primary_id"]["type"] == "field"

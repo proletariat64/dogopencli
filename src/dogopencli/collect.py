@@ -367,7 +367,7 @@ def execute_bounded(
             if response.status == 200:
                 return response
             if response.status not in RETRYABLE_STATUSES:
-                if response.status == 401:
+                if response.status in (401, 403):
                     raise CliError(
                         AUTH_REQUIRED,
                         "the backend rejected the dedicated browser session;"
@@ -485,15 +485,21 @@ def _list_candidate(
     mode = collection["paging"]["mode"]
     first_number = 1 if capability.contract.one_based else 0
     primary_id = collection["primary_id"]
+    has_identity = primary_id["type"] != "unproven"
     latest_by = collection.get("latest_by")
     ordered: list[dict[str, Any]] = []
     positions: dict[str, int] = {}
     hashes: dict[str, str] = {}
+    observed: set[str] = set()
     reported: int | None = None
     arrivals = 0
     duplicate_count = 0
     conflict_count = 0
     problems: list[str] = []
+    if not has_identity:
+        problems.append("IDENTITY_UNPROVEN")
+    if capability.contract.total_semantics != "unique_objects":
+        problems.append("TOTAL_SEMANTICS_UNPROVEN")
     pages = 0
 
     for index in range(page_budget.remaining):
@@ -514,6 +520,7 @@ def _list_candidate(
                 and not rows
                 and page.page_num == 0
                 and page.total_pages == 0
+                and index == 0
             )
             if (
                 page.page_size != size
@@ -535,8 +542,10 @@ def _list_candidate(
             reported = page_total
             # The initial request has already consumed one slot. A fallback
             # cannot borrow the page allowance used by prior candidates.
-            if mode != "single" and math.ceil(reported / size) > (
-                1 + page_budget.remaining
+            if (
+                has_identity
+                and mode != "single"
+                and math.ceil(reported / size) > (1 + page_budget.remaining)
             ):
                 raise CliError(
                     TIMEOUT, "List global page budget exhausted", retryable=True
@@ -559,6 +568,14 @@ def _list_candidate(
         pages += 1
         arrivals += len(rows)
         for row in rows:
+            if not has_identity:
+                content = canonical(row)
+                if content in observed:
+                    if "UNEXPECTED_DUPLICATE_ROWS" not in problems:
+                        problems.append("UNEXPECTED_DUPLICATE_ROWS")
+                observed.add(content)
+                ordered.append(row)
+                continue
             record_id = _list_identity(row, primary_id, hashes)
             previous_index = positions.get(record_id)
             if previous_index is None:
@@ -584,8 +601,16 @@ def _list_candidate(
             progress(pages, max(pages, math.ceil(reported / size)))
         if mode == "single" or (index + 1) * size >= reported:
             break
+        # An unqualified identity cannot diagnose or repair missing native rows.
+        # Retain every arrival, but stop at observed overlap or a short page.
+        if not has_identity and (
+            len(rows) < size or "UNEXPECTED_DUPLICATE_ROWS" in problems
+        ):
+            break
     else:
-        raise CliError(TIMEOUT, "List page budget exceeded", retryable=True)
+        if has_identity:
+            raise CliError(TIMEOUT, "List page budget exceeded", retryable=True)
+        problems.append("PAGE_BUDGET_EXHAUSTED")
     remaining_seconds(deadline)
     if duplicate_count:
         problems.append("CROSS_PAGE_OR_INTRA_PAGE_DUPLICATES")
@@ -603,6 +628,8 @@ def _list_candidate(
         reported_total=reported,
         collected_total=len(ordered),
         arrivals=arrivals,
+        has_identity=has_identity,
+        total_semantics=capability.contract.total_semantics,
         reasons=tuple(problems),
         duplicate_policy="conservative",
     )
@@ -613,8 +640,8 @@ def _list_candidate(
                 "page_size": size,
                 "pages": pages,
                 "arrivals": arrivals,
-                "unique_count": len(ordered),
-                "duplicate_count": duplicate_count,
+                "unique_count": evidence.unique_count,
+                "duplicate_count": evidence.duplicate_count,
                 "conflict_count": conflict_count,
                 "reported_total": reported,
                 "complete": evidence.scope_complete,
@@ -660,6 +687,13 @@ def collect_list(
     from .contracts import resolve_collection_provider
 
     resolve_collection_provider(domain, collection["provider"])
+    if (
+        collection["primary_id"]["type"] != "unproven"
+    ) != capability.contract.has_identity:
+        raise CliError(
+            INVALID_RESPONSE,
+            "List identity declaration disagrees with endpoint contract",
+        )
     sizes = tuple(collection["paging"]["page_sizes"])
     if not set(sizes).issubset(_list_allowed_sizes(capability)):
         raise CliError(REQUEST_NOT_ALLOWED, "List page width is not endpoint-qualified")
@@ -671,9 +705,13 @@ def collect_list(
         (favored, *(size for size in sizes if size != favored)) if favored else sizes
     )
     deadline = _monotonic() + (
-        REFRESH_BUDGET_SECONDS if budget_seconds is None else budget_seconds
+        collection.get("budget_seconds", REFRESH_BUDGET_SECONDS)
+        if budget_seconds is None
+        else budget_seconds
     )
-    page_budget = _PageBudget(MAX_PAGES if max_pages is None else max_pages)
+    page_budget = _PageBudget(
+        collection.get("max_pages", MAX_PAGES) if max_pages is None else max_pages
+    )
     attempts: list[dict[str, Any]] = []
     last_partial: CollectedScope | None = None
     last_timeout: CliError | None = None

@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from dogopencli.collect import collect_scope, execute_bounded
+from dogopencli.collect import execute_bounded
 from dogopencli.contracts import EndpointContract, ParsedPage
 from dogopencli.errors import (
     BUSINESS_QUERY_FAILED,
@@ -40,7 +40,6 @@ def response_document(body: bytes) -> dict[str, Any]:
 @dataclass(frozen=True)
 class BaselineList:
     name: str = "payment.sla.baselines.list"
-    default_scope: str = "baselines"
     contract: EndpointContract = EndpointContract(
         method="POST",
         host="iglobalfundcontrol.alipay.com",
@@ -58,17 +57,23 @@ class BaselineList:
                 "pageSize",
             }
         ),
-        rebuild_page_size=10000,
+        allowed_page_sizes=(10000, PAGE_SIZE),
     )
 
     def page_body(self, scope: str, page_num: int, page_size: int) -> dict[str, Any]:
-        if (
-            scope != self.default_scope
-            or page_num < 0
-            or page_size not in (PAGE_SIZE, 10000)
-        ):
+        if page_num < 0 or page_size not in self.contract.allowed_page_sizes:
             raise CliError(REQUEST_NOT_ALLOWED, "unverified SLA list request")
-        return {"pageNo": page_num, "pageSize": page_size}
+        filters = json.loads(scope)
+        if (
+            not isinstance(filters, dict)
+            or set(filters) - set(FILTERS.values())
+            or any(
+                not isinstance(value, str) or not value.strip()
+                for value in filters.values()
+            )
+        ):
+            raise CliError(REQUEST_NOT_ALLOWED, "unverified SLA filters")
+        return {**filters, "pageNo": page_num, "pageSize": page_size}
 
     def identity_key(self, row: dict[str, Any]) -> str:
         return row["id"]
@@ -155,18 +160,6 @@ class Adapter:
 
     def scope(self, parameters: dict[str, Any]) -> str:
         return canonical(native_filters(parameters))
-
-    def collector(
-        self, capability: Any, transport: Any, scope: str, *, progress: Any = None
-    ) -> Any:
-        candidate = collect_scope(
-            capability,
-            transport,
-            capability.default_scope,
-            json.loads(scope),
-            progress=progress,
-        )
-        return candidate
 
     def get(
         self, session: Any, parameters: dict[str, Any], identity: str

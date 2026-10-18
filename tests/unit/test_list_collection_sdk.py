@@ -3,7 +3,7 @@
 import json
 from argparse import Namespace
 from contextlib import contextmanager
-from dataclasses import asdict, replace
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -381,10 +381,11 @@ def test_changed_total_or_unregistered_width_is_never_hidden():
     assert unregistered.requests == []
 
 
-def test_real_entity_pilot_contract_can_run_through_generic_offset_engine():
+def test_real_entity_pilot_contract_can_run_through_generic_offset_engine(monkeypatch):
     import importlib.util
     import sys
 
+    monkeypatch.setattr(sys, "dont_write_bytecode", True)
     file = (
         Path(__file__).parents[2]
         / "src/dogopencli/leaf_packages/liquidity/reference.entities/adapter.py"
@@ -398,36 +399,6 @@ def test_real_entity_pilot_contract_can_run_through_generic_offset_engine():
         capability = module.EntityInquiry()
     finally:
         sys.modules.pop(spec.name, None)
-    # Qualify an adapter only inside this fake-transport test. The existing
-    # installed pilot's source and old cache hash must remain unchanged.
-    native_capability = capability
-
-    class QualifiedEntity:
-        def __init__(self, native_capability):
-            self.native = native_capability
-            self.name = native_capability.name
-            self.contract = replace(
-                native_capability.contract,
-                fixed_body_values=(("tntInstId", "GUAPW3SG"),),
-                json_body_contracts=(
-                    (
-                        "entityMaintQueryVO",
-                        frozenset({"tntInstId", "rowStart", "pageSize"}),
-                        (("tntInstId", "GUAPW3SG"),),
-                        frozenset({5000}),
-                    ),
-                ),
-            )
-
-        def page_body(self, scope, row_start, page_size):
-            if page_size != 5000:
-                raise CliError(REQUEST_NOT_ALLOWED, "unqualified page size")
-            return self.native.page_body(scope, row_start)
-
-        def parse_rows(self, body):
-            return self.native.parse_rows(body)
-
-    capability = QualifiedEntity(native_capability)
     native = {
         "resultFlag": True,
         "result": {"entityMaintVOList": [{"instId": "ACME"}]},
@@ -516,114 +487,136 @@ def test_opted_in_refresh_rejects_partial_and_preserves_saved_rows(
     assert current_meta["fetched_at"] == meta["fetched_at"]
 
 
-def test_existing_snapshot_keeps_pre_sdk_contract_hash_and_replays_offline(tmp_path):
-    import hashlib
-    from datetime import datetime, timezone
-    from types import SimpleNamespace
-
-    from dogopencli.cache import SnapshotMeta
-    from dogopencli.jsonutil import canonical
-    from dogopencli.leaves import runtime
-    from dogopencli.result_policy import AcquisitionEvidence
-
-    # A concrete native contract with no SDK declaration is modeled as it
-    # existed before EndpointContract gained allowed_page_sizes.
-    contract = EndpointContract(
-        method="GET",
-        host="fixture.invalid",
-        path="/native-list",
-        page_size=100,
-        one_based=False,
-        allowed_body_keys=frozenset({"pageNo", "pageSize"}),
+@pytest.mark.parametrize(
+    "rows,total", [([{"id": "same"}] * 2, 2), ([{"value": 1}], 1), ([], 0)]
+)
+def test_unproven_identity_preserves_arrivals_and_never_learns(tmp_path, rows, total):
+    source = Native(sizes=(2,))
+    source.contract = replace(
+        source.contract, has_identity=False, total_semantics="unknown"
     )
-    capability = SimpleNamespace(name="payment.old.list", contract=contract)
-
-    class SavedAdapter:
-        def capability(self, parameters):
-            return capability
-
-        def scope(self, parameters):
-            return ""
-
-        def filter(self, records, parameters):
-            return records
-
-    leaf = Leaf(
-        domain="payment",
-        name="old",
-        path=tmp_path,
-        adapter=SavedAdapter(),
-        adapter_sha256="unchanged-leaf-source",
-        manifest={
-            "adapter": "adapter.py:adapter",
-            "operations": {"list": {"parameters": []}},
-            "identity": ["id"],
-        },
+    state = tmp_path / "collection-state.json"
+    result = collect_list(
+        source,
+        Script(offset(rows, total)),
+        "scope",
+        config((2,), primary="unproven", fields=()),
+        domain="fx",
+        leaf_id="fx.trade",
+        state_file=state,
     )
-
-    def old_basic(value):
-        if isinstance(value, dict):
-            return {key: old_basic(item) for key, item in value.items()}
-        if isinstance(value, (set, frozenset)):
-            return sorted(old_basic(item) for item in value)
-        if isinstance(value, (tuple, list)):
-            return [old_basic(item) for item in value]
-        return value
-
-    native_contract = asdict(contract)
-    assert native_contract.pop("allowed_page_sizes") == ()
-    legacy_context = {
-        "identity": ["id"],
-        "operations": {"list": []},
-        "adapter_binding": "adapter.py:adapter",
-        "adapter_sha256": "unchanged-leaf-source",
-        "capability": capability.name,
-        "native_contract": old_basic(native_contract),
-    }
-    original_hash = hashlib.sha256(canonical(legacy_context).encode()).hexdigest()
-    assert runtime._contract_id(leaf, capability) == original_hash
-    opted_in = replace(leaf, manifest={**leaf.manifest, "collection": config((100,))})
-    assert runtime._contract_id(opted_in, capability) != original_hash
-
-    config_file = tmp_path / "settings.toml"
-    snapshot_time = datetime.now(timezone.utc).isoformat()
-    snapshot = SnapshotMeta(
-        namespace="leaf:payment.old",
-        capability="payment.old",
-        scope=canonical(
-            {
-                "parameters": {},
-                "native_scope": "",
-                "contract_id": original_hash,
-            }
-        ),
-        source_kind="cdp",
-        snapshot_id="existing",
-        dataset_id=None,
-        simulated=False,
-        backend_complete=True,
-        dataset_complete=True,
-        fetched_at=snapshot_time,
-        loaded_at=snapshot_time,
-        source_observed_from=None,
-        source_observed_to=None,
-        row_count=1,
-        acquisition=AcquisitionEvidence.for_collection(
-            complete=True, reported_total=1, collected_total=1, arrivals=1
-        ).record(),
+    assert result.records == rows
+    assert result.complete is False
+    assert result.evidence.unique_count is None
+    assert result.evidence.duplicate_count is None
+    assert result.evidence.arrivals == len(rows)
+    assert result.evidence.total_semantics == "unknown"
+    assert {"IDENTITY_UNPROVEN", "TOTAL_SEMANTICS_UNPROVEN"} <= set(
+        result.evidence.reasons
     )
-    runtime.cache_for(config_file).publish(
-        snapshot, [(1, canonical({"id": "existing"}))]
+    assert not state.exists()
+
+
+@pytest.mark.parametrize(
+    "setting,value",
+    [
+        ("max_pages", 0),
+        ("max_pages", True),
+        ("max_pages", 1001),
+        ("budget_seconds", 0),
+        ("budget_seconds", 901),
+        ("budget_seconds", "120"),
+    ],
+)
+def test_manifest_rejects_invalid_acquisition_limits(setting, value):
+    root = Path(__file__).parents[2]
+    manifest = json.loads(
+        (root / "src/dogopencli/leaf_packages/fx/trade/leaf.json").read_text()
     )
-    args = Namespace(
-        limit=100,
-        offset=0,
-        fields=None,
-        require_complete=False,
-        require_fresh=False,
-        live=False,
-        explicit_parameters=set(),
+    manifest["collection"][setting] = value
+    with pytest.raises(CliError, match="must be integer|allowed range"):
+        validate_manifest(manifest)
+
+
+@pytest.mark.parametrize("change", ["fields", "latest_by", "identity"])
+def test_unproven_identity_cannot_claim_native_identity(change):
+    root = Path(__file__).parents[2]
+    manifest = json.loads(
+        (root / "src/dogopencli/leaf_packages/fx/trade/leaf.json").read_text()
     )
-    records, metadata = runtime.execute(leaf, "list", {}, args, config_file)
-    assert records == [{"id": "existing"}]
-    assert metadata["source"] == "cache"
+    if change == "fields":
+        manifest["collection"]["primary_id"]["fields"] = ["uniqueId"]
+    elif change == "latest_by":
+        manifest["collection"]["latest_by"] = "updated"
+    else:
+        manifest["identity"] = ["uniqueId"]
+    with pytest.raises(CliError, match="identity"):
+        validate_manifest(manifest)
+
+
+def test_declared_limits_bound_sdk_acquisition():
+    source = Native(sizes=(2,))
+    settings = {**config((2,)), "max_pages": 1}
+    stream = Script(offset([{"id": "one"}, {"id": "two"}], 3))
+    with pytest.raises(CliError, match="budget"):
+        collect_list(
+            source, stream, "", settings, domain="payment", leaf_id="payment.test"
+        )
+    assert len(stream.requests) == 1
+
+
+def test_sdk_rejects_identity_contract_mismatch_before_requests():
+    source = Native(sizes=(2,))
+    stream = Script()
+    with pytest.raises(CliError, match="identity declaration"):
+        collect_list(
+            source,
+            stream,
+            "",
+            config((2,), primary="unproven", fields=()),
+            domain="payment",
+            leaf_id="payment.test",
+        )
+    assert stream.requests == []
+
+
+def test_unproven_total_does_not_discard_rows_at_page_cap():
+    source = Native(sizes=(2,))
+    source.contract = replace(
+        source.contract, has_identity=False, total_semantics="unknown"
+    )
+    rows = [{"value": i} for i in range(4)]
+    stream = Script(offset(rows[:2], 5), offset(rows[2:], 5))
+    result = collect_list(
+        source,
+        stream,
+        "",
+        {**config((2,), primary="unproven", fields=()), "max_pages": 2},
+        domain="fx",
+        leaf_id="fx.trade",
+    )
+    assert result.records == rows
+    assert len(stream.requests) == 2
+    assert result.complete is False
+    assert result.evidence.reported_total == 5
+    assert "PAGE_BUDGET_EXHAUSTED" in result.evidence.reasons
+
+
+@pytest.mark.parametrize("rows", [[{"value": 1}], [{"value": 1}] * 2])
+def test_unproven_large_total_stops_at_short_or_overlap_page(rows):
+    source = Native(sizes=(2,))
+    source.contract = replace(
+        source.contract, has_identity=False, total_semantics="unknown"
+    )
+    stream = Script(offset(rows, 50000))
+    result = collect_list(
+        source,
+        stream,
+        "",
+        {**config((2,), primary="unproven", fields=()), "max_pages": 2},
+        domain="fx",
+        leaf_id="fx.trade",
+    )
+    assert result.records == rows
+    assert len(stream.requests) == 1
+    assert result.complete is False
