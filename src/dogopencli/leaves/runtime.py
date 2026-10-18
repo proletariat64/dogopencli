@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from dogopencli.cache import Cache, SnapshotMeta
-from dogopencli.collect import collect_scope
+from dogopencli.collect import collect_list, collect_scope
 from dogopencli.config import DEFAULT_TTL_HOURS, tomllib
 from dogopencli.errors import CliError
 from dogopencli.inquiry import inquiry_session
@@ -103,6 +103,7 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
         "adapter_sha256": leaf.adapter_sha256,
         "capability": capability.name,
         "native_contract": basic(asdict(capability.contract)),
+        "collection": leaf.manifest.get("collection"),
     }
     return hashlib.sha256(canonical(context).encode()).hexdigest()
 
@@ -185,8 +186,20 @@ def execute(
                 startup_url=getattr(capability, "page_url", None),
             ) as session:
                 transport = session.transport(capability)
-                collector = getattr(leaf.adapter, "collector", collect_scope)
-                collected = collector(capability, transport, scope)
+                collection = leaf.manifest.get("collection")
+                if collection is not None:
+                    collected = collect_list(
+                        capability,
+                        transport,
+                        scope,
+                        collection,
+                        domain=leaf.domain,
+                        leaf_id=leaf.id,
+                        state_file=config_file.parent / "collection-state.json",
+                    )
+                else:
+                    collector = getattr(leaf.adapter, "collector", collect_scope)
+                    collected = collector(capability, transport, scope)
             rows = _validate_records(
                 collected.records, leaf.manifest.get("identity", [])
             )
@@ -194,7 +207,12 @@ def execute(
             query = parameters
             stale = False
             check_complete(
-                evidence, require_complete=args.require_complete, mode=operation
+                evidence,
+                require_complete=(
+                    args.require_complete
+                    or (operation == "refresh" and "collection" in leaf.manifest)
+                ),
+                mode=operation
             )
             selected = (
                 leaf.adapter.filter(
