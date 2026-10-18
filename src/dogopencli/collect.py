@@ -466,6 +466,11 @@ def _list_allowed_sizes(capability: TransportCapability) -> set[int]:
     return sizes
 
 
+@dataclass
+class _PageBudget:
+    remaining: int
+
+
 def _list_candidate(
     capability: Any,
     transport: Any,
@@ -473,7 +478,7 @@ def _list_candidate(
     collection: dict[str, Any],
     size: int,
     deadline: float,
-    max_pages: int,
+    page_budget: _PageBudget,
     progress: Callable[[int, int], None] | None,
 ) -> CollectedScope:
     """One independent native scope; positional pages are never cross-mixed."""
@@ -491,10 +496,13 @@ def _list_candidate(
     problems: list[str] = []
     pages = 0
 
-    for index in range(max_pages):
+    for index in range(page_budget.remaining):
         remaining_seconds(deadline)
         position = index * size if mode == "offset" else first_number + index
         body = capability.page_body(scope, position, size)
+        # Reserve one logical page across ALL fallback attempts, including
+        # unsuccessful requests. HTTP-level retries remain a separate budget.
+        page_budget.remaining -= 1
         response = execute_bounded(capability, transport, body, deadline)
         if mode == "offset":
             rows, page_total = capability.parse_rows(response.body)
@@ -525,8 +533,14 @@ def _list_candidate(
             raise CliError(INVALID_RESPONSE, "native page exceeded requested size")
         if reported is None:
             reported = page_total
-            if mode != "single" and math.ceil(reported / size) > max_pages:
-                raise CliError(TIMEOUT, "List page budget exceeded", retryable=True)
+            # The initial request has already consumed one slot. A fallback
+            # cannot borrow the page allowance used by prior candidates.
+            if mode != "single" and math.ceil(reported / size) > (
+                1 + page_budget.remaining
+            ):
+                raise CliError(
+                    TIMEOUT, "List global page budget exhausted", retryable=True
+                )
         elif reported != page_total:
             raise CliError(INVALID_RESPONSE, "native List total changed during read")
         if capability.contract.scope_field is not None and any(
@@ -659,6 +673,7 @@ def collect_list(
     deadline = _monotonic() + (
         REFRESH_BUDGET_SECONDS if budget_seconds is None else budget_seconds
     )
+    page_budget = _PageBudget(MAX_PAGES if max_pages is None else max_pages)
     attempts: list[dict[str, Any]] = []
     last_partial: CollectedScope | None = None
     last_timeout: CliError | None = None
@@ -668,6 +683,7 @@ def collect_list(
         # Allocate time to the next qualified width, not to endless first-width retries.
         attempt_deadline = min(deadline, _monotonic() + remaining / slots)
         started = _monotonic()
+        pages_before = page_budget.remaining
         try:
             result = _list_candidate(
                 capability,
@@ -676,13 +692,14 @@ def collect_list(
                 collection,
                 size,
                 attempt_deadline,
-                MAX_PAGES if max_pages is None else max_pages,
+                page_budget,
                 progress,
             )
         except CliError as error:
             attempts.append(
                 {
                     "page_size": size,
+                    "pages": pages_before - page_budget.remaining,
                     "complete": False,
                     "error": error.code,
                     "elapsed_seconds": round(_monotonic() - started, 3),
