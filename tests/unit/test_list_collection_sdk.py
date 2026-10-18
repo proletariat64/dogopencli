@@ -325,11 +325,22 @@ def test_changed_total_or_unregistered_width_is_never_hidden():
 
 
 def test_real_entity_pilot_contract_can_run_through_generic_offset_engine():
-    from dogopencli.leaf_packages.liquidity.reference.entities.adapter import (
-        EntityInquiry,
-    )
+    import importlib.util
+    import sys
 
-    capability = EntityInquiry()
+    file = (
+        Path(__file__).parents[2]
+        / "src/dogopencli/leaf_packages/liquidity/reference.entities/adapter.py"
+    )
+    spec = importlib.util.spec_from_file_location("_sdk_entity_pilot", file)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+        capability = module.EntityInquiry()
+    finally:
+        sys.modules.pop(spec.name, None)
     native = {
         "resultFlag": True,
         "result": {"entityMaintVOList": [{"instId": "ACME"}]},
