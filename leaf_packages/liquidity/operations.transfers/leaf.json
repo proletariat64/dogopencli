@@ -1,0 +1,83 @@
+{
+  "domain": "liquidity",
+  "name": "operations.transfers",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read full native transfer orders within the verified inquiry scope.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Native Transaction Date start day YYYY-MM-DD; both ordered bounds are required."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Native Transaction Date end day YYYY-MM-DD, at or after from-date."
+        }
+      ]
+    }
+  },
+  "summary": "Transfer orders.",
+  "purpose": "Inspect native transfer orders through bounded inquiry-only requests.",
+  "fields": [
+    {
+      "name": "orderNo",
+      "type": "string",
+      "meaning": "Native transfer order identity; orderId and reportId are separate references."
+    },
+    {
+      "name": "debitAmount",
+      "type": "native",
+      "meaning": "Native decimal text or null/blank, preserved without conversion."
+    },
+    {
+      "name": "creditAmount",
+      "type": "native",
+      "meaning": "Native decimal text or null/blank; distinct from debit amount."
+    },
+    {
+      "name": "orderStatus",
+      "type": "native",
+      "meaning": "Native order state, separate from receiptStatus and executeResult."
+    }
+  ],
+  "identity": [
+    "orderNo"
+  ],
+  "identity_description": "Native orderNo identifies one returned record within the tenant and exact acquisition scope.",
+  "limitations": [
+    "Fixed GUAPW3SG tenant. POST form /transferOrderQuery.json contains a serialized transferOrderQueryRequestVO with fixed empty debitEntity/creditEntity arrays and blank debit/credit date bounds.",
+    "Required ISO Transaction Date bounds expand to native 00:00:00 and 23:59:59. Native source timezone and the relationship to displayed gmtCreate remain unproven; no local date-membership filtering.",
+    "Absolute rowStart offsets use pageSize=10. Top-level count must equal result.count; records are result.data. Other native filters are unsupported.",
+    "Preserve full native rows, nested logs, unknown fields and nullable monetary strings. orderStatus, receiptStatus and executeResult remain separate raw states; no bank-success inference or detail enrichment.",
+    "The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima."
+  ],
+  "examples": [
+    {
+      "title": "Acquire the complete scoped List",
+      "command": "dogopencli liquidity list operations.transfers --live --require-complete --limit 0 --from-date 2026-09-30 --to-date 2026-09-30"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_transfers"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        10
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "orderNo"
+      ]
+    }
+  }
+}
