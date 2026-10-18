@@ -1,0 +1,83 @@
+{
+  "domain": "liquidity",
+  "name": "operations.asset_trades",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read full native asset trades records.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native trading-date start, YYYY-MM-DD."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native trading-date end, YYYY-MM-DD; not earlier than from-date."
+        },
+        {
+          "name": "timezone",
+          "type": "string",
+          "required": false,
+          "default": "GMT+08",
+          "choices": [
+            "GMT+08"
+          ],
+          "description": "Verified native acquisition timezone GMT+08."
+        }
+      ]
+    }
+  },
+  "summary": "Operations asset trades.",
+  "purpose": "Inspect native operational records through bounded inquiry-only requests.",
+  "fields": [
+    {
+      "name": "orderNo",
+      "type": "string",
+      "meaning": "Native nonempty row identity, retained without conversion."
+    },
+    {
+      "name": "tradingDate",
+      "type": "native",
+      "meaning": "Native trading business date retained as received; distinct from source timestamps. Native row-date format is not inferred from wire date formatting."
+    }
+  ],
+  "identity": [
+    "orderNo"
+  ],
+  "identity_description": "Native orderNo identifies rows within the exact acquisition scope.",
+  "limitations": [
+    "Full native fields, types, exact decimals, nested values and unknown fields are retained. Inquiry-only List; no Get or additional history/detail requests.",
+    "Qualified width10 is based on historical successful requests, not a measured backend maximum. SDK collection owns loops, deadlines, retries, quality and cache publication.",
+    "Duplicates, count gaps and short interior pages remain incomplete. Conflicts keep the last arrival; strict refresh rejects incomplete data and preserves the prior saved capture.",
+    "Fixed tenant GUAPW3SG and timezone GMT+08; required ISO trading-date bounds map to compact native tradingDateBegin/End. Native tradingDate is retained without inferred row-date parsing or local membership filtering.",
+    "Trading date is distinct from gmtCreate and actualValueDate; no source timestamp filtering or timezone conversion is inferred. Native logs already in a row are preserved; no detail enrichment."
+  ],
+  "examples": [
+    {
+      "title": "Acquire a complete native List",
+      "command": "dogopencli liquidity list operations.asset_trades --live --require-complete --from-date 2026-09-30 --to-date 2026-09-30"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_asset_trades"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        10
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "orderNo"
+      ]
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "domain": "liquidity",
+  "name": "operations.swaps",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read full native swap orders within the verified inquiry scope.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native trade-date start YYYY-MM-DD; both ordered bounds are required."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native trade-date end YYYY-MM-DD, at or after from-date."
+        }
+      ]
+    }
+  },
+  "summary": "Swap orders.",
+  "purpose": "Inspect native swap orders through bounded inquiry-only requests.",
+  "fields": [
+    {
+      "name": "dealId",
+      "type": "string",
+      "meaning": "Native Deal ID; orderId and hedgeOrderId remain separate references."
+    },
+    {
+      "name": "tradeDate",
+      "type": "string",
+      "meaning": "Native YYYYMMDD trade date selected by the source query."
+    },
+    {
+      "name": "nearLegValueDate",
+      "type": "native",
+      "meaning": "Independent native near-leg YYYYMMDD date or null/blank."
+    },
+    {
+      "name": "farLegValueDate",
+      "type": "native",
+      "meaning": "Independent native far-leg YYYYMMDD date or null/blank."
+    }
+  ],
+  "identity": [
+    "dealId"
+  ],
+  "identity_description": "Native dealId identifies one returned record within the tenant and exact acquisition scope.",
+  "limitations": [
+    "Fixed GUAPW3SG tenant. POST form /swapOrderQuery.json contains a serialized swapOrderQueryVO with fixed empty near-leg entity arrays and blank near/far leg date bounds.",
+    "Required ISO trade-date bounds map to inclusive native YYYYMMDD bounds. Unbounded acquisition and other filters are unsupported. No source timezone is inferred.",
+    "Absolute rowStart offsets use pageSize=10; records are result.swapOrderVOList and native total is result.count. Near/far dates are independent fields, not extra queries or computed tenors.",
+    "Preserve complete native JSON, nested values, unknown fields, nullable/grouped decimal strings, native integers and boolean flags. No leg join, rate conversion or detail enrichment.",
+    "The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima."
+  ],
+  "examples": [
+    {
+      "title": "Acquire the complete scoped List",
+      "command": "dogopencli liquidity list operations.swaps --live --require-complete --limit 0 --from-date 2026-09-01 --to-date 2026-10-01"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_swaps"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        10
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "dealId"
+      ]
+    }
+  }
+}

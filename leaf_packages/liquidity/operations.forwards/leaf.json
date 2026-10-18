@@ -1,0 +1,54 @@
+{
+  "domain": "liquidity",
+  "name": "operations.forwards",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read full native forwards records.",
+      "parameters": []
+    }
+  },
+  "summary": "Operations forwards.",
+  "purpose": "Inspect native operational records through bounded inquiry-only requests.",
+  "fields": [
+    {
+      "name": "orderNo",
+      "type": "string",
+      "meaning": "Native nonempty row identity, retained without conversion."
+    }
+  ],
+  "identity": [
+    "orderNo"
+  ],
+  "identity_description": "Native orderNo identifies rows within the exact acquisition scope.",
+  "limitations": [
+    "Full native fields, types, exact decimals, nested values and unknown fields are retained. Inquiry-only List; no Get or additional history/detail requests.",
+    "Qualified width10 is based on historical successful requests, not a measured backend maximum. SDK collection owns loops, deadlines, retries, quality and cache publication.",
+    "Duplicates, count gaps and short interior pages remain incomplete. Conflicts keep the last arrival; strict refresh rejects incomplete data and preserves the prior saved capture.",
+    "Tenant GUAPW3SG history, with paging only; no invented dates or local filters. Native tradeDate/valueDate and rates/amounts remain unchanged."
+  ],
+  "examples": [
+    {
+      "title": "Acquire a complete native List",
+      "command": "dogopencli liquidity list operations.forwards --live --require-complete"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_forwards"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        10
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "orderNo"
+      ]
+    }
+  }
+}
