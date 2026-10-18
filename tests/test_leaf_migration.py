@@ -6,6 +6,7 @@ import json
 import shutil
 import stat
 import subprocess
+import sys
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -322,3 +323,47 @@ def test_runtime_drift_invalidates_delivery_without_http(
     monkeypatch.setattr(migration, "_download", lambda *a: pytest.fail("runtime drift"))
     with pytest.raises(migration.MigrationError, match="Host inputs changed"):
         migration.http_smoke(ROOT, delivery, "http://127.0.0.1:1", tmp_path / "smoke")
+
+
+@pytest.mark.parametrize(
+    "pointer",
+    [
+        "/data/-1",
+        "/data/01",
+        "/data/+0",
+        "/data/1",
+        "/data/",
+        "/data/~2",
+        "/data/" + "9" * 5000,
+    ],
+    ids=["negative", "leading-zero", "plus", "out-of-range", "empty", "escape", "huge"],
+)
+def test_compare_rejects_invalid_pointer_with_safe_cli_error(tmp_path, pointer):
+    expected, actual = tmp_path / "expected.json", tmp_path / "actual.json"
+    expected.write_text('{"data":["must-stay-private"]}')
+    actual.write_text(expected.read_text())
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(Path(migration.__file__)),
+            "compare",
+            str(expected),
+            str(actual),
+            "--expected-pointer",
+            pointer,
+            "--actual-pointer",
+            "/data/0",
+        ],
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 1
+    assert result.stderr == ""
+    assert json.loads(result.stdout)["state"] == "failed"
+    assert "must-stay-private" not in result.stdout
+
+
+def test_json_pointer_valid_indices_and_escaped_keys():
+    value = {"data": [{"a/b": {"~key": ["correct"]}}]}
+    assert migration.select(value, "/data/0/a~1b/~0key/0") == "correct"
+    assert migration.select({"": None}, "/") is None

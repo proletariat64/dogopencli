@@ -345,8 +345,21 @@ def select(value: object, pointer: str) -> object:
             "JSON pointers start with / (empty selects the whole value)."
         )
     for part in pointer.split("/")[1:]:
+        if re.search(r"~(?![01])", part):
+            raise MigrationError("Invalid JSON pointer escape.")
         part = part.replace("~1", "/").replace("~0", "~")
-        value = value[int(part)] if isinstance(value, list) else value[part]
+        if isinstance(value, list):
+            if not re.fullmatch(r"0|[1-9][0-9]*", part):
+                raise MigrationError(
+                    "Use a canonical nonnegative JSON pointer array index."
+                )
+            if len(part) > len(str(len(value))) or int(part) >= len(value):
+                raise MigrationError("JSON pointer array index is out of range.")
+            value = value[int(part)]
+        elif isinstance(value, dict) and part in value:
+            value = value[part]
+        else:
+            raise MigrationError("JSON pointer does not select a value.")
     return value
 
 
