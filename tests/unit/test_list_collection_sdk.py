@@ -299,7 +299,7 @@ def test_fallback_restarts_from_zero_then_persists_width(tmp_path):
 def test_timeout_can_fallback_but_business_failure_cannot(monkeypatch):
     monkeypatch.setattr("dogopencli.collect._sleep", lambda _: None)
     good = offset([{"id": "ok"}], 1)
-    stream = Script(FetchFailed("offline"), FetchFailed("offline"), FetchFailed("offline"), good)
+    stream = Script(\n        FetchFailed("offline"), FetchFailed("offline"), FetchFailed("offline"), good\n    )
     result = collect(Native(), stream, config())
     assert result.complete and result.page_size == 2
     assert [p["error"] for p in result.evidence.attempts[:1]] == ["TIMEOUT"]
@@ -361,7 +361,7 @@ def test_real_entity_pilot_contract_can_run_through_generic_offset_engine():
     assert json.loads(stream.requests[0]["entityMaintQueryVO"])["pageSize"] == 5000
 
 
-def test_opted_in_refresh_rejects_partial_and_preserves_saved_rows(tmp_path, monkeypatch):
+def test_opted_in_refresh_rejects_partial_and_preserves_saved_rows(\n    tmp_path, monkeypatch\n):
     from dogopencli.leaves import runtime
 
     source = Native(sizes=(2,))
