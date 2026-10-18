@@ -1,0 +1,89 @@
+{
+  "domain": "liquidity",
+  "name": "investment.rfqs",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read complete native TARGET_RFQ subtasks within the verified date scope.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Native inquiry-date lower bound YYYY-MM-DD; pair with to-date."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Native inquiry-date upper bound YYYY-MM-DD, at or after from-date."
+        }
+      ]
+    }
+  },
+  "summary": "TARGET_RFQ inquiry subtasks.",
+  "purpose": "Inspect native investment inquiry subtasks through one bounded inquiry-only request.",
+  "fields": [
+    {
+      "name": "inquirySubTaskId",
+      "type": "string",
+      "meaning": "Native subtask identity; distinct subtasks retain their own records."
+    },
+    {
+      "name": "inquiryTaskId",
+      "type": "native",
+      "meaning": "Native parent reference, retained without using it to merge subtasks."
+    },
+    {
+      "name": "inquiryType",
+      "type": "string",
+      "meaning": "Fixed TARGET_RFQ source type."
+    },
+    {
+      "name": "inquiryStartTime",
+      "type": "native",
+      "meaning": "Native source value; timezone and date-bound membership are unproven."
+    },
+    {
+      "name": "quotedNum",
+      "type": "native",
+      "meaning": "Original counter value, including null, blank or negative values; no arithmetic or coercion."
+    }
+  ],
+  "identity": [
+    "inquirySubTaskId"
+  ],
+  "identity_description": "Native nonempty inquirySubTaskId identifies one returned TARGET_RFQ subtask within the application and exact inquiry-date scope.",
+  "limitations": [
+    "One JSON POST /rfq/subInquiryTask/querySubInquiryTask.json sends exactly rowStart=0, pageSize=5000, inquiryType=TARGET_RFQ and compact inquiryStartDate/inquiryEndDate. The request has no tenant key; the verified application startup session supplies tenant context.",
+    "Both public ISO date bounds are required and ordered. Native timestamp timezone and exact source boundary semantics remain unknown; no local timestamp membership or date conversion is inferred.",
+    "Only the qualified TARGET_RFQ source is supported. No type, product, status, parent or subtask filters; no offset fallback, automatic partitioning, source supplementation or related-detail acquisition.",
+    "Native data.data records and data.totalCount must fit the single response. The host SDK owns completeness and publication; duplicate/conflicting identities or count gaps remain incomplete, and rejected refresh preserves the previous capture.",
+    "Every native field, type, nested object and unknown addition is retained. Nullable, blank, zero, negative and unknown counter/status/time values are preserved without interpretation. Parent references do not collapse subtask identities.",
+    "Width 5000 is a historical successful request size, not a measured backend maximum. Current nonempty exact-candidate qualification is required. Query refresh manages temporary cache and does not import runtime data."
+  ],
+  "examples": [
+    {
+      "title": "Acquire the complete scoped List",
+      "command": "dogopencli liquidity list investment.rfqs --live --require-complete --limit 0 --from-date 2026-01-01 --to-date 2026-10-05"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_rfqs"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "inquirySubTaskId"
+      ]
+    }
+  }
+}
