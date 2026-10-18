@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from integration.test_migration_b02 import LEAVES, page, rows
 from integration.test_migration_b02 import installed as installed
+from integration.test_migration_b02 import source_format as source_format
 
 from dogopencli.jsonutil import parse
 
