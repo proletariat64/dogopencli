@@ -30,6 +30,7 @@ from .errors import (
     AUTH_REQUIRED,
     BUSINESS_QUERY_FAILED,
     INVALID_RESPONSE,
+    REQUEST_NOT_ALLOWED,
     TIMEOUT,
     CliError,
 )
@@ -652,7 +653,7 @@ def collect_list(
         raise CliError(INVALID_RESPONSE, "invalid List acquisition limits")
     preferred_key = state_key(leaf_id, capability, scope, sizes)
     favored = preferred_page_size(state_file, preferred_key, sizes)
-    candidates = (favored, *(size for size in sizes if size != favored)) if favored else sizes
+    candidates = (\n        (favored, *(size for size in sizes if size != favored))\n        if favored\n        else sizes\n    )
     deadline = _monotonic() + (
         REFRESH_BUDGET_SECONDS if budget_seconds is None else budget_seconds
     )
