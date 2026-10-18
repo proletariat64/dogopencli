@@ -1,8 +1,10 @@
 """Migration helpers reuse host and artifact evidence without a second UAT loop."""
 
+import contextlib
 import functools
 import importlib.util
 import json
+import os
 import shutil
 import stat
 import subprocess
@@ -145,11 +147,30 @@ def http_server(delivery):
         thread.join()
 
 
+@pytest.mark.parametrize("relative_work", [False, True])
 def test_http_acceptance_is_checksum_install_uninstall_only(
-    delivery, http_server, tmp_path
+    delivery, http_server, tmp_path, monkeypatch, relative_work
 ):
     base, requests = http_server
     work = tmp_path / "smoke"
+    if relative_work:
+        monkeypatch.chdir(tmp_path)
+        work = Path("smoke")
+        original = migration.tempfile.TemporaryDirectory
+
+        @contextlib.contextmanager
+        def python310_temporary_directory(*args, **kwargs):
+            # Python 3.10/3.11 preserve a relative dir argument; 3.12+ make it absolute.
+            with original(*args, **kwargs) as directory:
+                yield (
+                    os.path.relpath(directory)
+                    if not Path(kwargs["dir"]).is_absolute()
+                    else directory
+                )
+
+        monkeypatch.setattr(
+            migration.tempfile, "TemporaryDirectory", python310_temporary_directory
+        )
     result = migration.http_smoke(delivery, base, work)
     assert result["business_queries"] == 0
     assert result["packages"][0]["install"] and result["packages"][0]["uninstall"]

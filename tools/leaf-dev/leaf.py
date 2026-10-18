@@ -204,6 +204,7 @@ def cli(arguments: list[str], config: Path) -> None:
 
 def http_smoke(delivery: Path, base_url: str, work: Path) -> dict:
     """Check delivery bytes and local lifecycle only; never issue business queries."""
+    work = work.absolute()
     manifest = json.loads((delivery / "delivery.json").read_text())
     parsed = urllib.parse.urlsplit(base_url)
     if (
