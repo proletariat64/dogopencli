@@ -1,0 +1,702 @@
+{
+  "parent_issue": 218,
+  "tools_issue": 261,
+  "expected_packages": 79,
+  "expected_actions": 106,
+  "reference_commit": "a7e5c5ead675487646eb9a53d73ec9e0aeb944f9",
+  "batches": [
+    {
+      "id": "B01",
+      "title": "基础列表",
+      "issue": 257,
+      "status": "delivered",
+      "members": [
+        {
+          "identity": "liquidity.reference.banks",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.investment.benchmarks",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.rules.forecast",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B02",
+      "title": "规则配置与风险阈值",
+      "issue": 259,
+      "status": "delivered",
+      "members": [
+        {
+          "identity": "liquidity.rules.action_mapping",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.rules.funding",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.rules.fx_settlement",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.rules.operation",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.rules.realtime",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.risk.thresholds",
+          "operations": [
+            "list",
+            "get"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B03",
+      "title": "现金水位、流水、授信与现金池",
+      "issue": 262,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.cash.waterlevels",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.forecast.adjustments",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.cash.statements.intraday",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.cash.statements.end_of_day",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.cash.credit_lines",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.cash.credit_usage",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.cash.group_balances",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.cash.pool_balances",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.cash.pools",
+          "operations": [
+            "list",
+            "get"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B05",
+      "title": "投资持仓、台账与收益",
+      "issue": 264,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.investment.holdings",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.investment.transactions",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.investment.compound_ledger",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.investment.benchmark_values",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.investment.returns",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B06",
+      "title": "规则与原生详情",
+      "issue": 265,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.rules.notification",
+          "operations": [
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.rules.transfer",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.rules.waterlevel",
+          "operations": [
+            "list",
+            "get"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B07",
+      "title": "风险事件、指标与SLA",
+      "issue": 266,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.risk.anomalies",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.risk.events",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.risk.metrics",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.risk.sla",
+          "operations": [
+            "list",
+            "get"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B08",
+      "title": "交易与资金调度",
+      "issue": 267,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.operations.asset_trades",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.operations.forwards",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.operations.prefunds",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.operations.demands",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.operations.transfers",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.operations.swaps",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B09",
+      "title": "RFQ与报价",
+      "issue": 268,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.investment.rfqs",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.investment.quotes",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.investment.quote_groups",
+          "operations": [
+            "get"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B10",
+      "title": "客户与账户能力",
+      "issue": 269,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.ledger.customers",
+          "operations": [
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.network.account_capabilities",
+          "operations": [
+            "list",
+            "get"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B11",
+      "title": "实时网络与路由额度",
+      "issue": 270,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.network.realtime",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.network.route_quotas",
+          "operations": [
+            "get"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B12",
+      "title": "投资策略与结果",
+      "issue": 271,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.investment.strategies",
+          "operations": [
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.investment.strategy_results",
+          "operations": [
+            "list",
+            "get"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B13",
+      "title": "收款配置列表",
+      "issue": 272,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "collection.clearing_system",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "collection.card_template",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "collection.account_isolation",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B14",
+      "title": "付款规则",
+      "issue": 273,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "payment.rules.same_bank_transfer",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "payment.rules.cost_reduction",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "payment.rules.retry",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "payment.rules.bank_switch",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B15",
+      "title": "收款SLA与VA",
+      "issue": 274,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "collection.sla.configs",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "collection.va.rules",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "collection.va.capacity",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B16",
+      "title": "付款渠道与成本",
+      "issue": 275,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "payment.channel",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "payment.cost",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B17",
+      "title": "付款PTR",
+      "issue": 276,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "payment.ptr.cases",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "payment.ptr.orders",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B18",
+      "title": "黑白名单",
+      "issue": 277,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.reference.blacklist.account",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.reference.blacklist.bank",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.reference.whitelist.entity",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B19",
+      "title": "账户与余额组合",
+      "issue": 278,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.cash.accounts",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.cash.balances",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B20",
+      "title": "账户策略与容量",
+      "issue": 279,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.operations.account_strategies",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.risk.account_capacity",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B21",
+      "title": "账户现金流与需求",
+      "issue": 280,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.forecast.account_cashflows",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.forecast.account_demands",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B22",
+      "title": "账户预测时段",
+      "issue": 281,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.forecast.account_t3",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.forecast.account_demands_intraday",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B23",
+      "title": "预测结果与准确率",
+      "issue": 282,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.forecast.results",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.forecast.cashflows",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.forecast.accuracy",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B24",
+      "title": "利率、产品与历史",
+      "issue": 283,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.investment.interest_rates",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.investment.products",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.investment.products.history",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B25",
+      "title": "决策、历史与规则状态",
+      "issue": 284,
+      "status": "planned",
+      "members": [
+        {
+          "identity": "liquidity.operations.decisions",
+          "operations": [
+            "list",
+            "get"
+          ]
+        },
+        {
+          "identity": "liquidity.operations.decisions.history",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.operations.rule_status",
+          "operations": [
+            "list"
+          ]
+        }
+      ]
+    }
+  ]
+}

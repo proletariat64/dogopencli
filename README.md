@@ -4,11 +4,8 @@ An inquiry-only CLI for payment, collection, liquidity and FX operations, intend
 for one person on one machine. Install the leaves you need, discover their commands
 with progressive help, and query live data or replay a local snapshot.
 
-**Developing or migrating a leaf?** Start with the
-[Leaf plugin development handbook](docs/agents/leaf-plugins.md). It covers the
-manifest, adapter contract, package helper, testing and one-leaf-at-a-time migration.
-Its [runnable simple example](examples/leaf_simple/) owns its request contract and
-parser; the handbook includes an offline CLI exercise to verify the full workflow.
+**Developing or migrating a leaf?** Start with [tools/leaf-dev](tools/leaf-dev/README.md)
+for the handbook, interfaces, workflow, runnable example and helpers.
 
 ## Get started
 
@@ -171,15 +168,12 @@ business-query, login, import or package-management buttons.
 
 ## Develop and migrate
 
-The [development handbook](docs/agents/leaf-plugins.md) is the entry point for new
-leaves and historical migration. [Issue #255](https://github.com/proletariat64/dogopencli/issues/255)
-requires four self-contained pilots and retirement of the old business runtime.
-The [broader migration map](https://github.com/proletariat64/dogopencli/issues/241)
-remains paused until separately resumed. Later work starts with a bounded inventory
-and isolated pinned-release references, then accepts each supported inquiry.
-Unsupported placeholders are not automatic migration targets. Historical
-command examples in older reports are evidence of that revision, not current CLI
-registration.
+Use the [development handbook](tools/leaf-dev/handbook.md) for adapter contracts
+and the [migration procedure](tools/leaf-dev/workflow.md) with the assigned
+batch ticket for scope and acceptance. Standalone migration packages live under
+root `leaf_packages/`; four bundled pilot resources remain under the host source.
+Each inquiry requires its own native business proof. Unsupported placeholders
+are not automatic migration targets.
 
 ```bash
 uv run python -m pytest -q
@@ -196,7 +190,6 @@ browser instructions before browser/authentication work. Local tests, review,
 production business UAT, merge and release are separate evidence.
 
 Further reading: [documentation index](docs/README.md), [domain vocabulary](CONTEXT.md),
-[leaf architecture ADR](docs/adr/0022-installed-leaf-pilots.md),
 [plugin lifecycle spec](https://github.com/proletariat64/dogopencli/issues/239),
 [domain component guide](docs/agents/domain-components.md) and
-[plugin-helper skill](.agents/skills/plugin-helper/SKILL.md).
+[leaf development tool](tools/leaf-dev/README.md).

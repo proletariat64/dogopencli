@@ -15,7 +15,7 @@ from dogopencli.jsonutil import parse
 from dogopencli.leaves.package import validate_package
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "examples/leaf_simple"
+SOURCE = ROOT / "tools/leaf-dev/example"
 ROWS = [
     {
         "id": "one",
@@ -63,9 +63,7 @@ def handbook(request, run_cli, tmp_path, monkeypatch, capsys):
     cdp.set_transport_factory(browser.transport)
     try:
         source = SOURCE
-        helper = runpy.run_path(
-            str(ROOT / ".agents/skills/plugin-helper/scripts/plugin_helper.py")
-        )["main"]
+        helper = runpy.run_path(str(ROOT / "tools/leaf-dev/leaf.py"))["main"]
 
         def helper_cli(*args):
             monkeypatch.setattr("sys.argv", ["plugin_helper.py", *map(str, args)])
@@ -74,8 +72,11 @@ def handbook(request, run_cli, tmp_path, monkeypatch, capsys):
 
         assert helper_cli("verify", source)["state"] == "verified"
         if request.param == "zip":
-            source = tmp_path / "delivery.zip"
-            assert helper_cli("pack", SOURCE, "--output", source)["state"] == "packed"
+            source = tmp_path / "delivery/collection.sample.records.zip"
+            assert (
+                helper_cli("pack", SOURCE, "--output", source.parent)["state"]
+                == "packed"
+            )
             assert helper_cli("verify", source)["state"] == "verified"
 
         def cli(*args, code=0):

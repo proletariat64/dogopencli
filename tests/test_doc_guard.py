@@ -38,15 +38,17 @@ class DocGuardTests(unittest.TestCase):
             {
                 "README.md": "# Project\n\n[Docs](docs/README.md)\n",
                 "docs/README.md": "# Docs\n\n```md\n# Example\n[Missing](missing.md)\n```\n",
-                "docs/research/general/2026-09-08-access.md": (
-                    "# Access\n\nObserved: 2026-09-08\nScope: general\nStatus: snapshot\n"
-                    "\n[Docs](../../README.md#research)\n[Remote](https://invalid.example/doc)\n"
+                "docs/agents/access.md": (
+                    "# Access\n\n[Docs](../README.md)\n"
+                    "[Remote](https://invalid.example/doc)\n"
                 ),
                 ".code-review-graph/wiki/Anything.md": "# Ignored\n",
+                "tools/leaf-dev/README.md": "# Leaf development\n\n[Interfaces](interfaces.md)\n",
+                "tools/leaf-dev/interfaces.md": "# Interfaces\n",
             }
         )
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn("PASS (3 Markdown files)", result.stdout)
+        self.assertIn("PASS (5 Markdown files)", result.stdout)
 
     def test_standalone_leaf_readme_keeps_prose_and_link_checks(self) -> None:
         name = "leaf_packages/liquidity/reference.banks/README.md"
@@ -79,23 +81,17 @@ class DocGuardTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("invalid documentation", result.stdout)
 
-    def test_versioned_design_copy_requires_authoritative_issue(self) -> None:
-        name = "docs/design/liquidity-v0.2.3.md"
-        result = self.run_guard(
-            {
-                name: "# Liquidity\n\n[Specification](https://github.com/proletariat64/dogopencli/issues/76)\n"
-            }
-        )
-        self.assertEqual(result.returncode, 0, result.stdout)
-        for body in (
-            "# Liquidity\n",
-            "# Liquidity\n\n```text\nhttps://github.com/proletariat64/dogopencli/issues/76\n```\n",
-            "# Liquidity\n\nhttps://github.com/another/repository/issues/76\n",
+    def test_process_and_version_archives_are_not_active_documentation(self) -> None:
+        for name in (
+            "CHANGELOG.md",
+            "docs/design/liquidity-v0.2.3.md",
+            "docs/adr/0001-first.md",
+            "docs/research/general/2026-09-08-access.md",
         ):
-            with self.subTest(body=body):
-                result = self.run_guard({name: body})
+            with self.subTest(name=name):
+                result = self.run_guard({name: "# Obsolete process\n"})
                 self.assertEqual(result.returncode, 1)
-                self.assertIn("authoritative GitHub issue", result.stdout)
+                self.assertIn("invalid documentation", result.stdout)
 
     def test_inline_code_title_and_link_examples_pass(self) -> None:
         result = self.run_guard(
@@ -110,29 +106,6 @@ class DocGuardTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("malformed link", result.stdout)
         self.assertNotIn("Traceback", result.stderr)
-
-    def test_research_requires_matching_date_scope_and_status(self) -> None:
-        cases = (
-            (
-                "2026-02-30-access.md",
-                "Observed: 2026-02-30\nScope: general\nStatus: snapshot\n",
-            ),
-            (
-                "2026-09-08-access.md",
-                "Observed: 2026-09-09\nScope: general\nStatus: snapshot\n",
-            ),
-            (
-                "2026-09-08-access.md",
-                "Observed: 2026-09-08\nScope: payment\nStatus: snapshot\n",
-            ),
-            ("2026-09-08-access.md", "Observed: 2026-09-08\nScope: general\n"),
-        )
-        for name, metadata in cases:
-            with self.subTest(name=name, metadata=metadata):
-                result = self.run_guard(
-                    {f"docs/research/general/{name}": "# Research\n\n" + metadata}
-                )
-                self.assertNotEqual(result.returncode, 0)
 
     def test_missing_title_duplicate_title_and_missing_newline_fail(self) -> None:
         for content in ("## Not a title\n", "# One\n# Two\n", "# Missing newline"):
@@ -155,20 +128,12 @@ class DocGuardTests(unittest.TestCase):
             {
                 "README.md": "# Project\n",
                 "tmp/private/notes.md": "not a documentation file\n",
+                "aidb/private/notes.md": "private dataset, not documentation\n",
+                "duckdog-data/notes.md": "private dataset, not documentation\n",
             }
         )
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("PASS (1 Markdown files)", result.stdout)
-
-    def test_duplicate_adr_numbers_fail(self) -> None:
-        result = self.run_guard(
-            {
-                "docs/adr/0001-first.md": "# First\n",
-                "docs/adr/0001-second.md": "# Second\n",
-            }
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("duplicate ADR number 0001", result.stdout)
 
 
 if __name__ == "__main__":

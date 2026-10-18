@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import os
 import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-ROOT_DOCS = {"README.md", "AGENTS.md", "CONTEXT.md", "CHANGELOG.md", "LICENSE.md"}
-SCOPES = {"general", "payment"}
-SKIP_DIRS = {"node_modules", "__pycache__", "build", "dist", "tmp"}
+ROOT_DOCS = {"README.md", "AGENTS.md", "CONTEXT.md", "LICENSE.md"}
+SKIP_DIRS = {
+    "node_modules",
+    "__pycache__",
+    "build",
+    "dist",
+    "tmp",
+    "aidb",
+    "duckdog-data",
+}
 SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 
 
@@ -63,19 +69,10 @@ def valid_layout(relative: Path) -> bool:
         )
     if parts == ("docs", "README.md"):
         return True
-    if len(parts) == 3 and parts[:2] == ("docs", "design"):
-        version = r"(?:0|[1-9][0-9]*)"
-        return bool(
-            re.fullmatch(SLUG + rf"-v{version}\.{version}\.{version}\.md", parts[2])
-        )
+    if len(parts) == 3 and parts[:2] == ("tools", "leaf-dev"):
+        return parts[2] == "README.md" or bool(re.fullmatch(SLUG + r"\.md", parts[2]))
     if len(parts) == 3 and parts[:2] == ("docs", "agents"):
         return bool(re.fullmatch(SLUG + r"\.md", parts[2]))
-    if len(parts) == 3 and parts[:2] == ("docs", "adr"):
-        return bool(re.fullmatch(r"(?!0000)[0-9]{4}-" + SLUG + r"\.md", parts[2]))
-    if len(parts) == 4 and parts[:2] == ("docs", "research"):
-        return parts[2] in SCOPES and bool(
-            re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}-" + SLUG + r"\.md", parts[3])
-        )
     return False
 
 
@@ -83,7 +80,6 @@ def check(root: Path) -> tuple[int, list[str]]:
     root = root.resolve()
     errors: list[str] = []
     files = markdown_files(root)
-    adr_numbers: dict[str, Path] = {}
     for path in files:
         relative = path.relative_to(root)
 
@@ -108,38 +104,6 @@ def check(root: Path) -> tuple[int, list[str]]:
             error("document must contain exactly one H1 title")
         if not text.endswith("\n"):
             error("missing final newline")
-        if relative.parts[:2] == ("docs", "design") and not any(
-            re.search(
-                r"https://github\.com/proletariat64/dogopencli/issues/[1-9][0-9]*\b",
-                line,
-            )
-            for line in prose
-        ):
-            error("design copy must link its authoritative GitHub issue")
-        if relative.parts[:2] == ("docs", "adr"):
-            number = path.name.split("-", 1)[0]
-            if number in adr_numbers:
-                error(f"duplicate ADR number {number}: {adr_numbers[number]}")
-            adr_numbers[number] = relative
-        if relative.parts[:2] == ("docs", "research"):
-            date = path.name[:10]
-            try:
-                dt.date.fromisoformat(date)
-            except ValueError:
-                error("research filename must start with a valid calendar date")
-            scope = relative.parts[2] if len(relative.parts) == 4 else ""
-            for key, value in (
-                ("Observed", date),
-                ("Scope", scope),
-                ("Status", "snapshot"),
-            ):
-                values = [
-                    line.removeprefix(key + ": ")
-                    for line in prose
-                    if line.startswith(key + ": ")
-                ]
-                if values != [value]:
-                    error(f"expected exactly one metadata line: {key}: {value}")
         for line_number, line in enumerate(prose, 1):
             line = re.sub(r"`[^`\n]*`", "", line)
             for match in re.finditer(r"!?\[[^\]\n]*\]\(([^)\n]+)\)", line):

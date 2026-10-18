@@ -17,7 +17,7 @@ The host owns domain enablement and observations, the dedicated browser profile,
 shared OAuth lifecycle, inquiry transport, result policy, cache and rendering.
 Installed leaf packages own their native contracts, request construction,
 parsing, supported filters and any specialized collection policy. Use the
-[leaf handbook](leaf-plugins.md) for new inquiries.
+[leaf handbook](../../tools/leaf-dev/handbook.md) for new inquiries.
 
 `DomainAuthPolicy` declares whether login preserves an existing headed browser,
 uses document completion, and performs bounded handoff. FX and liquidity require

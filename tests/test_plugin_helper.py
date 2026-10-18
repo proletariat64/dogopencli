@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / ".agents/skills/plugin-helper/scripts/plugin_helper.py"
+SCRIPT = ROOT / "tools/leaf-dev/leaf.py"
 
 
 def invoke(*arguments, umask=-1):
@@ -46,8 +46,8 @@ def test_helper_verifies_and_packs_static_snapshot(source, tmp_path):
     verified = invoke("verify", source)
     assert verified.returncode == 0, verified.stdout + verified.stderr
     assert json.loads(verified.stdout)["identity"] == "payment.sla.baselines"
-    output = tmp_path / "arbitrary-delivery.zip"
-    packed = invoke("pack", source, "--output", output)
+    output = tmp_path / "delivery/payment.sla.baselines.zip"
+    packed = invoke("pack", source, "--output", output.parent)
     assert packed.returncode == 0, packed.stdout + packed.stderr
     assert invoke("verify", output).returncode == 0
     with zipfile.ZipFile(output) as archive:
@@ -62,7 +62,7 @@ def test_helper_verifies_and_packs_static_snapshot(source, tmp_path):
 
 
 def test_helper_preserves_existing_output_and_rejects_self_inclusion(source, tmp_path):
-    output = tmp_path / "delivery.zip"
+    output = tmp_path / "delivery"
     output.write_bytes(b"keep existing output")
     assert invoke("pack", source, "--output", output).returncode != 0
     assert output.read_bytes() == b"keep existing output"
@@ -73,18 +73,48 @@ def test_helper_preserves_existing_output_and_rejects_self_inclusion(source, tmp
 
 def test_helper_rejects_invalid_input_without_output(source, tmp_path):
     (source / "leaf.json").write_text("{}")
-    output = tmp_path / "invalid.zip"
+    output = tmp_path / "invalid/payment.sla.baselines.zip"
     assert invoke("verify", source).returncode != 0
-    assert invoke("pack", source, "--output", output).returncode != 0
+    assert invoke("pack", source, "--output", output.parent).returncode != 0
     assert not output.exists()
     assert (source / "leaf.json").read_text() == "{}"
     assert invoke("verify", "https://example.invalid/package.zip").returncode != 0
 
 
+def test_batch_pack_is_atomic_and_rejects_duplicate_identities(source, tmp_path):
+    other = tmp_path / "other"
+    shutil.copytree(source, other)
+    manifest = json.loads((other / "leaf.json").read_text())
+    manifest["name"] = "sla.other"
+    manifest["dataset"]["relation"] = "payment_sla_other"
+    (other / "leaf.json").write_text(json.dumps(manifest))
+    output = tmp_path / "batch"
+    result = invoke("pack", source, other, "--output", output)
+    assert result.returncode == 0, result.stdout
+    assert json.loads(result.stdout)["packages"] == 2
+    assert {p.name for p in output.glob("*.zip")} == {
+        "payment.sla.baselines.zip",
+        "payment.sla.other.zip",
+    }
+    invalid = tmp_path / "invalid-batch"
+    (other / "leaf.json").write_text("{}")
+    assert invoke("pack", source, other, "--output", invalid).returncode == 1
+    assert not invalid.exists()
+    duplicate = tmp_path / "duplicate-batch"
+    result = invoke("pack", source, source, "--output", duplicate)
+    assert result.returncode == 1
+    assert (
+        json.loads(result.stdout)["message"]
+        == "Duplicate leaf identity: payment.sla.baselines"
+    )
+    assert not duplicate.exists()
+    assert not list(tmp_path.glob(".leaf-pack-*"))
+
+
 def test_helper_pack_install_preserves_empty_directories(source, tmp_path, run_cli):
     (source / "resources/empty/nested").mkdir(parents=True)
-    output = tmp_path / "with-empty-directories.zip"
-    packed = invoke("pack", source, "--output", output)
+    output = tmp_path / "empty/payment.sla.baselines.zip"
+    packed = invoke("pack", source, "--output", output.parent)
     assert packed.returncode == 0, packed.stdout + packed.stderr
     with zipfile.ZipFile(output) as archive:
         assert "resources/empty/nested/" in archive.namelist()
@@ -94,8 +124,8 @@ def test_helper_pack_install_preserves_empty_directories(source, tmp_path, run_c
             ROOT / "src/dogopencli/leaf_packages/payment/sla.baselines/adapter.py"
         ).read_bytes()
     )
-    runnable = tmp_path / "runnable.zip"
-    assert invoke("pack", source, "--output", runnable).returncode == 0
+    runnable = tmp_path / "runnable/payment.sla.baselines.zip"
+    assert invoke("pack", source, "--output", runnable.parent).returncode == 0
     code, out, error = run_cli(["plugins", "install", str(runnable)])
     assert (code, error) == (0, ""), out + error
     installed = tmp_path / "plugins/payment/sla.baselines"
@@ -148,9 +178,26 @@ def test_corrupt_compressed_zip_has_static_diagnostics(
 
 @pytest.mark.parametrize(("umask", "permissions"), [(0o022, 0o644), (0o077, 0o600)])
 def test_helper_pack_respects_artifact_umask(source, tmp_path, umask, permissions):
-    output = tmp_path / "portable-delivery.zip"
-    result = invoke("pack", source, "--output", output, umask=umask)
+    output = tmp_path / "portable/payment.sla.baselines.zip"
+    result = invoke("pack", source, "--output", output.parent, umask=umask)
     assert result.returncode == 0, result.stdout + result.stderr
     assert stat.S_IMODE(output.stat().st_mode) == permissions
     assert invoke("verify", output).returncode == 0
-    assert list(tmp_path.glob(".dogopencli-pack-*")) == []
+    assert list(tmp_path.glob(".leaf-pack-*")) == []
+
+
+def test_same_contents_produce_same_zip_despite_source_metadata(source, tmp_path):
+    first, second = (
+        tmp_path / "one/payment.sla.baselines.zip",
+        tmp_path / "two/payment.sla.baselines.zip",
+    )
+    assert invoke("pack", source, "--output", first.parent).returncode == 0
+    for path in source.rglob("*"):
+        os.utime(path, (1_700_000_000, 1_700_000_000))
+        path.chmod(0o700 if path.is_dir() else 0o600)
+    assert invoke("pack", source, "--output", second.parent).returncode == 0
+    assert first.read_bytes() == second.read_bytes()
+    (source / "resources/help.txt").write_text("changed ordinary resource\n")
+    third = tmp_path / "three/payment.sla.baselines.zip"
+    assert invoke("pack", source, "--output", third.parent).returncode == 0
+    assert third.read_bytes() != first.read_bytes()
