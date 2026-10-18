@@ -4,12 +4,8 @@ An inquiry-only CLI for payment, collection, liquidity and FX operations, intend
 for one person on one machine. Install the leaves you need, discover their commands
 with progressive help, and query live data or replay a local snapshot.
 
-**Developing or migrating a leaf?** Start with the
-[Leaf plugin development handbook](tools/leaf-dev/handbook.md). It covers the
-manifest, adapter contract, package helper and testing. For a batch, also read the
-[migration procedure](tools/leaf-dev/workflow.md) and its assigned ticket.
-Its [runnable simple example](tools/leaf-dev/example/) owns its request contract and
-parser; the handbook includes an offline CLI exercise to verify the full workflow.
+**Developing or migrating a leaf?** Start with [tools/leaf-dev](tools/leaf-dev/README.md)
+for the handbook, interfaces, workflow, runnable example and helpers.
 
 ## Get started
 
