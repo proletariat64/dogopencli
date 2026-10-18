@@ -249,7 +249,8 @@ def validate_manifest(value: Any) -> None:
             or len(pages) > 8
             or any(type(size) is not int or not 0 < size <= 100000 for size in pages)
             or pages != sorted(set(pages), reverse=True)
-            or collection["paging"]["mode"] == "single" and len(pages) != 1
+            or collection["paging"]["mode"] == "single"
+            and len(pages) != 1
         ):
             raise _invalid("List page sizes must be unique, descending and qualified")
         fields = collection["primary_id"]["fields"]
@@ -257,7 +258,8 @@ def validate_manifest(value: Any) -> None:
             not fields
             or len(fields) != len(set(fields))
             or any(not field.strip() for field in fields)
-            or collection["primary_id"]["type"] == "field" and len(fields) != 1
+            or collection["primary_id"]["type"] == "field"
+            and len(fields) != 1
             or not collection.get("latest_by", "present").strip()
         ):
             raise _invalid("List primary identity or timestamp declaration is invalid")
