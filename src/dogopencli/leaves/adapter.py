@@ -23,7 +23,7 @@ class LeafAdapter(Protocol):
 
     def get(
         self, session: Any, parameters: dict[str, Any], identity: str
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any] | list[dict[str, Any]]: ...
 
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]

@@ -75,7 +75,7 @@ Export the object named by `adapter`. Follow the
 | `scope(parameters)` | list | Return the stable string describing the native acquisition scope; canonical JSON is useful for structured scope. |
 | `collector(capability, transport, scope, *, progress=None)` | list | Collect through the supplied restricted transport and return CollectedScope with truthful coverage evidence. Reuse collect_scope where suitable. |
 | `filter(records, parameters)` | list | Apply only supported offline filters to saved records. No requests or storage writes. |
-| `get(session, parameters, identity)` | get | Perform the verified native detail inquiry through the supplied session and return a business object. |
+| `get(session, parameters, identity)` | get | Perform the verified native detail inquiry through the supplied session and return a native business object or an array of business objects. Each returned row must satisfy the manifest identity; the adapter verifies the requested detail identity or account scope. |
 
 ### Bridge the adapter to the shared collector
 

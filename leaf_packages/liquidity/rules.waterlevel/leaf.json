@@ -1,0 +1,66 @@
+{
+  "domain": "liquidity",
+  "name": "rules.waterlevel",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read full native configuration records.",
+      "parameters": [
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "currency",
+          "description": "Exact case-sensitive local currency match; repeat for alternatives. Acquisition always retains the full native scope."
+        }
+      ]
+    },
+    "get": {
+      "description": "Query native detail by aliasName; reads online without changing saved lists.",
+      "parameters": []
+    }
+  },
+  "summary": "Waterlevel rules.",
+  "purpose": "Inspect native configuration through inquiry-only requests.",
+  "fields": [
+    {
+      "name": "bufferId",
+      "type": "string",
+      "meaning": "Native row identity, retained without conversion."
+    },
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native account alias used for get; distinct from bufferId."
+    },
+    {
+      "name": "currency",
+      "type": "native",
+      "meaning": "Exact local currency filter field."
+    }
+  ],
+  "identity": [
+    "bufferId"
+  ],
+  "identity_description": "Native bufferId identifies configuration rows.",
+  "limitations": [
+    "Fixed GUAPW3SG tenant. Native fields, nested values, exact decimals and unknown fields are retained.",
+    "Native get sends aliasName as a string to GET /bankAccountBufferListByAliasName.json; no implicit list lookup.",
+    "List uses rowStart offsets with pageSize=5000 and null credit-date bounds. No page echoes; fixed result.count and raw/unique agreement prove coverage.",
+    "Get returns the native account-scoped dataValue object array. Every row must echo the requested aliasName. The envelope count is not the detail cardinality."
+  ],
+  "examples": [
+    {
+      "title": "Query native detail",
+      "command": "dogopencli liquidity get rules.waterlevel NATIVE_ID"
+    },
+    {
+      "title": "Read saved records",
+      "command": "dogopencli liquidity list rules.waterlevel"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_rules_waterlevel"
+  }
+}

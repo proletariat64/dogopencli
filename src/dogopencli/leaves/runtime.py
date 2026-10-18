@@ -128,27 +128,33 @@ def execute(
             config_file=config_file, startup_url=getattr(capability, "page_url", None)
         ) as session:
             record = leaf.adapter.get(session, parameters, args.detail_identity)
-        if not isinstance(record, dict):
-            raise CliError("INVALID_RESPONSE", "detail response must be an object")
-        _validate_records([record], leaf.manifest.get("identity", []))
-        data = _project([record], fields)[0]
+        if not isinstance(record, (dict, list)):
+            raise CliError(
+                "INVALID_RESPONSE", "detail must be an object or object array"
+            )
+        rows = record if isinstance(record, list) else [record]
+        _validate_records(rows, leaf.manifest.get("identity", []))
+        projected = _project(rows, fields)
+        data = projected if isinstance(record, list) else projected[0]
+        count = len(rows)
+        has_identity = bool(leaf.manifest.get("identity")) or isinstance(record, dict)
         return data, {
             **AcquisitionEvidence(
                 scope_complete=True,
                 dataset_complete=True,
-                collected_total=1,
-                reported_total=1,
-                arrivals=1,
-                unique_count=1,
-                duplicate_count=0,
-                total_semantics="unique_objects",
+                collected_total=count,
+                reported_total=count,
+                arrivals=count,
+                unique_count=count if has_identity else None,
+                duplicate_count=0 if has_identity else None,
+                total_semantics="unique_objects" if has_identity else "occurrences",
             ).meta(),
             "source": "live",
             "leaf": leaf.id,
             "operation": "get",
             "query": {**parameters, "id": args.detail_identity},
             "fetched_at": now().isoformat(),
-            "returned_count": 1,
+            "returned_count": count,
         }
     definitions = leaf.manifest["operations"]["list"].get("parameters", [])
     local_parameters = {

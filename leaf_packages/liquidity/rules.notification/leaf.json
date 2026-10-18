@@ -1,0 +1,35 @@
+{
+  "domain": "liquidity",
+  "name": "rules.notification",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "get": {
+      "description": "Query native detail by id; reads online without changing saved lists.",
+      "parameters": []
+    }
+  },
+  "summary": "Notification rules.",
+  "purpose": "Inspect native configuration through inquiry-only requests.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native row identity, retained without conversion."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies configuration rows.",
+  "limitations": [
+    "Fixed GUAPW3SG tenant. Native fields, nested values, exact decimals and unknown fields are retained.",
+    "Native get sends id as a string to GET /messageNoticeConfigDetail.json; no implicit list lookup.",
+    "Get-only; notification list remains retired. Supply a valid native configuration id from permitted UI/context; no enumeration or version guessing."
+  ],
+  "examples": [
+    {
+      "title": "Query native detail",
+      "command": "dogopencli liquidity get rules.notification NATIVE_ID"
+    }
+  ]
+}
