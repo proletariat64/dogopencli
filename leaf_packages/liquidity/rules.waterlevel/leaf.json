@@ -1,0 +1,73 @@
+{
+  "domain": "liquidity",
+  "name": "rules.waterlevel",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read full native configuration records.",
+      "parameters": [
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "currency",
+          "description": "Exact case-sensitive local currency match; repeat for alternatives. Acquisition always retains the full native scope."
+        }
+      ]
+    }
+  },
+  "summary": "Waterlevel rules.",
+  "purpose": "Inspect native configuration through inquiry-only requests.",
+  "fields": [
+    {
+      "name": "bufferId",
+      "type": "native",
+      "meaning": "Native string or integer row identity, retained without conversion."
+    },
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native account alias; distinct from bufferId."
+    },
+    {
+      "name": "currency",
+      "type": "native",
+      "meaning": "Exact local currency filter field."
+    }
+  ],
+  "identity": [
+    "bufferId"
+  ],
+  "identity_description": "Native bufferId identifies configuration rows.",
+  "limitations": [
+    "Fixed GUAPW3SG tenant. Native fields, nested values, exact decimals and unknown fields are retained.",
+    "List uses rowStart offsets with pageSize=5000 and null credit-date bounds. Native result.count is the coverage target; SDK collection reports duplicate identities, count shortfall and page gaps as incomplete.",
+    "Currency filters are exact local selections; acquisition retains the full native scope. Frontend account detail/version expansion is outside this List contract.",
+    "The qualified historical request width 5000 is a starting value, not a measured backend maximum. SDK conflict resolution keeps the last arrival and marks coverage incomplete; strict refresh preserves the prior cache on rejection."
+  ],
+  "examples": [
+    {
+      "title": "Read saved records",
+      "command": "dogopencli liquidity list rules.waterlevel"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_rules_waterlevel"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "bufferId"
+      ]
+    }
+  }
+}
