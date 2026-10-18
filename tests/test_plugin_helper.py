@@ -101,7 +101,12 @@ def test_batch_pack_is_atomic_and_rejects_duplicate_identities(source, tmp_path)
     assert invoke("pack", source, other, "--output", invalid).returncode == 1
     assert not invalid.exists()
     duplicate = tmp_path / "duplicate-batch"
-    assert invoke("pack", source, source, "--output", duplicate).returncode == 1
+    result = invoke("pack", source, source, "--output", duplicate)
+    assert result.returncode == 1
+    assert (
+        json.loads(result.stdout)["message"]
+        == "Duplicate leaf identity: payment.sla.baselines"
+    )
     assert not duplicate.exists()
     assert not list(tmp_path.glob(".leaf-pack-*"))
 

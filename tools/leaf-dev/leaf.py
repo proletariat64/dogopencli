@@ -137,6 +137,8 @@ def pack(sources: list[Path], output: Path) -> dict:
                 identity = f"{package.manifest['domain']}.{package.manifest['name']}"
                 filename = identity + ".zip"
                 archive_path = staging / filename
+                if archive_path.exists():
+                    raise HelperError(f"Duplicate leaf identity: {identity}")
                 with archive_path.open("xb") as output_file:
                     with zipfile.ZipFile(
                         output_file, "w", zipfile.ZIP_DEFLATED
