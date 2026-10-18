@@ -77,6 +77,13 @@ def validate_request(request: QueryRequest, contract: EndpointContract) -> None:
                 f"request field {key} must match its registered fixed value",
             )
 
+    if contract.allowed_page_sizes and "pageSize" in request.body:
+        width = request.body["pageSize"]
+        if type(width) is not int or width not in contract.allowed_page_sizes:
+            raise CliError(
+                REQUEST_NOT_ALLOWED, "request used an unregistered page width"
+            )
+
     for key, allowed in contract.nested_body_keys:
         value = request.body.get(key)
         if not isinstance(value, dict) or set(value) - allowed:
