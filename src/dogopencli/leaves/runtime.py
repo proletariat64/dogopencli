@@ -212,7 +212,7 @@ def execute(
                     args.require_complete
                     or (operation == "refresh" and "collection" in leaf.manifest)
                 ),
-                mode=operation
+                mode=operation,
             )
             selected = (
                 leaf.adapter.filter(
