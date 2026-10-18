@@ -55,7 +55,12 @@ class EndpointContract:
     # Named GET sources can carry an exact inquiry object as a JSON string.
     # Its keys, fixed scope and optional page widths are validated before execution.
     json_body_contracts: tuple[
-        tuple[str, frozenset[str], tuple[tuple[str, str | int], ...], frozenset[int]],
+        tuple[
+            str,
+            frozenset[str],
+            tuple[tuple[str, str | int | list[str]], ...],
+            frozenset[int],
+        ],
         ...,
     ] = ()
 

@@ -186,7 +186,7 @@ def test_benchmark_failed_refresh_preserves_snapshot(benchmark, failure, monkeyp
     elif failure == "changed-total":
         responses = [page([ROW], 5001), page([{"id": 1}], 5002)]
     elif failure == "early-empty":
-        responses = [page([], 5001)]
+        responses, expected = [page([], 5001), page([ROW], 5001)], "INCOMPLETE_RESULT"
     elif failure == "overfull":
         responses = [page([{"id": n} for n in range(5001)], 5001)]
     elif failure == "duplicate":
@@ -197,6 +197,7 @@ def test_benchmark_failed_refresh_preserves_snapshot(benchmark, failure, monkeyp
         )
     elif failure == "conflict":
         responses = [page([ROW, {**ROW, "value": "different"}], 2)]
+        expected = "INCOMPLETE_RESULT"
     elif failure == "auth":
         responses, expected = [{"status": 401, "body": {}}], "AUTH_REQUIRED"
     else:
@@ -238,3 +239,36 @@ def test_benchmark_unverified_request_is_blocked(benchmark, tmp_path, mutation):
     result = cli("liquidity", "list", "investment.benchmarks", "--live", code=1)
     assert result["error"]["code"] == "REQUEST_NOT_ALLOWED"
     assert browser.business_requests == []
+
+
+def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(benchmark):
+    cli, browser = benchmark[:2]
+    first = [{"id": str(i), "value": "original"} for i in range(5000)]
+    original = dict(first[0])
+    changed = {**original, "value": "changed"}
+    browser.business_script.append(page([original]))
+    cli("liquidity", "refresh", "investment.benchmarks")
+    before = cli("liquidity", "list", "investment.benchmarks", "--limit", "0")
+
+    def queue_conflict():
+        browser.business_script.extend([page(first, 5001), page([changed], 5001)])
+
+    queue_conflict()
+    result = cli("liquidity", "list", "investment.benchmarks", "--live", "--limit", "0")
+    assert result["data"] == [changed, *first[1:]]
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["duplicate_count"] == 1
+    attempt = result["meta"]["acquisition"]["attempts"][0]
+    assert attempt["conflict_count"] == 1
+    assert attempt["pages"] == 2
+    assert "LAST_ARRIVAL_WINS" in attempt["reasons"]
+    assert [request["rowStart"] for request in browser.business_requests[-2:]] == [
+        0,
+        5000,
+    ]
+    queue_conflict()
+    refused = cli("liquidity", "refresh", "investment.benchmarks", code=1)
+    assert refused["error"]["code"] == "INCOMPLETE_RESULT"
+    after = cli("liquidity", "list", "investment.benchmarks", "--limit", "0")
+    assert after["data"] == before["data"] == [original]
+    assert after["meta"]["fetched_at"] == before["meta"]["fetched_at"]

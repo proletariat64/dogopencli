@@ -1,6 +1,7 @@
 """Installed forecast inquiry through real CLI and controlled CDP."""
 
 import json
+import shutil
 import zipfile
 from decimal import Decimal
 from pathlib import Path
@@ -172,10 +173,12 @@ def test_forecast_refresh_failure_preserves_cache(forecast, failure):
         responses = [page(ROWS[:10], 11), page(ROWS[10:], 12)]
     elif failure == "early-empty":
         responses = [page(ROWS[:10], 11), page([], 11)]
+        expected = "INCOMPLETE_RESULT"
     elif failure == "over-page":
         responses = [page(ROWS, 11)]
     elif failure == "conflict":
         responses = [page([ROWS[0], {**ROWS[0], "empty": "changed"}], 2)]
+        expected = "INCOMPLETE_RESULT"
     else:
         responses, expected, flags = (
             [page([ROWS[0], ROWS[0]], 2)],
@@ -211,3 +214,64 @@ def test_forecast_duplicate_evidence_remains_incomplete(forecast):
     result = cli("liquidity", "list", "rules.forecast", "--live", "--limit", "0")
     assert result["data"] == [ROWS[0]]
     assert result["meta"]["complete"] is False
+
+
+@pytest.mark.parametrize("mutation", ["extra", "tenant", "scope", "width"])
+def test_forecast_nested_request_boundary(forecast, tmp_path, mutation):
+    cli, browser, _ = forecast
+    cli("plugins", "uninstall", "liquidity.rules.forecast")
+    source = tmp_path / "nested-request"
+    shutil.copytree(SOURCE, source)
+    path = source / "adapter.py"
+    old, new = {
+        "extra": (
+            '"rowStart": row_start,',
+            '"unverified": True, "rowStart": row_start,',
+        ),
+        "tenant": ('"tntInstId": TENANT,', '"tntInstId": "OTHER",'),
+        "scope": ('"instId": ["Z21"],', '"instId": ["OTHER"],'),
+        "width": ('"pageSize": PAGE_SIZE,', '"pageSize": 5000,'),
+    }[mutation]
+    code = path.read_text()
+    if mutation == "tenant":
+        code = code.replace(old, new, 2).replace(new, old, 1)
+    else:
+        code = code.replace(old, new)
+    path.write_text(code)
+    cli("plugins", "install", str(source))
+    result = cli("liquidity", "list", "rules.forecast", "--live", code=1)
+    assert result["error"]["code"] == "REQUEST_NOT_ALLOWED"
+    assert not browser.business_requests
+
+
+def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(forecast):
+    cli, browser = forecast[:2]
+    first = [{"ruleId": str(i), "value": "original"} for i in range(10)]
+    original = dict(first[0])
+    changed = {**original, "value": "changed"}
+    browser.business_script.append(page([original]))
+    cli("liquidity", "refresh", "rules.forecast")
+    before = cli("liquidity", "list", "rules.forecast", "--limit", "0")
+
+    def queue_conflict():
+        browser.business_script.extend([page(first, 11), page([changed], 11)])
+
+    queue_conflict()
+    result = cli("liquidity", "list", "rules.forecast", "--live", "--limit", "0")
+    assert result["data"] == [changed, *first[1:]]
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["duplicate_count"] == 1
+    attempt = result["meta"]["acquisition"]["attempts"][0]
+    assert attempt["conflict_count"] == 1
+    assert attempt["pages"] == 2
+    assert "LAST_ARRIVAL_WINS" in attempt["reasons"]
+    assert [
+        json.loads(request["bankCashForecastRuleQueryVO"])["rowStart"]
+        for request in browser.business_requests[-2:]
+    ] == [0, 10]
+    queue_conflict()
+    refused = cli("liquidity", "refresh", "rules.forecast", code=1)
+    assert refused["error"]["code"] == "INCOMPLETE_RESULT"
+    after = cli("liquidity", "list", "rules.forecast", "--limit", "0")
+    assert after["data"] == before["data"] == [original]
+    assert after["meta"]["fetched_at"] == before["meta"]["fetched_at"]

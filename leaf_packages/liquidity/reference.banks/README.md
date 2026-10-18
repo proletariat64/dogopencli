@@ -22,10 +22,13 @@ the full saved snapshot for offline list. It never changes native request scope.
 Refresh retains the complete native acquisition even when a country is supplied.
 Display limits do not truncate collection. Live list does not publish a snapshot.
 
-The collector checks fixed totals, empty pages before the reported end, page
-capacity, identities and duplicate content. Duplicates cannot prove completeness;
-the shared host applies usable-incomplete or strict policy. Empty refresh, failures
-and strict refusals preserve the previous snapshot. No getter is exposed.
+The manifest selects the host List SDK with offset paging, width 5000 and native
+`bankId`. The leaf only builds requests, parses responses and selects local rows.
+The SDK checks totals, page capacity, identities and gaps. Conflicting identities
+retain the last arrival with explicit incomplete evidence; duplicates and short or
+empty interior pages cannot prove completeness. Strict queries and refresh reject
+incomplete acquisitions. Empty refresh and failures preserve the previous snapshot.
+No getter is exposed.
 
 ## Provenance and verification boundary
 

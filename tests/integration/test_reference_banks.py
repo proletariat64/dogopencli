@@ -208,6 +208,8 @@ def test_banks_failed_refresh_preserves_native_snapshot(banks, failure):
     elif failure in {"changed-total", "early-empty"}:
         responses.append(page([ROWS[0]], total=5001))
         response = page([], total=5002 if failure == "changed-total" else 5001)
+        if failure == "early-empty":
+            expected = "INCOMPLETE_RESULT"
     elif failure == "oversize":
         response = page([{"bankId": str(i)} for i in range(5001)])
     elif failure == "strict":
@@ -240,11 +242,22 @@ def test_banks_duplicate_identity_is_truthfully_incomplete(banks):
     assert result["meta"]["complete"] is False
 
 
-def test_banks_conflicting_identity_rejects_response(banks):
+def test_banks_conflicting_identity_retains_last_arrival_as_incomplete(banks):
     cli, browser, _ = banks
-    browser.business_script.append(page([ROWS[0], {"bankId": "a", "cityCode": "US"}]))
-    result = cli("liquidity", "list", "reference.banks", "--live", code=1)
-    assert result["error"]["code"] == "INVALID_RESPONSE"
+    changed = {"bankId": "a", "cityCode": "US"}
+    response = page([ROWS[0], changed])
+    browser.business_script.append(response)
+    result = cli("liquidity", "list", "reference.banks", "--live")
+    assert result["data"] == [changed]
+    assert result["meta"]["complete"] is False
+    assert "LAST_ARRIVAL_WINS" in result["meta"]["acquisition"]["reasons"]
+    browser.business_script.extend([response, response])
+    strict = cli(
+        "liquidity", "list", "reference.banks", "--live", "--require-complete", code=1
+    )
+    assert strict["error"]["code"] == "INCOMPLETE_RESULT"
+    refresh = cli("liquidity", "refresh", "reference.banks", code=1)
+    assert refresh["error"]["code"] == "INCOMPLETE_RESULT"
 
 
 def test_banks_filtered_refresh_retains_full_native_scope(banks):
@@ -278,3 +291,63 @@ def test_banks_request_boundary_rejects_unverified_native_country(banks, tmp_pat
     result = cli("liquidity", "list", "reference.banks", "--live", code=1)
     assert result["error"]["code"] == "REQUEST_NOT_ALLOWED"
     assert not browser.business_requests
+
+
+@pytest.mark.parametrize("mutation", ["extra", "tenant", "width"])
+def test_banks_nested_request_boundary(banks, tmp_path, mutation):
+    cli, browser, _ = banks
+    cli("plugins", "uninstall", "liquidity.reference.banks")
+    source = tmp_path / "nested-request"
+    shutil.copytree(SOURCE, source)
+    path = source / "adapter.py"
+    old, new = {
+        "extra": ('"rowStart": row_start,', '"country": "SG", "rowStart": row_start,'),
+        "tenant": ('"tntInstId": TENANT,', '"tntInstId": "OTHER",'),
+        "width": ('"pageSize": PAGE_SIZE,', '"pageSize": 10,'),
+    }[mutation]
+    code = path.read_text()
+    if mutation == "tenant":
+        # Alter the inner VO, leaving the top-level tenant valid.
+        code = code.replace(old, new, 2).replace(new, old, 1)
+    else:
+        code = code.replace(old, new)
+    path.write_text(code)
+    cli("plugins", "install", str(source))
+    result = cli("liquidity", "list", "reference.banks", "--live", code=1)
+    assert result["error"]["code"] == "REQUEST_NOT_ALLOWED"
+    assert not browser.business_requests
+
+
+def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(banks):
+    cli, browser = banks[:2]
+    first = [{"bankId": str(i), "value": "original"} for i in range(5000)]
+    original = dict(first[0])
+    changed = {**original, "value": "changed"}
+    browser.business_script.append(page([original]))
+    cli("liquidity", "refresh", "reference.banks")
+    before = cli("liquidity", "list", "reference.banks", "--limit", "0")
+
+    def queue_conflict():
+        browser.business_script.extend(
+            [page(first, total=5001), page([changed], total=5001)]
+        )
+
+    queue_conflict()
+    result = cli("liquidity", "list", "reference.banks", "--live", "--limit", "0")
+    assert result["data"] == [changed, *first[1:]]
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["duplicate_count"] == 1
+    attempt = result["meta"]["acquisition"]["attempts"][0]
+    assert attempt["conflict_count"] == 1
+    assert attempt["pages"] == 2
+    assert "LAST_ARRIVAL_WINS" in attempt["reasons"]
+    assert [
+        json.loads(request["paraBankVO"])["rowStart"]
+        for request in browser.business_requests[-2:]
+    ] == [0, 5000]
+    queue_conflict()
+    refused = cli("liquidity", "refresh", "reference.banks", code=1)
+    assert refused["error"]["code"] == "INCOMPLETE_RESULT"
+    after = cli("liquidity", "list", "reference.banks", "--limit", "0")
+    assert after["data"] == before["data"] == [original]
+    assert after["meta"]["fetched_at"] == before["meta"]["fetched_at"]
