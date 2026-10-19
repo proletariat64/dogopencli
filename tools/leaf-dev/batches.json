@@ -666,27 +666,30 @@
       "id": "B24",
       "title": "利率、产品与历史",
       "issue": 283,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.investment.interest_rates",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "blocked"
         },
         {
           "identity": "liquidity.investment.products",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.investment.products.history",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         }
       ]
     },

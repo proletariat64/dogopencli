@@ -1,0 +1,116 @@
+{
+  "domain": "liquidity",
+  "name": "investment.products",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native product definitions with exact local filters.",
+      "parameters": [
+        {
+          "name": "currency",
+          "type": "string",
+          "multiple": true,
+          "required": false,
+          "local_field": "currency",
+          "description": "Exact local native currency; repeat for OR, dimensions combine with AND."
+        },
+        {
+          "name": "bank",
+          "type": "string",
+          "multiple": true,
+          "required": false,
+          "local_field": "bankId",
+          "description": "Exact local native bankId; repeat for OR, dimensions combine with AND."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "multiple": true,
+          "required": false,
+          "local_field": "status",
+          "description": "Exact local native status; repeat for OR, dimensions combine with AND."
+        }
+      ]
+    },
+    "get": {
+      "description": "Read one independent native product definition root by physical ID.",
+      "parameters": [],
+      "lookup": {
+        "name": "incrementProductId",
+        "description": "Native physical incrementProductId from List, not incrementProductCode."
+      },
+      "result_identity": {
+        "fields": [
+          "incrementProductId"
+        ],
+        "description": "Exact nonblank string echo of the physical product lookup."
+      },
+      "list_binding": {
+        "identity_field": "incrementProductId"
+      }
+    }
+  },
+  "summary": "Native investment product definitions and details.",
+  "purpose": "Inspect complete native product roots, configured rules and returned versions without history expansion.",
+  "fields": [
+    {
+      "name": "incrementProductId",
+      "type": "string",
+      "meaning": "Physical native record identity; distinct from product code."
+    },
+    {
+      "name": "incrementProductCode",
+      "type": "native JSON value",
+      "meaning": "Business product code; not the Get lookup."
+    },
+    {
+      "name": "incrementRateRules",
+      "type": "native JSON value",
+      "meaning": "Native nested configured rules, unchanged."
+    }
+  ],
+  "identity": [
+    "incrementProductId"
+  ],
+  "identity_description": "Native nonblank string physical product ID.",
+  "limitations": [
+    "List POST JSON /incrementProductsPage.json sends only tenant GUAPW3SG, rowStart 0 and qualified pageSize 5000; native total completeness is required. Width is not a demonstrated maximum.",
+    "List retains all native fields, nested arrays/objects, nulls, precise values, returned versions and arrival order. No latest reducer, upstream filters or extra terminal query.",
+    "Currency, bank and status are exact local repeatable filters, usable offline. Bare offline List replays its saved acquisition.",
+    "Get POST form /incrementProductDetail.json sends only tenant and physical incrementProductId; it preserves the complete native data root with exact identity echo.",
+    "Get and selected-window live --with-detail do not publish cache or Duckdog data. Separately queried product history and rate-source groups remain outside this leaf.",
+    "Returned nonblank tenant must match GUAPW3SG; missing, null and blank native tenant values remain unchanged."
+  ],
+  "examples": [
+    {
+      "title": "Read all native product definitions",
+      "command": "dogopencli liquidity list investment.products --live --limit 0 --require-complete"
+    },
+    {
+      "title": "Read independent native detail",
+      "command": "dogopencli liquidity get investment.products PHYSICAL_ID"
+    },
+    {
+      "title": "Read one selected record with detail",
+      "command": "dogopencli liquidity list investment.products --live --with-detail --limit 1 --currency USD"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_products"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "incrementProductId"
+      ]
+    }
+  }
+}
