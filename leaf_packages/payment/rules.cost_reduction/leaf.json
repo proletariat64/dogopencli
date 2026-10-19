@@ -1,0 +1,166 @@
+{
+  "domain": "payment",
+  "name": "rules.cost_reduction",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Inspect one complete native first-page rule configuration scope with exact local filters.",
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "ruleName",
+          "description": "Exact case-sensitive local ruleName whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "business-line",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "businessCategory",
+          "description": "Exact case-sensitive local businessCategory whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditCurrency",
+          "description": "Exact case-sensitive local creditCurrency whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "market",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditorMarket",
+          "description": "Exact case-sensitive local creditorMarket whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "status",
+          "description": "Exact case-sensitive local status whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "entity",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "legalEntity",
+          "description": "Exact case-sensitive local legalEntity string-array member match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "obo",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "needObo",
+          "description": "Exact case-sensitive local needObo string-array member match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "fvt",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "needFvt",
+          "description": "Exact case-sensitive local needFvt string-array member match. Repeated values OR; different fields AND; commas and * literal."
+        }
+      ]
+    }
+  },
+  "summary": "Payment cost reduction configuration.",
+  "purpose": "Inspect native payment rule configuration without executing rules, retries or traffic operations.",
+  "fields": [
+    {
+      "name": "groupId",
+      "type": "string",
+      "meaning": "Native nonblank identity, retained exactly."
+    },
+    {
+      "name": "ruleName",
+      "type": "native JSON value",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "businessCategory",
+      "type": "native JSON value",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "creditCurrency",
+      "type": "native JSON value",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "creditorMarket",
+      "type": "native JSON value",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "status",
+      "type": "native JSON value",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "legalEntity",
+      "type": "array",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "needObo",
+      "type": "array",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "needFvt",
+      "type": "array",
+      "meaning": "Native configuration field retained without normalization."
+    }
+  ],
+  "identity": [
+    "groupId"
+  ],
+  "identity_description": "Native string groupId; leading zeros and long digit strings are retained.",
+  "limitations": [
+    "GET query https://ifundcontrolprodops.alipay.com/api/fundOut/costCutFlow/query with only fixed pageNo=0/pageSize=1000; one unfiltered request, no guessed pagination or detail queries.",
+    "Boolean success true, data.businessDataList, exact integer pageNo/pageSize and nonnegative integer totalCount/totalPageNo required. Native totalPageNo=0 is a placeholder, never completeness proof.",
+    "1000 is the qualified fixed width, not a measured maximum. SDK checks native total, unique identities and capacity. Duplicate/conflicting/truncated responses remain incomplete and cannot publish on refresh.",
+    "Exact local matching: repeated same-field values OR, different fields AND; scalar whole-string or declared string-array member only. Missing/null do not match; no comma splitting, substring, wildcard, trimming or boolean coercion.",
+    "Full native rows and unknown/nested values, precise amounts, nulls, zero, empty strings and array order are retained. Displayed root rows sort lexically by native string identity; timestamp units/timezone are unverified.",
+    "Live never publishes. Only complete nonempty refresh publishes; failed, empty or incomplete refresh preserves the saved capture. No Get, rule execution or new Duckdog import.",
+    "Cost-reduction records are group summaries, not full historical rule versions or realized savings. Native ratio/ratioBase scaling is unverified."
+  ],
+  "examples": [
+    {
+      "title": "Acquire native configurations",
+      "command": "dogopencli payment list rules.cost_reduction --live --require-complete --limit 0"
+    },
+    {
+      "title": "Select a native entity locally",
+      "command": "dogopencli payment list rules.cost_reduction --entity ENTITY"
+    }
+  ],
+  "dataset": {
+    "relation": "payment_rules_cost_reduction"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "groupId"
+      ]
+    }
+  }
+}

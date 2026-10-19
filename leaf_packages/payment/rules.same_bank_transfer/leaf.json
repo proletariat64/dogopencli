@@ -1,0 +1,104 @@
+{
+  "domain": "payment",
+  "name": "rules.same_bank_transfer",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List native same-bank transfer rules.",
+      "parameters": [
+        {
+          "name": "bank",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "debitInstId",
+          "description": "Exact case-sensitive local debitInstId match; repeat for alternatives. Commas and * are literal; never sent to backend."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "ruleStatus",
+          "description": "Exact case-sensitive local ruleStatus match; repeat for alternatives. Commas and * are literal; never sent to backend."
+        }
+      ]
+    }
+  },
+  "summary": "Same-bank transfer rule configurations.",
+  "purpose": "Inspect maintained transfer decision rules without executing transfers or evaluating member patterns.",
+  "fields": [
+    {
+      "name": "ruleId",
+      "type": "integer",
+      "meaning": "Native nonnegative integer rule identity."
+    },
+    {
+      "name": "debitInstId",
+      "type": "string",
+      "meaning": "Native debit institution identifier."
+    },
+    {
+      "name": "ruleStatus",
+      "type": "string",
+      "meaning": "Native rule configuration status."
+    },
+    {
+      "name": "priority",
+      "type": "integer",
+      "meaning": "Native decision rule priority."
+    },
+    {
+      "name": "creditClearingSystemMemberIdPatterns",
+      "type": "array",
+      "meaning": "Native member patterns, preserved without execution."
+    },
+    {
+      "name": "accountingEntityCode",
+      "type": "string",
+      "meaning": "Native accounting entity code, when supplied."
+    },
+    {
+      "name": "legalEntityCode",
+      "type": "string",
+      "meaning": "Native legal entity code, when supplied."
+    }
+  ],
+  "identity": [
+    "ruleId"
+  ],
+  "identity_description": "Native integer ruleId with exact precision; no conversion or synthetic identity.",
+  "limitations": [
+    "One first-page JSON request pageNum=1,pageSize=1000; native total must match unique acquired rows. Width1000 is verified, not a maximum-capacity claim.",
+    "Exact local bank/status filtering: repeated values OR, dimensions AND. Blank inputs fail; commas and * remain literal.",
+    "Full native records and unknown fields are retained, in numeric ruleId order. No separate detail or pattern execution."
+  ],
+  "examples": [
+    {
+      "title": "Read all native rules",
+      "command": "dogopencli payment list rules.same_bank_transfer --live --limit 0 --require-complete"
+    },
+    {
+      "title": "Inspect declared filters",
+      "command": "dogopencli payment list rules.same_bank_transfer -h --format text"
+    }
+  ],
+  "dataset": {
+    "relation": "payment_rules_same_bank_transfer"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "ruleId"
+      ]
+    }
+  }
+}

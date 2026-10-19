@@ -32,8 +32,8 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 
 - **39/39 Lists、23/23 Gets**，合计 **62/62 actions**；**42/42 leaves** 全操作完成。
 - 整批完成 B01、B02、B03、B05、B06、B07、B08、B09、B10；当前范围无 HOLD。
-- 全局逐 leaf/action 累计为 **47/80 完整 leaves、68/107 actions**；仍有 33 leaves、39 actions 未完成。
-- `batches.json.status` 只标整批；含后续已完成 B12、B13 后，当前 delivered 汇总为 **47 packages / 68 actions**。
+- 全局逐 leaf/action 累计为 **51/80 完整 leaves、72/107 actions**；仍有 29 leaves、35 actions 未完成。
+- `batches.json.status` 只标整批；含后续已完成 B12–B14 后，当前 delivered 汇总为 **51 packages / 72 actions**。
 
 | Batch | SDK List / 原范围 | SDK Get / 原范围 | 全操作完成 leaves | 范围依据 |
 | --- | --- | --- | --- | --- |
@@ -68,7 +68,8 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 - B11/#270：两项 leaf / 三项 actions 保持 HOLD。`network.realtime` 原 Get 的根/历史/路由额度依赖采集超出现有 Get SDK；`network.route_quotas` 原生根无标量身份。原生、前端及 PDKB 研究归该票，不以 root-only 或补造身份绕过。
 - B12/#271：两个 leaf / 三项 actions 完成。`investment.strategies` 仅 Get；`investment.strategy_results` 按显式任务类型查询 List/Get，原生根与嵌套数据保留。
 - B13/#272：三个收款配置 List 完成，固定首个 1000 容量按原生 total 与唯一身份验证；卡模板保留原生嵌套数组，不承诺未验证的明细语义。
-- B14–B20：按对应 ticket 原范围推进。
+- B14/#273：四个付款规则 List 完成，原生单响应全量及精确本地筛选；银存切换保留单接口原生层级，嵌套条件须在同一分支成立。
+- B15–B20：按对应 ticket 原范围推进。
 
 ## 原始批次范围
 
@@ -93,7 +94,7 @@ rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf.py batches
 | B11 | [#270](https://github.com/proletariat64/dogopencli/issues/270) | `liquidity.network.realtime` LG; `liquidity.network.route_quotas` G | 2/3 | planned |
 | B12 | [#271](https://github.com/proletariat64/dogopencli/issues/271) | `liquidity.investment.strategies` G; `liquidity.investment.strategy_results` LG | 2/3 | delivered |
 | B13 | [#272](https://github.com/proletariat64/dogopencli/issues/272) | `collection.clearing_system` L; `collection.card_template` L; `collection.account_isolation` L | 3/3 | delivered |
-| B14 | [#273](https://github.com/proletariat64/dogopencli/issues/273) | `payment.rules.same_bank_transfer` L; `payment.rules.cost_reduction` L; `payment.rules.retry` L; `payment.rules.bank_switch` L | 4/4 | planned |
+| B14 | [#273](https://github.com/proletariat64/dogopencli/issues/273) | `payment.rules.same_bank_transfer` L; `payment.rules.cost_reduction` L; `payment.rules.retry` L; `payment.rules.bank_switch` L | 4/4 | delivered |
 | B15 | [#274](https://github.com/proletariat64/dogopencli/issues/274) | `collection.sla.configs` LG; `collection.va.rules` LG; `collection.va.capacity` L | 3/5 | planned |
 | B16 | [#275](https://github.com/proletariat64/dogopencli/issues/275) | `payment.channel` L; `payment.cost` L | 2/2 | planned |
 | B17 | [#276](https://github.com/proletariat64/dogopencli/issues/276) | `payment.ptr.cases` L; `payment.ptr.orders` L | 2/2 | planned |
