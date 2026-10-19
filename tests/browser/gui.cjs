@@ -85,6 +85,24 @@ const [url, manifestPath] = process.argv.slice(2);
     ]) {
       assert.deepEqual(saved[key], original[key]);
     }
+    // Saving returns a fresh manifest: subsequent inputs must edit that manifest.
+    await summary.fill("同一文档的第二次编辑");
+    await page.waitForFunction(
+      () => document.querySelector("#dirty-state").textContent === "未保存",
+    );
+    await page.getByRole("button", { name: "保存文档", exact: true }).click();
+    await page.waitForFunction(
+      () => document.querySelector("#dirty-state").textContent === "已保存",
+    );
+    assert.equal(
+      JSON.parse(fs.readFileSync(manifestPath)).summary,
+      "同一文档的第二次编辑",
+    );
+    await summary.fill(injection);
+    await page.getByRole("button", { name: "保存文档", exact: true }).click();
+    await page.waitForFunction(
+      () => document.querySelector("#dirty-state").textContent === "已保存",
+    );
     // Switch documents, then reject switching away from an unsaved draft.
     await page
       .getByLabel("选择文档")

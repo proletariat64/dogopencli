@@ -1470,6 +1470,7 @@
         if (action === "save") {
           editing = { ...editing, ...result };
           savedPatch = JSON.stringify(documentationPatch(editing.manifest));
+          drawForm();
           drawReading();
           status.textContent = "已保存。下一次 CLI 调用将使用新文档。";
         }
