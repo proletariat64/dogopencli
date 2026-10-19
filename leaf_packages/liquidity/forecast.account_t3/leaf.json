@@ -1,0 +1,129 @@
+{
+  "domain": "liquidity",
+  "name": "forecast.account_t3",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List native T3 forecast demands for one account and inclusive forecast-date window.",
+      "parameters": [
+        {
+          "name": "account-alias",
+          "type": "string",
+          "required": true,
+          "local_field": "aliasName",
+          "description": "One exact account alias; no directory resolution or account fanout."
+        },
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "local_field": "forecastDate",
+          "description": "Inclusive forecastDate lower bound, YYYYMMDD; distinct from expectValueDate."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "local_field": "forecastDate",
+          "description": "Inclusive forecastDate upper bound, YYYYMMDD."
+        }
+      ]
+    }
+  },
+  "summary": "Single-account T3 forecast demands.",
+  "purpose": "Inspect native T3 forecast records without synthesizing balances or related data.",
+  "fields": [
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "entity",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "bankId",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "forecastDate",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "expectValueDate",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "fundActionType",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "dateFlag",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    }
+  ],
+  "identity": [
+    "aliasName",
+    "currency",
+    "entity",
+    "bankId",
+    "forecastDate",
+    "expectValueDate",
+    "fundActionType",
+    "dateFlag"
+  ],
+  "identity_description": "Eight native business dimensions; no synthetic output ID.",
+  "limitations": [
+    "POST JSON /t3ForecastDemandList.json with one alias, startDate/endDate, rowStart and qualified pageSize 10 only.",
+    "Forecast-date bounds select forecastDate, not expectValueDate. Native timezone, amounts, unknown fields and response order remain unchanged.",
+    "Normal SDK total and identity completeness replaces the historical extra terminal-empty probe. No Get, account resolver, T0 inquiry or related-source acquisition.",
+    "Bare offline List replays the saved scope. Explicit alias/date filters select local rows; changed source scopes have unproved coverage and strict reads reject them."
+  ],
+  "examples": [
+    {
+      "title": "Read native T3 forecasts",
+      "command": "dogopencli liquidity list forecast.account_t3 --live --account-alias ACCOUNT --from-date 20261019 --to-date 20261019 --limit 0 --require-complete"
+    },
+    {
+      "title": "Read saved scope",
+      "command": "dogopencli liquidity list forecast.account_t3"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_forecast_account_t3"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        10
+      ]
+    },
+    "primary_id": {
+      "type": "hash",
+      "fields": [
+        "aliasName",
+        "currency",
+        "entity",
+        "bankId",
+        "forecastDate",
+        "expectValueDate",
+        "fundActionType",
+        "dateFlag"
+      ]
+    }
+  }
+}
