@@ -44,7 +44,7 @@ select = ["E", "F", "I", "UP", "B"]
 "tests/test_doc_guard.py" = ["E501"]
 
 [tool.setuptools.package-data]
-"dogopencli" = ["leaf_packages/**/*"]
+"dogopencli" = ["leaf_packages/**/*", "gui_page.html"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["**/__pycache__/*", "**/*.pyc"]

@@ -160,11 +160,14 @@ Duckdog and cache are shared host foundations, not separately installed plugins.
 dogopencli gui
 ```
 
-Open the printed localhost URL and choose an installed leaf's **Edit documentation**
-form. Preview shares CLI rendering; save validates and atomically updates the
-installed `leaf.json`. Stale edits require reload. Technical declarations are
-read-only in the form. README, source directories and original ZIPs are independent
-and are not synchronized. Changes apply on later invocations. The GUI has no
+Open the printed localhost URL. The domain overview shows local enablement,
+authentication observations and installed leaves; search narrows the list. Choose
+**编辑文档** to open the documentation workspace: structured editing on the left,
+reading or CLI text preview on the right. Changes update the preview without
+saving; **保存文档** validates and atomically updates the installed `leaf.json`.
+Stale edits require reload, and leaving a draft asks before discarding changes.
+Technical declarations are available in a read-only disclosure. README, source
+directories and original ZIPs are independent and are not synchronized. Changes apply on later invocations. The GUI has no
 business-query, login, import or package-management buttons.
 
 ## Develop and migrate
