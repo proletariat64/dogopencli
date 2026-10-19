@@ -44,6 +44,12 @@ WINDOW = (
     opt("require_fresh", "Require a fresh cached result.", "bool"),
     opt("live", "Query live rather than cached records.", "bool"),
 )
+WITH_DETAIL = opt(
+    "with_detail",
+    "With --live, fetch native detail for each selected output row; "
+    "return {record, detail}; any detail failure fails the command.",
+    "bool",
+)
 
 
 def value_parser(kind: str):
@@ -135,15 +141,7 @@ def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
     if operation == "list" and leaf.manifest["operations"].get("get", {}).get(
         "list_binding"
     ):
-        host = (
-            *host,
-            opt(
-                "with_detail",
-                "With --live, fetch native detail for each selected output row; "
-                "return {record, detail}; any detail failure fails the command.",
-                "bool",
-            ),
-        )
+        host = (*host, WITH_DETAIL)
     declared = "list" if operation == "refresh" else operation
     definitions = leaf.manifest["operations"].get(declared, {}).get("parameters", [])
     parameters = tuple(
@@ -533,7 +531,7 @@ def resolve(argv: list[str]) -> Invocation:
 
     host_flags = {
         flag
-        for option in (*COMMON, *WINDOW)
+        for option in (*COMMON, *WINDOW, WITH_DETAIL)
         if option.kind == "bool"
         for flag in option.flags
     }

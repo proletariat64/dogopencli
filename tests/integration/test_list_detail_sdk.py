@@ -18,6 +18,36 @@ def sla_list(rows, total=None, page_size=10000):
     }
 
 
+@pytest.mark.parametrize("config_position", ["before-command", "after-with-detail"])
+def test_with_detail_respects_explicit_config_directory(
+    detail_cli, tmp_path, monkeypatch, config_position
+):
+    cli, browser, root = detail_cli
+    cli("plugins", "install", str(native_package("payment", "sla.baselines")))
+    fallback = tmp_path / "other-config"
+    monkeypatch.setenv("DOGOPENCLI_CONFIG_DIR", str(fallback))
+    row = {"id": "selected", "listOnly": True}
+    detail = {"id": "selected", "nested": {"detailOnly": True}}
+    browser.business_script.extend(
+        [
+            {"status": 200, "body": sla_list([row])},
+            {"status": 200, "body": {"success": True, "resultData": detail}},
+        ]
+    )
+    command = ["payment", "list", "sla.baselines", "--live", "--with-detail"]
+    config_option = ["--config-dir", str(root)]
+    result = cli(
+        *(
+            config_option + command
+            if config_position == "before-command"
+            else command + config_option
+        )
+    )
+    assert result["data"] == [{"record": row, "detail": detail}]
+    assert browser.business_requests[1:] == [{"slaBaselineId": "selected"}]
+    assert not fallback.exists()
+
+
 def test_detail_selection_follows_local_filter_window_and_record_projection(detail_cli):
     cli, browser, root = detail_cli
     cli("plugins", "install", str(native_package("payment", "sla.baselines")))
