@@ -1,0 +1,205 @@
+{
+  "domain": "payment",
+  "name": "rules.retry",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Inspect one complete native first-page rule configuration scope with exact local filters.",
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "ruleName",
+          "description": "Exact case-sensitive local ruleName whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "status",
+          "description": "Exact case-sensitive local status whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "communication-mode",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "communicationMode",
+          "description": "Exact case-sensitive local communicationMode whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "integration-mode",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "integrationMode",
+          "description": "Exact case-sensitive local integrationMode whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "entity",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "bizLegalEntityList",
+          "description": "Exact case-sensitive local bizLegalEntityList string-array member match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "business-line",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "businessCategoryList",
+          "description": "Exact case-sensitive local businessCategoryList string-array member match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "bank",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "debtorInstList",
+          "description": "Exact case-sensitive local debtorInstList string-array member match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditorCurrencyList",
+          "description": "Exact case-sensitive local creditorCurrencyList string-array member match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "region",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditorCountryList",
+          "description": "Exact case-sensitive local creditorCountryList string-array member match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "bank-account",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "debtorAccountNoList",
+          "description": "Exact case-sensitive local debtorAccountNoList string-array member match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "clearing-network",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "clearingNetworkList",
+          "description": "Exact case-sensitive local clearingNetworkList string-array member match. Repeated values OR; different fields AND; commas and * literal."
+        }
+      ]
+    }
+  },
+  "summary": "Payment retry configuration.",
+  "purpose": "Inspect native payment rule configuration without executing rules, retries or traffic operations.",
+  "fields": [
+    {
+      "name": "ruleId",
+      "type": "string",
+      "meaning": "Native nonblank identity, retained exactly."
+    },
+    {
+      "name": "ruleName",
+      "type": "native JSON value",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "status",
+      "type": "native JSON value",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "communicationMode",
+      "type": "native JSON value",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "integrationMode",
+      "type": "native JSON value",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "bizLegalEntityList",
+      "type": "array",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "businessCategoryList",
+      "type": "array",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "debtorInstList",
+      "type": "array",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "creditorCurrencyList",
+      "type": "array",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "creditorCountryList",
+      "type": "array",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "debtorAccountNoList",
+      "type": "array",
+      "meaning": "Native configuration field retained without normalization."
+    },
+    {
+      "name": "clearingNetworkList",
+      "type": "array",
+      "meaning": "Native configuration field retained without normalization."
+    }
+  ],
+  "identity": [
+    "ruleId"
+  ],
+  "identity_description": "Native string ruleId; leading zeros and long digit strings are retained.",
+  "limitations": [
+    "GET query https://ifundcontrolprodops.alipay.com/api/fundOut/flowOperation/exceptionRetryRule/page with only fixed pageNo=0/pageSize=1000; one unfiltered request, no guessed pagination or detail queries.",
+    "Boolean success true, data.businessDataList, exact integer pageNo/pageSize and nonnegative integer totalCount/totalPageNo required. Native totalPageNo=0 is a placeholder, never completeness proof.",
+    "1000 is the qualified fixed width, not a measured maximum. SDK checks native total, unique identities and capacity. Duplicate/conflicting/truncated responses remain incomplete and cannot publish on refresh.",
+    "Exact local matching: repeated same-field values OR, different fields AND; scalar whole-string or declared string-array member only. Missing/null do not match; no comma splitting, substring, wildcard, trimming or boolean coercion.",
+    "Full native rows and unknown/nested values, precise amounts, nulls, zero, empty strings and array order are retained. Displayed root rows sort lexically by native string identity; timestamp units/timezone are unverified.",
+    "Live never publishes. Only complete nonempty refresh publishes; failed, empty or incomplete refresh preserves the saved capture. No Get, rule execution or new Duckdog import.",
+    "Retry configuration, exceptionRetryType, autoRetryRule and retryHoldTime remain native data; querying configuration does not trigger any retry. Audit state is separate from rule status."
+  ],
+  "examples": [
+    {
+      "title": "Acquire native configurations",
+      "command": "dogopencli payment list rules.retry --live --require-complete --limit 0"
+    },
+    {
+      "title": "Select a native entity locally",
+      "command": "dogopencli payment list rules.retry --entity ENTITY"
+    }
+  ],
+  "dataset": {
+    "relation": "payment_rules_retry"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "ruleId"
+      ]
+    }
+  }
+}

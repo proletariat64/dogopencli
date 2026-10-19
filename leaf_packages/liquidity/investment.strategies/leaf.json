@@ -1,0 +1,39 @@
+{
+  "domain": "liquidity",
+  "name": "investment.strategies",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "get": {
+      "description": "Read one native investment strategy rule by its strategyRuleCode.",
+      "parameters": [],
+      "lookup": {
+        "name": "strategyRuleCode",
+        "description": "Native strategy rule code from a verified product record or code selector; not a strategy template ID."
+      },
+      "result_identity": {
+        "fields": ["strategyRuleCode"],
+        "description": "Native strategyRuleCode must exactly echo the requested code."
+      }
+    }
+  },
+  "summary": "Native investment strategy settings detail.",
+  "purpose": "Read the complete strategy rule root and its native nested settings.",
+  "fields": [
+    {"name": "strategyRuleCode", "type": "string", "meaning": "Native investment strategy rule code."},
+    {"name": "subStrategyRuleList", "type": "array", "meaning": "Native selected sub-strategy rules."},
+    {"name": "productStrategyRuleVoList", "type": "array", "meaning": "Native product strategy settings."},
+    {"name": "tenorStrategyRuleVoList", "type": "array", "meaning": "Native tenor strategy settings."},
+    {"name": "currencyStrategyRuleVoList", "type": "array", "meaning": "Native currency strategy settings."}
+  ],
+  "identity": [],
+  "identity_description": "Get-only; native strategyRuleCode identifies the returned root.",
+  "limitations": [
+    "Live-only native root detail; no List, cached result or Duckdog dataset.",
+    "Separate histories and strategy execution results are unqueried.",
+    "A strategy rule code is distinct from strategyRuleId and mainStrategyTemplateId."
+  ],
+  "examples": [
+    {"title": "Inspect declared inputs", "command": "dogopencli liquidity get investment.strategies -h --format text"},
+    {"title": "Read a verified native rule code", "command": "dogopencli liquidity get investment.strategies RULE_CODE"}
+  ]
+}

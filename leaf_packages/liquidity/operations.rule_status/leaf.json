@@ -1,0 +1,78 @@
+{
+  "domain": "liquidity",
+  "name": "operations.rule_status",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native summary transfer-rule run overview records in one fixed response.",
+      "parameters": [
+        {
+          "name": "trigger-from",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive expected-trigger UTC lower second, YYYY-MM-DDTHH:mm:ssZ or explicit numeric offset normalized to UTC."
+        },
+        {
+          "name": "trigger-to",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive expected-trigger UTC upper second, YYYY-MM-DDTHH:mm:ssZ or numeric offset; entire final second through .999 is included."
+        }
+      ]
+    }
+  },
+  "summary": "Transfer-rule run overview.",
+  "purpose": "Inspect expected and actual rule trigger summaries without executing rules or expanding detail.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "integer",
+      "meaning": "Native positive integer overview-record identity, distinct from ruleId."
+    },
+    {
+      "name": "expectTriggerTime",
+      "type": "integer",
+      "meaning": "Native epoch milliseconds interpreted in UTC; final requested second includes .999."
+    },
+    {
+      "name": "realTriggerTime",
+      "type": "integer | null",
+      "meaning": "Native actual trigger epoch milliseconds or null; unchanged."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native JSON integer id, never a business-reference substitution or synthetic key.",
+  "limitations": [
+    "Summary queryDetailed=\"false\" only; no expanded true query, ruleId detail or execution endpoint.",
+    "Both explicit UTC trigger bounds are required; Z and numeric offsets normalize to native UTC whole seconds. Equal bounds select one entire second; the upper bound includes .999 milliseconds. Native epoch integers and null actual trigger times remain unchanged.",
+    "Exactly one qualified pageSize5000 response with native total; this is not a measured maximum. Totals above5000, duplicate IDs or count deficits fail strict publication; narrow the trigger range instead of using unstable paging.",
+    "Only the assigned ten-field summary projection is published: id, ruleId, executeStatus, createdOrder, bizNo, orderStatus, expectTriggerTime, realTriggerTime and optional gmtCreate/gmtModified. Amounts, aliases, operators, free text and environment metadata are excluded; ruleId is not row identity.",
+    "Bare offline List replays saved trigger scope; failures and complete-empty refresh preserve prior nonempty cache under standard host policy. No Get, with-detail or runtime Duckdog import contract."
+  ],
+  "examples": [
+    {
+      "title": "Read bounded UTC run overview",
+      "command": "dogopencli liquidity list operations.rule_status --live --require-complete --limit 0 --trigger-from 2026-01-01T00:00:00Z --trigger-to 2026-10-06T23:59:59Z"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_rule_status"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}

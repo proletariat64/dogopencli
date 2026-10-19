@@ -288,8 +288,8 @@ def test_batch_handoff_covers_remaining_scope_once(tmp_path):
     path = ROOT / "tools/leaf-dev/batches.json"
     result = migration.batches(path)
     assert (result["packages"], result["actions"]) == (80, 107)
-    assert (result["delivered_packages"], result["delivered_actions"]) == (42, 62)
-    assert (result["remaining_packages"], result["remaining_actions"]) == (38, 45)
+    assert (result["delivered_packages"], result["delivered_actions"]) == (61, 86)
+    assert (result["remaining_packages"], result["remaining_actions"]) == (19, 21)
     assert len(result["batches"]) == 24
     plan = json.loads(path.read_text())
     plan["batches"][3]["members"][0] = plan["batches"][2]["members"][0]
@@ -301,6 +301,55 @@ def test_batch_handoff_covers_remaining_scope_once(tmp_path):
     invalid.write_text(json.dumps(plan))
     with pytest.raises(migration.HelperError, match="complete scope"):
         migration.batches(invalid)
+
+
+def test_batch_status_counts_complete_leaves_inside_a_blocked_batch(tmp_path):
+    plan = {
+        "expected_packages": 2,
+        "expected_actions": 3,
+        "batches": [
+            {
+                "id": "B01",
+                "issue": 1,
+                "status": "blocked",
+                "members": [
+                    {
+                        "identity": "liquidity.example.one",
+                        "operations": ["list", "get"],
+                        "status": "delivered",
+                    },
+                    {"identity": "collection.example.two", "operations": ["list"]},
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "partial-plan.json"
+    original = json.dumps(plan)
+    path.write_text(original)
+    result = migration.batches(path)
+    assert (result["delivered_packages"], result["delivered_actions"]) == (1, 2)
+    assert (result["remaining_packages"], result["remaining_actions"]) == (1, 1)
+    batch = result["batches"][0]
+    assert (batch["packages"], batch["actions"]) == (2, 3)
+    assert (batch["delivered_packages"], batch["delivered_actions"]) == (1, 2)
+    assert batch["status"] == "blocked"
+    assert path.read_text() == original
+
+    plan["batches"][0]["status"] = "delivered"
+    plan["batches"][0]["members"][1]["status"] = "blocked"
+    path.write_text(json.dumps(plan))
+    with pytest.raises(migration.HelperError, match="delivered batch"):
+        migration.batches(path)
+
+
+@pytest.mark.parametrize("status", [None, True, [], {}, "HOLD", "partial"])
+def test_batch_status_rejects_invalid_member_status(tmp_path, status):
+    plan = json.loads((ROOT / "tools/leaf-dev/batches.json").read_text())
+    plan["batches"][0]["members"][0]["status"] = status
+    path = tmp_path / "invalid-status.json"
+    path.write_text(json.dumps(plan))
+    with pytest.raises(migration.HelperError, match="leaf delivery status"):
+        migration.batches(path)
 
 
 @pytest.mark.parametrize(

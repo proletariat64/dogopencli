@@ -1,0 +1,140 @@
+{
+  "domain": "collection",
+  "name": "card_template",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read one complete native collection configuration response with optional exact local selection.",
+      "parameters": [
+        {
+          "name": "bank-location",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "supportedCountry",
+          "description": "Exact case-sensitive local supportedCountry match; repeat for OR, combine fields with AND. Literal * remains literal; comma values are not split."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "supportedCurrency",
+          "description": "Exact case-sensitive local supportedCurrency match; repeat for OR, combine fields with AND. Literal * remains literal; comma values are not split."
+        },
+        {
+          "name": "bank",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "supportedFinancialInst",
+          "description": "Exact case-sensitive local supportedFinancialInst match; repeat for OR, combine fields with AND. Literal * remains literal; comma values are not split."
+        },
+        {
+          "name": "template-name",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "templateName",
+          "description": "Exact case-sensitive local templateName match; repeat for OR, combine fields with AND. Literal * remains literal; comma values are not split."
+        },
+        {
+          "name": "template-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "id",
+          "description": "Exact case-sensitive local id match; repeat for OR, combine fields with AND. Literal * remains literal; comma values are not split."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "status",
+          "description": "Exact case-sensitive local status match; repeat for OR, combine fields with AND. Literal * remains literal; comma values are not split."
+        }
+      ]
+    }
+  },
+  "summary": "Collection information card-template configuration.",
+  "purpose": "Inspect maintained collection configuration without executing rules or acquiring separate relationships.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native configuration record identity, retained exactly."
+    },
+    {
+      "name": "supportedCountry",
+      "type": "native JSON value",
+      "meaning": "Native configuration field; retained without normalization."
+    },
+    {
+      "name": "supportedCurrency",
+      "type": "native JSON value",
+      "meaning": "Native configuration field; retained without normalization."
+    },
+    {
+      "name": "supportedFinancialInst",
+      "type": "native JSON value",
+      "meaning": "Native configuration field; retained without normalization."
+    },
+    {
+      "name": "templateName",
+      "type": "native JSON value",
+      "meaning": "Native configuration field; retained without normalization."
+    },
+    {
+      "name": "status",
+      "type": "native JSON value",
+      "meaning": "Native configuration field; retained without normalization."
+    },
+    {
+      "name": "cardTemplateItemList",
+      "type": "array",
+      "meaning": "Native collection-information template items; preserved without inferring unverified inner schema or separate relationship coverage."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native nonblank string id, without coercion, hashing or guessed business composites.",
+  "limitations": [
+    "POST JSON https://ifundboss-api.alipay.com/ivostro/api/cardTemplate/pageList.json; fixed pageNo=1/pageSize=1000. One unfiltered request only, no relation/detail query or speculative paging.",
+    "Response success must be boolean true; resultDataList contains rows and totalCount counts native unique identities. Exact integer page echoes are required; pageNo=0 is allowed only for empty rows and zero total with pageSize=1000.",
+    "1000 is a qualified fixed request width, not a measured maximum. SDK identity/count/capacity checks keep duplicate, conflicting or truncated responses incomplete; strict queries reject and incomplete refresh never publishes.",
+    "Full native records, unknown/nested fields, precise values, null, zero, empty strings and nested array order are retained; displayed records sort lexically by unmodified native string id. Timestamp units/timezone and unsupported detail semantics are not inferred.",
+    "Local matching uses exact whole strings: same field OR, different fields AND; missing/null never match. Blank inputs reject, valid values are not trimmed, commas are not split and * is literal. Local filters apply before output offset/limit/projection and are never sent to backend.",
+    "Live never publishes. Only complete nonempty refresh publishes; failed, empty or incomplete refresh preserves saved data. No Get or new Duckdog import contract.",
+    "Card templates configure collection information, not payment-card/PAN data. Related bank-account rules and related-template actions are separate inquiries and remain unqueried."
+  ],
+  "examples": [
+    {
+      "title": "Query native configuration",
+      "command": "dogopencli collection list card_template --live --require-complete --limit 0"
+    },
+    {
+      "title": "Select Singapore or United States locally",
+      "command": "dogopencli collection list card_template --bank-location SG --bank-location US"
+    }
+  ],
+  "dataset": {
+    "relation": "collection_card_template"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}

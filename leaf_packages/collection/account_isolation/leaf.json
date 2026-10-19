@@ -1,0 +1,159 @@
+{
+  "domain": "collection",
+  "name": "account_isolation",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List native account-isolation opening-rule configurations.",
+      "parameters": [
+        {
+          "name": "opening-rule-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "id",
+          "description": "Exact case-sensitive local id match; repeat for alternatives. Commas and * stay literal; never sent to backend."
+        },
+        {
+          "name": "business-line",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "businessCategory",
+          "description": "Exact case-sensitive local businessCategory match; repeat for alternatives. Commas and * stay literal; never sent to backend."
+        },
+        {
+          "name": "business-region",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "businessRegionScope",
+          "description": "Exact case-sensitive local businessRegionScope match; repeat for alternatives. Commas and * stay literal; never sent to backend."
+        },
+        {
+          "name": "customer-group",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "customerTags",
+          "description": "Exact case-sensitive local customerTags match; repeat for alternatives. Commas and * stay literal; never sent to backend."
+        },
+        {
+          "name": "scene-code",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "sceneCode",
+          "description": "Exact case-sensitive local sceneCode match; repeat for alternatives. Commas and * stay literal; never sent to backend."
+        },
+        {
+          "name": "collection-region",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditArea",
+          "description": "Exact case-sensitive local creditArea match; repeat for alternatives. Commas and * stay literal; never sent to backend."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "currency",
+          "description": "Exact case-sensitive local currency match; repeat for alternatives. Commas and * stay literal; never sent to backend."
+        },
+        {
+          "name": "transaction-type",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "regionType",
+          "description": "Exact case-sensitive local regionType match; repeat for alternatives. Commas and * stay literal; never sent to backend."
+        }
+      ]
+    }
+  },
+  "summary": "Collection account-isolation opening-rule configurations.",
+  "purpose": "Inspect native opening rules, without querying individual virtual accounts or balances.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native opening-rule identity; retained as a string."
+    },
+    {
+      "name": "businessCategory",
+      "type": "string",
+      "meaning": "Native business-line selection; may be null."
+    },
+    {
+      "name": "businessRegionScope",
+      "type": "string",
+      "meaning": "Native business-region scope."
+    },
+    {
+      "name": "customerTags",
+      "type": "string",
+      "meaning": "Native customer-group text; commas are literal."
+    },
+    {
+      "name": "sceneCode",
+      "type": "string",
+      "meaning": "Native scene code."
+    },
+    {
+      "name": "creditArea",
+      "type": "string",
+      "meaning": "Native collection-region value."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native currency text; commas are literal."
+    },
+    {
+      "name": "regionType",
+      "type": "string",
+      "meaning": "Native transaction-type value."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Nonblank native string id; no numeric conversion or synthetic identity.",
+  "limitations": [
+    "One zero-based JSON request with pageSize=1000; native total must match unique acquired rows. This is a verified width, not a maximum-capacity claim.",
+    "Native totalPageNo is a placeholder and does not establish completeness.",
+    "All filters are local exact matches: repeated values OR, different fields AND; commas and * are literal.",
+    "Opening-rule configurations are not individual virtual accounts, balances, capacity or bank-account VA rules.",
+    "Native nested/unknown fields remain unchanged; timestamps retain native values without unit/timezone conversion."
+  ],
+  "examples": [
+    {
+      "title": "Acquire all native opening rules",
+      "command": "dogopencli collection list account_isolation --live --limit 0 --require-complete"
+    },
+    {
+      "title": "Filter saved rules by exact currency text",
+      "command": "dogopencli collection list account_isolation --currency USD"
+    }
+  ],
+  "dataset": {
+    "relation": "collection_account_isolation"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}

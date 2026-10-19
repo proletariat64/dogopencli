@@ -1,0 +1,167 @@
+{
+  "domain": "liquidity",
+  "name": "operations.account_strategies",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List account operation strategies in the native default version view.",
+      "parameters": [
+        {
+          "name": "entity",
+          "type": "string",
+          "multiple": true,
+          "required": false,
+          "local_field": "entity",
+          "description": "Native fundEntityList filter. Repeat for OR; dimensions combine with AND. Scope values are canonical sets."
+        },
+        {
+          "name": "bank",
+          "type": "string",
+          "multiple": true,
+          "required": false,
+          "local_field": "bankId",
+          "description": "Native fundBankIdList filter. Repeat for OR; dimensions combine with AND. Scope values are canonical sets."
+        },
+        {
+          "name": "alias",
+          "type": "string",
+          "multiple": true,
+          "required": false,
+          "local_field": "aliasName",
+          "description": "Native aliasNameList filter. Repeat for OR; dimensions combine with AND. Scope values are canonical sets."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "multiple": true,
+          "required": false,
+          "local_field": "currency",
+          "description": "Native currencyList filter. Repeat for OR; dimensions combine with AND. Scope values are canonical sets."
+        },
+        {
+          "name": "account-type",
+          "type": "string",
+          "multiple": true,
+          "required": false,
+          "local_field": "accountType",
+          "description": "Native accountTypeList filter. Repeat for OR; dimensions combine with AND. Scope values are canonical sets."
+        },
+        {
+          "name": "operation-strategy",
+          "type": "string",
+          "multiple": true,
+          "required": false,
+          "local_field": "operationStrategy",
+          "description": "Native operation strategy codes; exact known display-label members are checked without changing returned text. Repeat for OR.",
+          "choices": [
+            "BANK_SWEEPING",
+            "SELF_BUILD_CASH_POOL",
+            "PROGRAMMABLE_PAYMENT",
+            "AI_GLOBAL_DECISION",
+            "EOD_BAL_ESTIMATION",
+            "T0_DECISION",
+            "RT_DECISION",
+            "NO_NEED"
+          ]
+        },
+        {
+          "name": "cover-algorithm",
+          "type": "string",
+          "required": false,
+          "choices": [
+            "Y",
+            "N"
+          ],
+          "local_field": "coverAlgorithm",
+          "description": "Native coverAlgorithm Y/N filter; does not prove algorithm execution."
+        }
+      ]
+    }
+  },
+  "summary": "Native account operation strategy configurations and versions.",
+  "purpose": "Inspect complete native strategy records without selecting latest versions or approval states.",
+  "fields": [
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native account alias identity component."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native currency identity component."
+    },
+    {
+      "name": "version",
+      "type": "integer",
+      "meaning": "Native strategy version identity component, unchanged."
+    },
+    {
+      "name": "operationStrategy",
+      "type": "string",
+      "meaning": "Native comma-separated display labels, retaining order and duplicates."
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "meaning": "Native configuration validity, distinct from approval status."
+    },
+    {
+      "name": "processStatus",
+      "type": "string",
+      "meaning": "Native approval state, not configuration validity."
+    },
+    {
+      "name": "lastModifiedTime",
+      "type": "string",
+      "meaning": "Native source time; timezone is not inferred."
+    }
+  ],
+  "identity": [
+    "aliasName",
+    "currency",
+    "version"
+  ],
+  "identity_description": "Typed native aliasName/currency/integer version tuple; no synthetic output ID.",
+  "limitations": [
+    "Native default version view is not all history. Invalid records and all returned versions remain visible; no status/default approval filter or latest reducer.",
+    "Fixed qualified width5000 uses normal SDK offset/count/identity completeness. No separate terminal-empty query is performed or claimed.",
+    "Six optional native string-array filters use OR within dimensions and AND across dimensions; cover-algorithm is one Y/N value. No tenant, date or status request fields.",
+    "Unknown/nested fields and native amounts/timestamps remain unchanged in native arrival order. No related-source discovery or Get.",
+    "Bare offline List replays its saved native scope; explicit scope changes cannot broaden proven coverage and strict reads reject unproved scope."
+  ],
+  "examples": [
+    {
+      "title": "Acquire the native default view",
+      "command": "dogopencli liquidity list operations.account_strategies --live --limit 0 --require-complete"
+    },
+    {
+      "title": "Save a native scoped result",
+      "command": "dogopencli liquidity refresh operations.account_strategies --currency USD --require-complete"
+    },
+    {
+      "title": "Read the saved scope",
+      "command": "dogopencli liquidity list operations.account_strategies --currency USD"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_account_strategies"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "hash",
+      "fields": [
+        "aliasName",
+        "currency",
+        "version"
+      ]
+    }
+  }
+}

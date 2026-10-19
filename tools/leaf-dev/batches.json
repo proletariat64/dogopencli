@@ -353,7 +353,7 @@
       "id": "B11",
       "title": "实时网络与路由额度",
       "issue": 270,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.network.realtime",
@@ -374,7 +374,7 @@
       "id": "B12",
       "title": "投资策略与结果",
       "issue": 271,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.investment.strategies",
@@ -395,7 +395,7 @@
       "id": "B13",
       "title": "收款配置列表",
       "issue": 272,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "collection.clearing_system",
@@ -421,7 +421,7 @@
       "id": "B14",
       "title": "付款规则",
       "issue": 273,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "payment.rules.same_bank_transfer",
@@ -453,27 +453,30 @@
       "id": "B15",
       "title": "收款SLA与VA",
       "issue": 274,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "collection.sla.configs",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "collection.va.rules",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "collection.va.capacity",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         }
       ]
     },
@@ -481,7 +484,7 @@
       "id": "B16",
       "title": "付款渠道与成本",
       "issue": 275,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "payment.channel",
@@ -501,7 +504,7 @@
       "id": "B17",
       "title": "付款PTR",
       "issue": 276,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "payment.ptr.cases",
@@ -521,25 +524,28 @@
       "id": "B18",
       "title": "黑白名单",
       "issue": 277,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.reference.blacklist.account",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.reference.blacklist.bank",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         },
         {
           "identity": "liquidity.reference.whitelist.entity",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         }
       ]
     },
@@ -547,7 +553,7 @@
       "id": "B19",
       "title": "账户与余额组合",
       "issue": 278,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.cash.accounts",
@@ -567,19 +573,21 @@
       "id": "B20",
       "title": "账户策略与容量",
       "issue": 279,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.operations.account_strategies",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.risk.account_capacity",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         }
       ]
     },
@@ -587,7 +595,7 @@
       "id": "B21",
       "title": "账户现金流与需求",
       "issue": 280,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.forecast.account_cashflows",
@@ -607,19 +615,21 @@
       "id": "B22",
       "title": "账户预测时段",
       "issue": 281,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.forecast.account_t3",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.forecast.account_demands_intraday",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         }
       ]
     },
@@ -627,25 +637,28 @@
       "id": "B23",
       "title": "预测结果与准确率",
       "issue": 282,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.forecast.results",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.forecast.cashflows",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         },
         {
           "identity": "liquidity.forecast.accuracy",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         }
       ]
     },
@@ -653,27 +666,30 @@
       "id": "B24",
       "title": "利率、产品与历史",
       "issue": 283,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.investment.interest_rates",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "blocked"
         },
         {
           "identity": "liquidity.investment.products",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.investment.products.history",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         }
       ]
     },
@@ -681,26 +697,29 @@
       "id": "B25",
       "title": "决策、历史与规则状态",
       "issue": 284,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.operations.decisions",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.operations.decisions.history",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         },
         {
           "identity": "liquidity.operations.rule_status",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         }
       ]
     }

@@ -385,24 +385,25 @@ def batches(path: Path) -> dict:
     identities, labels = set(), set()
     summary = []
     done_packages = done_actions = 0
+    statuses = ("delivered", "planned", "assigned", "blocked")
     for batch in plan["batches"]:
         label, status = batch["id"], batch["status"]
         if (
             not re.fullmatch(r"B[0-9]{2,}", label)
             or label in labels
-            or status
-            not in (
-                "delivered",
-                "planned",
-                "assigned",
-                "blocked",
-            )
+            or status not in statuses
         ):
             raise HelperError("Duplicate batch ID or invalid batch status.")
         labels.add(label)
         actions = 0
+        batch_done_packages = batch_done_actions = 0
         for member in batch["members"]:
             identity, operations = member["identity"], member["operations"]
+            member_status = member.get("status", status)
+            if member_status not in statuses:
+                raise HelperError("Invalid leaf delivery status.")
+            if status == "delivered" and member_status != "delivered":
+                raise HelperError("A delivered batch cannot contain unfinished leaves.")
             if (
                 not re.fullmatch(
                     r"(?:payment|collection|liquidity|fx)\.[a-z][a-z0-9_]*"
@@ -417,10 +418,12 @@ def batches(path: Path) -> dict:
                 raise HelperError("Duplicate leaf or invalid list/get action mapping.")
             identities.add(identity)
             actions += len(operations)
+            if member_status == "delivered":
+                batch_done_packages += 1
+                batch_done_actions += len(operations)
         count = len(batch["members"])
-        if status == "delivered":
-            done_packages += count
-            done_actions += actions
+        done_packages += batch_done_packages
+        done_actions += batch_done_actions
         summary.append(
             {
                 "id": label,
@@ -428,6 +431,8 @@ def batches(path: Path) -> dict:
                 "status": status,
                 "packages": count,
                 "actions": actions,
+                "delivered_packages": batch_done_packages,
+                "delivered_actions": batch_done_actions,
             }
         )
     total_actions = sum(b["actions"] for b in summary)

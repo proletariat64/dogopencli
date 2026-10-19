@@ -1,0 +1,114 @@
+{
+  "domain": "collection",
+  "name": "va.rules",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Inspect the native first-page VA-rule configuration scope without detail crawling.",
+      "parameters": []
+    },
+    "get": {
+      "description": "Read one complete native VA-rule root online without querying bank-account VA rules.",
+      "parameters": [],
+      "lookup": {
+        "name": "vaRuleId",
+        "description": "Exact native vaRuleId from List; bankRuleId identifies a separate business object."
+      },
+      "result_identity": {
+        "fields": [
+          "vaRuleId"
+        ],
+        "description": "Nonblank native string vaRuleId matching the requested lookup exactly."
+      },
+      "list_binding": {
+        "identity_field": "vaRuleId"
+      }
+    }
+  },
+  "summary": "Collection VA rules and independent native details.",
+  "purpose": "Inspect VA assignment configuration through inquiry-only native endpoints.",
+  "fields": [
+    {
+      "name": "vaRuleId",
+      "type": "string",
+      "meaning": "Native VA-rule identity, distinct from bankRuleId."
+    },
+    {
+      "name": "bankRuleId",
+      "type": "native JSON value",
+      "meaning": "Reference to a separate bank-account VA rule, never expanded here."
+    },
+    {
+      "name": "countries",
+      "type": "array",
+      "meaning": "Native List countries; not renamed or equated with detail creditAreas."
+    },
+    {
+      "name": "creditAreas",
+      "type": "array",
+      "meaning": "Native detail coverage field, retained independently of List countries."
+    },
+    {
+      "name": "assignInfo",
+      "type": "object or null",
+      "meaning": "Full native assignment settings; explicit null remains unchanged."
+    },
+    {
+      "name": "clientEntity",
+      "type": "native JSON value",
+      "meaning": "Full native detail client entity value."
+    },
+    {
+      "name": "vaWarningInfo",
+      "type": "object or null",
+      "meaning": "Optional native warning settings; no contact values included in documentation."
+    }
+  ],
+  "identity": [
+    "vaRuleId"
+  ],
+  "identity_description": "Native nonblank string vaRuleId; original string preserved without deriving or coercing identity.",
+  "limitations": [
+    "List POST JSON https://ifundboss-api.alipay.com/ivostro/api/virtualAccountRule/list.json with only pageNo=1/pageSize=1000. Native totalCount, unique identities and exact integer page echoes determine completeness; no speculative paging.",
+    "1000 is a qualified fixed request width, not a measured maximum. Duplicate/conflicting/truncated acquisitions remain incomplete and cannot publish on refresh.",
+    "List native resultDataList must be an array; the explicitly supported absent resultDataList with totalCount=0 means empty. Null or missing nonempty containers fail; incorrect page echoes fail even when empty.",
+    "Displayed roots preserve historical identity order: ASCII digit IDs numerically, original string tie-breaker, then other IDs lexically. All native strings, precise values, unknown fields, nulls and nested array order remain unchanged.",
+    "Get GET query /ivostro/api/virtualAccountRule/detail.json sends only vaRuleId and returns resultObj. Exact identity echo and required core business fields are validated; explicit nulls and optional vaWarningInfo remain native.",
+    "Backend refusal success=false is BUSINESS_QUERY_FAILED, never NOT_FOUND or successful empty output. Get publishes no cache and never substitutes a List row.",
+    "List countries and detail creditAreas are distinct. bankRuleId refers to a separate object; bankAccountVaRule and other relationship inquiries remain unqueried.",
+    "Only complete nonempty List refresh publishes. Live and Get never publish; failed, empty or incomplete refresh preserves the earlier capture. No bulk detail crawl, null-detail cache pairs or new Duckdog import.",
+    "List --live --with-detail fetches only selected-window VA-rule details, returns separate record/detail members and fails atomically if any selected Get is refused or invalid; saved List data stays unchanged."
+  ],
+  "examples": [
+    {
+      "title": "Acquire native VA rules",
+      "command": "dogopencli collection list va.rules --live --require-complete --limit 0"
+    },
+    {
+      "title": "Read one native detail",
+      "command": "dogopencli collection get va.rules VA_RULE_ID"
+    },
+    {
+      "title": "Read a selected row and native detail",
+      "command": "dogopencli collection list va.rules --live --with-detail --limit 1"
+    }
+  ],
+  "dataset": {
+    "relation": "collection_va_rules"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "vaRuleId"
+      ]
+    }
+  }
+}

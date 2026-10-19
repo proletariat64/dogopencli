@@ -180,5 +180,8 @@ Duckdog rows. Keep configuration, SSO/profile and unrelated worktrees/data.
 Count a leaf only after its complete declared action set passes all required
 gates. Transfer blocked whole leaves with evidence and a destination issue;
 never shrink the total inventory or count an incomplete leaf delivered. The
-coordinator updates the [batch index](batches.md) and parent ticket. Launching
+coordinator records per-member status for partially delivered batches in the
+[batch index](batches.md), then updates the parent ticket. Members without a
+status inherit the batch status; a delivered batch cannot contain unfinished
+members. Launching
 another batch requires its own assignment; preparing these tools starts no leaves.
