@@ -1,0 +1,117 @@
+{
+  "domain": "liquidity",
+  "name": "forecast.results",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List native forecast records for inclusive value dates and optional creation-time/account scope.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "local_field": "valueDate",
+          "description": "Inclusive valueDate start, YYYY-MM-DD or YYYYMMDD."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "local_field": "valueDate",
+          "description": "Inclusive valueDate end, YYYY-MM-DD or YYYYMMDD."
+        },
+        {
+          "name": "record-from-time",
+          "type": "string",
+          "required": false,
+          "local_field": "recordCreateTime",
+          "description": "Inclusive recordCreateTime start, HH:mm:ss or HHmmss; acquisition default 000000."
+        },
+        {
+          "name": "record-to-time",
+          "type": "string",
+          "required": false,
+          "local_field": "recordCreateTime",
+          "description": "Inclusive recordCreateTime end, HH:mm:ss or HHmmss; acquisition default 235959."
+        },
+        {
+          "name": "account-alias",
+          "type": "string",
+          "required": false,
+          "local_field": "bankAccountAliasName",
+          "description": "Exact native account alias; repeated values use OR. Commas and * are literal.",
+          "multiple": true
+        }
+      ]
+    }
+  },
+  "summary": "Native dated cash forecast records.",
+  "purpose": "Read forecast records without calculating accuracy or joining other sources.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native unique forecast record identity."
+    },
+    {
+      "name": "valueDate",
+      "type": "string",
+      "meaning": "Native forecast business date YYYYMMDD."
+    },
+    {
+      "name": "recordCreateTime",
+      "type": "string",
+      "meaning": "Native record clock time HHmmss; source timezone unknown."
+    },
+    {
+      "name": "bankAccountAliasName",
+      "type": "string",
+      "meaning": "Native account alias."
+    },
+    {
+      "name": "forecastBalance",
+      "type": "string",
+      "meaning": "Native unscaled forecast amount; null, empty and zero remain distinct."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Exact native nonempty string id; duplicate identities fail completeness.",
+  "limitations": [
+    "GET /bankCashForecastRecordQuery.json with fixed tenant GUAPW3SG and restricted JSON-string query VO; six native amount bounds stay null.",
+    "Qualified offset width 5000 covered 1332 native records; maximum backend capacity is not established. Native total is result.count.",
+    "Both inclusive value-date bounds are required for acquisition. Full-day creation times default to 000000/235959; no source timezone or epoch conversion is inferred.",
+    "Complete native objects, unknown fields, nulls, precision and arrival order are preserved. No accuracy metric, cashflow, Get or related-source calls.",
+    "Bare offline List replays the saved acquisition. Explicit local selection cannot prove a changed native scope; strict reads reject unproved coverage.",
+    "Historical broad-scope backend count drift does not permit silent total correction, deduplication or incomplete cache publication."
+  ],
+  "examples": [
+    {
+      "title": "Read dated forecasts",
+      "command": "dogopencli liquidity list forecast.results --live --from-date 2026-03-08 --to-date 2026-03-08 --limit 0 --require-complete"
+    },
+    {
+      "title": "Replay saved scope",
+      "command": "dogopencli liquidity list forecast.results --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_forecast_results"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}
