@@ -100,6 +100,10 @@ def test_editor_original_styling_and_leaf_heading_contrast(running_gui):
         page = response.read().decode()
     assert "body{font:18px system-ui;margin:0;padding:12px" in page
     assert ":root{color-scheme:light;font:18px system-ui" not in page
+    assert "body,#domains,#domains *{box-sizing:border-box}" in page
+    assert "#domains button{font:inherit}button{cursor:pointer}" in page
+    assert "color:#17202a}*{box-sizing:border-box}" not in page
+    assert "button,input,textarea{font:inherit}" not in page
     assert ".domain-card,#editor" not in page
     assert (
         "#editor{font-size:16px;background:#fff;border:1px solid #dce1e6;"
@@ -107,6 +111,7 @@ def test_editor_original_styling_and_leaf_heading_contrast(running_gui):
     ) in page
     assert "#editor{margin:12px 0}" not in page
     assert ".leaves h3{margin:0 0 2px;color:#64707c;font-size:12px" in page
+    assert "#editor button{box-sizing:content-box}" in page
     assert "#editor button{padding:.5rem 1rem}" in page
 
 

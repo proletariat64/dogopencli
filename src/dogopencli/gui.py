@@ -17,10 +17,11 @@ _PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dogopencli domains</title>
 <style nonce="NONCE">:root{color-scheme:light;
-background:#f3f5f8;color:#17202a}*{box-sizing:border-box}
+background:#f3f5f8;color:#17202a}body,#domains,#domains *{box-sizing:border-box}
 body{font:18px system-ui;margin:0;padding:12px;\
 min-height:100vh;background:#f3f5f8;color:#17202a}
-button,input,textarea{font:inherit}button{cursor:pointer}
+#domains button{font:inherit}button{cursor:pointer}
+#editor button{box-sizing:content-box}
 #editor button{padding:.5rem 1rem}
 #page-header{display:flex;align-items:center;justify-content:space-between;
 margin:0 0 10px}#page-header h1{margin:0;font-size:24px}
