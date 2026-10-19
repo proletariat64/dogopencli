@@ -110,6 +110,15 @@ def host_modes(option: OptionSpec, operation: str) -> OptionSpec:
     # checks staleness. Describe the no-op without inventing a rejection.
     if option.name == "require_fresh" and "live" in entries:
         entries["live"]["effective"] = False
+    if option.name == "with_detail":
+        entries = {
+            "cache": {"available": False},
+            "live": {
+                "available": True,
+                "role": "detail-composition",
+                "requires": ["live"],
+            },
+        }
     return replace(option, argument_contract={"modes": entries})
 
 
@@ -123,6 +132,18 @@ def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
         if operation == "get"
         else ()
     )
+    if operation == "list" and leaf.manifest["operations"].get("get", {}).get(
+        "list_binding"
+    ):
+        host = (
+            *host,
+            opt(
+                "with_detail",
+                "With --live, fetch native detail for each selected output row; "
+                "return {record, detail}; any detail failure fails the command.",
+                "bool",
+            ),
+        )
     declared = "list" if operation == "refresh" else operation
     definitions = leaf.manifest["operations"].get(declared, {}).get("parameters", [])
     parameters = tuple(
@@ -295,9 +316,12 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                         "name": "detail_identity",
                         "type": "string",
                         "required": True,
-                        "summary": leaf.manifest.get(
-                            "identity_description", "Native detail identity."
-                        ),
+                        "summary": leaf.manifest["operations"]["get"]["lookup"][
+                            "description"
+                        ],
+                        "lookup_name": leaf.manifest["operations"]["get"]["lookup"][
+                            "name"
+                        ],
                     },
                 )
                 if operation == "get"
@@ -308,6 +332,41 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                 or f"{operation.capitalize()} {leaf.id}."
             )
             invocation = "dogopencli " + " ".join(path)
+            detail = leaf.manifest["operations"].get("get", {})
+            binding = detail.get("list_binding")
+            detail_constraints = ()
+            if operation == "get":
+                detail_constraints = (
+                    "Live-only native root object; returned identity: "
+                    + ", ".join(detail["result_identity"]["fields"])
+                    + ". "
+                    + detail["result_identity"]["description"],
+                    "Separate histories, logs and child pages are not acquired; "
+                    "a root response does not establish their completeness.",
+                )
+            elif operation == "list" and binding:
+                detail_constraints = (
+                    "--with-detail requires --live. Local filtering and offset/limit "
+                    "select the output window before detail inquiries; limit 0 means "
+                    "all remaining rows. Empty windows make no detail inquiries.",
+                    "Each entry is {record, detail}; --fields projects only record. "
+                    "Any detail or binding failure fails the whole command. "
+                    "List coverage is retained; separate histories, logs and child "
+                    "pages are not acquired. No combined result is cached or imported.",
+                    "Lookup "
+                    + detail["lookup"]["name"]
+                    + " comes from List field "
+                    + binding["identity_field"]
+                    + "; context mappings: "
+                    + (
+                        ", ".join(
+                            name + "=" + field
+                            for name, field in binding.get("parameters", {}).items()
+                        )
+                        or "none"
+                    )
+                    + ". Unmapped Get parameters use their declared defaults.",
+                )
             nodes[path] = BizNode(
                 path,
                 summary,
@@ -338,7 +397,8 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                 )
                 if operation == "list"
                 else (),
-                constraints=(
+                constraints=detail_constraints
+                + (
                     (
                         "Required business parameters apply to get, refresh and live "
                         "acquisition; help permits missing values.",
@@ -349,7 +409,24 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                     if operation in {"list", "refresh", "get"}
                     else ()
                 ),
-                examples=(invocation + (" DETAIL_ID" if operation == "get" else ""),),
+                examples=(
+                    invocation
+                    + (
+                        " DETAIL_ID"
+                        + "".join(
+                            " --" + item["name"] + " VALUE"
+                            for item in detail.get("parameters", [])
+                            if item.get("required") and "default" not in item
+                        )
+                        if operation == "get"
+                        else ""
+                    ),
+                    *(
+                        (invocation + " --live --with-detail --offset 0 --limit 10",)
+                        if operation == "list" and binding
+                        else ()
+                    ),
+                ),
                 next=("dogopencli " + leaf.domain + " describe " + leaf.name,)
                 if operation != "describe"
                 else (),
