@@ -395,7 +395,7 @@
       "id": "B13",
       "title": "收款配置列表",
       "issue": 272,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "collection.clearing_system",
