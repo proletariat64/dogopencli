@@ -267,10 +267,10 @@ def test_sources_preserve_children_separate_quality_scope_and_cache_evidence(tmp
     cache = Cache(tmp_path / "cache.sqlite3")
     cache.publish(snapshot, [(1, canonical(result.records[0]))])
     saved, rows = cache.read(snapshot.namespace)
-    assert saved.acquisition == evidence.record()
-    assert (
-        AcquisitionEvidence.from_record(saved.acquisition).sources == evidence.sources
-    )
+    assert canonical(saved.acquisition) == canonical(evidence.record())
+    assert canonical(
+        AcquisitionEvidence.from_record(saved.acquisition).sources
+    ) == canonical(evidence.sources)
     assert parse(rows[0][1]) == result.records[0]
 
 
@@ -342,7 +342,14 @@ def test_failed_or_incomplete_required_source_never_becomes_empty_children(secon
         collect(setup)
     assert rejected.value.meta["source"] == "right"
     assert rejected.value.meta["sources"]["left"]["acquisition"]["reported_total"] == 1
-    assert "right" in rejected.value.meta["sources"]
+    failed = rejected.value.meta["sources"]["right"]
+    assert failed["error"] == {
+        "code": rejected.value.code,
+        "retryable": rejected.value.retryable,
+    }
+    if second.get("success") is not False:
+        assert failed["acquisition"]["scope_complete"] is False
+        assert failed["acquisition"]["reported_total"] == 2
     assert setup[3] == []
     assert all(stream.closed for stream in setup[1].values())
 

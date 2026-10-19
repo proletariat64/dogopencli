@@ -897,11 +897,10 @@ def collect_sources(
             rebuilt = rebuilt or result.rebuilt
         except CliError as error:
             failures = dict(source_evidence)
-            if name not in failures:
-                failures[name] = {
-                    "scope": scope,
-                    "error": {"code": error.code, "retryable": error.retryable},
-                }
+            failures[name] = {
+                **failures.get(name, {"scope": scope}),
+                "error": {"code": error.code, "retryable": error.retryable},
+            }
             raise CliError(
                 error.code,
                 f"Source {name}: {error.message}",
