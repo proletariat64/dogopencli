@@ -12,7 +12,7 @@
       "parameters": [],
       "lookup": {
         "name": "Id",
-        "description": "Native Id lookup value."
+        "description": "Native Id lookup value; use the id value from a List row."
       },
       "result_identity": {
         "fields": [
@@ -69,7 +69,9 @@
     "Unknown fields, native JSON types and exact decimal values are retained.",
     "Pinned v0.4.3 provides contract provenance; current production qualification is recorded separately.",
     "Native request has no tenant or timeZone field.",
-    "Native detail uses POST json /api/realtime/rule/getDetail.json; sends Id as a string without tenant or timeZone."
+    "Native detail uses POST json /api/realtime/rule/getDetail.json; sends Id as a string without tenant or timeZone.",
+    "Detail returns one native root response; separate histories, logs and child pages are not queried.",
+    "List with --live --with-detail fetches detail only for the selected offset/limit window as separate record/detail members; any detail failure fails the whole query. Get and combined queries preserve the saved List."
   ],
   "examples": [
     {
@@ -83,6 +85,10 @@
     {
       "title": "Query native detail",
       "command": "dogopencli liquidity get rules.realtime RECORD_ID"
+    },
+    {
+      "title": "Read one List row with its native detail",
+      "command": "dogopencli liquidity list rules.realtime --live --with-detail --limit 1"
     }
   ],
   "dataset": {

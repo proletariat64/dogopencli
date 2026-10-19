@@ -12,7 +12,7 @@
       "parameters": [],
       "lookup": {
         "name": "benchmarkId",
-        "description": "Native benchmarkId lookup value."
+        "description": "Native benchmarkId lookup value; use the benchmarkId value from a List row."
       },
       "result_identity": {
         "fields": [
@@ -64,7 +64,9 @@
     "Unknown fields, native JSON types and exact decimal values are retained.",
     "Pinned v0.4.3 provides contract provenance; current production qualification is recorded separately.",
     "Fixed GUAPW3SG tenant.",
-    "Native detail uses POST form /api/risk/benchmark/riskEventBenchmarkDetailDetail.json; sends benchmarkId as a string without tenant or timeZone."
+    "Native detail uses POST form /api/risk/benchmark/riskEventBenchmarkDetailDetail.json; sends benchmarkId as a string without tenant or timeZone.",
+    "Detail returns one native root response; separate histories, logs and child pages are not queried.",
+    "List with --live --with-detail fetches detail only for the selected offset/limit window as separate record/detail members; any detail failure fails the whole query. Get and combined queries preserve the saved List."
   ],
   "examples": [
     {
@@ -78,6 +80,10 @@
     {
       "title": "Query native detail",
       "command": "dogopencli liquidity get risk.thresholds RECORD_ID"
+    },
+    {
+      "title": "Read one List row with its native detail",
+      "command": "dogopencli liquidity list risk.thresholds --live --with-detail --limit 1"
     }
   ],
   "dataset": {

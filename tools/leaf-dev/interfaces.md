@@ -1,7 +1,8 @@
 # Leaf interfaces
 
 Use the [handbook](handbook.md) for development steps and
-[the sample](example/) for executable code. Runtime definitions are authoritative.
+the [List+Get sample](example/) or [Get-only sample](example-get-only/) for
+executable code. Runtime definitions are authoritative.
 
 ## Manifest
 
@@ -14,7 +15,9 @@ fields. Start from [leaf.json](example/leaf.json), then run `leaf.py verify`.
 | `adapter` | Root Python file and exported object, e.g. `adapter.py:adapter`. |
 | `operations` | Verified `list` and/or `get`, each with description and parameters. Host provides refresh/prune/describe/help. |
 | `summary`, `purpose`, `fields` | Discovery and business field meanings; preserve unknown native fields in output. |
-| `identity`, `identity_description` | Native record identity and its meaning; align List identity with the SDK declaration. |
+| `identity`, `identity_description` | Native List identity and its meaning; Get-only may use an empty List identity. |
+| `operations.get.lookup`, `result_identity` | Positional lookup meaning and independently declared returned root identity. Both need descriptions. |
+| `operations.get.list_binding` | Optional qualified same-value List field/context mapping enabling `--live --with-detail`. |
 | `limitations`, `examples` | Scope/interpretation limits and valid action-first commands. |
 | `dataset.relation` | Unique SQL binding for List; omit for get-only. |
 | `collection` | Host List SDK provider, native paging and primary ID; omit for get-only. |
@@ -62,7 +65,7 @@ The [runtime](../../src/dogopencli/leaves/runtime.py) invokes these methods:
 | `capability(parameters)` | Validate inputs and return a native transport capability. No inquiry. |
 | `scope(parameters)` | Stable string describing the native acquisition scope; canonical JSON suits structured inputs. |
 | `filter(records, parameters)` | Supported local filters only; return unchanged records when none are supported. |
-| `get(session, parameters, identity)` | Only for declared Get: issue the native detail request through the supplied session and validate its identity echo. |
+| `detail_capability(parameters)` | For declared Get: independent endpoint and pure native request/parser hooks. No inquiry. |
 
 For SDK List, the capability supplies:
 
@@ -82,7 +85,15 @@ and gates refresh publication. The leaf owns native meaning and mapping.
 
 Authentication, business-envelope and schema failures are hard failures. Keep
 native fields/types/decimals intact; do not convert a failure into empty success.
-Get remains a native detail inquiry, separate from List row lookup.
+Get remains a native detail inquiry, independent of List. Its capability supplies
+`name`, `page_url`, `contract`, `request_body(parameters, identity)` and
+`parse_detail(body, parameters, identity)`. The parser validates native business
+status, root object, returned identity and scope before returning that object.
+Hooks receive no session/transport. Get-only requires only `detail_capability`;
+List methods apply only when List is declared.
+
+[Get SDK](../../docs/agents/get-sdk.md) owns the exact declaration/binding,
+live-only execution, native-root coverage and `{record, detail}` output rules.
 
 An endpoint requiring custom acquisition or unresolved semantics needs a bounded
 ticket and explicit tests; consult the SDK contract first. Existing packages
@@ -98,6 +109,7 @@ profiles, caches, bytecode, datasets, symlinks and generated output outside it.
 [The package validator](../../src/dogopencli/leaves/package.py) owns content/size limits.
 
 Installation imports and checks adapter signatures without querying business data;
-it initializes empty List storage or validates retained bindings. Static verify/pack and help
+List installation initializes empty storage or validates retained bindings;
+Get-only initializes no List storage. Static verify/pack and help
 are declaration-only. Uninstall retains Duckdog data; query/refresh do not import
 it. A valid ZIP is not evidence of working runtime methods or production data.

@@ -34,3 +34,17 @@ Native detail: `GET query /riskActionRuleDetail.json` with string `ruleId` and G
 Run `dogopencli liquidity get rules.operation RECORD_ID`. The response must echo
 `ruleId` by string equivalence, preserving its native JSON type. Get performs
 a real detail inquiry and never publishes or changes the saved list.
+
+Use the native List `ruleId` value for this lookup. Get retains one native root
+response, including nested and unknown fields; separate history, logs and child
+pages are unqueried.
+
+```bash
+dogopencli liquidity list rules.operation --live --with-detail --offset 0 --limit 1
+```
+
+This queries detail only for selected List rows and returns separate `record` and
+`detail` members in List order. `--limit 0` selects all remaining matching rows
+within execution bounds. Any detail failure fails the combined query; successful
+details do not upgrade List completeness. Neither direct Get nor this mode changes
+the saved List or imports into Duckdog.
