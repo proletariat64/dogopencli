@@ -1,0 +1,138 @@
+{
+  "domain": "liquidity",
+  "name": "investment.strategy_results",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Query native decision tasks for one explicit variant and trigger business-date window.",
+      "parameters": [
+        {
+          "name": "task-type",
+          "type": "string",
+          "required": true,
+          "choices": [
+            "FUND_DECISION_TASK",
+            "PRODUCT_DECISION_TASK"
+          ],
+          "description": "Explicit native task variant; one variant is queried at a time."
+        },
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native GMT+08 trigger business day, YYYY-MM-DD or YYYYMMDD."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native GMT+08 trigger business day, YYYY-MM-DD or YYYYMMDD."
+        }
+      ]
+    },
+    "get": {
+      "description": "Read the complete native decision task root online.",
+      "parameters": [
+        {
+          "name": "task-type",
+          "type": "string",
+          "required": true,
+          "choices": [
+            "FUND_DECISION_TASK",
+            "PRODUCT_DECISION_TASK"
+          ],
+          "description": "Explicit native task variant; one variant is queried at a time."
+        }
+      ],
+      "lookup": {
+        "name": "taskId",
+        "description": "Native List id, sent as taskId; task-type must match the originating row."
+      },
+      "result_identity": {
+        "fields": [
+          "taskType",
+          "taskId"
+        ],
+        "description": "Exact native taskType and taskId echoes of explicit query context and lookup."
+      },
+      "list_binding": {
+        "identity_field": "id",
+        "parameters": {
+          "task-type": "taskType"
+        }
+      }
+    }
+  },
+  "summary": "Investment decision strategy results.",
+  "purpose": "Inspect native fund or product decision task recommendations and details without executing investments.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native List task identity within taskType."
+    },
+    {
+      "name": "taskType",
+      "type": "string",
+      "meaning": "FUND_DECISION_TASK or PRODUCT_DECISION_TASK."
+    },
+    {
+      "name": "triggerDate",
+      "type": "integer",
+      "meaning": "Native epoch milliseconds; date bounds use GMT+08."
+    },
+    {
+      "name": "taskId",
+      "type": "string",
+      "meaning": "Native Get identity corresponding to List id."
+    },
+    {
+      "name": "investableFundResultVo",
+      "type": "object or null",
+      "meaning": "Unchanged native fund detail and nested currency/date amounts."
+    }
+  ],
+  "identity": [
+    "taskType",
+    "id"
+  ],
+  "identity_description": "Native taskType and id; acquisition and cache scopes fix taskType, so SDK deduplication uses native id without deriving a hash.",
+  "limitations": [
+    "List POST JSON /api/increment/decision/task/queryPage.json with fixed tenant GUAPW3SG, explicit taskType, full-day triggerStartDate/triggerEndDate and zero-based rowStart/pageSize. Native total is data.totalCount; rows are data.data.",
+    "Qualified request widths are 5000 and 10; neither is a measured backend maximum. Native pageSize=0 metadata is a placeholder, not a request-width echo; completeness uses native total and validated native identities.",
+    "Only one task variant is acquired per invocation. Every row must match taskType and native triggerDate must lie in the GMT+08 business-day window. Result time and capture time are not trigger-date bounds.",
+    "Native values, precision, unknown fields, operation logs, nested structures, nulls and array order are retained. A recommendation or adoption status does not prove investment execution or realized return.",
+    "Only complete nonempty refresh publishes. Empty, failed or incomplete refresh preserves previous saved data; live does not publish. No runtime Duckdog import is introduced.",
+    "Get POST form /api/increment/decision/task/taskDetail.json sends only taskId. Required task-type validates returned taskType without sending that field. Returned taskId must match lookup.",
+    "Get preserves the complete native root and publishes no cache; separately queried children remain unqueried. --live --with-detail composes only selected List rows atomically and preserves saved List data."
+  ],
+  "examples": [
+    {
+      "title": "Query one native task variant",
+      "command": "dogopencli liquidity list investment.strategy_results --live --task-type FUND_DECISION_TASK --from-date 2026-10-19 --to-date 2026-10-19 --limit 0"
+    },
+    {
+      "title": "Read one task",
+      "command": "dogopencli liquidity get investment.strategy_results TASK_ID --task-type FUND_DECISION_TASK"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_strategy_results"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        5000,
+        10
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}
