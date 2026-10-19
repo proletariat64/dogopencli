@@ -32,7 +32,7 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 
 - **39/39 Lists、23/23 Gets**，合计 **62/62 actions**；**42/42 leaves** 全操作完成。
 - 整批完成 B01、B02、B03、B05、B06、B07、B08、B09、B10；当前范围无 HOLD。
-- 全局逐 leaf/action 累计为 **56/80 完整 leaves、79/107 actions**；仍有 24 leaves、28 actions 未完成。
+- 全局逐 leaf/action 累计为 **57/80 完整 leaves、80/107 actions**；仍有 23 leaves、27 actions 未完成。
 - 进度工具按完整 leaf 累计；部分完成批次仍保留 HOLD 范围。
 
 | Batch | SDK List / 原范围 | SDK Get / 原范围 | 全操作完成 leaves | 范围依据 |
@@ -77,7 +77,15 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 - B20/#279：`operations.account_strategies` List 完成，保留原生复合身份、全部版本和状态；旧额外空终页探测由 SDK 标准完整性机制替代。`risk.account_capacity` 的 1–10 账户 List 与单账户原生 Get 形态待集中确认，整叶 HOLD。
 
 B11–B20 本轮交付 14 leaves / 17 actions；11 leaves / 12 actions 保留原票并集中 HIL。
-B21–B25 的 13 leaves / 16 actions 未在本轮开发。
+
+## B21–B25 迁移
+
+集中 HIL 归 [#333](https://github.com/proletariat64/dogopencli/issues/333)；保留原票与全部操作范围。
+
+- B21/#280：两个账户现金流／需求 List 整叶 HOLD。原有 alias-only 查询会依次从 Duckdog、缓存、实时目录补全主体和银行；不能静默改为必填上下文。明确上下文的原生非空查询已验证，不等同完整 leaf 交付。
+- B22/#281：`forecast.account_t3` List 使用原生八字段身份、账户和 forecastDate 范围，标准 SDK 完整性；`forecast.account_demands_intraday` 的账户解析边界仍 HOLD，原生 96 时隙不补零、不合成 total。
+- B23–B25：继续按原票进行资格化；未验收叶子不计交付。
+
 
 ## 原始批次范围
 
@@ -112,8 +120,8 @@ rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf.py batches
 | B18 | [#277](https://github.com/proletariat64/dogopencli/issues/277) | `liquidity.reference.blacklist.account` L; `liquidity.reference.blacklist.bank` L; `liquidity.reference.whitelist.entity` L | 3/3 | blocked：2 leaves / 2 actions delivered；bank HOLD |
 | B19 | [#278](https://github.com/proletariat64/dogopencli/issues/278) | `liquidity.cash.accounts` L; `liquidity.cash.balances` L | 2/2 | blocked / HOLD |
 | B20 | [#279](https://github.com/proletariat64/dogopencli/issues/279) | `liquidity.operations.account_strategies` L; `liquidity.risk.account_capacity` L | 2/2 | blocked：strategies delivered；capacity HOLD |
-| B21 | [#280](https://github.com/proletariat64/dogopencli/issues/280) | `liquidity.forecast.account_cashflows` L; `liquidity.forecast.account_demands` L | 2/2 | planned |
-| B22 | [#281](https://github.com/proletariat64/dogopencli/issues/281) | `liquidity.forecast.account_t3` L; `liquidity.forecast.account_demands_intraday` L | 2/2 | planned |
+| B21 | [#280](https://github.com/proletariat64/dogopencli/issues/280) | `liquidity.forecast.account_cashflows` L; `liquidity.forecast.account_demands` L | 2/2 | blocked / HOLD |
+| B22 | [#281](https://github.com/proletariat64/dogopencli/issues/281) | `liquidity.forecast.account_t3` L; `liquidity.forecast.account_demands_intraday` L | 2/2 | blocked：T3 delivered；intraday HOLD |
 | B23 | [#282](https://github.com/proletariat64/dogopencli/issues/282) | `liquidity.forecast.results` L; `liquidity.forecast.cashflows` L; `liquidity.forecast.accuracy` L | 3/3 | planned |
 | B24 | [#283](https://github.com/proletariat64/dogopencli/issues/283) | `liquidity.investment.interest_rates` LG; `liquidity.investment.products` LG; `liquidity.investment.products.history` L | 3/5 | planned |
 | B25 | [#284](https://github.com/proletariat64/dogopencli/issues/284) | `liquidity.operations.decisions` LG; `liquidity.operations.decisions.history` L; `liquidity.operations.rule_status` L | 3/4 | planned |

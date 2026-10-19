@@ -595,7 +595,7 @@
       "id": "B21",
       "title": "账户现金流与需求",
       "issue": 280,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.forecast.account_cashflows",
@@ -615,19 +615,21 @@
       "id": "B22",
       "title": "账户预测时段",
       "issue": 281,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.forecast.account_t3",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.forecast.account_demands_intraday",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         }
       ]
     },
