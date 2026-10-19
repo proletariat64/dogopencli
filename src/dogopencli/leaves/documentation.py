@@ -179,6 +179,11 @@ def editor_schema() -> dict[str, Any]:
                     else key in {"description", "meaning", "unit"}
                     or path[0] == "examples"
                 )
+                if path in {
+                    ("operations", "get", "lookup"),
+                    ("operations", "get", "result_identity"),
+                }:
+                    child["readOnly"] = True
                 annotate(child, (*path, key))
         if isinstance(node.get("items"), dict):
             annotate(node["items"], path)

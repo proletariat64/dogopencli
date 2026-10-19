@@ -92,6 +92,24 @@ def test_documentation_preview_and_save_preserve_technical_contract(editor):
     assert json.loads(path.read_bytes())["identity"] == ["nativeId"]
 
 
+@pytest.mark.parametrize("declaration", ["lookup", "result_identity"])
+def test_get_identity_descriptions_are_consistently_read_only(editor, declaration):
+    url, token, path = editor
+    loaded = read_editor(url)
+    get_schema = loaded["schema"]["properties"]["operations"]["properties"]["get"]
+    assert (
+        get_schema["properties"][declaration]["properties"]["description"]["readOnly"]
+        is True
+    )
+    original = path.read_bytes()
+    loaded["manifest"]["operations"]["get"][declaration]["description"] = "Changed"
+    with pytest.raises(HTTPError) as failure:
+        write_editor(url, token, loaded)
+    assert failure.value.code == 400
+    assert json.load(failure.value)["error"]["code"] == "READ_ONLY_FIELD"
+    assert path.read_bytes() == original
+
+
 @pytest.mark.parametrize("change", ["technical", "invalid", "conflict"])
 def test_invalid_edits_and_conflicts_preserve_disk(editor, change):
     url, token, path = editor
