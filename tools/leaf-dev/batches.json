@@ -421,7 +421,7 @@
       "id": "B14",
       "title": "付款规则",
       "issue": 273,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "payment.rules.same_bank_transfer",

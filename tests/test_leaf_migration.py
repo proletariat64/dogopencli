@@ -288,8 +288,8 @@ def test_batch_handoff_covers_remaining_scope_once(tmp_path):
     path = ROOT / "tools/leaf-dev/batches.json"
     result = migration.batches(path)
     assert (result["packages"], result["actions"]) == (80, 107)
-    assert (result["delivered_packages"], result["delivered_actions"]) == (47, 68)
-    assert (result["remaining_packages"], result["remaining_actions"]) == (33, 39)
+    assert (result["delivered_packages"], result["delivered_actions"]) == (51, 72)
+    assert (result["remaining_packages"], result["remaining_actions"]) == (29, 35)
     assert len(result["batches"]) == 24
     plan = json.loads(path.read_text())
     plan["batches"][3]["members"][0] = plan["batches"][2]["members"][0]

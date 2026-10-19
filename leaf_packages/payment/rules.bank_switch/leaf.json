@@ -1,0 +1,108 @@
+{
+  "domain": "payment",
+  "name": "rules.bank_switch",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read complete native bank-switch source trees with correlated local selection.",
+      "parameters": [
+        {
+          "name": "source-account",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "switchNodeCode",
+          "description": "Exact whole-string source identity. Case-sensitive; repeated values OR, fields AND; literal *; no comma splitting or trimming."
+        },
+        {
+          "name": "source-network",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "switchClearingNetwork",
+          "description": "Exact requirement network; requires a child rule in the same requirement. Case-sensitive; repeated values OR, fields AND; literal *; no comma splitting or trimming."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "status",
+          "description": "Exact rule status in the same requirement and rule as other nested predicates. Case-sensitive; repeated values OR, fields AND; literal *; no comma splitting or trimming."
+        },
+        {
+          "name": "target-account",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "targetNodeCode",
+          "description": "Exact target account in the same target as target-network. Case-sensitive; repeated values OR, fields AND; literal *; no comma splitting or trimming."
+        },
+        {
+          "name": "target-network",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "clearingNetworkList",
+          "description": "Exact string-array member in the same target as target-account. Case-sensitive; repeated values OR, fields AND; literal *; no comma splitting or trimming."
+        }
+      ]
+    }
+  },
+  "summary": "Payment bank-switch source-node configurations.",
+  "purpose": "Inspect complete native source trees and select sources by predicates on one matching branch.",
+  "fields": [
+    {
+      "name": "switchNodeCode",
+      "type": "string",
+      "meaning": "Unique native source identity, unchanged."
+    },
+    {
+      "name": "fundNavigationNodeSwitchRequirementVOList",
+      "type": "native nested JSON",
+      "meaning": "Requirements, rules, ratios and targets retained together, including all versions and unmatched children."
+    }
+  ],
+  "identity": [
+    "switchNodeCode"
+  ],
+  "identity_description": "Nonblank native string switchNodeCode; lexical ordering, no guessed composites.",
+  "limitations": [
+    "GET https://ifundcontrolprodops.alipay.com/api/fundNavigation/nodeSwitch/query with URL query pageNo=0,pageSize=1000 only. No backend filters or speculative paging.",
+    "Outer success must be boolean true. Native data.businessDataList, integer page echoes, native totalCount and unique source identities establish coverage. totalPageNo is a known zero placeholder and never determines completeness.",
+    "1000 is a qualified fixed width, not a measured maximum. SDK checks keep duplicate, conflicting, truncated or overflowing responses incomplete; strict queries reject and incomplete refresh never publishes.",
+    "Nested filters must match one requirement and one rule; target-account and target-network must match one target under that rule. A source-network-only predicate requires a child rule. No nested predicates leaves empty source nodes visible.",
+    "Filters select whole source trees: no flattening, pruning, external relationship fetch, joining or version merging. Null child arrays traverse as empty while their original values remain unchanged.",
+    "All native values, unknown nested fields, precise numbers, null, zero, empty strings and child array order remain unchanged. Ratio scaling, timestamp units and actual execution are not inferred.",
+    "Exact local filters precede output windows/projection and never enter requests. Blank inputs reject; accepted values are unchanged, commas remain whole and * is literal.",
+    "Live never publishes. Only complete nonempty refresh publishes; failed, empty or incomplete refresh preserves saved data. No Get, mutation or new Duckdog import contract."
+  ],
+  "examples": [
+    {
+      "title": "Query complete source trees",
+      "command": "dogopencli payment list rules.bank_switch --live --require-complete --limit 0"
+    },
+    {
+      "title": "Select sources by one rule and target",
+      "command": "dogopencli payment list rules.bank_switch --status ON --target-network ACH"
+    }
+  ],
+  "dataset": {
+    "relation": "payment_rules_bank_switch"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "switchNodeCode"
+      ]
+    }
+  }
+}
