@@ -66,6 +66,11 @@ CDP tests for request rejection, native values/types/unknown fields, pagination,
 duplicates/count changes, local filters, errors/auth expiry and detail identity.
 List tests also cover default offline, live without publication, refresh/offline
 equality and prior data/capture preservation after rejected acquisitions.
+For a reviewed source assembly, qualify each source separately and check native
+children against their own captures before checking the approved parent mapping.
+Retain each source's scope/total/quality through offline replay; never compare
+an assembled parent count to a fabricated native parent total. A failed required
+source fails the aggregate; it does not become an empty child array.
 
 Run focused checks while editing, followed by the repository-required gates.
 Do not repeat broad passing gates without changed code or unresolved risk.

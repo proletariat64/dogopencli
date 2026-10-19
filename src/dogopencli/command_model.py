@@ -5,6 +5,7 @@ Core declarations remain owned by their execution modules.
 """
 
 import argparse
+import json
 import math
 import re
 from dataclasses import dataclass, replace
@@ -334,14 +335,28 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
             binding = detail.get("list_binding")
             detail_constraints = ()
             if operation == "get":
+                result_identity = detail["result_identity"]
+                identity_names = result_identity.get("fields")
+                if identity_names is None:
+                    identity_names = [
+                        json.dumps(path, ensure_ascii=False)
+                        for path in result_identity["paths"]
+                    ]
+                shape = detail.get("result_shape", "object")
                 detail_constraints = (
-                    "Live-only native root object; returned identity: "
-                    + ", ".join(detail["result_identity"]["fields"])
+                    f"Live-only native root {shape}; returned identity: "
+                    + ", ".join(identity_names)
                     + ". "
-                    + detail["result_identity"]["description"],
+                    + result_identity["description"],
                     "Separate histories, logs and child pages are not acquired; "
                     "a root response does not establish their completeness.",
                 )
+                if shape == "array":
+                    detail_constraints += (
+                        "A qualified successful empty array stays empty. --fields "
+                        "projects each member; returned_count is the actual member "
+                        "count. No List paging or --with-detail binding applies.",
+                    )
             elif operation == "list" and binding:
                 detail_constraints = (
                     "--with-detail requires --live. Local filtering and offset/limit "

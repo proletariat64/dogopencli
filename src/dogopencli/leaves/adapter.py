@@ -12,6 +12,18 @@ class LeafAdapter(Protocol):
 
     def scope(self, parameters: dict[str, Any]) -> str: ...
 
+    def source_capability(
+        self, name: str, parameters: dict[str, Any]
+    ) -> TransportCapability: ...
+
+    def source_scope(self, name: str, parameters: dict[str, Any]) -> str: ...
+
+    def assemble(
+        self,
+        records_by_source: dict[str, list[dict[str, Any]]],
+        parameters: dict[str, Any],
+    ) -> list[dict[str, Any]]: ...
+
     def collector(
         self,
         capability: TransportCapability,

@@ -1,0 +1,57 @@
+{
+  "domain": "collection",
+  "name": "sample.response",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read synthetic native inquiries in the offline handbook harness.",
+      "parameters": []
+    }
+  },
+  "summary": "Synthetic SDK sample.response.",
+  "purpose": "Demonstrate qualified native acquisition with host execution and truthful evidence.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Unique native row identity."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Reviewed native id identifies each returned root.",
+  "limitations": [
+    "Educational fixture only; leaf-handbook.invalid is not a production endpoint.",
+    "One separately qualified whole response; no native total, offset iteration or learned width.",
+    "Observed counts stay separate from unknown reported_total; coverage basis is qualified_single_response."
+  ],
+  "examples": [
+    {
+      "title": "Inspect declarations without querying",
+      "command": "dogopencli collection list sample.response -h"
+    },
+    {
+      "title": "Run only in the fake installed-CLI harness",
+      "command": "dogopencli collection list sample.response --live --require-complete --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "collection_sample_response"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single_response",
+      "page_sizes": [
+        2
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}

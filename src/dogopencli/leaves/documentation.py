@@ -26,6 +26,12 @@ DETAIL_GUIDANCE = (
     "Get is live-only and returns one validated native root object. "
     "Separate histories, logs and child pages are not acquired."
 )
+ARRAY_DETAIL_GUIDANCE = (
+    "Get is live-only and returns the validated native root array in source order, "
+    "including a qualified successful empty array. --fields projects each member; "
+    "returned_count is the actual member count. No List binding or paging applies. "
+    "Separate histories, logs and child pages are not acquired."
+)
 COMPOSITION_GUIDANCE = (
     "list --live --with-detail selects the output window after local filtering "
     "and offset/limit; limit 0 means all remaining rows, empty windows issue no Gets. "
@@ -46,7 +52,11 @@ def describe(leaf: Any) -> dict[str, Any]:
         **copy.deepcopy(leaf.manifest),
         "guidance": COMMON_GUIDANCE,
         **(
-            {"detail_guidance": DETAIL_GUIDANCE}
+            {
+                "detail_guidance": ARRAY_DETAIL_GUIDANCE
+                if leaf.manifest["operations"]["get"].get("result_shape") == "array"
+                else DETAIL_GUIDANCE
+            }
             if "get" in leaf.manifest["operations"]
             else {}
         ),
@@ -73,8 +83,16 @@ def render_text(document: dict[str, Any]) -> str:
             identity = specification["result_identity"]
             lines.append(f"  Lookup {lookup['name']}: {lookup['description']}")
             lines.append(
+                "  Returned shape: " + specification.get("result_shape", "object")
+            )
+            identity_names = identity.get("fields")
+            if identity_names is None:
+                identity_names = [
+                    json.dumps(path, ensure_ascii=False) for path in identity["paths"]
+                ]
+            lines.append(
                 "  Returned identity "
-                + ", ".join(identity["fields"])
+                + ", ".join(identity_names)
                 + ": "
                 + identity["description"]
             )

@@ -13,8 +13,22 @@ pure native mappings. The synthetic endpoints run only in
 `operations.get` declares `description`, `parameters`, `lookup` and
 `result_identity`. `lookup.name` names the positional string's business meaning;
 `lookup.description` explains how to obtain it. `result_identity.fields` names
-the returned root object's native identity, with a separate description. These
+literal top-level native identity keys, with a separate description. These
 may differ from each other and from the top-level List `identity`.
+
+For nested identity, use mutually exclusive `result_identity.paths`, for example
+`{"paths": [["quotationDetail", "quotationId"]], "description": "Native quotation ID"}`.
+Each path is a nonempty list of exact object keys. Keys containing dots remain
+literal; there is no wildcard, index, expression or automatic traversal of arrays.
+Every resolved identity component must be a nonblank string or an integer,
+excluding booleans. Missing, null and non-scalar identities fail before projection.
+The leaf still validates the identity's actual lookup echo and requested context.
+
+`operations.get.result_shape` defaults to `"object"`. An explicitly qualified
+`"array"` Get returns the native root array without wrapping, deduplication or
+latest-version selection. Declare identity over each member object; ambiguous or
+duplicate identity tuples fail. A native successful `[]` remains `[]`; missing,
+null or malformed containers fail. Array Gets cannot declare `list_binding`.
 
 ```json
 {
@@ -50,8 +64,9 @@ does not enable composition. New relationships or scope changes go through
 `name`, `page_url` and an actual `EndpointContract`. It exposes:
 
 - `request_body(parameters, identity) -> dict`: construct the allowed native input.
-- `parse_detail(body, parameters, identity) -> dict`: validate business status,
-  root shape, returned identity and requested scope; return the native root.
+- `parse_detail(body, parameters, identity) -> dict | list[dict]`: validate business
+  status, the declared root shape, returned identity and requested scope; return
+  the native root unchanged.
 
 Neither hook receives a session or transport. The host owns browser/session
 lifecycle, restricted GET/query, POST JSON or POST form execution, deadlines,
@@ -78,10 +93,14 @@ dogopencli collection get sample.records one
 dogopencli collection get sample.detail REF-one --account account-one
 ```
 
-It needs no prior List or saved snapshot. It returns one native root object;
-`--fields` projects that object's top-level fields after validation. Metadata
+It needs no prior List or saved snapshot. It returns the declared native root
+object or array. `--fields` projects the object's top-level fields, or each array
+member's fields, after validation; array order and member count stay unchanged.
+Get has no List paging. Empty or blank lookup input fails before authentication.
+Metadata
 records `query.identity` separately from `query.parameters`, `source`, `leaf`,
-`operation`, `fetched_at`, `returned_count`, `detail_scope: native_root` and
+`operation`, `fetched_at`, `returned_count` (one object or actual array length),
+`detail_scope: native_root` and
 `detail_coverage`. Success proves acquisition of that native response, not complete
 business-object expansion. Separate histories, logs and child pages are unqueried;
 Get does not report List totals or unconditional dataset completeness.
@@ -126,3 +145,9 @@ Help is a side-effect check. Synthetic success is separate from production UAT:
 compare direct Detail and each combined member to its own captured native source,
 using the exact installed host and leaf ZIPs. Reuse `leaf.py` and plugin-helper;
 there is no separate SDK distribution or packer.
+
+For arrays, cover nonempty/empty roots, invalid members, duplicate native identity,
+projection and unchanged cache. For nested identities, cover missing paths,
+non-object parents, null/boolean/non-scalar values, literal dotted keys and
+preservation of every sibling. Help/describe must expose shape and identity paths
+without activating adapters or querying business data.

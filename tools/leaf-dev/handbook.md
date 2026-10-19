@@ -41,6 +41,16 @@ together. The sample's `.invalid` endpoint is synthetic; run it only in its test
   parser. See [the SDK adapter contract](interfaces.md#adapter).
 - Host: owns `collect_list`, page loops, retries, quality evidence and publication.
 
+For a separately qualified whole response without a native total, use
+[`single_response`](example-single-response/): one width and `parse_rows` returning
+`(rows, None)`. Retain the unknown total; observed row counts are not a substitute.
+For an accepted multi-source model, use [the flat sources sample](example-sources/):
+declare `sources` instead of top-level `paging`, implement `source_capability`,
+`source_scope` and pure `assemble`, and keep aggregate `scope` and `filter`.
+The host validates every required source before assembly and shares one deadline
+and page budget. The leaf owns the reviewed relationship and output grain;
+the SDK infers neither joins nor source completeness.
+
 For Get, declare lookup meaning, returned identity and required context separately.
 Implement `detail_capability(parameters)` with pure `request_body` and
 `parse_detail` hooks; the host executes its independent restricted endpoint.
@@ -76,6 +86,11 @@ For declared composition, test selected-window detail calls and all-or-failure
 output through the same installed CLI. The samples are exercised as directories
 and immutable ZIPs; their `.invalid` endpoints never run against a real browser.
 
+For `single_response`, check one request, unknown total, declared coverage basis,
+duplicates and a response larger than the requested width. For `sources`, check
+independent native totals/scopes, shared execution bounds, exact child preservation,
+atomic failure and persisted source evidence after refresh/offline replay.
+
 **Done:** focused CLI checks and required repository tests/lint/doc/review gates pass.
 Fake transport proves behavior, not production qualification.
 
@@ -107,6 +122,11 @@ with its own refresh input: complete records, values, types, precision, ordering
 and multiplicity. Counts alone do not establish equality. Use `leaf.py capture`
 and `compare`; keep raw responses private. Identity/count conflicts or unexplained
 differences block acceptance. Keep `--limit 0` for full output.
+
+For assembled Lists, compare each child to its own native source and verify the
+accepted parent mapping, union, order and multiplicity. The assembled root is
+leaf-defined, not a native backend object. Check independent scopes/totals and
+their retained evidence offline; a successful root count cannot qualify a source.
 
 For Get, compare the output to its own native Detail response, not a List row.
 For `--live --with-detail`, compare `record` and `detail` to their respective

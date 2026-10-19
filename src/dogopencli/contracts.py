@@ -99,7 +99,7 @@ class DetailCapability(TransportCapability, Protocol):
 
     def parse_detail(
         self, body: bytes, parameters: dict[str, Any], identity: str
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any] | list[dict[str, Any]]: ...
 
 
 class Capability(TransportCapability, Protocol):
