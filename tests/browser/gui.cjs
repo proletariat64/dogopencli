@@ -148,10 +148,15 @@ const [url, manifestPath] = process.argv.slice(2);
     );
     // An older preview response must not replace a newer draft.
     let held = false;
+    let markFirstPreviewStarted;
+    const firstPreviewStarted = new Promise((resolve) => {
+      markFirstPreviewStarted = resolve;
+    });
     await page.route("**/preview", async (route) => {
       const response = await route.fetch();
       if (!held) {
         held = true;
+        markFirstPreviewStarted();
         await new Promise((resolve) => setTimeout(resolve, 900));
       }
       await route.fulfill({ response });
@@ -162,7 +167,7 @@ const [url, manifestPath] = process.argv.slice(2);
         document.querySelector("#preview-state").textContent === "正在更新…",
     );
     // Wait for the first request to enter the delayed route.
-    await new Promise((resolve) => setTimeout(resolve, 550));
+    await firstPreviewStarted;
     assert.ok(held);
     await summary.fill("最新的草稿");
     await page.waitForFunction(() =>
