@@ -22,6 +22,18 @@ COMMON_GUIDANCE = (
     "--require-complete rejects them. --require-fresh rejects stale cache. "
     "Authentication, business and parsing failures are errors."
 )
+DETAIL_GUIDANCE = (
+    "Get is live-only and returns one validated native root object. "
+    "Separate histories, logs and child pages are not acquired."
+)
+COMPOSITION_GUIDANCE = (
+    "list --live --with-detail selects the output window after local filtering "
+    "and offset/limit; limit 0 means all remaining rows, empty windows issue no Gets. "
+    "Each entry is {record, detail}; --fields projects record only. Any detail or "
+    "binding failure fails the whole command. List coverage is retained; separate "
+    "histories, logs and child pages are not acquired. "
+    "No cache or dataset is published."
+)
 DOC_KEYS = {"summary", "purpose", "identity_description", "limitations", "examples"}
 
 
@@ -33,6 +45,16 @@ def describe(leaf: Any) -> dict[str, Any]:
         "name": leaf.name,
         **copy.deepcopy(leaf.manifest),
         "guidance": COMMON_GUIDANCE,
+        **(
+            {"detail_guidance": DETAIL_GUIDANCE}
+            if "get" in leaf.manifest["operations"]
+            else {}
+        ),
+        **(
+            {"composition_guidance": COMPOSITION_GUIDANCE}
+            if leaf.manifest["operations"].get("get", {}).get("list_binding")
+            else {}
+        ),
     }
 
 
@@ -46,6 +68,20 @@ def render_text(document: dict[str, Any]) -> str:
             f"{document.get('domain', '')} {operation} {document.get('name', '')}: "
             + specification.get("description", "")
         )
+        if operation == "get":
+            lookup = specification["lookup"]
+            identity = specification["result_identity"]
+            lines.append(f"  Lookup {lookup['name']}: {lookup['description']}")
+            lines.append(
+                "  Returned identity "
+                + ", ".join(identity["fields"])
+                + ": "
+                + identity["description"]
+            )
+            if binding := specification.get("list_binding"):
+                lines.append("  List lookup source: " + binding["identity_field"])
+                for name, field in binding.get("parameters", {}).items():
+                    lines.append(f"  List context --{name}: {field}")
         for parameter in specification.get("parameters", []):
             rules = ["required" if parameter.get("required") else "optional"]
             if "default" in parameter:
@@ -65,6 +101,11 @@ def render_text(document: dict[str, Any]) -> str:
         lines.append(
             f"{field['name']} ({field['type']}){unit}: {field.get('meaning', '')}"
         )
+    lines.extend(
+        document[key]
+        for key in ("detail_guidance", "composition_guidance")
+        if key in document
+    )
     lines.extend(document.get("limitations", []))
     for example in document.get("examples", []):
         lines.append(f"{example['title']}: {example['command']}")

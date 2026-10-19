@@ -34,6 +34,7 @@ _RESERVED = {
     "limit",
     "offset",
     "live",
+    "with-detail",
     "strict",
     "fresh-only",
     "config-dir",
