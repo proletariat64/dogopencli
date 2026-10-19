@@ -1,0 +1,1558 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>dogopencli · 工作空间</title>
+  <style nonce="NONCE">
+    :root {
+      color-scheme: light;
+      font-family:
+        Inter, "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+      color: #172337;
+      background: #f7f8fa;
+      font-size: 15px;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+    }
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+    button,
+    select {
+      cursor: pointer;
+    }
+    button {
+      border: 1px solid #d6dde7;
+      background: white;
+      color: #334155;
+      border-radius: 6px;
+      padding: 8px 14px;
+    }
+    button:hover {
+      background: #f1f5f9;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible,
+    summary:focus-visible {
+      outline: 3px solid #93b4ff;
+      outline-offset: 2px;
+    }
+    [hidden] {
+      display: none !important;
+    }
+    code,
+    pre {
+      font-family: "SFMono-Regular", Consolas, monospace;
+    }
+    code {
+      font-size: 0.88em;
+      background: #eef2f7;
+      padding: 3px 6px;
+      border-radius: 4px;
+    }
+    small,
+    .muted {
+      color: #64748b;
+      font-size: 13px;
+    }
+    .app-bar {
+      height: 64px;
+      padding: 0 32px;
+      border-bottom: 1px solid #e3e8ef;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      background: white;
+    }
+    .brand {
+      font-weight: 750;
+      font-size: 20px;
+      letter-spacing: -0.5px;
+    }
+    .crumb {
+      border-left: 1px solid #e3e8ef;
+      padding-left: 24px;
+      color: #64748b;
+    }
+    .app-bar small {
+      margin-left: auto;
+    }
+    #overview {
+      max-width: 1440px;
+      margin: auto;
+      padding: 40px 40px 64px;
+    }
+    #page-header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+    h1 {
+      font-size: 30px;
+      letter-spacing: -0.6px;
+      margin: 0 0 8px;
+    }
+    #page-header p {
+      margin: 0;
+      color: #64748b;
+      line-height: 1.7;
+    }
+    .inventory-tools {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    #leaf-search {
+      border: 1px solid #d6dde7;
+      border-radius: 6px;
+      padding: 10px 14px;
+      width: 260px;
+      background: white;
+    }
+    .error {
+      color: #b42318;
+      background: #fff1f0;
+      padding: 12px 16px;
+      line-height: 1.6;
+    }
+    .error:empty {
+      display: none;
+    }
+    #error {
+      margin: 0;
+    }
+    #domains {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+      gap: 24px;
+    }
+    .domain-card {
+      background: #fff;
+      border: 1px solid #e0e6ee;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .domain-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 22px 24px 10px;
+    }
+    .domain-header h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+    }
+    .domain-state {
+      margin-left: auto;
+      color: #16704a;
+      font-size: 12px;
+      background: #edf8f1;
+      border-radius: 4px;
+      padding: 3px 7px;
+    }
+    .domain-state.disabled {
+      color: #64748b;
+      background: #f1f3f6;
+    }
+    .domain-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 24px 20px;
+      color: #64748b;
+      font-size: 13px;
+    }
+    .auth {
+      margin: 0;
+      font-size: 13px;
+    }
+    .status-success {
+      color: #16704a;
+    }
+    .status-warning {
+      color: #946200;
+    }
+    .status-failed {
+      color: #b42318;
+    }
+    .status-neutral {
+      color: #64748b;
+    }
+    .leaves {
+      padding: 0 24px;
+    }
+    .leaves h3 {
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748b;
+      border-top: 1px solid #e9edf3;
+      padding-top: 16px;
+      margin: 0 0 8px;
+    }
+    .leaf-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .leaf {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 0;
+      border-bottom: 1px solid #f0f3f7;
+    }
+    .leaf-name {
+      overflow-wrap: anywhere;
+      font-size: 14px;
+      font-family: Consolas, monospace;
+    }
+    .leaf-outcome {
+      font-size: 12px;
+    }
+    .leaf-docs {
+      border: 0;
+      color: #245ee7;
+      background: #eff5ff;
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+    .domain-footer {
+      margin-top: 16px;
+      padding: 12px 24px;
+      background: #fafbfd;
+      border-top: 1px solid #edf0f5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .domain-toggle {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+    .diagnostics {
+      margin: 12px 24px;
+      font-size: 13px;
+      color: #946200;
+      overflow-wrap: anywhere;
+    }
+    .diagnostics summary {
+      cursor: pointer;
+    }
+    .diagnostic {
+      line-height: 1.6;
+    }
+    .empty {
+      padding: 20px 0;
+      color: #64748b;
+      font-size: 14px;
+    }
+    #editor {
+      height: 100dvh;
+      background: white;
+      display: flex;
+      flex-direction: column;
+    }
+    .editor-toolbar {
+      height: 64px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 0 28px;
+      border-bottom: 1px solid #e3e8ef;
+    }
+    .toolbar-actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .primary {
+      background: #1557ef;
+      color: white;
+      border-color: #1557ef;
+    }
+    .primary:hover {
+      background: #1147c7;
+    }
+    #dirty-state {
+      color: #64748b;
+      font-size: 13px;
+    }
+    #editor-heading {
+      padding: 14px 32px 12px;
+      border-bottom: 1px solid #e3e8ef;
+    }
+    #editor-domain {
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+    .heading-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 8px 0;
+    }
+    #editor-title {
+      font-size: 27px;
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+    #leaf-picker {
+      max-width: 360px;
+      min-width: 0;
+      border: 1px solid #dbe2ec;
+      border-radius: 6px;
+      padding: 6px;
+      background: #fafbfd;
+      color: #475569;
+      font-size: 13px;
+    }
+    #editor-heading p {
+      margin: 0;
+      color: #64748b;
+      font-size: 13px;
+    }
+    .workspace {
+      display: grid;
+      grid-template-columns: 1.02fr 1fr;
+      min-height: 0;
+      flex: 1;
+    }
+    .edit-pane,
+    .preview-pane {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .edit-pane {
+      border-right: 1px solid #e3e8ef;
+    }
+    .pane-heading {
+      height: 58px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 0 32px;
+    }
+    .pane-heading h3 {
+      margin: 0;
+      font-size: 17px;
+    }
+    #section-nav {
+      display: flex;
+      gap: 22px;
+      padding: 0 32px;
+      border-bottom: 1px solid #e3e8ef;
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+    #section-nav button,
+    .preview-tabs button {
+      border: 0;
+      border-radius: 0;
+      padding: 12px 4px;
+      background: transparent;
+      color: #64748b;
+      white-space: nowrap;
+    }
+    #section-nav button[aria-current="true"],
+    .preview-tabs button[aria-pressed="true"] {
+      color: #1557ef;
+      border-bottom: 2px solid #1557ef;
+    }
+    .form-scroll,
+    .preview-scroll {
+      overflow: auto;
+      min-height: 0;
+      flex: 1;
+      padding: 28px 32px;
+    }
+    .form-section {
+      scroll-margin-top: 20px;
+      margin: 0 0 22px;
+      padding-bottom: 22px;
+      border-bottom: 1px solid #e3e8ef;
+    }
+    .form-section h3 {
+      font-size: 18px;
+      margin: 0 0 6px;
+    }
+    .form-section > p {
+      font-size: 13px;
+      color: #64748b;
+      line-height: 1.7;
+      margin: 0 0 20px;
+    }
+    .doc-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 550;
+      margin: 14px 0 8px;
+    }
+    .doc-label input,
+    .doc-label textarea {
+      display: block;
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px 12px;
+      font-size: 14px;
+      border: 1px solid #d2dce9;
+      border-radius: 6px;
+      background: #fff;
+      color: #243247;
+      line-height: 1.6;
+      font-weight: 400;
+    }
+    .doc-label textarea {
+      min-height: 72px;
+      resize: vertical;
+    }
+    .entry {
+      margin-top: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #edf0f5;
+    }
+    .entry-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .entry-title h4 {
+      margin: 0;
+      font-size: 14px;
+    }
+    .entry-title small {
+      font-weight: 400;
+    }
+    .remove {
+      font-size: 12px;
+      color: #9d3830;
+      padding: 4px 8px;
+      margin-left: auto;
+    }
+    .add {
+      font-size: 13px;
+      margin-top: 16px;
+      color: #245ee7;
+    }
+    .technical summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .technical pre {
+      font-size: 12px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: #64748b;
+    }
+    .editor-footnote {
+      font-size: 12px;
+      color: #64748b;
+      margin: 20px 0 0;
+    }
+    .preview-pane {
+      background: #f7f9fc;
+    }
+    .preview-pane > .pane-heading {
+      border-bottom: 1px solid #e3e8ef;
+    }
+    .preview-tabs {
+      display: flex;
+      gap: 16px;
+      font-size: 13px;
+    }
+    .preview-tabs button {
+      padding: 17px 4px;
+    }
+    #preview-state {
+      margin-left: auto;
+      font-size: 12px;
+      color: #64748b;
+    }
+    #reading-preview {
+      max-width: 720px;
+      margin: auto;
+      line-height: 1.8;
+      overflow-wrap: anywhere;
+    }
+    #reading-preview h2 {
+      font-size: 28px;
+      margin: 8px 0;
+    }
+    #reading-preview h3 {
+      font-size: 18px;
+      margin: 18px 0 8px;
+    }
+    #reading-preview p {
+      font-size: 14px;
+      margin: 8px 0;
+      color: #475569;
+      white-space: pre-wrap;
+    }
+    #reading-preview section {
+      border-bottom: 1px solid #e0e6ef;
+      padding-bottom: 12px;
+    }
+    #reading-preview pre {
+      font-size: 13px;
+      white-space: pre-wrap;
+      background: #eaf0f7;
+      padding: 14px;
+      border-radius: 6px;
+      overflow-wrap: anywhere;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 13px;
+      text-align: left;
+    }
+    th {
+      font-weight: 500;
+      color: #64748b;
+      background: #eef2f7;
+    }
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #dfe6ef;
+      vertical-align: top;
+    }
+    td:nth-child(2),
+    th:nth-child(2) {
+      white-space: nowrap;
+    }
+    #documentation-preview {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    #editor-status {
+      margin: 0;
+      padding: 0 32px;
+      font-size: 13px;
+      line-height: 1.8;
+      color: #475569;
+    }
+    #editor-status:not(:empty) {
+      padding-top: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e3e8ef;
+    }
+    body.editor-open {
+      overflow: hidden;
+    }
+    body.editor-open > .app-bar,
+    body.editor-open > #overview {
+      display: none;
+    }
+    @media (min-width: 1600px) {
+      .form-scroll,
+      .preview-scroll {
+        padding: 30px 40px;
+      }
+    }
+    @media (max-width: 900px) {
+      #overview {
+        padding: 28px 20px;
+      }
+      #page-header {
+        align-items: start;
+        flex-direction: column;
+      }
+      #domains {
+        grid-template-columns: 1fr;
+      }
+      .editor-toolbar {
+        padding: 0 16px;
+        gap: 12px;
+      }
+      .editor-toolbar .brand {
+        display: none;
+      }
+      .heading-row {
+        flex-wrap: wrap;
+      }
+      #editor-heading {
+        padding: 18px 20px;
+      }
+      .pane-heading,
+      #section-nav {
+        padding-left: 20px;
+        padding-right: 20px;
+      }
+      .form-scroll,
+      .preview-scroll {
+        padding: 22px 20px;
+      }
+      .workspace {
+        grid-template-columns: 1fr 1fr;
+      }
+      .preview-pane .pane-heading {
+        height: auto;
+        min-height: 58px;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+      }
+      #preview-state {
+        width: 100%;
+        margin-left: 0;
+      }
+      .preview-tabs button {
+        padding: 8px 4px;
+      }
+    }
+    @media (max-width: 640px) {
+      .app-bar {
+        padding: 0 20px;
+      }
+      .app-bar .crumb {
+        display: none;
+      }
+      .inventory-tools {
+        width: 100%;
+      }
+      #leaf-search {
+        width: 100%;
+      }
+      .workspace {
+        display: block;
+        overflow: auto;
+      }
+      .edit-pane {
+        border-right: 0;
+        min-height: 600px;
+      }
+      .preview-pane {
+        min-height: 500px;
+        border-top: 1px solid #dce3ed;
+      }
+      .form-scroll,
+      .preview-scroll {
+        overflow: visible;
+      }
+      .editor-toolbar {
+        gap: 8px;
+      }
+      .toolbar-actions {
+        gap: 6px;
+      }
+      .editor-toolbar button {
+        padding: 7px 9px;
+        font-size: 12px;
+      }
+      #dirty-state {
+        font-size: 12px;
+      }
+      #leaf-picker {
+        width: 100%;
+        max-width: 100%;
+      }
+      .leaf {
+        gap: 8px;
+      }
+      .leaf-outcome {
+        max-width: 85px;
+      }
+      .domain-header,
+      .leaves,
+      .domain-footer {
+        padding-left: 18px;
+        padding-right: 18px;
+      }
+      .domain-meta {
+        padding-left: 18px;
+      }
+      #section-nav {
+        gap: 18px;
+      }
+      #editor-title {
+        font-size: 23px;
+      }
+      .heading-row {
+        gap: 8px;
+      }
+      .editor-toolbar .crumb {
+        display: none;
+      }
+    }
+  </style>
+  <header class="app-bar">
+    <span class="brand">dogopencli</span
+    ><span class="crumb">工作空间 / Domains</span><small>本机工作空间</small>
+  </header>
+  <div id="overview">
+    <header id="page-header">
+      <div>
+        <h1>Domains</h1>
+        <p>查看已安装的查询能力，维护文档与本机启用状态。</p>
+      </div>
+      <div class="inventory-tools">
+        <span id="domain-count" class="muted"></span
+        ><input
+          id="leaf-search"
+          type="search"
+          aria-label="查找 leaf"
+          placeholder="查找 domain 或 leaf…"
+        />
+      </div>
+    </header>
+    <p id="error" class="error" role="alert"></p>
+    <main id="domains" aria-live="polite"></main>
+    <p id="no-matches" class="empty" hidden>没有匹配的 domain 或 leaf。</p>
+  </div>
+  <article id="editor" hidden aria-labelledby="editor-title">
+    <header class="editor-toolbar">
+      <span class="brand">dogopencli</span
+      ><button id="back" type="button">返回 Domains</button
+      ><span class="crumb">文档</span>
+      <div class="toolbar-actions">
+        <span id="dirty-state" role="status">已保存</span
+        ><button id="reload" type="button">重新载入</button
+        ><button id="save" class="primary" type="button">保存文档</button>
+      </div>
+    </header>
+    <div id="editor-heading">
+      <span id="editor-domain"></span>
+      <div class="heading-row">
+        <h2 id="editor-title"></h2>
+        <select id="leaf-picker" aria-label="选择文档"></select>
+      </div>
+      <p>编辑说明文字，技术声明保持只读。</p>
+    </div>
+    <p id="editor-status" role="status"></p>
+    <div class="workspace">
+      <section class="edit-pane" aria-label="编辑文档">
+        <div class="pane-heading"><h3>编辑文档</h3></div>
+        <nav id="section-nav" aria-label="文档章节"></nav>
+        <div class="form-scroll">
+          <form id="documentation-form"></form>
+          <details class="technical">
+            <summary>技术声明 · 只读</summary>
+            <p class="muted">由已安装的 leaf 声明，仅供参考。</p>
+            <pre id="technical-declarations"></pre>
+          </details>
+          <p class="editor-footnote">保存后在下一次 CLI 调用中生效。</p>
+        </div>
+      </section>
+      <section class="preview-pane" aria-label="文档预览">
+        <div class="pane-heading">
+          <h3>文档预览</h3>
+          <div class="preview-tabs" role="group" aria-label="预览格式">
+            <button id="reading-tab" type="button" aria-pressed="true">
+              阅读</button
+            ><button id="cli-tab" type="button" aria-pressed="false">
+              CLI 文本
+            </button>
+          </div>
+          <span id="preview-state" role="status">已同步</span>
+        </div>
+        <div class="preview-scroll">
+          <div id="reading-preview"></div>
+          <pre id="documentation-preview" hidden></pre>
+        </div>
+      </section>
+    </div>
+  </article>
+  <script nonce="NONCE">
+    // prettier-ignore
+    const token='TOKEN';
+    const root = document.getElementById("domains");
+    const error = document.getElementById("error");
+    const count = document.getElementById("domain-count");
+    function text(parent, tag, value) {
+      const item = document.createElement(tag);
+      item.textContent = value;
+      parent.append(item);
+      return item;
+    }
+    function readable(value) {
+      const label = String(value || "unknown").replaceAll("_", " ");
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    }
+    function leafName(domain, leaf) {
+      if (leaf.name) return leaf.name;
+      const prefix = domain.id + ".";
+      return leaf.id.startsWith(prefix)
+        ? leaf.id.slice(prefix.length)
+        : leaf.id;
+    }
+    function domainClass(id) {
+      return ["payment", "collection", "fx", "liquidity"].includes(id)
+        ? "domain-" + id
+        : "domain-default";
+    }
+    function statusClass(value) {
+      if (value === "authenticated" || value === "success") return "success";
+      if (value === "unauthenticated" || value === "warning") return "warning";
+      if (value === "failed") return "failed";
+      return "neutral";
+    }
+    function authLabel(value) {
+      return (
+        {
+          authenticated: "已认证",
+          unauthenticated: "未认证",
+          failed: "认证检查失败",
+          unknown: "尚未检查",
+        }[value] || readable(value)
+      );
+    }
+    function executionLabel(value) {
+      return (
+        {
+          success: "上次成功",
+          failed: "上次失败",
+          warning: "上次有警告",
+          unknown: "尚无执行记录",
+        }[value] || readable(value)
+      );
+    }
+    async function request(path, options) {
+      const response = await fetch(path, options);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Request failed");
+      }
+      return data;
+    }
+    async function load() {
+      try {
+        const data = await request("/api/domains");
+        inventory = data.domains;
+        count.textContent = data.domains.length + " domains";
+        root.replaceChildren();
+        for (const domain of data.domains) {
+          const card = document.createElement("article");
+          card.className = "domain-card " + domainClass(domain.id);
+          card.dataset.domain = domain.id;
+          root.append(card);
+          const header = document.createElement("div");
+          header.className = "domain-header";
+          card.append(header);
+          text(header, "h2", domain.id);
+          const state = text(
+            header,
+            "span",
+            domain.enabled ? "已启用" : "已停用",
+          );
+          state.className =
+            "domain-state " + (domain.enabled ? "enabled" : "disabled");
+          const meta = document.createElement("div");
+          meta.className = "domain-meta";
+          card.append(meta);
+          text(meta, "span", "认证");
+          const auth = domain.auth || {};
+          const authText = text(meta, "p", authLabel(auth.outcome));
+          authText.className = "auth status-" + statusClass(auth.outcome);
+          const leaves = document.createElement("section");
+          leaves.className = "leaves";
+          card.append(leaves);
+          text(leaves, "h3", "已安装的查询 · " + domain.leaves.length);
+          const list = document.createElement("ul");
+          list.className = "leaf-list";
+          leaves.append(list);
+          for (const leaf of domain.leaves) {
+            const last = leaf.last_execution || {};
+            const entry = document.createElement("li");
+            entry.className = "leaf";
+            entry.dataset.name = leafName(domain, leaf).toLowerCase();
+            list.append(entry);
+            text(entry, "span", leafName(domain, leaf)).className = "leaf-name";
+            const outcome = text(entry, "span", executionLabel(last.outcome));
+            outcome.className =
+              "leaf-outcome status-" + statusClass(last.outcome);
+            if (!leaf.diagnostic) {
+              const name = leafName(domain, leaf);
+              const edit = text(entry, "button", "编辑文档");
+              edit.className = "leaf-docs";
+              edit.type = "button";
+              edit.setAttribute("aria-label", "Edit documentation for " + name);
+              edit.onclick = () => openEditor(domain.id, name);
+            }
+          }
+          if (!domain.leaves.length)
+            text(leaves, "p", "尚未安装可用的 leaf。").className = "empty";
+          const diagnostics = domain.diagnostics || [];
+          const details = document.createElement("details");
+          details.className = "diagnostics";
+          if (diagnostics.length) {
+            card.append(details);
+            text(details, "summary", diagnostics.length + " 项声明需要处理");
+          }
+          for (const diagnostic of diagnostics) {
+            const message = text(
+              details,
+              "p",
+              diagnostic.id +
+                ": " +
+                diagnostic.code +
+                " — " +
+                diagnostic.message,
+            );
+            message.className = "diagnostic";
+          }
+          const footer = document.createElement("div");
+          footer.className = "domain-footer";
+          card.append(footer);
+          text(footer, "small", "仅影响本机查询可用性");
+          const button = text(
+            footer,
+            "button",
+            domain.enabled ? "停用 domain" : "启用 domain",
+          );
+          button.className =
+            "domain-toggle " + (domain.enabled ? "disable" : "enable");
+          button.type = "button";
+          button.setAttribute(
+            "aria-label",
+            (domain.enabled ? "Disable " : "Enable ") + domain.id,
+          );
+          button.onclick = async () => {
+            button.disabled = true;
+            error.textContent = "";
+            try {
+              await request("/api/domains/" + encodeURIComponent(domain.id), {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Dogopencli-Token": token,
+                },
+                body: JSON.stringify({ enabled: !domain.enabled }),
+              });
+              await load();
+            } catch (problem) {
+              error.textContent = "Save failed: " + problem.message;
+              button.disabled = false;
+            }
+          };
+        }
+        refreshPicker();
+        filterInventory();
+      } catch (problem) {
+        error.textContent = "Unable to load domains: " + problem.message;
+      }
+    }
+    let editing = null;
+    let editorGeneration = 0;
+    let editorBusy = false;
+    let dirty = false;
+    let savedPatch = "";
+    let previewTimer;
+    let changeVersion = 0;
+    let inventory = [];
+    let returnFocus = null;
+    const editor = document.getElementById("editor");
+    const form = document.getElementById("documentation-form");
+    const status = document.getElementById("editor-status");
+    const picker = document.getElementById("leaf-picker");
+    const previewState = document.getElementById("preview-state");
+    function documentationPatch(manifest) {
+      const result = {};
+      for (const key of [
+        "summary",
+        "purpose",
+        "identity_description",
+        "limitations",
+        "examples",
+      ]) {
+        if (key in manifest) result[key] = manifest[key];
+      }
+      result.operations = {};
+      for (const [name, operation] of Object.entries(manifest.operations)) {
+        result.operations[name] = {
+          description: operation.description,
+          parameters: (operation.parameters || []).map((parameter) => ({
+            description: parameter.description,
+          })),
+        };
+      }
+      result.fields = manifest.fields.map((field) => ({
+        meaning: field.meaning,
+        ...(field.unit !== undefined ? { unit: field.unit } : {}),
+      }));
+      return result;
+    }
+    function updateDirty() {
+      dirty =
+        JSON.stringify(documentationPatch(editing.manifest)) !== savedPatch;
+      document.getElementById("dirty-state").textContent = dirty
+        ? "未保存"
+        : "已保存";
+      document.getElementById("save").disabled = editorBusy || !dirty;
+    }
+    function discardAllowed() {
+      return !dirty || window.confirm("有未保存的修改，确定放弃吗？");
+    }
+    function changed() {
+      changeVersion++;
+      status.textContent = "";
+      updateDirty();
+      drawReading();
+      previewState.textContent = "正在更新…";
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(() => editorAction("preview"), 400);
+    }
+    function inputField(parent, label, value, change, single = false) {
+      const wrapper = text(parent, "label", label);
+      wrapper.className = "doc-label";
+      const input = document.createElement(single ? "input" : "textarea");
+      wrapper.append(input);
+      input.value = value ?? "";
+      input.setAttribute("aria-label", label);
+      if (!single) input.rows = 2;
+      input.oninput = () => {
+        change(input.value);
+        changed();
+      };
+      return input;
+    }
+    function section(key, title, hint) {
+      const block = document.createElement("section");
+      block.className = "form-section";
+      block.id = "section-" + key;
+      text(block, "h3", title);
+      if (hint) text(block, "p", hint);
+      form.append(block);
+      return block;
+    }
+    function entry(parent, name, type) {
+      const row = document.createElement("div");
+      row.className = "entry";
+      parent.append(row);
+      const heading = document.createElement("div");
+      heading.className = "entry-title";
+      row.append(heading);
+      text(heading, "code", name);
+      if (type) text(heading, "small", type);
+      return row;
+    }
+    function arrayControls(parent, key, makeItem, drawItem) {
+      const items = editing.manifest[key] || [];
+      items.forEach((item, index) => {
+        const row = entry(parent, String(index + 1));
+        drawItem(row, item, index);
+        const remove = text(row.firstChild, "button", "移除");
+        remove.className = "remove";
+        remove.type = "button";
+        remove.setAttribute(
+          "aria-label",
+          "移除" + (key === "examples" ? "示例" : "限制") + " " + (index + 1),
+        );
+        remove.onclick = () => {
+          items.splice(index, 1);
+          drawForm();
+          changed();
+          document.querySelector("#section-" + key + " .add")?.focus();
+        };
+      });
+      if (!items.length) text(parent, "p", "暂无内容。");
+      const add = text(
+        parent,
+        "button",
+        key === "examples" ? "添加示例" : "添加限制",
+      );
+      add.type = "button";
+      add.className = "add";
+      add.onclick = () => {
+        editing.manifest[key] = items;
+        items.push(makeItem());
+        drawForm();
+        changed();
+        form
+          .querySelector(
+            "#section-" +
+              key +
+              " .entry:last-of-type input, #section-" +
+              key +
+              " .entry:last-of-type textarea",
+          )
+          ?.focus();
+      };
+    }
+    // Reuse server-provided number labels so technical declarations stay exact.
+    function technicalText(value, path = "", depth = 0) {
+      if (value === null || typeof value !== "object") {
+        return editing.number_labels?.[path] ?? JSON.stringify(value);
+      }
+      const array = Array.isArray(value);
+      const entries = Object.entries(value);
+      if (!entries.length) return array ? "[]" : "{}";
+      const indent = "  ".repeat(depth + 1);
+      const lines = entries.map(([key, item]) => {
+        const childPath = array
+          ? path + " " + (Number(key) + 1)
+          : (path ? path + "." : "") + key;
+        return (
+          indent +
+          (array ? "" : JSON.stringify(key) + ": ") +
+          technicalText(item, childPath, depth + 1)
+        );
+      });
+      return (
+        (array ? "[" : "{") +
+        "\n" +
+        lines.join(",\n") +
+        "\n" +
+        "  ".repeat(depth) +
+        (array ? "]" : "}")
+      );
+    }
+    function drawForm() {
+      form.replaceChildren();
+      const m = editing.manifest;
+      const overview = section(
+        "overview",
+        "基本说明",
+        "帮助使用者理解这个查询的用途。",
+      );
+      for (const [key, label, single] of [
+        ["summary", "一句话简介", true],
+        ["purpose", "用途说明", false],
+        ["identity_description", "记录标识说明", false],
+      ]) {
+        inputField(
+          overview,
+          label,
+          m[key],
+          (value) => {
+            m[key] = value;
+          },
+          single,
+        );
+      }
+      const operations = section(
+        "operations",
+        "操作说明",
+        "补充每项操作与查询参数的说明。",
+      );
+      for (const [name, operation] of Object.entries(m.operations)) {
+        const row = entry(operations, name);
+        inputField(
+          row,
+          "操作说明 · " + name,
+          operation.description,
+          (value) => {
+            operation.description = value;
+          },
+        );
+        for (const parameter of operation.parameters || []) {
+          const p = entry(
+            row,
+            "--" + parameter.name,
+            parameter.type + (parameter.required ? " · 必填" : " · 可选"),
+          );
+          inputField(
+            p,
+            "参数说明 · " + parameter.name,
+            parameter.description,
+            (value) => {
+              parameter.description = value;
+            },
+          );
+        }
+      }
+      const fields = section(
+        "fields",
+        "字段说明",
+        "字段名称与类型只读，可编辑含义和单位。",
+      );
+      for (const field of m.fields) {
+        const row = entry(fields, field.name, field.type);
+        inputField(row, "含义 · " + field.name, field.meaning, (value) => {
+          field.meaning = value;
+        });
+        inputField(
+          row,
+          "单位 · " + field.name,
+          field.unit,
+          (value) => {
+            field.unit = value;
+          },
+          true,
+        );
+      }
+      if (!m.fields.length) text(fields, "p", "此 leaf 没有声明字段。");
+      const limitations = section(
+        "limitations",
+        "使用限制",
+        "说明范围边界与使用时需要留意的事项。",
+      );
+      arrayControls(
+        limitations,
+        "limitations",
+        () => "",
+        (row, item, index) =>
+          inputField(row, "限制 " + (index + 1), item, (value) => {
+            m.limitations[index] = value;
+          }),
+      );
+      const examples = section(
+        "examples",
+        "使用示例",
+        "提供可参考的命令和说明。",
+      );
+      arrayControls(
+        examples,
+        "examples",
+        () => ({ title: "", command: "" }),
+        (row, item, index) => {
+          inputField(
+            row,
+            "示例标题 " + (index + 1),
+            item.title,
+            (value) => {
+              item.title = value;
+            },
+            true,
+          );
+          inputField(row, "示例命令 " + (index + 1), item.command, (value) => {
+            item.command = value;
+          });
+        },
+      );
+      const technical = structuredClone(m);
+      for (const key of [
+        "summary",
+        "purpose",
+        "identity_description",
+        "limitations",
+        "examples",
+      ])
+        delete technical[key];
+      for (const op of Object.values(technical.operations)) {
+        delete op.description;
+        for (const p of op.parameters || []) delete p.description;
+      }
+      for (const f of technical.fields) {
+        delete f.meaning;
+        delete f.unit;
+      }
+      document.getElementById("technical-declarations").textContent =
+        technicalText(technical);
+      const nav = document.getElementById("section-nav");
+      const active =
+        nav.querySelector("[aria-current=true]")?.dataset.section || "overview";
+      nav.replaceChildren();
+      for (const [key, label] of [
+        ["overview", "概述"],
+        ["operations", "操作"],
+        ["fields", "字段 " + m.fields.length],
+        ["limitations", "限制"],
+        ["examples", "示例"],
+      ]) {
+        const button = text(nav, "button", label);
+        button.type = "button";
+        button.dataset.section = key;
+        button.setAttribute("aria-current", String(key === active));
+        button.onclick = () => {
+          for (const b of nav.children)
+            b.setAttribute("aria-current", String(b === button));
+          document
+            .getElementById("section-" + key)
+            .scrollIntoView({ block: "start", behavior: "smooth" });
+        };
+      }
+    }
+    function readingSection(parent, title) {
+      const s = document.createElement("section");
+      parent.append(s);
+      text(s, "h3", title);
+      return s;
+    }
+    function drawReading() {
+      const target = document.getElementById("reading-preview");
+      target.replaceChildren();
+      const m = editing.manifest;
+      text(target, "small", editing.domain + "." + editing.name);
+      text(target, "h2", editing.name);
+      if (m.summary) text(target, "p", m.summary);
+      if (m.purpose) text(readingSection(target, "用途"), "p", m.purpose);
+      if (m.identity_description)
+        text(readingSection(target, "记录标识"), "p", m.identity_description);
+      const ops = readingSection(target, "操作");
+      for (const [name, op] of Object.entries(m.operations)) {
+        text(
+          ops,
+          "pre",
+          "dogopencli " + editing.domain + " " + name + " " + editing.name,
+        );
+        text(ops, "p", op.description || "");
+        for (const p of op.parameters || []) {
+          text(
+            ops,
+            "p",
+            "--" +
+              p.name +
+              " · " +
+              p.type +
+              (p.required ? " · 必填" : " · 可选") +
+              "：" +
+              (p.description || ""),
+          );
+        }
+      }
+      if (m.fields.length) {
+        const fields = readingSection(target, "字段说明");
+        const table = document.createElement("table");
+        fields.append(table);
+        const header = table.createTHead().insertRow();
+        for (const name of ["字段", "类型", "含义"]) text(header, "th", name);
+        const body = table.createTBody();
+        for (const field of m.fields) {
+          const row = body.insertRow();
+          text(text(row, "td", ""), "code", field.name);
+          text(row, "td", field.type);
+          text(
+            row,
+            "td",
+            (field.meaning || "") + (field.unit ? " [" + field.unit + "]" : ""),
+          );
+        }
+      }
+      if (m.limitations?.length) {
+        const list = text(readingSection(target, "使用限制"), "ul", "");
+        for (const value of m.limitations) text(list, "li", value);
+      }
+      if (m.examples?.length) {
+        const s = readingSection(target, "示例");
+        for (const example of m.examples) {
+          text(s, "p", example.title);
+          text(s, "pre", example.command);
+        }
+      }
+      text(
+        target,
+        "p",
+        "阅读视图按文档内容排版；完整执行约定请查看 CLI 文本。",
+      );
+    }
+    function refreshPicker() {
+      picker.replaceChildren();
+      for (const domain of inventory) {
+        const group = document.createElement("optgroup");
+        group.label = domain.id;
+        picker.append(group);
+        for (const leaf of domain.leaves) {
+          if (leaf.diagnostic) continue;
+          const name = leafName(domain, leaf);
+          const option = text(group, "option", domain.id + "." + name);
+          option.value = JSON.stringify([domain.id, name]);
+        }
+      }
+      if (editing)
+        picker.value = JSON.stringify([editing.domain, editing.name]);
+    }
+    async function openEditor(domain, name) {
+      if (editorBusy) return;
+      if (!discardAllowed()) {
+        refreshPicker();
+        return;
+      }
+      const generation = ++editorGeneration;
+      editorBusy = true;
+      setEditorDisabled(true);
+      clearTimeout(previewTimer);
+      error.textContent = "";
+      status.textContent = "";
+      try {
+        const path =
+          "/api/leaves/" +
+          encodeURIComponent(domain) +
+          "/" +
+          encodeURIComponent(name);
+        const loaded = await request(path);
+        if (generation !== editorGeneration) return;
+        if (editor.hidden) returnFocus = document.activeElement;
+        editing = { ...loaded, path, domain, name };
+        editor.hidden = false;
+        document.body.classList.add("editor-open");
+        document.getElementById("editor-title").textContent = name;
+        document.getElementById("editor-domain").textContent = domain;
+        savedPatch = JSON.stringify(documentationPatch(editing.manifest));
+        changeVersion = 0;
+        updateDirty();
+        refreshPicker();
+        drawForm();
+        drawReading();
+        document.getElementById("documentation-preview").textContent =
+          editing.preview;
+        previewState.textContent = "已同步";
+        document.querySelector(".form-scroll").scrollTop = 0;
+        document.querySelector(".preview-scroll").scrollTop = 0;
+        document.getElementById("back").focus();
+      } catch (problem) {
+        if (generation !== editorGeneration) return;
+        const target = editor.hidden ? error : status;
+        target.textContent = "无法载入文档：" + problem.message;
+        refreshPicker();
+      } finally {
+        editorBusy = false;
+        setEditorDisabled(false);
+        if (editing) updateDirty();
+      }
+    }
+    function setEditorDisabled(disabled) {
+      for (const item of editor.querySelectorAll(
+        "input,textarea,select,button",
+      ))
+        item.disabled = disabled;
+    }
+    async function editorAction(action) {
+      if (!editing || editorBusy) return;
+      const active = editing;
+      const generation = editorGeneration;
+      const version = changeVersion;
+      const payload = {
+        documentation: documentationPatch(active.manifest),
+        revision: active.revision,
+      };
+      if (action === "save") {
+        clearTimeout(previewTimer);
+        editorBusy = true;
+        status.textContent = "";
+        for (const item of editor.querySelectorAll(
+          "input,textarea,select,button",
+        ))
+          item.disabled = true;
+        document.getElementById("dirty-state").textContent = "正在保存…";
+      }
+      try {
+        const result = await request(active.path + "/" + action, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Dogopencli-Token": token,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (
+          editing !== active ||
+          generation !== editorGeneration ||
+          version !== changeVersion
+        )
+          return;
+        document.getElementById("documentation-preview").textContent =
+          result.preview;
+        previewState.textContent = "已同步";
+        if (action === "save") {
+          editing = { ...editing, ...result };
+          savedPatch = JSON.stringify(documentationPatch(editing.manifest));
+          drawReading();
+          status.textContent = "已保存。下一次 CLI 调用将使用新文档。";
+        }
+      } catch (problem) {
+        if (
+          editing !== active ||
+          generation !== editorGeneration ||
+          version !== changeVersion
+        )
+          return;
+        previewState.textContent = "未同步";
+        status.textContent =
+          (action === "save" ? "保存失败：" : "预览未更新：") +
+          problem.message +
+          "。当前编辑已保留。";
+      } finally {
+        if (action === "save") {
+          editorBusy = false;
+          for (const item of editor.querySelectorAll(
+            "input,textarea,select,button",
+          ))
+            item.disabled = false;
+          updateDirty();
+        }
+      }
+    }
+    document.getElementById("save").onclick = () => editorAction("save");
+    document.getElementById("reload").onclick = () =>
+      editing && openEditor(editing.domain, editing.name);
+    picker.onchange = () => {
+      const [domain, name] = JSON.parse(picker.value);
+      openEditor(domain, name);
+    };
+    document.getElementById("back").onclick = () => {
+      if (!discardAllowed()) return;
+      ++editorGeneration;
+      clearTimeout(previewTimer);
+      dirty = false;
+      editor.hidden = true;
+      document.body.classList.remove("editor-open");
+      returnFocus?.focus();
+    };
+    for (const [id, reading] of [
+      ["reading-tab", true],
+      ["cli-tab", false],
+    ]) {
+      document.getElementById(id).onclick = () => {
+        document.getElementById("reading-preview").hidden = !reading;
+        document.getElementById("documentation-preview").hidden = reading;
+        document
+          .getElementById("reading-tab")
+          .setAttribute("aria-pressed", String(reading));
+        document
+          .getElementById("cli-tab")
+          .setAttribute("aria-pressed", String(!reading));
+      };
+    }
+    window.addEventListener("beforeunload", (event) => {
+      if (dirty) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    });
+    form.onsubmit = (event) => event.preventDefault();
+    function filterInventory() {
+      const query = document
+        .getElementById("leaf-search")
+        .value.trim()
+        .toLowerCase();
+      let visible = 0;
+      for (const card of root.children) {
+        const matches = card.dataset.domain.includes(query);
+        let leaves = 0;
+        for (const leaf of card.querySelectorAll(".leaf")) {
+          leaf.hidden = !matches && !leaf.dataset.name.includes(query);
+          if (!leaf.hidden) leaves++;
+        }
+        card.hidden = !matches && !leaves;
+        if (!card.hidden) visible++;
+      }
+      document.getElementById("no-matches").hidden = visible > 0;
+    }
+    document.getElementById("leaf-search").oninput = filterInventory;
+    load();
+  </script>
+</html>
