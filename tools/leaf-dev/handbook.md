@@ -35,7 +35,7 @@ Copy [leaf.json](example/leaf.json) and [adapter.py](example/adapter.py).
 Change their identity, endpoint, relation, scope, request builder, parser and prose
 together. The sample's `.invalid` endpoint is synthetic; run it only in its tests.
 
-- Manifest: declare `collection.provider`, `paging` and `primary_id`.
+- List manifest: declare `collection.provider`, `paging` and `primary_id`.
 - List adapter: implement `capability`, `scope` and `filter`.
 - Capability: provide the restricted `EndpointContract`, `page_body` and native
   parser. See [the SDK adapter contract](interfaces.md#adapter).

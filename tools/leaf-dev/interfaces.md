@@ -13,7 +13,7 @@ fields. Start from [leaf.json](example/leaf.json), then run `leaf.py verify`.
 | --- | --- |
 | `domain`, `name` | Known host domain and dotted leaf name; identity is `domain.name`. |
 | `adapter` | Root Python file and exported object, e.g. `adapter.py:adapter`. |
-| `operations` | Verified `list` and/or `get`, each with description and parameters. Host provides refresh/prune/describe/help. |
+| `operations` | Verified `list` and/or `get`, each with description and parameters. Host provides describe/help, plus refresh/prune for List. |
 | `summary`, `purpose`, `fields` | Discovery and business field meanings; preserve unknown native fields in output. |
 | `identity`, `identity_description` | Native List identity and its meaning; Get-only may use an empty List identity. |
 | `operations.get.lookup`, `result_identity` | Positional lookup meaning and independently declared returned root identity. Both need descriptions. |

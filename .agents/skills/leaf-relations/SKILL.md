@@ -41,8 +41,8 @@ identity from parent references, same-object detail from children/history, and
 native nested fields from frontend enrichment. State counterevidence and limits;
 one matching sample or label does not prove a join or universal uniqueness.
 An already qualified same-object List-to-Get binding can use standard composition
-without a new relationship decision. A newly proposed binding needs evidence and HIL covering
-lookup identity, required context and native-root coverage.
+without a new relationship decision. A newly proposed binding needs evidence and
+HIL covering lookup identity, required context and native-root coverage.
 
 ## 2. HIL①: scope and plan
 

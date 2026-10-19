@@ -98,7 +98,7 @@ preserving List order and multiplicity. `--limit 0` means all remaining matching
 rows within execution bounds; an empty window makes no detail calls. Output is:
 
 ```json
-[{"record": {"id": "one", "amount": "1.00"}, "detail": {"id": "one", "children": []}}]
+[{"record": {"id": "two", "amount": "2.00"}, "detail": {"id": "two", "children": []}}]
 ```
 
 Each member preserves its own native view. `--fields` selects native fields inside
