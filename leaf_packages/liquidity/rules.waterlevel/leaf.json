@@ -15,6 +15,21 @@
           "description": "Exact case-sensitive local currency match; repeat for alternatives. Acquisition always retains the full native scope."
         }
       ]
+    },
+    "get": {
+      "description": "Read all native configurations for one account alias; independent of current List row identities.",
+      "parameters": [],
+      "lookup": {
+        "name": "aliasName",
+        "description": "Native account alias, available as List aliasName; never a bufferId."
+      },
+      "result_shape": "array",
+      "result_identity": {
+        "fields": [
+          "bufferId"
+        ],
+        "description": "Each native configuration member has its own bufferId; preserve all members and versions."
+      }
     }
   },
   "summary": "Waterlevel rules.",
@@ -44,12 +59,19 @@
     "Fixed GUAPW3SG tenant. Native fields, nested values, exact decimals and unknown fields are retained.",
     "List uses rowStart offsets with pageSize=5000 and null credit-date bounds. Native result.count is the coverage target; SDK collection reports duplicate identities, count shortfall and page gaps as incomplete.",
     "Currency filters are exact local selections; acquisition retains the full native scope. Frontend account detail/version expansion is outside this List contract.",
-    "The qualified historical request width 5000 is a starting value, not a measured backend maximum. SDK conflict resolution keeps the last arrival and marks coverage incomplete; strict refresh preserves the prior cache on rejection."
+    "The qualified historical request width 5000 is a starting value, not a measured backend maximum. SDK conflict resolution keeps the last arrival and marks coverage incomplete; strict refresh preserves the prior cache on rejection.",
+    "Native Get is GET /bankAccountBufferListByAliasName.json with fixed tenant and aliasName lookup. It returns the entire native configuration array, including successful empty arrays.",
+    "Array member bufferId and aliasName are validated without choosing a version or synthesizing a root. Native versions, nested fields and order are preserved.",
+    "No same-object List binding: an account configuration array is different from the current List row. Get and --fields per-member projection never publish cache or Duckdog data."
   ],
   "examples": [
     {
       "title": "Read saved records",
       "command": "dogopencli liquidity list rules.waterlevel"
+    },
+    {
+      "title": "Read native account configuration array",
+      "command": "dogopencli liquidity get rules.waterlevel ACCOUNT_ALIAS"
     }
   ],
   "dataset": {

@@ -6,6 +6,7 @@ from dogopencli.contracts import EndpointContract, ParsedPage
 from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 from dogopencli.errors import (
     BUSINESS_QUERY_FAILED,
+    INVALID_ARGUMENT,
     INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
     CliError,
@@ -94,6 +95,12 @@ class DetailInquiry:
     )
 
     def request_body(self, parameters: dict[str, Any], identity: str) -> dict[str, Any]:
+        if not isinstance(identity, str) or not identity.strip():
+            raise CliError(
+                INVALID_ARGUMENT,
+                "detail identity must be a nonempty string",
+                exit_code=2,
+            )
         return {"slaConfigId": identity}
 
     def parse_detail(
@@ -114,7 +121,7 @@ class DetailInquiry:
         value = detail.get("slaConfigId")
         if not isinstance(value, str) or not value.strip() or value != identity:
             raise CliError(INVALID_RESPONSE, "detail identity does not match request")
-        if "version" in detail and not isinstance(detail["version"], str):
+        if detail.get("version") is not None and not isinstance(detail["version"], str):
             raise CliError(INVALID_RESPONSE, "detail version must be a native string")
         if "tntInstId" in detail and detail["tntInstId"] != TENANT:
             raise CliError(

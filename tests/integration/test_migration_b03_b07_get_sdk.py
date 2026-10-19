@@ -66,7 +66,7 @@ CASES = {
     "risk.anomalies": (
         "riskEventId",
         "id",
-        None,
+        "id",
         "/api/risk/event/detail.json",
         "POST",
         "form",
@@ -157,7 +157,7 @@ def reply(value, status=200):
 def list_flags(leaf):
     if leaf == "investment.holdings":
         return ("--date", "2026-09-25")
-    if leaf == "risk.events":
+    if leaf in ("risk.events", "risk.anomalies"):
         return ("--from-date", "20260925", "--to-date", "20260926")
     return ()
 
@@ -167,10 +167,11 @@ def rows(leaf):
         {CASES[leaf][2]: identity, "listValue": identity, "tntInstId": "GUAPW3SG"}
         for identity in ("one", "two", "three")
     ]
-    if leaf == "risk.events":
+    if leaf in ("risk.events", "risk.anomalies"):
         for value in values:
             value.update(
-                riskMode="RISK_EVENT", gmtCreate="2026-09-25 12:00:00（GMT+08）"
+                riskMode="RISK_EVENT" if leaf == "risk.events" else "RISK_ALERT",
+                gmtCreate="2026-09-25 12:00:00（GMT+08）",
             )
     return values
 
@@ -398,12 +399,33 @@ def test_bound_detail_failure_is_atomic_and_does_not_change_cache(installed):
     assert before["meta"]["fetched_at"] == after["meta"]["fetched_at"]
 
 
-@pytest.mark.parametrize(
-    "installed", ["rules.notification", "risk.anomalies"], indirect=True
-)
+@pytest.mark.parametrize("installed", ["rules.notification"], indirect=True)
 def test_get_only_does_not_restore_list_or_create_storage(installed):
     leaf, cli, browser, config = installed
     assert cli("liquidity", "list", leaf, code=2)["error"]
     assert not browser.business_requests
     assert not (config / "leaf-cache.sqlite3").exists()
     assert not (config / "duckdog.duckdb").exists()
+
+
+@pytest.mark.parametrize("lookup", ["", " \t "])
+def test_blank_get_lookup_is_usage_error_before_business_request(installed, lookup):
+    leaf, cli, browser, _ = installed
+    result = cli("liquidity", "get", leaf, lookup, code=2)
+    assert result["error"]["code"] == "INVALID_ARGUMENT"
+    assert not browser.business_requests
+
+
+@pytest.mark.parametrize("installed", ["risk.sla"], indirect=True)
+@pytest.mark.parametrize("version", ["missing", "null"])
+def test_sla_detail_preserves_optional_missing_or_null_version(installed, version):
+    leaf, cli, browser, _ = installed
+    native = detail(leaf)
+    if version == "missing":
+        native.pop("version")
+    else:
+        native["version"] = None
+    browser.business_script.append(reply(envelope(leaf, native)))
+    result = cli("liquidity", "get", leaf, "one")
+    assert result["data"] == native
+    assert browser.business_requests == [expected_request(leaf, "one")]

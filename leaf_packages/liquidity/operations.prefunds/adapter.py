@@ -145,7 +145,67 @@ class Inquiry:
             raise CliError(INVALID_RESPONSE, "prefund status is outside requested view")
 
 
+class DetailInquiry:
+    name = "liquidity.operations.prefunds.get"
+    page_url = LIQUIDITY_STARTUP_URL
+    contract = EndpointContract(
+        method="GET",
+        host="iliquidity.alipay.com",
+        path="/queryPreFundingOrderDetail.json",
+        page_size=0,
+        one_based=False,
+        encoding="query",
+        allowed_body_keys=frozenset({"tntInstId", "preFundingId"}),
+        fixed_body_values=(("tntInstId", TENANT),),
+    )
+
+    def request_body(self, parameters: dict[str, Any], identity: str) -> dict[str, Any]:
+        if not isinstance(identity, str) or not identity.strip():
+            raise CliError(
+                INVALID_ARGUMENT, "native prefund id must be nonempty", exit_code=2
+            )
+        return {"tntInstId": TENANT, "preFundingId": identity}
+
+    def parse_detail(
+        self, body: bytes, parameters: dict[str, Any], identity: str
+    ) -> dict[str, Any]:
+        try:
+            document = parse(body)
+        except (ValueError, UnicodeError) as error:
+            raise CliError(INVALID_RESPONSE, "prefund detail is not JSON") from error
+        if (
+            not isinstance(document, dict)
+            or type(document.get("resultFlag")) is not bool
+        ):
+            raise CliError(INVALID_RESPONSE, "invalid prefund detail business marker")
+        if not document["resultFlag"]:
+            raise CliError(BUSINESS_QUERY_FAILED, "backend rejected prefund detail")
+        result = document.get("result")
+        if not isinstance(result, dict) or type(result.get("success")) is not bool:
+            raise CliError(INVALID_RESPONSE, "invalid prefund detail inner marker")
+        if not result["success"]:
+            raise CliError(BUSINESS_QUERY_FAILED, "backend rejected prefund detail")
+        detail = result.get("data")
+        if (
+            not isinstance(detail, dict)
+            or not isinstance(detail.get("id"), str)
+            or detail["id"] != identity
+        ):
+            raise CliError(
+                INVALID_RESPONSE, "prefund detail identity differs from lookup"
+            )
+        if detail.get("tntInstId") not in (None, "", TENANT):
+            raise CliError(INVALID_RESPONSE, "prefund detail tenant contradicts scope")
+        return detail
+
+
+DETAIL = DetailInquiry()
+
+
 class Adapter:
+    def detail_capability(self, parameters: dict[str, Any]) -> DetailInquiry:
+        return DETAIL
+
     def capability(self, parameters: dict[str, Any]) -> Inquiry:
         return Inquiry(native_scope(parameters))
 

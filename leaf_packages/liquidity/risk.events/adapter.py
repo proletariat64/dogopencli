@@ -180,6 +180,12 @@ class DetailInquiry:
     )
 
     def request_body(self, parameters: dict[str, Any], identity: str) -> dict[str, Any]:
+        if not isinstance(identity, str) or not identity.strip():
+            raise CliError(
+                INVALID_ARGUMENT,
+                "detail identity must be a nonempty string",
+                exit_code=2,
+            )
         return {"riskEventId": identity}
 
     def parse_detail(

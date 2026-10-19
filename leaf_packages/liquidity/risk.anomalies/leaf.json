@@ -3,42 +3,95 @@
   "name": "risk.anomalies",
   "adapter": "adapter.py:adapter",
   "operations": {
+    "list": {
+      "description": "Read native alert records with adjacent-date bounds and qualified width50.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Native query start, valid YYYYMMDD; to-date must be one day later."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Native query end, valid YYYYMMDD; exactly one day after from-date."
+        }
+      ]
+    },
     "get": {
       "description": "Read one native root detail online without changing a saved List.",
       "parameters": [],
       "lookup": {
         "name": "riskEventId",
-        "description": "Native lookup sent as riskEventId; obtain a verified native identity from the corresponding product UI."
+        "description": "Native lookup sent as riskEventId; use the unprojected List id value."
       },
       "result_identity": {
         "fields": [
           "id"
         ],
         "description": "Native detail id; exact nonempty string echo of the requested lookup."
+      },
+      "list_binding": {
+        "identity_field": "id"
       }
     }
   },
-  "summary": "risk anomalies native detail.",
-  "purpose": "Inspect one native detail through an inquiry-only endpoint.",
+  "summary": "Risk anomalies.",
+  "purpose": "Inspect native risk alerts through bounded inquiry-only requests.",
   "fields": [
     {
       "name": "id",
       "type": "string",
-      "meaning": "Native root detail identity, validated against requested lookup."
+      "meaning": "Native nonempty record identity retained without conversion."
     }
   ],
-  "identity": [],
-  "identity_description": "Get-only; native root identity is declared by operations.get.",
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies rows within this leaf and acquisition scope.",
   "limitations": [
+    "Inquiry-only native JSON and unknown nested fields are retained without projection. Native zero values remain unchanged.",
+    "Width50 is qualified by the current frontend and accepted native two-page scope; it is not a measured backend maximum and width10 is not a fallback. SDK quality reports duplicate identities, count shortfall and page gaps; strict refresh publishes complete acquisitions only.",
+    "Conflicts keep the last arrival and remain incomplete. Rejected refresh preserves the prior saved capture.",
+    "Fixed tenant GUAPW3SG, riskMode=RISK_ALERT, timeZone=GMT+08. Adjacent YYYYMMDD CLI bounds map to native YYYY-MM-DD; unbounded acquisition is unsupported.",
+    "Native Risk Time gmtCreate and other GMT+08 source times are retained. Server boundary clock and inclusivity remain unproven; no local date membership or anomaly classification is inferred.",
     "Native Get uses POST form /api/risk/event/detail.json; lookup riskEventId returns one native root object with id.",
     "Get preserves all native nested fields and unknown values; separately queried history, logs and child endpoints remain unqueried.",
     "Get is live-only and publishes no cache or Duckdog data.",
-    "Get-only delivery. List remains held for native duplicate/total qualification; Get does not establish List completeness."
+    "List --live --with-detail fetches native Detail only for the selected offset/limit window, returns separate record/detail members and fails atomically on any detail error; saved List data remains unchanged."
   ],
   "examples": [
     {
+      "title": "Acquire a complete List",
+      "command": "dogopencli liquidity list risk.anomalies --live --require-complete --from-date 20260925 --to-date 20260926"
+    },
+    {
       "title": "Read one native detail",
       "command": "dogopencli liquidity get risk.anomalies RECORD_ID"
+    },
+    {
+      "title": "Read one selected List row with its native detail",
+      "command": "dogopencli liquidity list risk.anomalies --live --with-detail --limit 1 --from-date 20260925 --to-date 20260926"
     }
-  ]
+  ],
+  "dataset": {
+    "relation": "liquidity_risk_anomalies"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        50
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
 }

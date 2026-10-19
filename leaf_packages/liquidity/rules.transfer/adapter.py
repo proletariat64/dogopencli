@@ -7,6 +7,7 @@ from dogopencli.contracts import EndpointContract, ParsedPage
 from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 from dogopencli.errors import (
     BUSINESS_QUERY_FAILED,
+    INVALID_ARGUMENT,
     INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
     CliError,
@@ -114,6 +115,12 @@ class DetailInquiry:
     )
 
     def request_body(self, parameters: dict[str, Any], identity: str) -> dict[str, Any]:
+        if not isinstance(identity, str) or not identity.strip():
+            raise CliError(
+                INVALID_ARGUMENT,
+                "detail identity must be a nonempty string",
+                exit_code=2,
+            )
         return {"ruleId": identity, "tntInstId": "GUAPW3SG"}
 
     def parse_detail(
