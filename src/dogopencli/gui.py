@@ -16,9 +16,10 @@ _PAGE = """<!doctype html>
 <html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dogopencli domains</title>
-<style nonce="NONCE">:root{color-scheme:light;font:18px system-ui;
+<style nonce="NONCE">:root{color-scheme:light;
 background:#f3f5f8;color:#17202a}*{box-sizing:border-box}
-body{margin:0;padding:12px;min-height:100vh;background:#f3f5f8;color:#17202a}
+body{font:18px system-ui;margin:0;padding:12px;\
+min-height:100vh;background:#f3f5f8;color:#17202a}
 button,input,textarea{font:inherit}button{cursor:pointer}
 #editor button{padding:.5rem 1rem}
 #page-header{display:flex;align-items:center;justify-content:space-between;
@@ -27,7 +28,7 @@ margin:0 0 10px}#page-header h1{margin:0;font-size:24px}
 #error:empty{display:none}.error{color:#a21616;margin:0 0 10px}
 #domains{display:grid;grid-template-rows:repeat(2,auto);grid-auto-flow:column;
 grid-auto-columns:minmax(300px,1fr);gap:12px;overflow-x:auto;padding-bottom:4px}
-.domain-card,#editor{background:#fff;border:1px solid #d9e0e6;border-radius:12px;
+.domain-card{background:#fff;border:1px solid #d9e0e6;border-radius:12px;
 padding:14px;box-shadow:0 1px 3px rgba(20,30,40,.05)}
 .domain-card{min-width:300px}
 .domain-payment{border-left:5px solid #2563eb}.domain-payment h2{color:#1d4ed8}
@@ -40,7 +41,7 @@ justify-content:space-between;gap:10px}.domain-card h2{margin:0;font-size:20px}
 .domain-state{flex:none;border-radius:999px;padding:3px 8px;background:#e6f4ec;
 color:#146c43;font-size:13px;font-weight:600}.domain-state.disabled{background:#edf0f2;color:#596673}
 .auth{margin:8px 0;color:#596673;font-size:16px}.leaves{border-top:1px solid #e8ecef;
-padding-top:6px}.leaves h3{margin:0 0 2px;color:#75808b;font-size:12px;
+padding-top:6px}.leaves h3{margin:0 0 2px;color:#64707c;font-size:12px;
 letter-spacing:.04em;text-transform:uppercase}.leaf-list{list-style:none;margin:0;padding:0}
 .leaf{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;
 gap:8px;padding:5px 0;font-size:16px}.leaf-outcome{color:#64707c;\
@@ -62,7 +63,9 @@ padding:7px 10px;font-size:15px}
 .diagnostic{margin:8px 0 0;\
 padding:8px;border-radius:8px;
 background:#fff4e5;color:#8a4b08;font-size:14px}small{color:#465565}
-#editor{margin:12px 0}#editor h2{margin-top:0}#editor label{display:block;\
+#editor{font-size:16px;background:#fff;border:1px solid #dce1e6;\
+border-radius:8px;padding:1rem;margin:1rem 0;box-shadow:none}
+#editor h2{margin-top:0}#editor label{display:block;\
 margin:.6rem 0}
 #editor input,#editor textarea{display:block;width:95%;padding:.4rem}
 #editor fieldset{margin:.6rem 0;border:1px solid #dce1e6}#editor pre{\

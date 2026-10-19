@@ -94,6 +94,22 @@ def test_card_layout_is_full_width_and_concise(running_gui):
     assert "function leafName(domain,leaf)" in page
 
 
+def test_editor_original_styling_and_leaf_heading_contrast(running_gui):
+    _, url = running_gui
+    with urlopen(url) as response:
+        page = response.read().decode()
+    assert "body{font:18px system-ui;margin:0;padding:12px" in page
+    assert ":root{color-scheme:light;font:18px system-ui" not in page
+    assert ".domain-card,#editor" not in page
+    assert (
+        "#editor{font-size:16px;background:#fff;border:1px solid #dce1e6;"
+        "border-radius:8px;padding:1rem;margin:1rem 0;box-shadow:none}"
+    ) in page
+    assert "#editor{margin:12px 0}" not in page
+    assert ".leaves h3{margin:0 0 2px;color:#64707c;font-size:12px" in page
+    assert "#editor button{padding:.5rem 1rem}" in page
+
+
 def test_domain_leaf_color_roles(running_gui):
     _, url = running_gui
     with urlopen(url) as response:
