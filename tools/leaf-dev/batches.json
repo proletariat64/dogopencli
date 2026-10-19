@@ -697,26 +697,29 @@
       "id": "B25",
       "title": "决策、历史与规则状态",
       "issue": 284,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.operations.decisions",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.operations.decisions.history",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         },
         {
           "identity": "liquidity.operations.rule_status",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         }
       ]
     }

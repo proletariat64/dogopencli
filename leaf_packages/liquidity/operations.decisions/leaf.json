@@ -1,0 +1,106 @@
+{
+  "domain": "liquidity",
+  "name": "operations.decisions",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read bounded decision reports using the assigned business-field projection.",
+      "parameters": [
+        {
+          "name": "start-from",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native executionTimeStart lower bound, YYYY-MM-DDTHH:mm:ss; source timezone unknown, offsets rejected."
+        },
+        {
+          "name": "start-to",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native executionTimeStart upper bound, YYYY-MM-DDTHH:mm:ss; not before start-from."
+        },
+        {
+          "name": "created-from",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native gmtCreate lower bound, YYYY-MM-DDTHH:mm:ss; source timezone unknown, offsets rejected."
+        },
+        {
+          "name": "created-to",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native gmtCreate upper bound, YYYY-MM-DDTHH:mm:ss; not before created-from."
+        }
+      ]
+    },
+    "get": {
+      "description": "Read the entire independent native decision detail root; separate history is unqueried.",
+      "parameters": [],
+      "lookup": {
+        "name": "id",
+        "description": "ASCII decimal native integer id from the decision List; no prior List/cache required."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Exact native JSON integer id echo of the lookup."
+      },
+      "list_binding": {
+        "identity_field": "id"
+      }
+    }
+  },
+  "summary": "Decision reports and native-root details.",
+  "purpose": "Inspect operational decision reports independently of execution and history.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "integer",
+      "meaning": "Native integer report identity; reportId, groupId and orderNo are distinct."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native JSON integer id, never a business-reference substitution or synthetic key.",
+  "limitations": [
+    "Both inclusive native Start Time and Created Time ranges are required for acquisition; native timezone is unknown and never inferred. Bare offline List replays saved query context.",
+    "List deliberately publishes only the assigned decision-report business-field whitelist, preserving retained native strings, amounts, integer types, statuses and arrival order; operators, account numbers, free text, aliases and nested detail are excluded.",
+    "Qualified starting width1000 uses native offset and fixed total; this is not a measured backend maximum. Duplicate IDs, total drift, short nonfinal pages or missing coverage fail strict publication.",
+    "Independent POST JSON Get sends only integer id and preserves the full native root, including nested/unknown values. No history endpoint, child fanout, latest/version selection or List-row fallback.",
+    "--live --with-detail uses the selected List window and qualified same-value id binding; record projection does not alter full detail. Get/composition never save a List or import Duckdog data.",
+    "Failed or complete-empty refresh preserves any prior nonempty saved List under standard host policy. No runtime Duckdog import contract is introduced."
+  ],
+  "examples": [
+    {
+      "title": "Read bounded reports",
+      "command": "dogopencli liquidity list operations.decisions --live --require-complete --limit 0 --start-from 2026-10-15T00:00:00 --start-to 2026-10-15T23:59:59 --created-from 2026-10-15T00:00:00 --created-to 2026-10-15T23:59:59"
+    },
+    {
+      "title": "Read native detail by id",
+      "command": "dogopencli liquidity get operations.decisions 123"
+    },
+    {
+      "title": "Read one selected report with detail",
+      "command": "dogopencli liquidity list operations.decisions --live --with-detail --limit 1 --start-from 2026-10-15T00:00:00 --start-to 2026-10-15T23:59:59 --created-from 2026-10-15T00:00:00 --created-to 2026-10-15T23:59:59"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_decisions"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}
