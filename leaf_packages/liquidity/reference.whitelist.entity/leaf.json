@@ -1,0 +1,106 @@
+{
+  "domain": "liquidity",
+  "name": "reference.whitelist.entity",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Inspect native entity whitelist settings with optional exact local selection.",
+      "parameters": [
+        {
+          "name": "entity",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "instId",
+          "description": "Exact local instId match; repeat values for OR and combine fields with AND. Never sent to backend."
+        },
+        {
+          "name": "financial-code",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "instCode",
+          "description": "Exact local instCode match; repeat values for OR and combine fields with AND. Never sent to backend."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "status",
+          "description": "Exact local status match; repeat values for OR and combine fields with AND. Never sent to backend.",
+          "choices": [
+            "VALID",
+            "INVALID"
+          ]
+        }
+      ]
+    }
+  },
+  "summary": "Entity whitelist settings.",
+  "purpose": "Inspect native whitelist configuration independently of entity directories or settlement agreement whitelists.",
+  "fields": [
+    {
+      "name": "instId",
+      "type": "string",
+      "meaning": "Nonblank native entity whitelist record identity."
+    },
+    {
+      "name": "instCode",
+      "type": "native JSON value",
+      "meaning": "Native financial code used by the exact local financial-code filter."
+    },
+    {
+      "name": "status",
+      "type": "native JSON value",
+      "meaning": "Raw configuration status; VALID/INVALID do not establish operational activation."
+    },
+    {
+      "name": "tntInstId",
+      "type": "native JSON value",
+      "meaning": "Optional native tenant echo; missing or empty string stays unchanged."
+    }
+  ],
+  "identity": [
+    "instId"
+  ],
+  "identity_description": "Native nonblank string instId identifies one entity whitelist record; no derived identity or directory join.",
+  "limitations": [
+    "GET https://iliquidity.alipay.com/instFilterConfigQuery.json carries outer tntInstId=GUAPW3SG and instFilterConfigQuery as a JSON string containing tntInstId, lowercase timezone=GMT+08, rowStart and pageSize. No currentArea or backend business filters are sent.",
+    "Qualified zero-based row offsets use widths5000 then1000 under SDK fallback policy. These are verified widths, not measured maximum capacity. No native page echo is assumed.",
+    "Both outer resultFlag and inner result.success must be boolean true; inner result.count and outer count must be nonnegative native integers and agree. Full result.data records are retained in native arrival order.",
+    "Native totals, arrivals and unique instId counts remain independent evidence. Duplicates, conflicts, count gaps or incomplete pages cannot publish on refresh. No latest-version selection or guessed deduplication key.",
+    "Local filters match complete native strings exactly: same-field OR and different-field AND; missing/null never match, commas are not split and * is literal. Blank values reject; accepted strings are not trimmed. Default output retains all native statuses.",
+    "Missing or empty native tntInstId remains unchanged; a present value other than empty string or GUAPW3SG is rejected. Unknown/nested fields, precise values, nulls, zero, empty strings and array order remain native.",
+    "Only complete nonempty refresh publishes. Live does not publish; failed, empty or incomplete refresh preserves saved data. No Get, directory/relationship query, mutation or new Duckdog import."
+  ],
+  "examples": [
+    {
+      "title": "Acquire entity whitelist settings",
+      "command": "dogopencli liquidity list reference.whitelist.entity --live --require-complete --limit 0"
+    },
+    {
+      "title": "Select native financial code and status locally",
+      "command": "dogopencli liquidity list reference.whitelist.entity --financial-code CODE --status VALID"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_reference_whitelist_entity"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        5000,
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "instId"
+      ]
+    }
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "domain": "liquidity",
+  "name": "reference.blacklist.account",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List native account blacklist settings.",
+      "parameters": [
+        {
+          "name": "entity",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "instId",
+          "description": "Exact local instId match; repeated values OR, dimensions AND. Never sent to the backend."
+        },
+        {
+          "name": "bank-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "bankId",
+          "description": "Exact local bankId match; repeated values OR, dimensions AND. Never sent to the backend."
+        },
+        {
+          "name": "account-alias",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "aliasName",
+          "description": "Exact local aliasName match; repeated values OR, dimensions AND. Never sent to the backend."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "status",
+          "description": "Exact local status match; repeated values OR, dimensions AND. Never sent to the backend.",
+          "choices": [
+            "VALID",
+            "INVALID"
+          ]
+        }
+      ]
+    }
+  },
+  "summary": "Account blacklist settings in the qualified tenant and tab context.",
+  "purpose": "Inspect maintained account blacklist records independently of account directories and account balances.",
+  "fields": [
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native account alias identity."
+    },
+    {
+      "name": "instId",
+      "type": "string",
+      "meaning": "Native entity reference."
+    },
+    {
+      "name": "bankId",
+      "type": "string",
+      "meaning": "Native bank reference."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native account currency."
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "meaning": "Native configuration status; activation is not inferred."
+    }
+  ],
+  "identity": [
+    "aliasName"
+  ],
+  "identity_description": "Nonblank native string aliasName; native arrival order is retained.",
+  "limitations": [
+    "Fixed qualified query context GUAPW3SG, timezone GMT+08, currentArea 3; these are accepted scope values, not a claim of backend mandatory defaults.",
+    "Native GET query carries accountFilterConfigQuery as a JSON string. Qualified widths are5000 and1000, not measured maxima. SDK fallback restarts at offset0.",
+    "Both success markers and equal native inner/outer counts are required. Duplicates, gaps and conflicting identities cannot prove complete coverage.",
+    "Local filters match exact values; commas and * are literal. Native row tntInstId may be absent or empty without fabrication.",
+    "No Get, latest-version selection, related account lookup or inferred blacklist enforcement."
+  ],
+  "examples": [
+    {
+      "title": "Read native blacklist settings",
+      "command": "dogopencli liquidity list reference.blacklist.account --live --limit 0 --require-complete"
+    },
+    {
+      "title": "Save a complete acquisition",
+      "command": "dogopencli liquidity refresh reference.blacklist.account --require-complete"
+    },
+    {
+      "title": "Filter saved rows by exact bank reference",
+      "command": "dogopencli liquidity list reference.blacklist.account --bank-id BANK_ID"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_reference_blacklist_account"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        5000,
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "aliasName"
+      ]
+    }
+  }
+}
