@@ -484,7 +484,7 @@
       "id": "B16",
       "title": "付款渠道与成本",
       "issue": 275,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "payment.channel",
@@ -504,7 +504,7 @@
       "id": "B17",
       "title": "付款PTR",
       "issue": 276,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "payment.ptr.cases",
@@ -524,25 +524,28 @@
       "id": "B18",
       "title": "黑白名单",
       "issue": 277,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.reference.blacklist.account",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.reference.blacklist.bank",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         },
         {
           "identity": "liquidity.reference.whitelist.entity",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         }
       ]
     },
