@@ -293,8 +293,10 @@ def test_transport_default_deny(installed, change):
     assert error.value.code == "REQUEST_NOT_ALLOWED"
 
 
-def test_get_is_not_registered_and_makes_no_business_request(installed):
+def test_waterlevel_get_remains_unregistered(installed):
     leaf, cli, browser, _ = installed
+    if leaf != "rules.waterlevel":
+        pytest.skip("transfer Get is covered by the SDK acceptance suite")
     cli("liquidity", "get", leaf, "NATIVE_ID", code=2)
     assert not browser.business_requests
 

@@ -394,12 +394,6 @@ def test_capability_rejects_unverified_scope_and_paging(
     assert not browser.business_requests
 
 
-def test_get_is_unregistered_and_never_queries(installed):
-    _, cli, browser, _ = installed
-    cli("get", "NATIVE_ID", code=2)
-    assert not browser.business_requests
-
-
 def test_conflict_keeps_last_arrival_and_marks_incomplete(installed):
     case, cli, browser, _ = installed
     rows = [record(case, i) for i in range(2)]

@@ -444,7 +444,8 @@ def test_shared_transport_default_deny(installed, change):
     assert not browser.business_requests
 
 
-def test_get_is_unregistered_and_never_queries(installed):
+@pytest.mark.parametrize("installed", ["prefunds", "swaps"], indirect=True)
+def test_unsupported_get_never_queries(installed):
     _, cli, browser, _ = installed
     cli("get", "NATIVE_ID", code=2)
     assert not browser.business_requests

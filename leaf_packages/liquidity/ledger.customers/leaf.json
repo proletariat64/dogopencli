@@ -1,0 +1,43 @@
+{
+  "domain": "liquidity",
+  "name": "ledger.customers",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "get": {
+      "description": "Read one complete native detail root; separate histories and child endpoints are unqueried.",
+      "parameters": [
+        {
+          "name": "customer-version",
+          "type": "string",
+          "required": true,
+          "description": "Explicit native customer version from the customer page; required context, potentially not echoed by detail."
+        }
+      ],
+      "lookup": {
+        "name": "customerNo",
+        "description": "Native customerNo from the customer page, together with the required version context."
+      },
+      "result_identity": {
+        "fields": [
+          "customerNo"
+        ],
+        "description": "Native returned customerNo; validated against the requested lookup without changing its type."
+      }
+    }
+  },
+  "summary": "Ledger customers.",
+  "purpose": "Read one native detail through an independent inquiry-only Get capability.",
+  "fields": [],
+  "identity": [],
+  "identity_description": "Get-only; returned identity is declared by operations.get.",
+  "limitations": [
+    "Native customer detail for explicit customerNo/version. The source may omit version echo, so successful root acquisition does not independently prove the returned version. No latest-version inference or List.",
+    "Get and supported List --live --with-detail preserve native types, nesting and unknown fields, perform no implicit history/child inquiries, and write no cache or Duckdog data."
+  ],
+  "examples": [
+    {
+      "title": "Read native detail",
+      "command": "dogopencli liquidity get ledger.customers NATIVE_ID --customer-version 1"
+    }
+  ]
+}

@@ -15,3 +15,14 @@ dogopencli liquidity list operations.asset_trades --live --require-complete --fr
 Native records are `data.data` and total `data.totalCount`.
 
 Ordinary List reads are offline; `--live` does not publish. Use `refresh --require-complete` with the same acquisition parameters to save a complete capture.
+
+## Native detail
+
+Native asset-transfer orderNo from the List; report/global/end-to-end references are distinct. Native root including assetProductVo and logs already returned; no separate log acquisition or asserted log ownership.
+
+```bash
+dogopencli liquidity get operations.asset_trades NATIVE_ID
+dogopencli liquidity list operations.asset_trades --live --with-detail --require-complete --from-date 2026-09-30 --to-date 2026-09-30
+```
+
+One POST form `/assetTransferOrderDetailQuery.json` request returns `data`. Preserve the whole native root, including unknown fields, exact values and nested arrays. Missing/malformed roots, business rejection and identity/context contradictions fail; no unverified not-found mapping, child/history acquisition, cache write or Duckdog import.

@@ -99,7 +99,65 @@ class Inquiry:
 CAPABILITY = Inquiry()
 
 
+class DetailInquiry:
+    name = "liquidity.rules.transfer.get"
+    page_url = LIQUIDITY_STARTUP_URL
+    contract = EndpointContract(
+        method="GET",
+        host="iliquidity.alipay.com",
+        path="/queryTransferRuleDetail.json",
+        page_size=0,
+        one_based=False,
+        allowed_body_keys=frozenset({"tntInstId", "ruleId"}),
+        fixed_body_values=(("tntInstId", "GUAPW3SG"),),
+        encoding="query",
+    )
+
+    def request_body(self, parameters: dict[str, Any], identity: str) -> dict[str, Any]:
+        return {"ruleId": identity, "tntInstId": "GUAPW3SG"}
+
+    def parse_detail(
+        self, body: bytes, parameters: dict[str, Any], identity: str
+    ) -> dict[str, Any]:
+        try:
+            document = parse(body)
+        except (ValueError, UnicodeError) as error:
+            raise CliError(INVALID_RESPONSE, "response is not valid JSON") from error
+        if not isinstance(document, dict) or type(document.get("success")) is not bool:
+            raise CliError(INVALID_RESPONSE, "detail success marker is not boolean")
+        if not document["success"]:
+            raise CliError(BUSINESS_QUERY_FAILED, "backend reported a business failure")
+        detail = document
+        detail = detail.get("result")
+        if not isinstance(detail, dict):
+            raise CliError(INVALID_RESPONSE, "detail container is not an object")
+        if "success" in detail:
+            if type(detail["success"]) is not bool:
+                raise CliError(INVALID_RESPONSE, "inner success is not boolean")
+            if not detail["success"]:
+                raise CliError(
+                    BUSINESS_QUERY_FAILED, "backend reported a business failure"
+                )
+        detail = detail.get("transferRuleVO")
+        if not isinstance(detail, dict):
+            raise CliError(INVALID_RESPONSE, "detail container is not an object")
+        value = detail.get("ruleId")
+        if not isinstance(value, str) or not value.strip() or value != identity:
+            raise CliError(INVALID_RESPONSE, "detail identity does not match request")
+        if "tntInstId" in detail and detail["tntInstId"] != TENANT:
+            raise CliError(
+                INVALID_RESPONSE, "detail tenant contradicts requested scope"
+            )
+        return detail
+
+
+DETAIL = DetailInquiry()
+
+
 class Adapter:
+    def detail_capability(self, parameters: dict[str, Any]) -> DetailInquiry:
+        return DETAIL
+
     def capability(self, parameters: dict[str, Any]) -> Any:
         return CAPABILITY
 

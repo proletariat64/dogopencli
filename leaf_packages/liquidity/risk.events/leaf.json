@@ -19,6 +19,23 @@
           "description": "Native query end, valid YYYYMMDD; exactly one day after from-date."
         }
       ]
+    },
+    "get": {
+      "description": "Read one native root detail online without changing a saved List.",
+      "parameters": [],
+      "lookup": {
+        "name": "riskEventId",
+        "description": "Native lookup sent as riskEventId; use the unprojected List id value."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Native detail id; exact nonempty string echo of the requested lookup."
+      },
+      "list_binding": {
+        "identity_field": "id"
+      }
     }
   },
   "summary": "Risk events.",
@@ -40,12 +57,23 @@
     "Conflicts keep the last arrival and remain incomplete. Rejected refresh preserves the prior saved capture.",
     "Fixed tenant GUAPW3SG, riskMode=RISK_EVENT, timeZone=GMT+08. Adjacent YYYYMMDD CLI bounds map to native YYYY-MM-DD; unbounded acquisition is unsupported.",
     "Native Risk Time gmtCreate and other GMT+08 source times are retained. Server boundary clock and inclusivity remain unproven; no local date membership or anomaly classification is inferred.",
-    "List only. Risk detail, sub-events and treatment histories are separate inquiries and are not acquired."
+    "Native Get uses POST form /api/risk/event/detail.json; lookup riskEventId returns one native root object with id.",
+    "Get preserves all native nested fields and unknown values; separately queried history, logs and child endpoints remain unqueried.",
+    "Get is live-only and publishes no cache or Duckdog data.",
+    "List --live --with-detail fetches native Detail only for the selected offset/limit window, returns separate record/detail members and fails atomically on any detail error; saved List data remains unchanged."
   ],
   "examples": [
     {
       "title": "Acquire a complete List",
       "command": "dogopencli liquidity list risk.events --live --require-complete --from-date 20260925 --to-date 20260926"
+    },
+    {
+      "title": "Read one native detail",
+      "command": "dogopencli liquidity get risk.events RECORD_ID"
+    },
+    {
+      "title": "Read one selected List row with its native detail",
+      "command": "dogopencli liquidity list risk.events --live --with-detail --limit 1 --from-date 20260925 --to-date 20260926"
     }
   ],
   "dataset": {

@@ -1,0 +1,44 @@
+{
+  "domain": "liquidity",
+  "name": "risk.anomalies",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "get": {
+      "description": "Read one native root detail online without changing a saved List.",
+      "parameters": [],
+      "lookup": {
+        "name": "riskEventId",
+        "description": "Native lookup sent as riskEventId; obtain a verified native identity from the corresponding product UI."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Native detail id; exact nonempty string echo of the requested lookup."
+      }
+    }
+  },
+  "summary": "risk anomalies native detail.",
+  "purpose": "Inspect one native detail through an inquiry-only endpoint.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native root detail identity, validated against requested lookup."
+    }
+  ],
+  "identity": [],
+  "identity_description": "Get-only; native root identity is declared by operations.get.",
+  "limitations": [
+    "Native Get uses POST form /api/risk/event/detail.json; lookup riskEventId returns one native root object with id.",
+    "Get preserves all native nested fields and unknown values; separately queried history, logs and child endpoints remain unqueried.",
+    "Get is live-only and publishes no cache or Duckdog data.",
+    "Get-only delivery. List remains held for native duplicate/total qualification; Get does not establish List completeness."
+  ],
+  "examples": [
+    {
+      "title": "Read one native detail",
+      "command": "dogopencli liquidity get risk.anomalies RECORD_ID"
+    }
+  ]
+}

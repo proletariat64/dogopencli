@@ -15,6 +15,17 @@ Native records are `data.data`; coverage uses native `data.totalCount`, never re
 - All native fields, value types, exact decimals, nested values, unknown fields and raw states are retained without projection or interpretation.
 - Historical successful acquisitions support width10 as a starting value, not a measured backend maximum. SDK collection owns loops, retries, quality and cache publication.
 - Duplicates, count shortfall and interior page gaps remain incomplete. Conflicts keep the last arrival and remain incomplete; strict refresh rejects incomplete acquisition and preserves prior cache.
-- List only. Account capability detail and ledger customer inquiries are outside this package; no detail enrichment or dataset import is performed.
+- Ordinary List performs no detail enrichment or dataset import; explicit Get and supported --with-detail query native detail independently.
 
 Ordinary List reads are offline. Live acquisition does not publish a cache; refresh publishes only accepted data. Native nested values already returned by List are preserved without additional inquiries.
+
+## Native detail
+
+Native integer id from the List; aliasName and ruleId are different references. Native account capability root; comma strings, exact native numbers, arrays and unknown fields remain unchanged. No rule lookup or UI transformations.
+
+```bash
+dogopencli liquidity get network.account_capabilities 7
+dogopencli liquidity list network.account_capabilities --live --with-detail --require-complete --limit 1
+```
+
+One POST json `/serviceInfoDetail.json` request returns `data`. Preserve the whole native root, including unknown fields, exact values and nested arrays. Missing/malformed roots, business rejection and identity/context contradictions fail; no unverified not-found mapping, child/history acquisition, cache write or Duckdog import.

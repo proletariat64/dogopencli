@@ -108,7 +108,72 @@ class Inquiry:
         return ParsedPage(rows, 0, PAGE_SIZE, total, -(-total // PAGE_SIZE))
 
 
+class DetailInquiry:
+    name = "liquidity.investment.rfqs.get"
+    page_url = LIQUIDITY_STARTUP_URL
+    contract = EndpointContract(
+        method="GET",
+        host="iliquidity.alipay.com",
+        path="/rfq/subInquiryTask/queryInquiryTaskDetail.json",
+        page_size=0,
+        one_based=False,
+        allowed_body_keys=frozenset({"inquiryTaskId"}),
+        encoding="query",
+    )
+
+    def request_body(self, parameters: dict[str, Any], identity: str) -> dict[str, Any]:
+        if not isinstance(identity, str) or not identity.strip():
+            raise CliError(
+                INVALID_ARGUMENT, "detail lookup must be nonempty", exit_code=2
+            )
+        value = identity
+        return {"inquiryTaskId": value}
+
+    def parse_detail(
+        self, body: bytes, parameters: dict[str, Any], identity: str
+    ) -> dict[str, Any]:
+        try:
+            document = parse(body)
+        except (ValueError, UnicodeError) as error:
+            raise CliError(INVALID_RESPONSE, "detail response is not JSON") from error
+        if not isinstance(document, dict):
+            raise CliError(INVALID_RESPONSE, "detail envelope is not an object")
+        if type(document.get("success")) is not bool:
+            raise CliError(INVALID_RESPONSE, "detail success marker is not boolean")
+        if not document["success"]:
+            raise CliError(BUSINESS_QUERY_FAILED, "backend rejected the detail inquiry")
+        detail = document.get("data")
+        if not isinstance(detail, dict) or not detail:
+            raise CliError(INVALID_RESPONSE, "detail root is not a nonempty object")
+        if (
+            not isinstance(detail.get("inquiryTaskId"), str)
+            or detail["inquiryTaskId"] != identity
+        ):
+            raise CliError(
+                INVALID_RESPONSE, "detail identity differs from the requested lookup"
+            )
+        tenant = detail.get("tntInstId")
+        if tenant not in (None, "", TENANT):
+            raise CliError(
+                INVALID_RESPONSE, "detail tenant contradicts requested scope"
+            )
+        if detail.get("inquiryType") != "TARGET_RFQ":
+            raise CliError(INVALID_RESPONSE, "detail inquiry type is not TARGET_RFQ")
+        members = detail.get("inquiryOrderListVOList")
+        if not isinstance(members, list) or any(
+            not isinstance(member, dict) for member in members
+        ):
+            raise CliError(INVALID_RESPONSE, "native inquiry members must be objects")
+        return detail
+
+
+DETAIL = DetailInquiry()
+
+
 class Adapter:
+    def detail_capability(self, parameters: dict[str, Any]) -> DetailInquiry:
+        return DETAIL
+
     def capability(self, parameters: dict[str, Any]) -> Inquiry:
         return Inquiry(native_scope(parameters))
 

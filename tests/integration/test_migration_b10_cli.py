@@ -335,7 +335,7 @@ def test_page_exceeding_requested_width_is_rejected(installed):
         ("list", "--live", "--from-date", "2026-10-01"),
     ],
 )
-def test_get_and_undeclared_filters_never_query(installed, args):
+def test_invalid_integer_lookup_and_undeclared_filters_never_query(installed, args):
     cli, browser, _ = installed
     cli(*args, code=2)
     assert not browser.business_requests
