@@ -29,5 +29,16 @@ Counts or arrivals above 5000 fail without offset/fallback acquisition.
 Live writes no capture; refresh and offline reads use task-owned temporary
 cache. They do not import runtime records into Duckdog.
 
-Only TARGET_RFQ List is exposed. FULL_RANGE_RFQ and unqualified source/filter
+Only the TARGET_RFQ source is exposed. FULL_RANGE_RFQ and unqualified source/filter
 combinations remain outside this package's accepted inquiry contract.
+
+## Native detail
+
+Native child inquirySubTaskId from the List; sent as inquiryTaskId. Never pass the List parent inquiryTaskId. Native TARGET_RFQ child detail and institution members already in inquiryOrderListVOList. Returned inquiryTaskId identifies the selected child; no parent, quote or history fanout.
+
+```bash
+dogopencli liquidity get investment.rfqs NATIVE_ID
+dogopencli liquidity list investment.rfqs --live --with-detail --require-complete --limit 1 --from-date 2026-01-01 --to-date 2026-10-05
+```
+
+One GET query `/rfq/subInquiryTask/queryInquiryTaskDetail.json` request returns `data`. Preserve the whole native root, including unknown fields, exact values and nested arrays. Missing/malformed roots, business rejection and identity/context contradictions fail; no unverified not-found mapping, child/history acquisition, cache write or Duckdog import.

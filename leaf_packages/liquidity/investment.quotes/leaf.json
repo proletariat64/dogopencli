@@ -1,0 +1,107 @@
+{
+  "domain": "liquidity",
+  "name": "investment.quotes",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read one qualified bounded QUOTED response, retaining unknown native total.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Native inclusive value-date start, YYYYMMDD; may equal to-date."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Native inclusive value-date end, YYYYMMDD; not before from-date."
+        }
+      ]
+    },
+    "get": {
+      "description": "Read the entire native quotation detail root with all sibling sections.",
+      "parameters": [],
+      "lookup": {
+        "name": "quotationOrderId",
+        "description": "Native quotationOrderId from the unprojected QUOTED List row."
+      },
+      "result_identity": {
+        "paths": [
+          [
+            "quotationDetail",
+            "quotationId"
+          ]
+        ],
+        "description": "Native nested quotationDetail.quotationId, matched exactly to lookup without copying or flattening."
+      },
+      "list_binding": {
+        "identity_field": "quotationOrderId"
+      }
+    }
+  },
+  "summary": "Investment quotations.",
+  "purpose": "Inspect native QUOTED records and full detail without changing negotiation or win state.",
+  "fields": [
+    {
+      "name": "quotationOrderId",
+      "type": "string",
+      "meaning": "Native List identity; Get declares its distinct nested identity."
+    },
+    {
+      "name": "valueDate",
+      "type": "string",
+      "meaning": "Native value date selected by the query bounds."
+    },
+    {
+      "name": "quote",
+      "type": "native",
+      "meaning": "Native percentage quote retained without arithmetic or display conversion."
+    }
+  ],
+  "identity": [
+    "quotationOrderId"
+  ],
+  "identity_description": "One native quotationOrderId per List record; no synthetic root identity.",
+  "limitations": [
+    "QUOTED only. One JSON POST /quotationAnalysis.json with rowStart=0, qualified pageSize=5000 and native timeZone=null; no offset loop, fallback width or fabricated total.",
+    "The accepted native whole-response contract applies to the explicit bounded query; reported_total remains null while observed arrivals and identity quality remain separate. Width5000 is not a demonstrated backend maximum.",
+    "All native records, types, order, unknown fields and exact amounts are retained. Duplicate/conflicting identities remain incomplete; strict refresh preserves earlier data on rejection and on complete-empty acquisition.",
+    "Native Get is form POST /queryQuotationOrder.json, preserving the entire baseResult.data root. Its quotationDetail.quotationId is validated before projection; no top-level ID is invented.",
+    "List --live --with-detail uses selected native quotationOrderId values and returns record/detail members. Separate unreturned history or child endpoints are unqueried; Get/combined never publish cache or Duckdog data.",
+    "No runtime Duckdog import contract is introduced."
+  ],
+  "examples": [
+    {
+      "title": "Read one qualified bounded response",
+      "command": "dogopencli liquidity list investment.quotes --live --require-complete --from-date 20260820 --to-date 20260820 --limit 0"
+    },
+    {
+      "title": "Read native detail",
+      "command": "dogopencli liquidity get investment.quotes QUOTATION_ID"
+    },
+    {
+      "title": "Read a selected List row with full detail",
+      "command": "dogopencli liquidity list investment.quotes --live --with-detail --limit 1 --from-date 20260820 --to-date 20260820"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_quotes"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single_response",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "quotationOrderId"
+      ]
+    }
+  }
+}

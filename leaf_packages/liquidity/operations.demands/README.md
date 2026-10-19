@@ -20,4 +20,15 @@ All native fields, types, nesting and unknown values are retained. No detail loo
 
 The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima.
 
-Ordinary List reads are offline. Live acquisition does not publish; refresh saves only a complete nonempty capture. Native fields already in the response remain intact; no Get or additional inquiry is performed.
+Ordinary List reads are offline. Live acquisition does not publish; refresh saves only a complete nonempty capture. Native fields already in the response remain intact; Get runs only when explicitly requested; ordinary Lists perform no additional inquiry.
+
+## Native detail
+
+Native FUND_REQUIRE taskId from the List; sourceId is a different reference. Native result.riskActionVO only; same-envelope decision/execution report siblings and separate child/history endpoints are outside this Get.
+
+```bash
+dogopencli liquidity get operations.demands NATIVE_ID
+dogopencli liquidity list operations.demands --live --with-detail --require-complete --limit 1 --execute-from 2026-04-01T00:00:00 --execute-to 2026-04-02T00:00:00
+```
+
+One GET query `/riskActionTaskQueryDetail.json` request returns `result.riskActionVO`. Preserve the whole native root, including unknown fields, exact values and nested arrays. Missing/malformed roots, business rejection and identity/context contradictions fail; no unverified not-found mapping, child/history acquisition, cache write or Duckdog import.

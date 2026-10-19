@@ -6,6 +6,23 @@
     "list": {
       "description": "List native BANK cash pool settings.",
       "parameters": []
+    },
+    "get": {
+      "description": "Read one native root detail online without changing a saved List.",
+      "parameters": [],
+      "lookup": {
+        "name": "id",
+        "description": "Native lookup sent as id; use the unprojected List id value."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Native detail id; exact nonempty string echo of the requested lookup."
+      },
+      "list_binding": {
+        "identity_field": "id"
+      }
     }
   },
   "summary": "BANK cash pool settings List.",
@@ -46,7 +63,10 @@
     "No native page echo; completeness requires stable total, arrival and unique identity agreement.",
     "Native values, unknown fields, decimal precision and null/empty/zero distinctions are retained without historical whitelisting.",
     "Settings meaning comes from native configuration fields; balance fields returned by the native object are retained without deriving values.",
-    "List only in this delivery; native Get is deferred."
+    "Native Get uses POST json /cashPoolDetail.json; lookup id returns one native root object with id.",
+    "Get preserves all native nested fields and unknown values; separately queried history, logs and child endpoints remain unqueried.",
+    "Get is live-only and publishes no cache or Duckdog data.",
+    "List --live --with-detail fetches native Detail only for the selected offset/limit window, returns separate record/detail members and fails atomically on any detail error; saved List data remains unchanged."
   ],
   "examples": [
     {
@@ -56,6 +76,14 @@
     {
       "title": "Acquire native pools",
       "command": "dogopencli liquidity list cash.pools --live"
+    },
+    {
+      "title": "Read one native detail",
+      "command": "dogopencli liquidity get cash.pools RECORD_ID"
+    },
+    {
+      "title": "Read one selected List row with its native detail",
+      "command": "dogopencli liquidity list cash.pools --live --with-detail --limit 1"
     }
   ],
   "dataset": {

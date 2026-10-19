@@ -293,12 +293,6 @@ def test_transport_default_deny(installed, change):
     assert error.value.code == "REQUEST_NOT_ALLOWED"
 
 
-def test_get_is_not_registered_and_makes_no_business_request(installed):
-    leaf, cli, browser, _ = installed
-    cli("liquidity", "get", leaf, "NATIVE_ID", code=2)
-    assert not browser.business_requests
-
-
 def test_sdk_conflict_keeps_last_arrival_and_reports_incomplete(installed):
     leaf, cli, browser, _ = installed
     rows = native_rows(leaf)

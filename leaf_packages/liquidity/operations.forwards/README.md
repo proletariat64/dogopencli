@@ -14,3 +14,14 @@ dogopencli liquidity list operations.forwards --live --require-complete --limit 
 Native records are `data.data` and total `data.totalCount`.
 
 Ordinary List reads are offline; `--live` does not publish. Use `refresh --require-complete` with the same acquisition parameters to save a complete capture.
+
+## Native detail
+
+Native forward orderNo from the List; sent unchanged under wire forwardId. Native forward root; no hedging order acquisition or amount/date reinterpretation.
+
+```bash
+dogopencli liquidity get operations.forwards NATIVE_ID
+dogopencli liquidity list operations.forwards --live --with-detail --require-complete
+```
+
+One POST form `/forwardOrderDetail.json` request returns `data`. Preserve the whole native root, including unknown fields, exact values and nested arrays. Missing/malformed roots, business rejection and identity/context contradictions fail; no unverified not-found mapping, child/history acquisition, cache write or Duckdog import.

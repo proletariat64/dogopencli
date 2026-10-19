@@ -60,6 +60,30 @@ PARAMETER_SCHEMA = {
         "local_field": {"type": "string"},
     },
 }
+PAGING_SCHEMA = {
+    "type": "object",
+    "required": ["mode", "page_sizes"],
+    "additionalProperties": False,
+    "properties": {
+        "mode": {"enum": ["offset", "page_number", "single", "single_response"]},
+        "page_sizes": {"type": "array"},
+    },
+}
+PRIMARY_ID_SCHEMA = {
+    "type": "object",
+    "required": ["type", "fields"],
+    "additionalProperties": False,
+    "properties": {
+        "type": {"enum": ["field", "hash", "unproven"]},
+        "fields": {"type": "array", "items": {"type": "string"}},
+    },
+}
+SOURCE_SCHEMA = {
+    "type": "object",
+    "required": ["paging", "primary_id"],
+    "additionalProperties": False,
+    "properties": {"paging": PAGING_SCHEMA, "primary_id": PRIMARY_ID_SCHEMA},
+}
 MANIFEST_SCHEMA = {
     "type": "object",
     "required": [
@@ -103,16 +127,24 @@ MANIFEST_SCHEMA = {
                                 },
                                 "result_identity": {
                                     "type": "object",
-                                    "required": ["fields", "description"],
+                                    "required": ["description"],
                                     "additionalProperties": False,
                                     "properties": {
                                         "fields": {
                                             "type": "array",
                                             "items": {"type": "string"},
                                         },
+                                        "paths": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "array",
+                                                "items": {"type": "string"},
+                                            },
+                                        },
                                         "description": {"type": "string"},
                                     },
                                 },
+                                "result_shape": {"enum": ["object", "array"]},
                                 "list_binding": {
                                     "type": "object",
                                     "required": ["identity_field"],
@@ -161,27 +193,16 @@ MANIFEST_SCHEMA = {
         },
         "collection": {
             "type": "object",
-            "required": ["provider", "paging", "primary_id"],
+            "required": ["provider", "primary_id"],
             "additionalProperties": False,
             "properties": {
                 "provider": {"type": "string"},
-                "paging": {
+                "paging": PAGING_SCHEMA,
+                "primary_id": PRIMARY_ID_SCHEMA,
+                "sources": {
                     "type": "object",
-                    "required": ["mode", "page_sizes"],
-                    "additionalProperties": False,
-                    "properties": {
-                        "mode": {"enum": ["offset", "page_number", "single"]},
-                        "page_sizes": {"type": "array"},
-                    },
-                },
-                "primary_id": {
-                    "type": "object",
-                    "required": ["type", "fields"],
-                    "additionalProperties": False,
-                    "properties": {
-                        "type": {"enum": ["field", "hash", "unproven"]},
-                        "fields": {"type": "array", "items": {"type": "string"}},
-                    },
+                    "minProperties": 1,
+                    "additionalProperties": SOURCE_SCHEMA,
                 },
                 "latest_by": {"type": "string"},
                 "max_pages": {"type": "integer", "minimum": 1, "maximum": 1000},
@@ -239,6 +260,8 @@ def _validate(value: Any, schema: dict, path: str) -> None:
         for key, item in value.items():
             if key in properties:
                 _validate(item, properties[key], f"{path}.{key}")
+            elif isinstance(schema.get("additionalProperties"), dict):
+                _validate(item, schema["additionalProperties"], f"{path}.{key}")
     if kind == "array" and "items" in schema:
         for index, item in enumerate(value):
             _validate(item, schema["items"], f"{path}[{index}]")
@@ -252,6 +275,43 @@ def _typed(value: Any, kind: str) -> bool:
     if kind == "number":
         return isinstance(value, int | float) and not isinstance(value, bool)
     return isinstance(value, str)
+
+
+def _validate_primary(policy: dict, *, verified: bool = False) -> None:
+    fields = policy["primary_id"]["fields"]
+    kind = policy["primary_id"]["type"]
+    unproven = kind == "unproven"
+    if (
+        (not fields and not unproven)
+        or (unproven and (fields or "latest_by" in policy or verified))
+        or len(fields) != len(set(fields))
+        or any(not field.strip() for field in fields)
+        or kind == "field"
+        and len(fields) != 1
+        or not policy.get("latest_by", "present").strip()
+    ):
+        raise _invalid("List primary identity or timestamp declaration is invalid")
+
+
+def _validate_paging(policy: dict) -> None:
+    pages = policy["paging"]["page_sizes"]
+    mode = policy["paging"]["mode"]
+    if (
+        not pages
+        or len(pages) > 8
+        or any(
+            type(size) is not int
+            or not (
+                0 <= size <= 100000 if mode == "single_response" else 0 < size <= 100000
+            )
+            for size in pages
+        )
+        or pages != sorted(set(pages), reverse=True)
+        or mode in {"single", "single_response"}
+        and len(pages) != 1
+    ):
+        raise _invalid("List page sizes must be unique, descending and qualified")
+    _validate_primary(policy, verified=mode == "single_response")
 
 
 def validate_manifest(value: Any) -> None:
@@ -283,17 +343,35 @@ def validate_manifest(value: Any) -> None:
             raise _invalid("get requires lookup and result_identity declarations")
         if any(not item.strip() for item in detail["lookup"].values()):
             raise _invalid("Get lookup meaning must be nonempty")
-        fields = detail["result_identity"]["fields"]
-        if (
-            not fields
-            or len(fields) != len(set(fields))
-            or any(not field.strip() for field in fields)
-        ):
-            raise _invalid("Get result identity fields must be nonempty and unique")
+        identity = detail["result_identity"]
+        if ("fields" in identity) == ("paths" in identity):
+            raise _invalid(
+                "Get result identity requires exactly one of fields or paths"
+            )
+        if "fields" in identity:
+            fields = identity["fields"]
+            if (
+                not fields
+                or len(fields) != len(set(fields))
+                or any(not field.strip() for field in fields)
+            ):
+                raise _invalid("Get result identity fields must be nonempty and unique")
+        else:
+            paths = identity["paths"]
+            if (
+                not paths
+                or any(
+                    not path or any(not key.strip() for key in path) for path in paths
+                )
+                or len(paths) != len({tuple(path) for path in paths})
+            ):
+                raise _invalid("Get result identity paths must be nonempty and unique")
         if not detail["result_identity"]["description"].strip():
             raise _invalid("Get result identity meaning must be nonempty")
         binding = detail.get("list_binding")
         if binding is not None:
+            if detail.get("result_shape", "object") == "array":
+                raise _invalid("array Get cannot bind to List records")
             if (
                 "list" not in value["operations"]
                 or not binding["identity_field"].strip()
@@ -327,28 +405,19 @@ def validate_manifest(value: Any) -> None:
             resolve_collection_provider(value["domain"], collection["provider"])
         except CliError as error:
             raise _invalid(error.message) from error
-        pages = collection["paging"]["page_sizes"]
-        if (
-            not pages
-            or len(pages) > 8
-            or any(type(size) is not int or not 0 < size <= 100000 for size in pages)
-            or pages != sorted(set(pages), reverse=True)
-            or collection["paging"]["mode"] == "single"
-            and len(pages) != 1
-        ):
-            raise _invalid("List page sizes must be unique, descending and qualified")
-        fields = collection["primary_id"]["fields"]
-        unproven = collection["primary_id"]["type"] == "unproven"
-        if (
-            (not fields and not unproven)
-            or (unproven and (fields or "latest_by" in collection or value["identity"]))
-            or len(fields) != len(set(fields))
-            or any(not field.strip() for field in fields)
-            or collection["primary_id"]["type"] == "field"
-            and len(fields) != 1
-            or not collection.get("latest_by", "present").strip()
-        ):
-            raise _invalid("List primary identity or timestamp declaration is invalid")
+        if ("paging" in collection) == ("sources" in collection):
+            raise _invalid("List collection requires exactly one of paging or sources")
+        if "sources" in collection:
+            _validate_primary(collection, verified=True)
+            for name, source in collection["sources"].items():
+                if re.fullmatch(r"[a-z][a-z0-9_]*", name) is None:
+                    raise _invalid("List source name has invalid spelling")
+                _validate_paging(source)
+                _validate_primary(source, verified=True)
+        else:
+            _validate_paging(collection)
+            if collection["primary_id"]["type"] == "unproven" and value["identity"]:
+                raise _invalid("unproven List cannot declare public identity")
     names = [field["name"] for field in value["fields"]]
     if len(names) != len(set(names)):
         raise _invalid("duplicate field names")
@@ -528,7 +597,11 @@ class Registry:
             adapter = getattr(module, attribute)
             required = {"detail_capability"} if "get" in value["operations"] else set()
             if "list" in value["operations"]:
-                required |= {"capability", "scope", "filter"}
+                required |= {"scope", "filter"}
+                if "sources" in value.get("collection", {}):
+                    required |= {"source_capability", "source_scope", "assemble"}
+                else:
+                    required.add("capability")
                 if "collection" not in value:
                     required.add("collector")
             arguments = {
@@ -537,6 +610,9 @@ class Registry:
                 "collector": (None, None, "scope"),
                 "filter": ([], {}),
                 "detail_capability": ({},),
+                "source_capability": ("source", {}),
+                "source_scope": ("source", {}),
+                "assemble": ({}, {}),
             }
             for name in required:
                 method = getattr(adapter, name, None)

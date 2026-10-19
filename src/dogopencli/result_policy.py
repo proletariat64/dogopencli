@@ -27,6 +27,8 @@ class AcquisitionEvidence:
     attempts: tuple[dict[str, Any], ...] = ()
     requested_count: int | None = None
     resolved_count: int | None = None
+    coverage_basis: str | None = None
+    sources: dict[str, dict[str, Any]] | None = None
 
     @classmethod
     def for_collection(
@@ -41,6 +43,7 @@ class AcquisitionEvidence:
         duplicate_policy: str = "conservative",
         reasons: tuple[str, ...] = (),
         attempts: tuple[dict[str, Any], ...] = (),
+        coverage_basis: str | None = None,
     ) -> "AcquisitionEvidence":
         # Bank's native total counts date groups while collected_total counts rows.
         comparable = total_semantics != "quote_date_groups"
@@ -90,6 +93,7 @@ class AcquisitionEvidence:
             total_semantics=semantics,
             reasons=tuple(dict.fromkeys(codes)),
             attempts=attempts,
+            coverage_basis=coverage_basis,
         )
 
     def record(self) -> dict[str, Any]:
@@ -108,6 +112,10 @@ class AcquisitionEvidence:
         if self.requested_count is not None:
             record["requested_count"] = self.requested_count
             record["resolved_count"] = self.resolved_count
+        if self.coverage_basis is not None:
+            record["coverage_basis"] = self.coverage_basis
+        if self.sources is not None:
+            record["sources"] = self.sources
         return record
 
     @classmethod
@@ -135,12 +143,16 @@ class AcquisitionEvidence:
                 )
         reasons = record.get("reasons", [])
         attempts = record.get("attempts", [])
+        coverage_basis = record.get("coverage_basis")
+        sources = record.get("sources")
         if (
             not isinstance(reasons, list)
             or any(not isinstance(code, str) for code in reasons)
             or not isinstance(attempts, list)
             or any(not isinstance(item, dict) for item in attempts)
             or not isinstance(record.get("total_semantics", "unknown"), str)
+            or coverage_basis
+            not in (None, "qualified_single_response", "validated_sources")
         ):
             raise CliError(INVALID_RESPONSE, "cached acquisition reasons are invalid")
         evidence = cls(
@@ -156,7 +168,62 @@ class AcquisitionEvidence:
             attempts=tuple(attempts),
             requested_count=record.get("requested_count"),
             resolved_count=record.get("resolved_count"),
+            coverage_basis=coverage_basis,
+            sources=sources,
         )
+        if coverage_basis == "qualified_single_response" and (
+            evidence.reported_total is not None
+            or evidence.total_semantics != "unknown"
+            or evidence.unique_count is None
+            or sources is not None
+            or evidence.dataset_complete is not evidence.scope_complete
+            or (evidence.scope_complete and evidence.duplicate_count != 0)
+        ):
+            raise CliError(
+                INVALID_RESPONSE, "cached single-response coverage conflicts"
+            )
+        if (
+            sources is not None
+            or coverage_basis == "validated_sources"
+            or evidence.total_semantics == "assembled_roots"
+        ):
+            if (
+                coverage_basis != "validated_sources"
+                or not isinstance(sources, dict)
+                or not sources
+                or evidence.reported_total is not None
+                or evidence.total_semantics != "assembled_roots"
+                or not evidence.scope_complete
+                or not evidence.dataset_complete
+                or evidence.unique_count != evidence.collected_total
+                or evidence.duplicate_count != 0
+            ):
+                raise CliError(INVALID_RESPONSE, "cached source evidence is invalid")
+            for name, source in sources.items():
+                if (
+                    not isinstance(name, str)
+                    or not name
+                    or not isinstance(source, dict)
+                    or set(source) != {"scope", "acquisition"}
+                    or not isinstance(source["scope"], str)
+                    or not isinstance(source["acquisition"], dict)
+                    or "sources" in source["acquisition"]
+                ):
+                    raise CliError(
+                        INVALID_RESPONSE, "cached source evidence is invalid"
+                    )
+                child = cls.from_record(source["acquisition"])
+                if (
+                    not child.scope_complete
+                    or not child.dataset_complete
+                    or (
+                        child.reported_total is None
+                        and child.coverage_basis != "qualified_single_response"
+                    )
+                ):
+                    raise CliError(
+                        INVALID_RESPONSE, "cached required source is incomplete"
+                    )
         if (evidence.requested_count is None) != (evidence.resolved_count is None) or (
             evidence.requested_count is not None
             and evidence.resolved_count is not None

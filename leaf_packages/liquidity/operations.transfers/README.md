@@ -20,4 +20,15 @@ Preserve full native rows, nested logs, unknown fields and nullable monetary str
 
 The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima.
 
-Ordinary List reads are offline. Live acquisition does not publish; refresh saves only a complete nonempty capture. Native fields already in the response remain intact; no Get or additional inquiry is performed.
+Ordinary List reads are offline. Live acquisition does not publish; refresh saves only a complete nonempty capture. Native fields already in the response remain intact; Get runs only when explicitly requested; ordinary Lists perform no additional inquiry.
+
+## Native detail
+
+Native transfer orderNo from the List; orderId/reportId are separate references. Native baseResult.data transfer root; no account enrichment, HTML unescaping, status interpretation or additional log inquiry.
+
+```bash
+dogopencli liquidity get operations.transfers NATIVE_ID
+dogopencli liquidity list operations.transfers --live --with-detail --require-complete --limit 1 --from-date 2026-09-30 --to-date 2026-09-30
+```
+
+One POST form `/transferOrderQueryDetail.json` request returns `baseResult.data`. Preserve the whole native root, including unknown fields, exact values and nested arrays. Missing/malformed roots, business rejection and identity/context contradictions fail; no unverified not-found mapping, child/history acquisition, cache write or Duckdog import.

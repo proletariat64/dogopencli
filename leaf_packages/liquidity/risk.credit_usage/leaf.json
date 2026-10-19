@@ -1,0 +1,103 @@
+{
+  "domain": "liquidity",
+  "name": "risk.credit_usage",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read independently published bank-counterparty limit usage records.",
+      "parameters": []
+    }
+  },
+  "summary": "Bank-counterparty limit usage.",
+  "purpose": "Inspect bank-counterparty limit usage generated at each record's reportTime, retaining native full records.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "integer",
+      "meaning": "Native integer identity within this fixed metric."
+    },
+    {
+      "name": "metricName",
+      "type": "string",
+      "meaning": "Fixed CREDIT_USAGE_RATE."
+    },
+    {
+      "name": "metricLabel",
+      "type": "string",
+      "meaning": "Native bank-group label; may be empty and is not identity."
+    },
+    {
+      "name": "reportDate",
+      "type": "string",
+      "meaning": "Native reporting date, retained without timezone inference."
+    },
+    {
+      "name": "reportTime",
+      "type": "string",
+      "meaning": "This record's independent calculation time; records may differ."
+    },
+    {
+      "name": "value",
+      "type": "string",
+      "meaning": "Native reported indicator value, including zero."
+    },
+    {
+      "name": "balanceByUsd",
+      "type": "string",
+      "meaning": "Native USD balance amount; may be empty and is retained as supplied."
+    },
+    {
+      "name": "totalAmount",
+      "type": "string",
+      "meaning": "Native bank-group aggregate usage amount, retained as supplied."
+    },
+    {
+      "name": "bankAmountList",
+      "type": "array",
+      "meaning": "Native branch amount breakdown retained in original order."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native integer id identifies a record within this fixed tenant and metric.",
+  "limitations": [
+    "One fixed inquiry for tenant GUAPW3SG and metric CREDIT_USAGE_RATE; no public metric selector, Get, date/history selector or pagination request.",
+    "Coverage is the owner-confirmed published metric-result collection, not all banks, uncomputed records or all historical times. Native total remains unknown; observed counts are separate.",
+    "Each record has its own reportTime. The two metrics calculate independently; records within one response can also have different times. No latest selection or timestamp alignment is performed.",
+    "All native fields, nested children, types, zero values, empty labels and array order are preserved. No UI zero filtering or sorting is applied.",
+    "Complete nonempty refresh publishes only this leaf's cache; failed, empty or incomplete refresh preserves the prior capture. Live does not publish and no external Duckdog import is performed."
+  ],
+  "examples": [
+    {
+      "title": "Read all published records",
+      "command": "dogopencli liquidity list risk.credit_usage --live --require-complete --limit 0"
+    },
+    {
+      "title": "Refresh the independent capture",
+      "command": "dogopencli liquidity refresh risk.credit_usage --require-complete"
+    },
+    {
+      "title": "Read the saved capture",
+      "command": "dogopencli liquidity list risk.credit_usage --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_risk_credit_usage"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single_response",
+      "page_sizes": [
+        0
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}

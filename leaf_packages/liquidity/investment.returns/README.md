@@ -1,0 +1,9 @@
+# Investment returns
+
+List acquires two required sources through the host SDK, then performs the accepted pure parent assembly. Provide `--accrual-from-date YYYYMMDD --accrual-to-date YYYYMMDD` and the independent `--settlement-from-date YYYYMMDD --settlement-to-date YYYYMMDD`. Posting-date selectors remain native empty strings. Optional repeated `--accrual-investment-no` narrows only accrual acquisition; cash keeps its independent date scope. Omission means an empty native reference selector and date-scoped accrual acquisition.
+
+Accrual is `/accrualBaseList.json`, native identity `(investmentNo, transactionDate)`. Cash is `/cashBaseList.json`, native identity `id`. Both fix tenant GUAPW3SG/timeZone GMT+08 and use qualified width5000 with separate offset, total, identity and completeness checks. Width5000 is not a measured backend maximum.
+
+The output is `[{investmentNo, accrual: [...], cash: [...]}]`. Parent references are native accrual.investmentNo and native cash.transactionId; these differ from cash event id. Every full child and its original fields/types/nested values is retained exactly once in source order. Root order follows accrual parents first, then new cash parents. There is no holdings lookup, currency/amount arithmetic, date conversion inside records, or route-dependent identity.
+
+An empty child array means absence within that successful complete source scope, including its explicit dates and accrual reference selector. It does not claim all-time parent completeness. A failed/incomplete source is an aggregate failure, never an empty child success. The host shares acquisition bounds and publishes only complete nonempty refreshes; rejected acquisitions preserve saved data. Ordinary List reads saved data, live does not publish, and no runtime Duckdog import is added. This leaf has no Get or `--basis` action selector.

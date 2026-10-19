@@ -19,6 +19,23 @@
           "description": "Inclusive native execution-time upper bound YYYY-MM-DDTHH:mm:ss, at or after execute-from; source timezone unknown."
         }
       ]
+    },
+    "get": {
+      "description": "Read one complete native detail root; separate histories and child endpoints are unqueried.",
+      "parameters": [],
+      "lookup": {
+        "name": "taskId",
+        "description": "Native FUND_REQUIRE taskId from the List; sourceId is a different reference."
+      },
+      "result_identity": {
+        "fields": [
+          "taskId"
+        ],
+        "description": "Native returned taskId; validated against the requested lookup without changing its type."
+      },
+      "list_binding": {
+        "identity_field": "taskId"
+      }
     }
   },
   "summary": "Funding-demand tasks.",
@@ -58,13 +75,23 @@
     "Fixed GUAPW3SG tenant and FUND_REQUIRE source. One GET /riskActionTaskQuery.json uses a serialized riskActionTaskQueryVO, rowStart=0 and pageSize=5000.",
     "Both offset-free execution-time bounds are required. Public values use T; wire values use a space. Equal bounds are permitted and native boundaries are inclusive. No timezone is inferred.",
     "Native result.dataValue records and result.count describe the queried task scope. Counts or arrivals above 5000 are rejected; narrow the bounds. No offset fallback, automatic partitioning or alternate source.",
-    "All native fields, types, nesting and unknown values are retained. No detail lookup, source join or status interpretation.",
-    "The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima."
+    "Ordinary List: All native fields, types, nesting and unknown values are retained. No detail lookup, source join or status interpretation.",
+    "The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima.",
+    "Native result.riskActionVO only; same-envelope decision/execution report siblings and separate child/history endpoints are outside this Get.",
+    "Get and supported List --live --with-detail preserve native types, nesting and unknown fields, perform no implicit history/child inquiries, and write no cache or Duckdog data."
   ],
   "examples": [
     {
       "title": "Acquire the complete scoped List",
       "command": "dogopencli liquidity list operations.demands --live --require-complete --limit 0 --execute-from 2026-04-01T00:00:00 --execute-to 2026-04-02T00:00:00"
+    },
+    {
+      "title": "Read native detail",
+      "command": "dogopencli liquidity get operations.demands NATIVE_ID"
+    },
+    {
+      "title": "Combine the selected List window with native detail",
+      "command": "dogopencli liquidity list operations.demands --live --with-detail --require-complete --limit 1 --execute-from 2026-04-01T00:00:00 --execute-to 2026-04-02T00:00:00"
     }
   ],
   "dataset": {

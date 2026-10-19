@@ -1,0 +1,105 @@
+{
+  "domain": "collection",
+  "name": "sample.sources",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read synthetic native inquiries in the offline handbook harness.",
+      "parameters": [
+        {
+          "name": "left-scope",
+          "type": "string",
+          "required": true,
+          "description": "Exact native selection for the left source, independent of the other source."
+        },
+        {
+          "name": "right-scope",
+          "type": "string",
+          "required": true,
+          "description": "Exact native selection for the right source, independent of the other source."
+        }
+      ]
+    }
+  },
+  "summary": "Synthetic SDK sample.sources.",
+  "purpose": "Demonstrate qualified native acquisition with host execution and truthful evidence.",
+  "fields": [
+    {
+      "name": "parentRef",
+      "type": "string",
+      "meaning": "Reviewed parent reference from the union of both source scopes."
+    },
+    {
+      "name": "left",
+      "type": "array",
+      "meaning": "Full native left children in source order."
+    },
+    {
+      "name": "right",
+      "type": "array",
+      "meaning": "Full native right children in source order."
+    }
+  ],
+  "identity": [
+    "parentRef"
+  ],
+  "identity_description": "Reviewed native parentRef identifies each returned root.",
+  "limitations": [
+    "Educational fixture only; leaf-handbook.invalid is not a production endpoint.",
+    "Each source has independent native total and identity; any required-source failure prevents assembly and publication.",
+    "Root universe is the union of native parentRef values; the leaf owns this reviewed mapping.",
+    "Aggregate reported_total remains null; separate source evidence survives offline replay."
+  ],
+  "examples": [
+    {
+      "title": "Inspect declarations without querying",
+      "command": "dogopencli collection list sample.sources -h"
+    },
+    {
+      "title": "Run only in the fake installed-CLI harness",
+      "command": "dogopencli collection list sample.sources --live --require-complete --left-scope L --right-scope R --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "collection_sample_sources"
+  },
+  "collection": {
+    "provider": "general",
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "parentRef"
+      ]
+    },
+    "sources": {
+      "left": {
+        "paging": {
+          "mode": "offset",
+          "page_sizes": [
+            2
+          ]
+        },
+        "primary_id": {
+          "type": "field",
+          "fields": [
+            "id"
+          ]
+        }
+      },
+      "right": {
+        "paging": {
+          "mode": "offset",
+          "page_sizes": [
+            2
+          ]
+        },
+        "primary_id": {
+          "type": "field",
+          "fields": [
+            "id"
+          ]
+        }
+      }
+    }
+  }
+}

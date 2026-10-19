@@ -7,6 +7,7 @@ from dogopencli.contracts import EndpointContract
 from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 from dogopencli.errors import (
     BUSINESS_QUERY_FAILED,
+    INVALID_ARGUMENT,
     INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
     CliError,
@@ -122,7 +123,54 @@ class Inquiry:
 CAPABILITY = Inquiry()
 
 
+class DetailInquiry:
+    name = "liquidity.rules.waterlevel.get"
+    page_url = LIQUIDITY_STARTUP_URL
+    contract = EndpointContract(
+        method="GET",
+        host="iliquidity.alipay.com",
+        path="/bankAccountBufferListByAliasName.json",
+        page_size=0,
+        one_based=False,
+        allowed_body_keys=frozenset({"tntInstId", "aliasName"}),
+        fixed_body_values=(("tntInstId", TENANT),),
+        encoding="query",
+    )
+
+    def request_body(self, parameters: dict[str, Any], identity: str) -> dict[str, Any]:
+        if not isinstance(identity, str) or not identity.strip():
+            raise CliError(
+                INVALID_ARGUMENT, "account alias must be nonempty", exit_code=2
+            )
+        return {"tntInstId": TENANT, "aliasName": identity}
+
+    def parse_detail(
+        self, body: bytes, parameters: dict[str, Any], identity: str
+    ) -> list[dict[str, Any]]:
+        rows = result(body).get("dataValue")
+        if not isinstance(rows, list):
+            raise CliError(INVALID_RESPONSE, "account configuration is not an array")
+        seen = set()
+        for row in rows:
+            validate_row(row, "bufferId")
+            if row.get("aliasName") != identity:
+                raise CliError(INVALID_RESPONSE, "detail account differs from lookup")
+            native_id = (type(row["bufferId"]), row["bufferId"])
+            if native_id in seen:
+                raise CliError(
+                    INVALID_RESPONSE, "ambiguous native configuration identity"
+                )
+            seen.add(native_id)
+        return rows
+
+
+DETAIL = DetailInquiry()
+
+
 class Adapter:
+    def detail_capability(self, parameters: dict[str, Any]) -> DetailInquiry:
+        return DETAIL
+
     def capability(self, parameters: dict[str, Any]) -> Any:
         return CAPABILITY
 

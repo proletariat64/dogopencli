@@ -11,8 +11,14 @@ dogopencli liquidity list risk.events --live --require-complete --from-date 2026
 - Conflicts keep the last arrival and remain incomplete. Rejected refresh preserves the prior saved capture.
 - Fixed tenant GUAPW3SG, riskMode=RISK_EVENT, timeZone=GMT+08. Adjacent YYYYMMDD CLI bounds map to native YYYY-MM-DD; unbounded acquisition is unsupported.
 - Native Risk Time gmtCreate and other GMT+08 source times are retained. Server boundary clock and inclusivity remain unproven; no local date membership or anomaly classification is inferred.
-- List only. Risk detail, sub-events and treatment histories are separate inquiries and are not acquired.
+- List acquisition does not query Detail, sub-events or treatment histories.
 
 POST `/api/risk/event/getAll.json` with absolute rowStart offsets and pageSize=10; records `data.data`, native total `data.totalCount`, identity `id`. Every record must match the fixed risk mode and retain validated native times and integer durations/counters.
 
 The host SDK owns collection loops, retries, quality evidence and cache publication. Ordinary List reads are offline; `--live` acquires without publishing. Use `refresh --require-complete` with the same acquisition parameters to save a complete capture.
+
+## Native detail
+
+`dogopencli liquidity get risk.events RECORD_ID` queries `/api/risk/event/detail.json` using native `riskEventId` and validates root `id`. The lookup is the same value as native List `id`; the original fields, nested arrays, JSON types and exact values are retained. Separate history, logs and child endpoints are unqueried. Get never publishes cache or Duckdog data.
+
+`dogopencli liquidity list risk.events --live --with-detail --limit 1 --from-date YYYYMMDD --to-date YYYYMMDD` returns selected `{record, detail}` pairs, preserves List order/quality and the saved List, and fails the entire query on any Detail failure.
