@@ -108,6 +108,8 @@ def delivery(tmp_path, monkeypatch):
     (source / "adapter.py").write_text("""class Adapter:
     def capability(self, parameters):
         raise AssertionError("business inquiry forbidden in delivery smoke")
+    def detail_capability(self, parameters):
+        raise AssertionError("business inquiry forbidden in delivery smoke")
     def scope(self, parameters):
         raise AssertionError("business inquiry forbidden in delivery smoke")
     def collector(self, capability, transport, scope, *, progress=None):
