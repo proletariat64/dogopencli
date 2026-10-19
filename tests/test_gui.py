@@ -86,11 +86,55 @@ def test_card_layout_is_full_width_and_concise(running_gui):
     assert "grid-template-rows:repeat(2,auto)" in page
     assert "grid-auto-flow:column" in page
     assert "grid-auto-columns:minmax(300px,1fr)" in page
+    assert "#editor button{padding:.5rem 1rem}" in page
     assert "domain.entry_point" not in page
     assert "auth.updated_at" not in page
     assert "last.updated_at" not in page
     assert "function readable(value)" in page
     assert "function leafName(domain,leaf)" in page
+
+
+def test_domain_leaf_color_roles(running_gui):
+    _, url = running_gui
+    with urlopen(url) as response:
+        page = response.read().decode()
+    for domain in ("payment", "collection", "fx", "liquidity", "default"):
+        assert f".domain-{domain}" in page
+    for role in ("success", "warning", "failed", "neutral"):
+        assert f".status-{role}" in page
+    for color in (
+        "#2563eb",
+        "#1d4ed8",
+        "#7c3aed",
+        "#6d28d9",
+        "#0f766e",
+        "#be185d",
+        "#475569",
+        "#e6f4ec",
+        "#146c43",
+        "#fff4e5",
+        "#9a4c00",
+        "#fee4e2",
+        "#b42318",
+        "#edf0f2",
+        "#596673",
+        "#e8f1ff",
+        "#175cd3",
+        "#b2d4ff",
+        "#abefc6",
+        "#fff0f0",
+        "#fecdca",
+    ):
+        assert color in page
+    assert "function domainClass(id)" in page
+    assert "function statusClass(value)" in page
+    assert "['payment','collection','fx','liquidity'].includes(id)" in page
+    assert "'domain-'+id:'domain-default'" in page
+    assert "value==='authenticated'||value==='success'" in page
+    assert "value==='unauthenticated'||value==='warning'" in page
+    assert "authText.className='auth status-'+statusClass(auth.outcome)" in page
+    assert "outcome.className='leaf-outcome status-'+statusClass(last.outcome)" in page
+    assert "#editor button{padding:.5rem 1rem}" in page
 
 
 def page_token(url):

@@ -20,6 +20,7 @@ _PAGE = """<!doctype html>
 background:#f3f5f8;color:#17202a}*{box-sizing:border-box}
 body{margin:0;padding:12px;min-height:100vh;background:#f3f5f8;color:#17202a}
 button,input,textarea{font:inherit}button{cursor:pointer}
+#editor button{padding:.5rem 1rem}
 #page-header{display:flex;align-items:center;justify-content:space-between;
 margin:0 0 10px}#page-header h1{margin:0;font-size:24px}
 #page-header small{color:#64707c;font-size:14px}
@@ -28,7 +29,13 @@ margin:0 0 10px}#page-header h1{margin:0;font-size:24px}
 grid-auto-columns:minmax(300px,1fr);gap:12px;overflow-x:auto;padding-bottom:4px}
 .domain-card,#editor{background:#fff;border:1px solid #d9e0e6;border-radius:12px;
 padding:14px;box-shadow:0 1px 3px rgba(20,30,40,.05)}
-.domain-card{min-width:300px}.domain-header{display:flex;align-items:center;
+.domain-card{min-width:300px}
+.domain-payment{border-left:5px solid #2563eb}.domain-payment h2{color:#1d4ed8}
+.domain-collection{border-left:5px solid #7c3aed}.domain-collection h2{color:#6d28d9}
+.domain-fx{border-left:5px solid #0f766e}.domain-fx h2{color:#0f766e}
+.domain-liquidity{border-left:5px solid #be185d}.domain-liquidity h2{color:#be185d}
+.domain-default{border-left:5px solid #475569}.domain-default h2{color:#475569}
+.domain-header{display:flex;align-items:center;
 justify-content:space-between;gap:10px}.domain-card h2{margin:0;font-size:20px}
 .domain-state{flex:none;border-radius:999px;padding:3px 8px;background:#e6f4ec;
 color:#146c43;font-size:13px;font-weight:600}.domain-state.disabled{background:#edf0f2;color:#596673}
@@ -38,10 +45,21 @@ letter-spacing:.04em;text-transform:uppercase}.leaf-list{list-style:none;margin:
 .leaf{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;
 gap:8px;padding:5px 0;font-size:16px}.leaf-outcome{color:#64707c;\
 font-size:14px;white-space:nowrap}
+.status-success{background:#e6f4ec;color:#146c43}
+.status-warning{background:#fff4e5;color:#9a4c00}
+.status-failed{background:#fee4e2;color:#b42318}
+.status-neutral{background:#edf0f2;color:#596673}
+.auth,.leaf-outcome{display:inline-block;border-radius:999px;\
+padding:3px 8px;font-weight:600}
 .leaf-docs,.domain-toggle{border:1px solid #cbd4dc;border-radius:7px;\
 background:#fff;color:#263645}
-.leaf-docs{padding:3px 8px;font-size:13px}.domain-toggle{width:100%;margin-top:8px;
-padding:7px 10px;font-size:15px}.diagnostic{margin:8px 0 0;\
+.leaf-docs{padding:3px 8px;font-size:13px;background:#e8f1ff;\
+color:#175cd3;border-color:#b2d4ff}
+.domain-toggle{width:100%;margin-top:8px;
+padding:7px 10px;font-size:15px}
+.domain-toggle.enable{background:#e6f4ec;color:#146c43;border-color:#abefc6}
+.domain-toggle.disable{background:#fff0f0;color:#b42318;border-color:#fecdca}
+.diagnostic{margin:8px 0 0;\
 padding:8px;border-radius:8px;
 background:#fff4e5;color:#8a4b08;font-size:14px}small{color:#465565}
 #editor{margin:12px 0}#editor h2{margin-top:0}#editor label{display:block;\
@@ -70,21 +88,27 @@ return label.charAt(0).toUpperCase()+label.slice(1);}
 function leafName(domain,leaf){if(leaf.name)return leaf.name;
 const prefix=domain.id+'.';return leaf.id.startsWith(prefix)?
 leaf.id.slice(prefix.length):leaf.id;}
+function domainClass(id){return ['payment','collection','fx','liquidity'].includes(id)?
+'domain-'+id:'domain-default';}
+function statusClass(value){if(value==='authenticated'||\
+value==='success')return 'success';
+if(value==='unauthenticated'||value==='warning')return 'warning';
+if(value==='failed')return 'failed';return 'neutral';}
 async function request(path,options){const response=await fetch(path,options);
 const data=await response.json();if(!response.ok){
 throw new Error(data.error?.message||'Request failed');}return data;}
 async function load(){try{const data=await request('/api/domains');
 count.textContent=data.domains.length+' registered';root.replaceChildren();
 for(const domain of data.domains){
-const card=document.createElement('article');card.className='domain-card';\
-root.append(card);
+const card=document.createElement('article');
+card.className='domain-card '+domainClass(domain.id);root.append(card);
 const header=document.createElement('div');header.className='domain-header';\
 card.append(header);
 text(header,'h2',domain.id);
 const state=text(header,'span',domain.enabled?'Enabled':'Disabled');
 state.className='domain-state '+(domain.enabled?'enabled':'disabled');
 const auth=domain.auth||{};const authText=text(card,'p',readable(auth.outcome));
-authText.className='auth';
+authText.className='auth status-'+statusClass(auth.outcome);
 const leaves=document.createElement('section');leaves.className='leaves';\
 card.append(leaves);
 text(leaves,'h3','Leaves');const list=document.createElement('ul');
@@ -92,7 +116,7 @@ list.className='leaf-list';leaves.append(list);for(const leaf of domain.leaves){
 const last=leaf.last_execution||{};const entry=document.createElement('li');
 entry.className='leaf';list.append(entry);text(entry,'span',leafName(domain,leaf));
 const outcome=text(entry,'span',readable(last.outcome));\
-outcome.className='leaf-outcome';
+outcome.className='leaf-outcome status-'+statusClass(last.outcome);
 if(!leaf.diagnostic){const name=leafName(domain,leaf);
 const edit=text(entry,'button','Docs');edit.className='leaf-docs';edit.type='button';
 edit.setAttribute('aria-label','Edit documentation for '+name);
@@ -103,7 +127,8 @@ const message=text(card,'p',diagnostic.id+': '+diagnostic.code+' — '+\
 diagnostic.message);
 message.className='diagnostic';}
 const button=text(card,'button',domain.enabled?'Disable':'Enable');
-button.className='domain-toggle';button.type='button';button.setAttribute('aria-label',
+button.className='domain-toggle '+(domain.enabled?'disable':'enable');
+button.type='button';button.setAttribute('aria-label',
 (domain.enabled?'Disable ':'Enable ')+domain.id);
 button.onclick=async()=>{button.disabled=true;error.textContent='';try{
 await request('/api/domains/'+encodeURIComponent(domain.id),{method:'POST',
