@@ -9,7 +9,7 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    "broken", ["capability", "scope", "collector", "filter", "get"]
+    "broken", ["capability", "scope", "collector", "filter", "detail_capability"]
 )
 def test_install_rejects_wrong_signature_without_storage(
     run_cli, tmp_path, monkeypatch, broken
@@ -29,7 +29,7 @@ def test_install_rejects_wrong_signature_without_storage(
         manifest.pop("collection")
         manifest_path.write_text(json.dumps(manifest))
     methods = []
-    for name in ["capability", "scope", "collector", "filter", "get"]:
+    for name in ["capability", "scope", "collector", "filter", "detail_capability"]:
         parameters = "self" if name == broken else "self, *args, **kwargs"
         methods.append(
             f"    def {name}({parameters}):\n"
@@ -62,7 +62,7 @@ def test_install_accepts_variadic_adapter_without_executing_methods(
         "class Adapter:\n"
         "    def method(self, *args, **kwargs):\n"
         "        raise RuntimeError('method must never execute during install')\n"
-        "    capability = scope = filter = get = method\n"
+        "    capability = scope = filter = detail_capability = method\n"
         "    def collector(self, capability, transport, scope, *, progress=None):\n"
         "        raise RuntimeError('method must never execute during install')\n"
         "adapter = Adapter()\n"

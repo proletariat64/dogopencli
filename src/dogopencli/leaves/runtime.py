@@ -1,6 +1,7 @@
 """Common inquiry, quality and single-slot cache policy for installed leaves."""
 
 import hashlib
+import inspect
 import math
 from argparse import Namespace
 from contextlib import nullcontext
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from dogopencli.cache import Cache, SnapshotMeta
-from dogopencli.collect import collect_list, collect_scope
+from dogopencli.collect import collect_list, collect_scope, execute_bounded
 from dogopencli.config import DEFAULT_TTL_HOURS, tomllib
 from dogopencli.errors import CliError
 from dogopencli.inquiry import inquiry_session
@@ -110,6 +111,43 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
     return hashlib.sha256(canonical(context).encode()).hexdigest()
 
 
+def get_detail(
+    leaf: Leaf,
+    session: Any,
+    parameters: dict,
+    identity: str,
+    *,
+    capability: Any = None,
+    deadline: float | None = None,
+) -> dict:
+    """Acquire one validated native root through the restricted host transport."""
+    capability = capability or leaf.adapter.detail_capability(parameters)
+    for name, arguments in (
+        ("request_body", (parameters, identity)),
+        ("parse_detail", (b"", parameters, identity)),
+    ):
+        method = getattr(capability, name, None)
+        try:
+            if not callable(method):
+                raise TypeError
+            inspect.signature(method).bind(*arguments)
+        except (TypeError, ValueError) as error:
+            raise CliError("INVALID_LEAF", "invalid detail capability hooks") from error
+    response = execute_bounded(
+        capability,
+        session.transport(capability),
+        capability.request_body(parameters, identity),
+        deadline,
+    )
+    record = capability.parse_detail(response.body, parameters, identity)
+    if not isinstance(record, dict) or not record:
+        raise CliError("INVALID_RESPONSE", "detail response must be a nonempty object")
+    _validate_records(
+        [record], leaf.manifest["operations"]["get"]["result_identity"]["fields"]
+    )
+    return record
+
+
 def execute(
     leaf: Leaf, operation: str, parameters: dict, args: Namespace, config_file: Path
 ) -> tuple[Any, dict]:
@@ -126,32 +164,26 @@ def execute(
             removed = store.remove(namespace)
         return {"leaf": leaf.id, "pruned": removed}, {"source": "cache"}
     if operation == "get":
-        capability = leaf.adapter.capability(parameters)
+        capability = leaf.adapter.detail_capability(parameters)
         with inquiry_session(
-            config_file=config_file, startup_url=getattr(capability, "page_url", None)
+            config_file=config_file, startup_url=capability.page_url
         ) as session:
-            record = leaf.adapter.get(session, parameters, args.detail_identity)
-        if not isinstance(record, dict):
-            raise CliError("INVALID_RESPONSE", "detail response must be an object")
-        _validate_records([record], leaf.manifest.get("identity", []))
+            record = get_detail(
+                leaf, session, parameters, args.detail_identity, capability=capability
+            )
         data = _project([record], fields)[0]
         return data, {
-            **AcquisitionEvidence(
-                scope_complete=True,
-                dataset_complete=True,
-                collected_total=1,
-                reported_total=1,
-                arrivals=1,
-                unique_count=1,
-                duplicate_count=0,
-                total_semantics="unique_objects",
-            ).meta(),
             "source": "live",
             "leaf": leaf.id,
             "operation": "get",
-            "query": {**parameters, "id": args.detail_identity},
+            "query": {"identity": args.detail_identity, "parameters": parameters},
             "fetched_at": now().isoformat(),
             "returned_count": 1,
+            "detail_scope": "native_root",
+            "detail_coverage": (
+                "One native root response; separate histories, logs and "
+                "child pages are not acquired."
+            ),
         }
     definitions = leaf.manifest["operations"]["list"].get("parameters", [])
     local_parameters = {

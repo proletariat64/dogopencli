@@ -89,6 +89,42 @@ MANIFEST_SCHEMA = {
                     "properties": {
                         "description": {"type": "string"},
                         "parameters": {"type": "array", "items": PARAMETER_SCHEMA},
+                        **(
+                            {
+                                "lookup": {
+                                    "type": "object",
+                                    "required": ["name", "description"],
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        key: {"type": "string"}
+                                        for key in ("name", "description")
+                                    },
+                                },
+                                "result_identity": {
+                                    "type": "object",
+                                    "required": ["fields", "description"],
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "fields": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                        },
+                                        "description": {"type": "string"},
+                                    },
+                                },
+                                "list_binding": {
+                                    "type": "object",
+                                    "required": ["identity_field"],
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "identity_field": {"type": "string"},
+                                        "parameters": {"type": "object"},
+                                    },
+                                },
+                            }
+                            if op == "get"
+                            else {}
+                        ),
                     },
                 }
                 for op in ("list", "get")
@@ -240,6 +276,46 @@ def validate_manifest(value: Any) -> None:
                     item not in parameter["choices"] for item in values
                 ):
                     raise _invalid(f"parameter {name} default is outside choices")
+    detail = value["operations"].get("get")
+    if detail is not None:
+        if "lookup" not in detail or "result_identity" not in detail:
+            raise _invalid("get requires lookup and result_identity declarations")
+        if any(not item.strip() for item in detail["lookup"].values()):
+            raise _invalid("Get lookup meaning must be nonempty")
+        fields = detail["result_identity"]["fields"]
+        if (
+            not fields
+            or len(fields) != len(set(fields))
+            or any(not field.strip() for field in fields)
+        ):
+            raise _invalid("Get result identity fields must be nonempty and unique")
+        if not detail["result_identity"]["description"].strip():
+            raise _invalid("Get result identity meaning must be nonempty")
+        binding = detail.get("list_binding")
+        if binding is not None:
+            if (
+                "list" not in value["operations"]
+                or not binding["identity_field"].strip()
+            ):
+                raise _invalid(
+                    "Get List binding requires List and a native identity field"
+                )
+            mapping = binding.get("parameters", {})
+            definitions = {item["name"]: item for item in detail["parameters"]}
+            if any(
+                name not in definitions
+                or not isinstance(field, str)
+                or not field.strip()
+                for name, field in mapping.items()
+            ):
+                raise _invalid(
+                    "Get List binding has unknown parameters or empty source fields"
+                )
+            if any(
+                item["required"] and "default" not in item and name not in mapping
+                for name, item in definitions.items()
+            ):
+                raise _invalid("Get List binding must supply required context")
     collection = value.get("collection")
     if collection is not None:
         from ..contracts import resolve_collection_provider
@@ -449,7 +525,7 @@ class Registry:
             adapter_sha256 = hashlib.sha256(source).hexdigest()
             exec(compile(source, str(location), "exec"), module.__dict__)
             adapter = getattr(module, attribute)
-            required = {"get", "capability"} if "get" in value["operations"] else set()
+            required = {"detail_capability"} if "get" in value["operations"] else set()
             if "list" in value["operations"]:
                 required |= {"capability", "scope", "filter"}
                 if "collection" not in value:
@@ -459,7 +535,7 @@ class Registry:
                 "scope": ({},),
                 "collector": (None, None, "scope"),
                 "filter": ([], {}),
-                "get": (None, {}, "identity"),
+                "detail_capability": ({},),
             }
             for name in required:
                 method = getattr(adapter, name, None)

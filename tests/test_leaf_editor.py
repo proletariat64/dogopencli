@@ -20,7 +20,14 @@ def editor(tmp_path):
         "domain": "payment",
         "name": "sample",
         "adapter": "adapter.py:adapter",
-        "operations": {"get": {"description": "Read detail", "parameters": []}},
+        "operations": {
+            "get": {
+                "description": "Read detail",
+                "parameters": [],
+                "lookup": {"name": "reference", "description": "Native reference"},
+                "result_identity": {"fields": ["id"], "description": "Native id"},
+            }
+        },
         "fields": [{"name": "nativeId", "type": "string", "meaning": "Identifier"}],
         "identity": ["nativeId"],
         "summary": "Original summary",
@@ -33,7 +40,7 @@ def editor(tmp_path):
     (folder / "adapter.py").write_text(
         "class Adapter:\n"
         "    def capability(self, parameters): return None\n"
-        "    def get(self, *args): return {}\n"
+        "    def detail_capability(self, *args): return None\n"
         "adapter=Adapter()\n"
     )
     server = create_server(DomainService(tmp_path / "config.toml"))

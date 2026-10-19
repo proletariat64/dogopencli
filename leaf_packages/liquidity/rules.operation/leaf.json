@@ -18,7 +18,20 @@
     },
     "get": {
       "description": "Query native detail by ruleId; reads online without changing the saved list.",
-      "parameters": []
+      "parameters": [],
+      "lookup": {
+        "name": "ruleId",
+        "description": "Native ruleId lookup value."
+      },
+      "result_identity": {
+        "fields": [
+          "ruleId"
+        ],
+        "description": "Native detail ruleId identity; validated against the requested ruleId."
+      },
+      "list_binding": {
+        "identity_field": "ruleId"
+      }
     }
   },
   "summary": "Operation rules.",

@@ -9,7 +9,20 @@
     },
     "get": {
       "description": "Query native detail by benchmarkId; reads online without changing the saved list.",
-      "parameters": []
+      "parameters": [],
+      "lookup": {
+        "name": "benchmarkId",
+        "description": "Native benchmarkId lookup value."
+      },
+      "result_identity": {
+        "fields": [
+          "benchmarkId"
+        ],
+        "description": "Native detail benchmarkId identity; validated against the requested benchmarkId."
+      },
+      "list_binding": {
+        "identity_field": "benchmarkId"
+      }
     }
   },
   "summary": "Risk event thresholds.",

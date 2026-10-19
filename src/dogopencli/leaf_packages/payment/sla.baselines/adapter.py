@@ -4,8 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from dogopencli.collect import execute_bounded
 from dogopencli.contracts import EndpointContract, ParsedPage
+from dogopencli.domain_contracts import PAYMENT_STARTUP_URL
 from dogopencli.errors import (
     BUSINESS_QUERY_FAILED,
     INVALID_ARGUMENT,
@@ -102,6 +102,7 @@ class BaselineList:
 @dataclass(frozen=True)
 class BaselineDetail:
     name: str = "payment.sla.baselines.get"
+    page_url: str = PAYMENT_STARTUP_URL
     contract: EndpointContract = EndpointContract(
         method="GET",
         host="iglobalfundcontrol.alipay.com",
@@ -109,7 +110,16 @@ class BaselineDetail:
         page_size=0,
         one_based=False,
         allowed_body_keys=frozenset({"slaBaselineId"}),
+        encoding="query",
     )
+
+    def request_body(self, parameters: dict[str, Any], identity: str) -> dict[str, Any]:
+        return {"slaBaselineId": identity}
+
+    def parse_detail(
+        self, body: bytes, parameters: dict[str, Any], identity: str
+    ) -> dict[str, Any]:
+        return parse_detail(body, identity)
 
 
 SLA_CAPABILITY = BaselineList()
@@ -117,7 +127,10 @@ SLA_DETAIL = BaselineDetail()
 
 
 def parse_detail(body: bytes, identity: str) -> dict[str, Any]:
-    detail = response_document(body).get("resultData")
+    document = response_document(body)
+    if "resultData" not in document:
+        raise CliError(INVALID_RESPONSE, "response is missing resultData")
+    detail = document["resultData"]
     if detail is None:
         raise CliError(NOT_FOUND, f"SLA baseline {identity} does not exist")
     if not isinstance(detail, dict):
@@ -161,13 +174,8 @@ class Adapter:
     def scope(self, parameters: dict[str, Any]) -> str:
         return canonical(native_filters(parameters))
 
-    def get(
-        self, session: Any, parameters: dict[str, Any], identity: str
-    ) -> dict[str, Any]:
-        response = execute_bounded(
-            SLA_DETAIL, session.transport(SLA_DETAIL), {"slaBaselineId": identity}
-        )
-        return parse_detail(response.body, identity)
+    def detail_capability(self, parameters: dict[str, Any]) -> Any:
+        return SLA_DETAIL
 
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]

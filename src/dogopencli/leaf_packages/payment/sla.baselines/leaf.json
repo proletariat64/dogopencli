@@ -44,7 +44,20 @@
     },
     "get": {
       "description": "Fetch native detail by baseline ID.",
-      "parameters": []
+      "parameters": [],
+      "lookup": {
+        "name": "slaBaselineId",
+        "description": "Native slaBaselineId lookup value."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Native detail id identity; validated against the requested slaBaselineId."
+      },
+      "list_binding": {
+        "identity_field": "id"
+      }
     }
   },
   "summary": "Payment SLA baseline configurations.",

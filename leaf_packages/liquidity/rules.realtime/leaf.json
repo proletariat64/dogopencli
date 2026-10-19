@@ -9,7 +9,20 @@
     },
     "get": {
       "description": "Query native detail by id; reads online without changing the saved list.",
-      "parameters": []
+      "parameters": [],
+      "lookup": {
+        "name": "Id",
+        "description": "Native Id lookup value."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Native detail id identity; validated against the requested Id."
+      },
+      "list_binding": {
+        "identity_field": "id"
+      }
     }
   },
   "summary": "Realtime rules.",
