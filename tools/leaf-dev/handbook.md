@@ -6,9 +6,17 @@ For an assigned migration batch, also follow [the migration procedure](workflow.
 
 ## 1. Qualify the native inquiry
 
-Query PDKB with `graphify`, verify its source documents, and inspect prior successful
-UAT scopes before querying production. Historical inputs are starting points;
-confirm the current native request and business response.
+Start with the [leaf-relations helper](../../.agents/skills/leaf-relations/SKILL.md)
+for a light PDKB/frontend/inquiry scan and scope-relative simple/complex proposal.
+Human confirmation is required even at full confidence; complex relationships
+also need scoped experiments and model confirmation. The helper returns a spec
+and sample, then asks whether to continue development or end research. Continue
+here only after that choice. Leaf-dev remains the development/acceptance flow.
+
+Query PDKB with `graphify` and verify its source documents. Prior successful UAT
+scopes are useful starting points when available, not required portable inputs;
+small current inquiry-only calls can establish evidence. Confirm the current
+native request and business response within the accepted scope.
 
 Record the read-only endpoint/action, browser entry, allowed request fields, scope,
 paging mode, qualified widths, primary ID, total meaning and failure envelope.
