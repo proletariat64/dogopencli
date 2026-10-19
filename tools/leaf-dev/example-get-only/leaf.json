@@ -1,0 +1,49 @@
+{
+  "domain": "collection",
+  "name": "sample.detail",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "get": {
+      "description": "Read native detail by business reference within one account.",
+      "parameters": [
+        {
+          "name": "account",
+          "type": "string",
+          "required": true,
+          "description": "Account that owns the synthetic business reference."
+        }
+      ],
+      "lookup": {
+        "name": "businessReference",
+        "description": "Business reference, distinct from the returned numeric nativeId."
+      },
+      "result_identity": {
+        "fields": ["nativeId"],
+        "description": "Native numeric detail ID; parser also validates reference and account."
+      }
+    }
+  },
+  "summary": "Synthetic Get-only example with explicit account context.",
+  "purpose": "Read one native detail without List, collection declarations or dataset storage.",
+  "fields": [
+    {"name": "nativeId", "type": "integer", "meaning": "Native detail identity."},
+    {"name": "reference", "type": "string", "meaning": "Requested business reference."},
+    {"name": "account", "type": "string", "meaning": "Requested account scope."}
+  ],
+  "identity": [],
+  "identity_description": "No List identity; Get declares its own returned identity.",
+  "limitations": [
+    "Educational fixture only; run leaf-handbook.invalid inquiries only through the offline test harness.",
+    "Live-only native root detail; separate children and histories are unqueried."
+  ],
+  "examples": [
+    {
+      "title": "Inspect inputs without an account or login",
+      "command": "dogopencli collection get sample.detail -h --format text"
+    },
+    {
+      "title": "Read detail by business reference and account",
+      "command": "dogopencli collection get sample.detail REF-one --account account-one"
+    }
+  ]
+}

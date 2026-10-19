@@ -417,12 +417,6 @@ def test_shared_transport_rejects_unverified_native_request(
     assert not browser.business_requests
 
 
-def test_get_is_not_registered_and_makes_no_business_request(installed):
-    _, cli, browser, _ = installed
-    cli("get", "I0", code=2)
-    assert not browser.business_requests
-
-
 def test_sdk_conflict_keeps_last_arrival_and_reports_incomplete(installed):
     case, cli, browser, _ = installed
     first = record(case)

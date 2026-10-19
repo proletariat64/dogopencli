@@ -19,6 +19,23 @@
           "description": "Native inquiry-date upper bound YYYY-MM-DD, at or after from-date."
         }
       ]
+    },
+    "get": {
+      "description": "Read one complete native detail root; separate histories and child endpoints are unqueried.",
+      "parameters": [],
+      "lookup": {
+        "name": "inquirySubTaskId",
+        "description": "Native child inquirySubTaskId from the List; sent as inquiryTaskId. Never pass the List parent inquiryTaskId."
+      },
+      "result_identity": {
+        "fields": [
+          "inquiryTaskId"
+        ],
+        "description": "Returned native inquiryTaskId equals the selected child inquirySubTaskId; independent of the parent task reference."
+      },
+      "list_binding": {
+        "identity_field": "inquirySubTaskId"
+      }
     }
   },
   "summary": "TARGET_RFQ inquiry subtasks.",
@@ -60,12 +77,22 @@
     "Only the qualified TARGET_RFQ source is supported. No type, product, status, parent or subtask filters; no offset fallback, automatic partitioning, source supplementation or related-detail acquisition.",
     "Native data.data records and data.totalCount must fit the single response. The host SDK owns completeness and publication; duplicate/conflicting identities or count gaps remain incomplete, and rejected refresh preserves the previous capture.",
     "Every native field, type, nested object and unknown addition is retained. Nullable, blank, zero, negative and unknown counter/status/time values are preserved without interpretation. Parent references do not collapse subtask identities.",
-    "Width 5000 is a historical successful request size, not a measured backend maximum. Current nonempty exact-candidate qualification is required. Query refresh manages temporary cache and does not import runtime data."
+    "Width 5000 is a historical successful request size, not a measured backend maximum. Current nonempty exact-candidate qualification is required. Query refresh manages temporary cache and does not import runtime data.",
+    "Native TARGET_RFQ child detail and institution members already in inquiryOrderListVOList. Returned inquiryTaskId identifies the selected child; no parent, quote or history fanout.",
+    "Get and supported List --live --with-detail preserve native types, nesting and unknown fields, perform no implicit history/child inquiries, and write no cache or Duckdog data."
   ],
   "examples": [
     {
       "title": "Acquire the complete scoped List",
       "command": "dogopencli liquidity list investment.rfqs --live --require-complete --limit 0 --from-date 2026-01-01 --to-date 2026-10-05"
+    },
+    {
+      "title": "Read native detail",
+      "command": "dogopencli liquidity get investment.rfqs NATIVE_ID"
+    },
+    {
+      "title": "Combine the selected List window with native detail",
+      "command": "dogopencli liquidity list investment.rfqs --live --with-detail --require-complete --limit 1 --from-date 2026-01-01 --to-date 2026-10-05"
     }
   ],
   "dataset": {

@@ -4,7 +4,11 @@
 
 Issue [#291](https://github.com/proletariat64/dogopencli/issues/291). Make ordinary Leaf List development faster by reusing **mechanisms**, not by assuming Payment, Collection, FX and Liquidity have the same business behavior. The Host remains a local Python CLI, not a remote service. Extend the existing `dogopencli.collect`, endpoint contracts, leaf manifest validator, and runtime; do not create a standalone SDK distribution, a business monolith or any SDK version/negotiation scheme.
 
-An opted-in List Leaf contributes only (a) its native verified `TransportCapability`, (b) `page_body(scope, position, size)`, (c) `parse_rows(body) -> (list[dict], reported_total)` for offset, or `parse_page(body) -> ParsedPage` for numbered/single paging, and (d) optional `validate_rows_scope(rows, scope)`. It still owns `scope`, `filter` and business fields. The Host calls `collect_list` directly for opted-in lists; it does not execute a leaf-maintained paging loop.
+A single-source SDK List supplies a verified native `TransportCapability`, pure
+`page_body(scope, position, size)` and parser, plus optional
+`validate_rows_scope(rows, scope)`. It owns `scope`, `filter` and business fields;
+the host executes `collect_list`. Declared independent sources use those same
+native hooks and the flat assembly seam below, without a leaf-maintained query loop.
 
 Existing leaves without `collection` retain their current collectors and behavior while migrating. This is a bounded migration seam, not an extra permanent framework.
 
@@ -16,7 +20,7 @@ Existing leaves without `collection` retain their current collectors and behavio
 - Validate provider availability and owner-domain match at static manifest validation, installation and runtime. A payment leaf declaring `fx.collection` is invalid even if their JSON looks identical. A leaf using `general` still belongs to its own domain; the provider grants no cross-domain installation permission.
 - This is **contract enforcement for trusted Python plugins**, not a Python security sandbox: arbitrary adapter Python imports are outside this guarantee.
 
-## Proposed leaf manifest extension
+## Leaf manifest
 
 For a List leaf, `collection` is optional during migration. When present, it is a closed object with no implicit defaults except optional `latest_by`, `max_pages` and `budget_seconds`:
 
@@ -37,16 +41,82 @@ For a List leaf, `collection` is optional during migration. When present, it is 
 }
 ```
 
-`paging.mode`: `offset`, `page_number` or `single`. Sizes must be a nonempty, unique, positive list of **individually endpoint-qualified** widths, in descending preference order. `single` has exactly one size; do not invent extra pages. For offset paging, position is absolute zero-based `rowStart`; numbered pages start at `contract.one_based ? 1 : 0`. For a simple native field, declare `primary_id: {"type":"field","fields":["instId"]}`; `field` requires exactly one field and `hash` requires a nonempty reviewed tuple. `latest_by` may be omitted; if present it is a native timestamp or numeric time field. Unproven identity requires an empty manifest `identity` and forbids `latest_by`. Optional `max_pages` (1–1000) and `budget_seconds` (1–900) bound acquisition; absent values use host defaults. Get-only leaves do not need `collection`. No `version` key or schema-version value exists.
+`paging.mode`: `offset`, `page_number`, `single` or the explicitly qualified
+`single_response` described below. Sizes must be nonempty, unique, positive
+(except the explicit unpaged declaration below),
+individually endpoint-qualified and descending. `single` and `single_response`
+have exactly one size. Offset position is absolute zero-based `rowStart`;
+numbered pages start at `contract.one_based ? 1 : 0`.
+A field identity has exactly one native field; `hash` uses a reviewed tuple.
+Optional `latest_by` chooses a conflicting row while leaving coverage incomplete.
+Unproven identity requires empty manifest `identity` and forbids `latest_by`.
+Optional `max_pages` (1–1000) and `budget_seconds` (1–900) narrow host bounds.
+Get-only omits `collection`; no version negotiation is added.
 
 Source manifest config represents **policy**; it never stores a learned page size. The list/get manifest identity can differ, because some real native gets use a different echo field.
+
+## Qualified response without a native total
+
+Use `paging: {"mode": "single_response", "page_sizes": [5000]}` only after
+separate qualification that one response covers the exact declared native query.
+The width is a qualified request value, not a demonstrated capacity maximum.
+The capability implements pure `parse_rows(body) -> (native_rows, None)` and
+declares verified native identity. The host makes one logical page request;
+there is no offset iteration, alternate width, rebuild or learned width.
+Existing bounded transport retries still apply to that request.
+
+For a native endpoint with no pagination fields, declare `page_sizes: [0]` and
+`EndpointContract.page_size=0`. Zero means unpaged, not a capacity limit; the
+leaf request builder must omit pagination fields. Only `single_response` accepts
+this declaration, and its size must still match the endpoint-qualified contract.
+Do not invent a positive width for an unpaged endpoint.
+
+Evidence keeps `reported_total=null`, `total_semantics="unknown"` and
+`coverage_basis="qualified_single_response"`; arrivals, unique count and duplicate
+count remain separate observations. Completeness follows the accepted response
+contract, never a fabricated total. A source ignoring requested pageSize is not
+rejected solely for returning more rows. Duplicate/conflict and native failures
+still prevent strict success/publication. Empty refresh preserves prior cache.
+Ordinary modes still require native totals; a missing total alone does not qualify
+this mode. See [the executable sample](../../tools/leaf-dev/example-single-response/).
+
+## Declared independent sources
+
+For an accepted relationship, declare `collection.sources` instead of top-level
+`paging`. Keep the provider and aggregate `primary_id`; each named source declares
+only `paging` and its own `primary_id`. Source names exactly match the leaf hooks;
+sources cannot nest. The [sources sample](../../tools/leaf-dev/example-sources/)
+shows the complete declaration and native mapping.
+
+The adapter supplies pure `source_capability(name, parameters)`,
+`source_scope(name, parameters)` and `assemble(records_by_source, parameters)`,
+plus aggregate `scope` and `filter`. Source capabilities use the same request and
+parser hooks as ordinary Lists. The host's `collect_sources` reuses `collect_list`
+for all required sources under one global deadline and logical-page budget,
+including fallback attempts. It calls assembly only after all sources are complete.
+Any failed/incomplete source fails the aggregate atomically and preserves prior
+cache. An empty child array can follow a successful complete source with no match;
+it cannot stand for a failed or unqueried source.
+
+The leaf owns reviewed parent references, source date meanings, cardinality and
+output order. Assembly returns uniquely identified roots, preserves each native
+child according to that model and performs no inquiry. The SDK guesses no join,
+amount, version, timestamp or business grain. No holdings lookup or automatic
+source expansion is implied.
+
+Aggregate evidence keeps `reported_total=null`, `total_semantics="assembled_roots"`
+and `coverage_basis="validated_sources"`. `acquisition.sources` maps each source
+name to its exact `scope` and independent `acquisition` evidence, retaining native
+totals and identity diagnostics through refresh/offline replay. Root count is an
+observed output count, not the sum of child totals or a native parent total.
+Raw source scopes never enter the preference file; its existing hashed keys apply.
 
 ## Identity, duplicates, holes and coverage
 
 - Identity must be selected by the leaf developer at design time and reviewed by a human (HIL) against business semantics. A hash cannot make non-unique columns unique. `hash` uses `sha256(canonical([typed_field_values,...]))` in declared field order, so numbers and strings cannot collide by string concatenation. Missing/null/non-scalar key parts are invalid. Collision of a 256-bit digest with different native tuples is a hard error. Do not mutate native row JSON or generate a synthetic source field.
 - Maintain a first-seen position per identity; collapse identical cross-page duplicates. On different content for the same identity, retain the row with the greatest parsed `latest_by` value when configured, breaking equal timestamps with last arrival; otherwise the **last loaded row wins**. Preserve explicit diagnostic reasons and counts, including conflicts. For an unverified ordering, last arrival is not a proof that the row is globally newest.
 - A duplicate or conflict is *not* automatically proof of complete coverage: a repeated row can conceal an omitted row. Report arrivals, unique count, duplicate count, conflicting count, reported total, and `scope_complete=false` on page overlaps or known holes.
-- For a reported fixed unique-object total, require `unique_count == reported_total` and **no anomalous gaps/duplicates** to claim complete. Reject changing totals or invalid response envelopes; do not guess other total semantics. An unproven identity uses `primary_id: {"type":"unproven","fields":[]}` and `contract.has_identity=False`. Preserve every native arrival without deduplication; exact repeated JSON is diagnostic only. Unknown totals remain `unknown`, count equality never proves completeness, and strict/live or refresh reject the result. Stop an unproven read on overlap, a short page or the logical-page cap, retaining validated arrivals with explicit incomplete evidence; no synthetic ID or hash is justified.
+- For a reported fixed unique-object total, require `unique_count == reported_total` and **no anomalous gaps/duplicates** to claim complete. Reject changing totals or invalid response envelopes; do not guess other total semantics. An unproven identity uses `primary_id: {"type":"unproven","fields":[]}` and `contract.has_identity=False`. Preserve every native arrival without deduplication; exact repeated JSON is diagnostic only. Outside a separately qualified `single_response` contract, unknown totals cannot establish completeness; count equality does not prove it. Stop an unproven read on overlap, a short page or the logical-page cap, retaining validated arrivals with explicit incomplete evidence; strict modes and refresh reject it. No synthetic ID or hash is justified.
 - Detect short pages before the expected end, empty interior pages and final unique/count shortfall. Advance by the requested page stride (not returned row count), so following valid ranges can still be read and exposed as explicitly partial. Never fill missing data or change effective reported total. A bounded fallback must **restart from position zero** using the next declared width, without mixing candidates.
 - If all declared widths fail to prove coverage, return the last validated *partial* candidate for live display with incomplete evidence where possible; strict modes reject it. An unavailable or malformed page producing a hard business/authorization/schema error never becomes partial success. Unsupported request widths are never guessed.
 

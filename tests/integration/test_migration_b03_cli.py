@@ -818,12 +818,6 @@ def test_short_nonfinal_page_preserves_cache(installed, leaf):
     assert after["meta"]["fetched_at"] == before["meta"]["fetched_at"]
 
 
-def test_get_is_not_registered_and_never_queries_business(installed):
-    cli, browser = installed("cash.pools")
-    cli("liquidity", "get", "cash.pools", "synthetic", code=2)
-    assert not browser.business_requests
-
-
 @pytest.mark.parametrize("leaf", LEAVES)
 def test_sdk_conflicts_keep_last_arrival_with_explicit_incomplete_evidence(
     installed, leaf

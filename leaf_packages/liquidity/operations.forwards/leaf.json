@@ -6,6 +6,23 @@
     "list": {
       "description": "Read full native forwards records.",
       "parameters": []
+    },
+    "get": {
+      "description": "Read one complete native detail root; separate histories and child endpoints are unqueried.",
+      "parameters": [],
+      "lookup": {
+        "name": "orderNo",
+        "description": "Native forward orderNo from the List; sent unchanged under wire forwardId."
+      },
+      "result_identity": {
+        "fields": [
+          "orderNo"
+        ],
+        "description": "Native returned orderNo; validated against the requested lookup without changing its type."
+      },
+      "list_binding": {
+        "identity_field": "orderNo"
+      }
     }
   },
   "summary": "Operations forwards.",
@@ -22,15 +39,25 @@
   ],
   "identity_description": "Native orderNo identifies rows within the exact acquisition scope.",
   "limitations": [
-    "Full native fields, types, exact decimals, nested values and unknown fields are retained. Inquiry-only List; no Get or additional history/detail requests.",
+    "Ordinary List: Full native fields, types, exact decimals, nested values and unknown fields are retained. Inquiry-only List; no Get or additional history/detail requests.",
     "Qualified width10 is based on historical successful requests, not a measured backend maximum. SDK collection owns loops, deadlines, retries, quality and cache publication.",
     "Duplicates, count gaps and short interior pages remain incomplete. Conflicts keep the last arrival; strict refresh rejects incomplete data and preserves the prior saved capture.",
-    "Tenant GUAPW3SG history, with paging only; no invented dates or local filters. Native tradeDate/valueDate and rates/amounts remain unchanged."
+    "Tenant GUAPW3SG history, with paging only; no invented dates or local filters. Native tradeDate/valueDate and rates/amounts remain unchanged.",
+    "Native forward root; no hedging order acquisition or amount/date reinterpretation.",
+    "Get and supported List --live --with-detail preserve native types, nesting and unknown fields, perform no implicit history/child inquiries, and write no cache or Duckdog data."
   ],
   "examples": [
     {
       "title": "Acquire a complete native List",
       "command": "dogopencli liquidity list operations.forwards --live --require-complete"
+    },
+    {
+      "title": "Read native detail",
+      "command": "dogopencli liquidity get operations.forwards NATIVE_ID"
+    },
+    {
+      "title": "Combine the selected List window with native detail",
+      "command": "dogopencli liquidity list operations.forwards --live --with-detail --require-complete"
     }
   ],
   "dataset": {

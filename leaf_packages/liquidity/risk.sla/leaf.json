@@ -6,6 +6,23 @@
     "list": {
       "description": "Read complete native SLA configuration records.",
       "parameters": []
+    },
+    "get": {
+      "description": "Read one native root detail online without changing a saved List.",
+      "parameters": [],
+      "lookup": {
+        "name": "slaConfigId",
+        "description": "Native lookup sent as slaConfigId; use the unprojected List slaConfigId value."
+      },
+      "result_identity": {
+        "fields": [
+          "slaConfigId"
+        ],
+        "description": "Native detail slaConfigId; exact nonempty string echo of the requested lookup."
+      },
+      "list_binding": {
+        "identity_field": "slaConfigId"
+      }
     }
   },
   "summary": "Risk sla.",
@@ -25,13 +42,25 @@
     "Inquiry-only native JSON and unknown nested fields are retained without projection. Native zero values remain unchanged.",
     "Widths are based on historical successful requests, not measured backend maxima. SDK quality reports duplicate identities, count shortfall and page gaps; strict refresh publishes complete acquisitions only.",
     "Conflicts keep the last arrival and remain incomplete. Rejected refresh preserves the prior saved capture.",
-    "One POST with only rowStart=0 and pageSize=5000. No tenant/filter keys, offset fallback, detail query or rule/recipient enrichment.",
-    "Native totalCount and native string slaConfigId establish observed List coverage. Source version remains a separate native string."
+    "One POST with only rowStart=0 and pageSize=5000. List sends no tenant/filter keys and has no offset fallback or detail enrichment.",
+    "Native totalCount and native string slaConfigId establish observed List coverage. Source version remains a separate native string.",
+    "Native Get uses POST form /api/risk/sla/slaConfigDetailQuery.json; lookup slaConfigId returns one native root object with slaConfigId.",
+    "Get preserves all native nested fields and unknown values; separately queried history, logs and child endpoints remain unqueried.",
+    "Get is live-only and publishes no cache or Duckdog data.",
+    "List --live --with-detail fetches native Detail only for the selected offset/limit window, returns separate record/detail members and fails atomically on any detail error; saved List data remains unchanged."
   ],
   "examples": [
     {
       "title": "Acquire a complete List",
       "command": "dogopencli liquidity list risk.sla --live --require-complete"
+    },
+    {
+      "title": "Read one native detail",
+      "command": "dogopencli liquidity get risk.sla RECORD_ID"
+    },
+    {
+      "title": "Read one selected List row with its native detail",
+      "command": "dogopencli liquidity list risk.sla --live --with-detail --limit 1"
     }
   ],
   "dataset": {

@@ -1,8 +1,8 @@
 {
   "parent_issue": 218,
   "tools_issue": 261,
-  "expected_packages": 79,
-  "expected_actions": 106,
+  "expected_packages": 80,
+  "expected_actions": 107,
   "reference_commit": "a7e5c5ead675487646eb9a53d73ec9e0aeb944f9",
   "batches": [
     {
@@ -82,7 +82,7 @@
       "id": "B03",
       "title": "现金水位、流水、授信与现金池",
       "issue": 262,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.cash.waterlevels",
@@ -145,7 +145,7 @@
       "id": "B05",
       "title": "投资持仓、台账与收益",
       "issue": 264,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.investment.holdings",
@@ -186,7 +186,7 @@
       "id": "B06",
       "title": "规则与原生详情",
       "issue": 265,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.rules.notification",
@@ -214,7 +214,7 @@
       "id": "B07",
       "title": "风险事件、指标与SLA",
       "issue": 266,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.risk.anomalies",
@@ -231,7 +231,13 @@
           ]
         },
         {
-          "identity": "liquidity.risk.metrics",
+          "identity": "liquidity.risk.deposit_concentration",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.risk.credit_usage",
           "operations": [
             "list"
           ]
@@ -249,7 +255,7 @@
       "id": "B08",
       "title": "交易与资金调度",
       "issue": 267,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.operations.asset_trades",
@@ -298,7 +304,7 @@
       "id": "B09",
       "title": "RFQ与报价",
       "issue": 268,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.investment.rfqs",
@@ -326,7 +332,7 @@
       "id": "B10",
       "title": "客户与账户能力",
       "issue": 269,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.ledger.customers",

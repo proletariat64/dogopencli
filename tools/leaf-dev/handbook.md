@@ -1,14 +1,24 @@
 # Leaf plugin development handbook
 
-Build ordinary List leaves with the host List SDK. Start from
-[the executable sample](example/); use [interfaces](interfaces.md) for declarations.
+Build ordinary List and native Get leaves with the host SDKs. Start from
+the executable [List+Get](example/) or [Get-only](example-get-only/) sample;
+use [interfaces](interfaces.md) for declarations and
+[Get SDK](../../docs/agents/get-sdk.md) for detail/composition semantics.
 For an assigned migration batch, also follow [the migration procedure](workflow.md).
 
 ## 1. Qualify the native inquiry
 
-Query PDKB with `graphify`, verify its source documents, and inspect prior successful
-UAT scopes before querying production. Historical inputs are starting points;
-confirm the current native request and business response.
+Start with the [leaf-relations helper](../../.agents/skills/leaf-relations/SKILL.md)
+for a light PDKB/frontend/inquiry scan and scope-relative simple/complex proposal.
+Human confirmation is required even at full confidence; complex relationships
+also need scoped experiments and model confirmation. The helper returns a spec
+and sample, then asks whether to continue development or end research. Continue
+here only after that choice. Leaf-dev remains the development/acceptance flow.
+
+Query PDKB with `graphify` and verify its source documents. Prior successful UAT
+scopes are useful starting points when available, not required portable inputs;
+small current inquiry-only calls can establish evidence. Confirm the current
+native request and business response within the accepted scope.
 
 Record the read-only endpoint/action, browser entry, allowed request fields, scope,
 paging mode, qualified widths, primary ID, total meaning and failure envelope.
@@ -19,18 +29,36 @@ single field. Keep amounts, types, nested objects and unknown fields unchanged.
 **Done:** one explicit inquiry contract and an evidence-backed query scope.
 Authentication or HTTP 200 alone does not establish a successful business query.
 
-## 2. Declare SDK collection and implement native mapping
+## 2. Declare operations and implement native mapping
 
 Copy [leaf.json](example/leaf.json) and [adapter.py](example/adapter.py).
 Change their identity, endpoint, relation, scope, request builder, parser and prose
 together. The sample's `.invalid` endpoint is synthetic; run it only in its tests.
 
-- Manifest: declare `collection.provider`, `paging` and `primary_id`.
-- Adapter: implement `capability`, `scope` and `filter`; add `get` only for a
-  verified native detail inquiry.
+- List manifest: declare `collection.provider`, `paging` and `primary_id`.
+- List adapter: implement `capability`, `scope` and `filter`.
 - Capability: provide the restricted `EndpointContract`, `page_body` and native
   parser. See [the SDK adapter contract](interfaces.md#adapter).
 - Host: owns `collect_list`, page loops, retries, quality evidence and publication.
+
+For a separately qualified whole response without a native total, use
+[`single_response`](example-single-response/): one width and `parse_rows` returning
+`(rows, None)`. Retain the unknown total; observed row counts are not a substitute.
+For an accepted multi-source model, use [the flat sources sample](example-sources/):
+declare `sources` instead of top-level `paging`, implement `source_capability`,
+`source_scope` and pure `assemble`, and keep aggregate `scope` and `filter`.
+The host validates every required source before assembly and shares one deadline
+and page budget. The leaf owns the reviewed relationship and output grain;
+the SDK infers neither joins nor source completeness.
+
+For Get, declare lookup meaning, returned identity and required context separately.
+Implement `detail_capability(parameters)` with pure `request_body` and
+`parse_detail` hooks; the host executes its independent restricted endpoint.
+Get-only starts from [its own sample](example-get-only/) and needs no List methods,
+`collection` or `dataset`. For a qualified List-to-Get association, declare
+`list_binding`; standard `list --live --with-detail` returns each selected row
+as `{record, detail}`. [Get SDK](../../docs/agents/get-sdk.md) owns binding rules,
+windowing, projection, atomic failure and native-root coverage limits.
 
 Keep the standard leaf in one root adapter file. Resolve optional resources from
 `Path(__file__).parent` inside methods; bare sibling imports have no package-loader
@@ -38,7 +66,7 @@ support. Installed adapters use host dependencies; installation installs no new
 Python dependencies. Imports and construction must be free of side effects.
 
 **Done:** a self-contained SDK declaration and native request/parser, with no
-leaf-owned pagination or cache publisher. All four bundled pilots use this path.
+leaf-owned querying, pagination or cache publisher.
 
 ## 3. Exercise the public CLI with fake responses
 
@@ -52,7 +80,16 @@ rtk proxy uv run python -m pytest -q tests/integration/test_leaf_handbook.py
 Cover allowed/rejected requests, native values/types, paging, identity conflicts,
 count gaps, business errors and auth expiry. Verify live makes no publication;
 complete nonempty refresh and offline match; failed/empty/incomplete refresh
-preserves the prior capture. Include filters and native get when declared.
+preserves the prior capture. For Get, verify independent lookup and required
+context, native nested preservation, identity/scope failures and no cache writes.
+For declared composition, test selected-window detail calls and all-or-failure
+output through the same installed CLI. The samples are exercised as directories
+and immutable ZIPs; their `.invalid` endpoints never run against a real browser.
+
+For `single_response`, check one request, unknown total, declared coverage basis,
+duplicates and a response larger than the requested width. For `sources`, check
+independent native totals/scopes, shared execution bounds, exact child preservation,
+atomic failure and persisted source evidence after refresh/offline replay.
 
 **Done:** focused CLI checks and required repository tests/lint/doc/review gates pass.
 Fake transport proves behavior, not production qualification.
@@ -85,6 +122,17 @@ with its own refresh input: complete records, values, types, precision, ordering
 and multiplicity. Counts alone do not establish equality. Use `leaf.py capture`
 and `compare`; keep raw responses private. Identity/count conflicts or unexplained
 differences block acceptance. Keep `--limit 0` for full output.
+
+For assembled Lists, compare each child to its own native source and verify the
+accepted parent mapping, union, order and multiplicity. The assembled root is
+leaf-defined, not a native backend object. Check independent scopes/totals and
+their retained evidence offline; a successful root count cannot qualify a source.
+
+For Get, compare the output to its own native Detail response, not a List row.
+For `--live --with-detail`, compare `record` and `detail` to their respective
+native sources, confirm selected-window detail calls and unchanged saved List
+records/capture time. A valid root detail does not prove separate history or child
+coverage. Get and composition are live-only and have no refresh/offline/import.
 
 **Done:** exact-candidate inquiry evidence, native comparison and applicable
 refresh/offline checks pass. [Migration delivery](workflow.md) defines HTTP smoke

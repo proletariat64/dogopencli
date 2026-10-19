@@ -1,0 +1,44 @@
+# Private research notes. Paths in coding are relative to the repository root.
+# Fill values from evidence/user replies; null means not yet supplied, not approval.
+leaf: null
+scope:
+  operations: []
+  requested_output: null
+  exclusions: []
+step: scan # scan | hil1 | experiment | hil2 | handoff | done
+judgment:
+  classification: null # Once proposed: simple | complex only
+  confidence: null # 1..5; never substitutes for HIL
+  reason: null
+  gaps: []
+evidence: [] # {id, source: pdkb|frontend|inquiry|prior_uat, ref, scope, observation, limits}
+candidates: []
+# Each candidate: {id, relation, grain, identities, field_mapping, cardinality,
+# scope, origin: native|ui_added|separate_inquiry, evidence_refs, counterevidence,
+# proposed_treatment, gaps}. Parent references are not automatically row IDs.
+# For List+Detail also record lookup/returned/List identities, required context,
+# same-value binding and native-root coverage; mark unsupported acquisition gaps.
+experiments: []
+# Each experiment: {candidate_refs, accepted_plan_ref, query_scope, result_ref,
+# source_completeness, observations, counterexamples, remaining_gaps}.
+# A successful empty inquiry differs from failed, unqueried or unknown children.
+hil1:
+  packet_ref: null
+  user_reply_ref: null
+  accepted_scope_and_plan: null
+hil2: # Used for complex scope after experiments
+  packet_ref: null
+  user_reply_ref: null
+  accepted_model_and_limits: null
+deliverables:
+  spec_ref: null
+  sample_ref: null
+  implementation_gaps: []
+handoff:
+  choice: null # Only from explicit user reply: continue | end
+  user_reply_ref: null
+coding:
+  handbook: tools/leaf-dev/handbook.md
+  interfaces: tools/leaf-dev/interfaces.md
+  sample: tools/leaf-dev/example/
+  package_helper: .agents/skills/plugin-helper/SKILL.md

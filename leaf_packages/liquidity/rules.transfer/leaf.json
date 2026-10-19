@@ -6,6 +6,23 @@
     "list": {
       "description": "Read full native configuration records.",
       "parameters": []
+    },
+    "get": {
+      "description": "Read one native root detail online without changing a saved List.",
+      "parameters": [],
+      "lookup": {
+        "name": "ruleId",
+        "description": "Native lookup sent as ruleId; use the unprojected List ruleId value."
+      },
+      "result_identity": {
+        "fields": [
+          "ruleId"
+        ],
+        "description": "Native detail ruleId; exact nonempty string echo of the requested lookup."
+      },
+      "list_binding": {
+        "identity_field": "ruleId"
+      }
     }
   },
   "summary": "Transfer rules.",
@@ -25,12 +42,24 @@
     "Fixed GUAPW3SG tenant. Native fields, nested values, exact decimals and unknown fields are retained.",
     "Single GET with fixed rowStart=0, pageSize=5000 and empty debitEntity/creditEntity arrays; no offset fallback.",
     "All native conditions and nested values remain intact. SDK collection reports duplicates and count shortfall as incomplete; strict refresh publishes complete acquisitions only.",
-    "The qualified historical request width 5000 is a starting value, not a measured backend maximum. SDK conflict resolution keeps the last arrival and marks coverage incomplete; strict refresh preserves the prior cache on rejection."
+    "The qualified historical request width 5000 is a starting value, not a measured backend maximum. SDK conflict resolution keeps the last arrival and marks coverage incomplete; strict refresh preserves the prior cache on rejection.",
+    "Native Get uses GET query /queryTransferRuleDetail.json; lookup ruleId returns one native root object with ruleId.",
+    "Get preserves all native nested fields and unknown values; separately queried history, logs and child endpoints remain unqueried.",
+    "Get is live-only and publishes no cache or Duckdog data.",
+    "List --live --with-detail fetches native Detail only for the selected offset/limit window, returns separate record/detail members and fails atomically on any detail error; saved List data remains unchanged."
   ],
   "examples": [
     {
       "title": "Read saved records",
       "command": "dogopencli liquidity list rules.transfer"
+    },
+    {
+      "title": "Read one native detail",
+      "command": "dogopencli liquidity get rules.transfer RECORD_ID"
+    },
+    {
+      "title": "Read one selected List row with its native detail",
+      "command": "dogopencli liquidity list rules.transfer --live --with-detail --limit 1"
     }
   ],
   "dataset": {

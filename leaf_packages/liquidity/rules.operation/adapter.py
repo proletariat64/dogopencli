@@ -4,7 +4,6 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from dogopencli import collect
 from dogopencli.contracts import EndpointContract
 from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 from dogopencli.errors import (
@@ -118,27 +117,14 @@ class DetailInquiry:
         fixed_body_values=(("tntInstId", TENANT),),
     )
 
+    def request_body(self, parameters: dict[str, Any], identity: str) -> dict[str, Any]:
+        return {"ruleId": identity, "tntInstId": TENANT}
 
-DETAIL = DetailInquiry()
-
-
-class Adapter:
-    def capability(self, parameters: dict[str, Any]) -> Any:
-        return CAPABILITY
-
-    def scope(self, parameters: dict[str, Any]) -> str:
-        return ""
-
-    def get(
-        self, session: Any, parameters: dict[str, Any], identity: str
+    def parse_detail(
+        self, body: bytes, parameters: dict[str, Any], identity: str
     ) -> dict[str, Any]:
-        response = collect.execute_bounded(
-            DETAIL,
-            session.transport(DETAIL),
-            {"ruleId": identity, "tntInstId": TENANT},
-        )
         try:
-            document = parse(response.body)
+            document = parse(body)
         except ValueError as error:
             raise CliError(INVALID_RESPONSE, "response is not valid JSON") from error
         if not isinstance(document, dict):
@@ -165,7 +151,25 @@ class Adapter:
             raise CliError(
                 INVALID_RESPONSE, "detail ruleId does not match the requested identity"
             )
+        if "tntInstId" in detail and detail["tntInstId"] != TENANT:
+            raise CliError(
+                INVALID_RESPONSE, "detail tenant does not match requested scope"
+            )
         return detail
+
+
+DETAIL = DetailInquiry()
+
+
+class Adapter:
+    def capability(self, parameters: dict[str, Any]) -> Any:
+        return CAPABILITY
+
+    def scope(self, parameters: dict[str, Any]) -> str:
+        return ""
+
+    def detail_capability(self, parameters: dict[str, Any]) -> Any:
+        return DETAIL
 
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]

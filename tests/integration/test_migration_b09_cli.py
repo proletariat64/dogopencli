@@ -336,12 +336,6 @@ def test_capability_has_no_offset_or_width_fallback(installed, scope, position, 
     assert not browser.business_requests
 
 
-def test_get_is_unregistered_and_never_queries(installed):
-    cli, browser, _ = installed
-    cli("get", "SYNTHETIC", code=2)
-    assert not browser.business_requests
-
-
 def test_conflict_keeps_last_arrival_without_claiming_completeness(installed):
     cli, browser, _ = installed
     first, other = record(), record(1)

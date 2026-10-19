@@ -1,0 +1,36 @@
+{
+  "domain": "liquidity",
+  "name": "investment.quote_groups",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "get": {
+      "description": "Read one complete native detail root; separate histories and child endpoints are unqueried.",
+      "parameters": [],
+      "lookup": {
+        "name": "quotationGroupRowId",
+        "description": "Physical version-row id from the native page/history, sent as quotationGroupId; never the business quotationGroupId."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Selected physical version row id; business quotationGroupId and native version remain separate."
+      }
+    }
+  },
+  "summary": "Investment quote groups.",
+  "purpose": "Read one native detail through an independent inquiry-only Get capability.",
+  "fields": [],
+  "identity": [],
+  "identity_description": "Get-only; returned identity is declared by operations.get.",
+  "limitations": [
+    "Selected native physical version root and already-returned contacts/history stay intact. No latest-version selection, recursive history acquisition, attachment download or List.",
+    "Get and supported List --live --with-detail preserve native types, nesting and unknown fields, perform no implicit history/child inquiries, and write no cache or Duckdog data."
+  ],
+  "examples": [
+    {
+      "title": "Read native detail",
+      "command": "dogopencli liquidity get investment.quote_groups PHYSICAL_ROW_ID"
+    }
+  ]
+}

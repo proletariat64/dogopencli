@@ -6,6 +6,23 @@
     "list": {
       "description": "Read full native account capability records.",
       "parameters": []
+    },
+    "get": {
+      "description": "Read one complete native detail root; separate histories and child endpoints are unqueried.",
+      "parameters": [],
+      "lookup": {
+        "name": "id",
+        "description": "Native integer id from the List; aliasName and ruleId are different references."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Native returned id; validated against the requested lookup without changing its type."
+      },
+      "list_binding": {
+        "identity_field": "id"
+      }
     }
   },
   "summary": "Account capabilities.",
@@ -37,7 +54,8 @@
     "All native fields, value types, exact decimals, nested values, unknown fields and raw states are retained without projection or interpretation.",
     "Historical successful acquisitions support width10 as a starting value, not a measured backend maximum. SDK collection owns loops, retries, quality and cache publication.",
     "Duplicates, count shortfall and interior page gaps remain incomplete. Conflicts keep the last arrival and remain incomplete; strict refresh rejects incomplete acquisition and preserves prior cache.",
-    "List only. Account capability detail and ledger customer inquiries are outside this package; no detail enrichment or dataset import is performed."
+    "Native account capability root; comma strings, exact native numbers, arrays and unknown fields remain unchanged. No rule lookup or UI transformations.",
+    "Get and supported List --live --with-detail preserve native types, nesting and unknown fields, perform no implicit history/child inquiries, and write no cache or Duckdog data."
   ],
   "examples": [
     {
@@ -47,6 +65,14 @@
     {
       "title": "Save a complete capture",
       "command": "dogopencli liquidity refresh network.account_capabilities --require-complete"
+    },
+    {
+      "title": "Read native detail",
+      "command": "dogopencli liquidity get network.account_capabilities 7"
+    },
+    {
+      "title": "Combine the selected List window with native detail",
+      "command": "dogopencli liquidity list network.account_capabilities --live --with-detail --require-complete --limit 1"
     }
   ],
   "dataset": {

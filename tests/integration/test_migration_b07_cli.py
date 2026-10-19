@@ -16,10 +16,10 @@ from dogopencli.leaves.registry import Registry
 from dogopencli.transport import QueryRequest, validate_request
 
 ROOT = Path(__file__).resolve().parents[2]
-CASES = ("events", "sla")
+CASES = ("events", "anomalies", "sla")
 WINDOW = ("--from-date", "20260925", "--to-date", "20260926")
-MODE = {"events": "RISK_EVENT"}
-SIZES = {"events": 10, "sla": 5000}
+MODE = {"events": "RISK_EVENT", "anomalies": "RISK_ALERT"}
+SIZES = {"events": 10, "anomalies": 50, "sla": 5000}
 
 
 def flags(case):
@@ -174,17 +174,21 @@ def test_native_lifecycle_and_full_records(installed):
     )
 
 
-@pytest.mark.parametrize("installed", ["events"], indirect=True)
+@pytest.mark.parametrize("installed", ["events", "anomalies"], indirect=True)
 def test_offset_collection_precedes_display_limit(installed):
     case, cli, browser, _ = installed
-    rows = [record(case, i) for i in range(11)]
-    browser.business_script.extend([page(rows[:10], 11), page(rows[10:], 11)])
+    count = 95 if case == "anomalies" else 11
+    width = SIZES[case]
+    rows = [record(case, i) for i in range(count)]
+    browser.business_script.extend(
+        [page(rows[:width], count), page(rows[width:], count)]
+    )
     result = cli("list", "--live", "--require-complete", "--limit", "1")
     assert result["data"] == rows[:1]
-    assert result["meta"]["collected_total"] == 11
+    assert result["meta"]["collected_total"] == count
     assert browser.business_requests == [
         expected_request(case),
-        expected_request(case, 10),
+        expected_request(case, width),
     ]
 
 
@@ -265,7 +269,7 @@ def test_identity_requires_native_nonempty_string(installed, identity):
     assert cli("list", "--live", code=1)["error"]["code"] == "INVALID_RESPONSE"
 
 
-@pytest.mark.parametrize("installed", ["events"], indirect=True)
+@pytest.mark.parametrize("installed", ["events", "anomalies"], indirect=True)
 @pytest.mark.parametrize(
     "change",
     [
@@ -306,7 +310,7 @@ def test_sla_version_requires_native_string_when_present(installed):
     assert cli("list", "--live", code=1)["error"]["code"] == "INVALID_RESPONSE"
 
 
-@pytest.mark.parametrize("installed", ["events"], indirect=True)
+@pytest.mark.parametrize("installed", ["events", "anomalies"], indirect=True)
 @pytest.mark.parametrize(
     "dates",
     [
@@ -394,12 +398,6 @@ def test_capability_rejects_unverified_scope_and_paging(
     assert not browser.business_requests
 
 
-def test_get_is_unregistered_and_never_queries(installed):
-    _, cli, browser, _ = installed
-    cli("get", "NATIVE_ID", code=2)
-    assert not browser.business_requests
-
-
 def test_conflict_keeps_last_arrival_and_marks_incomplete(installed):
     case, cli, browser, _ = installed
     rows = [record(case, i) for i in range(2)]
@@ -411,7 +409,7 @@ def test_conflict_keeps_last_arrival_and_marks_incomplete(installed):
     assert result["meta"]["duplicate_count"] == 1
 
 
-@pytest.mark.parametrize("installed", ["events"], indirect=True)
+@pytest.mark.parametrize("installed", ["events", "anomalies"], indirect=True)
 @pytest.mark.parametrize(
     "failure", ["empty", "short", "duplicate", "conflict", "changed_total"]
 )
@@ -420,8 +418,9 @@ def test_offset_incomplete_or_changed_pages_preserve_cache(installed, failure):
     original = [record(case)]
     browser.business_script.append(page(original))
     saved = cli("refresh", "--require-complete")
-    rows = [record(case, i) for i in range(11)]
-    first, last = rows[:10], rows[10:]
+    count = SIZES[case] + 1
+    rows = [record(case, i) for i in range(count)]
+    first, last = rows[: SIZES[case]], rows[SIZES[case] :]
     if failure == "empty":
         first = []
     elif failure == "short":
@@ -431,7 +430,10 @@ def test_offset_incomplete_or_changed_pages_preserve_cache(installed, failure):
     elif failure == "conflict":
         last = [{**first[0], "unknown": "CHANGED"}]
     browser.business_script.extend(
-        [page(first, 11), page(last, 12 if failure == "changed_total" else 11)]
+        [
+            page(first, count),
+            page(last, count + 1 if failure == "changed_total" else count),
+        ]
     )
     rejected = cli("refresh", "--require-complete", code=1)
     assert rejected["error"]["code"] == (
@@ -452,3 +454,54 @@ def test_sla_single_capacity_never_falls_back_or_publishes(installed):
     )
     assert len(browser.business_requests) == 1
     assert cli("list", code=1)["error"]["code"] == "CACHE_MISS"
+
+
+@pytest.mark.parametrize("installed", ["anomalies"], indirect=True)
+@pytest.mark.parametrize("width", [10, 20, 100])
+def test_anomalies_rejects_unqualified_width_without_fallback(installed, width):
+    _, _, browser, config = installed
+    adapter = (
+        Registry(config / "config.toml")
+        .scan()
+        .get("liquidity", "risk.anomalies")
+        .adapter
+    )
+    parameters = {"from_date": "20260925", "to_date": "20260926"}
+    with pytest.raises(CliError) as error:
+        adapter.capability(parameters).page_body(adapter.scope(parameters), 0, width)
+    assert error.value.code == "REQUEST_NOT_ALLOWED"
+    assert not browser.business_requests
+
+
+@pytest.mark.parametrize("installed", ["anomalies"], indirect=True)
+@pytest.mark.parametrize(
+    "failure", ["duplicate", "short_first", "short_final", "changed_total"]
+)
+def test_anomalies_native_two_page_quality_failure_preserves_cache(installed, failure):
+    case, cli, browser, _ = installed
+    previous = [record(case)]
+    browser.business_script.append(page(previous))
+    saved = cli("refresh", "--require-complete")
+    records = [record(case, i) for i in range(95)]
+    first, final = records[:50], records[50:]
+    if failure == "duplicate":
+        final[-1] = first[0]
+    elif failure == "short_first":
+        first = first[:-1]
+    elif failure == "short_final":
+        final = final[:-1]
+    browser.business_script.extend(
+        [page(first, 95), page(final, 96 if failure == "changed_total" else 95)]
+    )
+    result = cli("refresh", "--require-complete", code=1)
+    assert result["error"]["code"] == (
+        "INVALID_RESPONSE" if failure == "changed_total" else "INCOMPLETE_RESULT"
+    )
+    assert result["meta"]["published"] is False
+    assert all(
+        "riskEventId" not in request and request["pageSize"] == 50
+        for request in browser.business_requests
+    )
+    after = cli("list", "--limit", "0")
+    assert after["data"] == previous
+    assert after["meta"]["fetched_at"] == saved["meta"]["fetched_at"]

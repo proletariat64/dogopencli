@@ -2,7 +2,7 @@
 
 `dogopencli liquidity list cash.pools` reads the saved pool list. Add `--live`
 to acquire without publication, or use `liquidity refresh cash.pools` to replace
-the saved list after acceptance. This delivery is List-only; Get is deferred.
+the saved list after acceptance.
 
 The inquiry fixes tenant `GUAPW3SG` and category `BANK`, using POST JSON
 `/cashPoolList.json`, `rowStart` offsets and `pageSize=100`.
@@ -23,3 +23,9 @@ validation. The SDK owns paging, identity collection and publication. Duplicate
 or conflicting arrivals and short/interior gaps remain explicitly incomplete;
 conflicts retain the last arrival without proving it is newest. Strict acquisition
 and refresh reject incomplete data. Failed/empty refresh preserves prior captures.
+
+## Native detail
+
+`dogopencli liquidity get cash.pools RECORD_ID` queries `/cashPoolDetail.json` using native `id` and validates root `id`. The lookup is the same value as native List `id`; the original fields, nested arrays, JSON types and exact values are retained. Separate history, logs and child endpoints are unqueried. Get never publishes cache or Duckdog data.
+
+`dogopencli liquidity list cash.pools --live --with-detail --limit 1` returns selected `{record, detail}` pairs, preserves List order/quality and the saved List, and fails the entire query on any Detail failure.

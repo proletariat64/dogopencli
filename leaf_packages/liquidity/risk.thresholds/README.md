@@ -32,3 +32,17 @@ Native detail: `POST form /api/risk/benchmark/riskEventBenchmarkDetailDetail.jso
 Run `dogopencli liquidity get risk.thresholds RECORD_ID`. The response must echo
 `benchmarkId` by string equivalence, preserving its native JSON type. Get performs
 a real detail inquiry and never publishes or changes the saved list.
+
+Use the native List `benchmarkId` value for this lookup. Get retains one native root
+response, including nested and unknown fields; separate history, logs and child
+pages are unqueried.
+
+```bash
+dogopencli liquidity list risk.thresholds --live --with-detail --offset 0 --limit 1
+```
+
+This queries detail only for selected List rows and returns separate `record` and
+`detail` members in List order. `--limit 0` selects all remaining matching rows
+within execution bounds. Any detail failure fails the combined query; successful
+details do not upgrade List completeness. Neither direct Get nor this mode changes
+the saved List or imports into Duckdog.

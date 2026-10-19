@@ -235,6 +235,7 @@ def test_required_typed_parameters_validate_before_activation(run_cli, tmp_path)
     assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
     path = tmp_path / "plugins/payment/sla.baselines/leaf.json"
     manifest = json.loads(path.read_text())
+    manifest["operations"]["get"].pop("list_binding")
     manifest["operations"]["get"]["parameters"] = [
         {
             "name": "attempt",
@@ -449,6 +450,7 @@ def test_installed_parameter_modes_follow_operation_and_local_mapping(
         "choices": [1, 2],
         "description": "Native attempts.",
     }
+    doc["operations"]["get"].pop("list_binding")
     doc["operations"]["get"]["parameters"] = [parameter]
     doc["operations"]["list"]["parameters"] = [parameter]
     path.write_text(json.dumps(doc))

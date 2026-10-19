@@ -88,6 +88,20 @@ class TransportCapability(Protocol):
     def contract(self) -> EndpointContract: ...
 
 
+class DetailCapability(TransportCapability, Protocol):
+    """Pure native detail mapping; the host owns all execution."""
+
+    page_url: str
+
+    def request_body(
+        self, parameters: dict[str, Any], identity: str
+    ) -> dict[str, Any]: ...
+
+    def parse_detail(
+        self, body: bytes, parameters: dict[str, Any], identity: str
+    ) -> dict[str, Any] | list[dict[str, Any]]: ...
+
+
 class Capability(TransportCapability, Protocol):
     """A leaf-owned request builder, page parser and native identity policy."""
 

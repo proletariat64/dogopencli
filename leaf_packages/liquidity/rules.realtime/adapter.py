@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from typing import Any
 
-from dogopencli import collect
 from dogopencli.contracts import EndpointContract
 from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 from dogopencli.errors import (
@@ -96,27 +95,14 @@ class DetailInquiry:
         encoding="json",
     )
 
+    def request_body(self, parameters: dict[str, Any], identity: str) -> dict[str, Any]:
+        return {"Id": identity}
 
-DETAIL = DetailInquiry()
-
-
-class Adapter:
-    def capability(self, parameters: dict[str, Any]) -> Any:
-        return CAPABILITY
-
-    def scope(self, parameters: dict[str, Any]) -> str:
-        return ""
-
-    def get(
-        self, session: Any, parameters: dict[str, Any], identity: str
+    def parse_detail(
+        self, body: bytes, parameters: dict[str, Any], identity: str
     ) -> dict[str, Any]:
-        response = collect.execute_bounded(
-            DETAIL,
-            session.transport(DETAIL),
-            {"Id": identity},
-        )
         try:
-            document = parse(response.body)
+            document = parse(body)
         except ValueError as error:
             raise CliError(INVALID_RESPONSE, "response is not valid JSON") from error
         if not isinstance(document, dict):
@@ -139,6 +125,20 @@ class Adapter:
                 INVALID_RESPONSE, "detail id does not match the requested identity"
             )
         return detail
+
+
+DETAIL = DetailInquiry()
+
+
+class Adapter:
+    def capability(self, parameters: dict[str, Any]) -> Any:
+        return CAPABILITY
+
+    def scope(self, parameters: dict[str, Any]) -> str:
+        return ""
+
+    def detail_capability(self, parameters: dict[str, Any]) -> Any:
+        return DETAIL
 
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]
