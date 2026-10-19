@@ -5,7 +5,9 @@
 普通 List 使用宿主 SDK：leaf 声明 provider、分页和原生主键，只实现请求与解析；
 宿主负责采集循环、重试、完整性及缓存发布。
 
-1. 读[手册](handbook.md)，核对 PDKB／历史 UAT 中有依据的查询范围。
+1. 读[手册](handbook.md)，用 [leaf-relations helper](../../.agents/skills/leaf-relations/SKILL.md)
+   轻扫描 PDKB、当前前端和少量只读查询，提议本次范围是 simple 还是 complex。
+   人确认后形成 spec／sample，并明确选择继续开发或结束研究；历史 UAT 可复用但非依赖。
 2. 按[样例](example/)和[接口](interfaces.md)实现并测试 SDK leaf。
 3. 使用 `leaf.py` 校验／打包，再对同一 ZIP 做隔离安装和真实验收。
 4. 批次迁移另读[流程](workflow.md)；显式数据导入另读[导入契约](duckdog-import.md)。
