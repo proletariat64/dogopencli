@@ -16,16 +16,42 @@ _PAGE = """<!doctype html>
 <html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dogopencli domains</title>
-<style nonce="NONCE">body{font:16px system-ui;max-width:900px;margin:3rem auto;
-padding:0 1rem;background:#f7f8fa;color:#17202a}article{background:white;
-border:1px solid #dce1e6;border-radius:8px;padding:1rem;margin:1rem 0}
-button{padding:.5rem 1rem;cursor:pointer}li{margin:.4rem 0}
-label{display:block;margin:.6rem 0}
-input,textarea{display:block;width:95%;padding:.4rem}
-fieldset{margin:.6rem 0;border:1px solid #dce1e6}pre{white-space:pre-wrap}
-.error{color:#a21616}small{color:#465565}h2{margin-top:0}</style>
-<h1>Domains</h1><p>Local execution settings and recorded status.</p>
-<p id="error" class="error" role="alert"></p><main id="domains"></main>
+<style nonce="NONCE">:root{color-scheme:light;font:18px system-ui;
+background:#f3f5f8;color:#17202a}*{box-sizing:border-box}
+body{margin:0;padding:12px;min-height:100vh;background:#f3f5f8;color:#17202a}
+button,input,textarea{font:inherit}button{cursor:pointer}
+#page-header{display:flex;align-items:center;justify-content:space-between;
+margin:0 0 10px}#page-header h1{margin:0;font-size:24px}
+#page-header small{color:#64707c;font-size:14px}
+#error:empty{display:none}.error{color:#a21616;margin:0 0 10px}
+#domains{display:grid;grid-template-rows:repeat(2,auto);grid-auto-flow:column;
+grid-auto-columns:minmax(300px,1fr);gap:12px;overflow-x:auto;padding-bottom:4px}
+.domain-card,#editor{background:#fff;border:1px solid #d9e0e6;border-radius:12px;
+padding:14px;box-shadow:0 1px 3px rgba(20,30,40,.05)}
+.domain-card{min-width:300px}.domain-header{display:flex;align-items:center;
+justify-content:space-between;gap:10px}.domain-card h2{margin:0;font-size:20px}
+.domain-state{flex:none;border-radius:999px;padding:3px 8px;background:#e6f4ec;
+color:#146c43;font-size:13px;font-weight:600}.domain-state.disabled{background:#edf0f2;color:#596673}
+.auth{margin:8px 0;color:#596673;font-size:16px}.leaves{border-top:1px solid #e8ecef;
+padding-top:6px}.leaves h3{margin:0 0 2px;color:#75808b;font-size:12px;
+letter-spacing:.04em;text-transform:uppercase}.leaf-list{list-style:none;margin:0;padding:0}
+.leaf{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;
+gap:8px;padding:5px 0;font-size:16px}.leaf-outcome{color:#64707c;\
+font-size:14px;white-space:nowrap}
+.leaf-docs,.domain-toggle{border:1px solid #cbd4dc;border-radius:7px;\
+background:#fff;color:#263645}
+.leaf-docs{padding:3px 8px;font-size:13px}.domain-toggle{width:100%;margin-top:8px;
+padding:7px 10px;font-size:15px}.diagnostic{margin:8px 0 0;\
+padding:8px;border-radius:8px;
+background:#fff4e5;color:#8a4b08;font-size:14px}small{color:#465565}
+#editor{margin:12px 0}#editor h2{margin-top:0}#editor label{display:block;\
+margin:.6rem 0}
+#editor input,#editor textarea{display:block;width:95%;padding:.4rem}
+#editor fieldset{margin:.6rem 0;border:1px solid #dce1e6}#editor pre{\
+white-space:pre-wrap}</style>
+<header id="page-header"><h1>Domains</h1><small id="domain-count"></small></header>
+<p id="error" class="error" role="alert"></p><main id="domains" aria-live="polite">\
+</main>
 <article id="editor" hidden><h2 id="editor-title">Leaf documentation</h2>
 <p>Technical declarations are read-only. Save applies on the next CLI invocation.</p>
 <form id="documentation-form"></form><button id="preview" type="button">Preview</button>
@@ -36,39 +62,56 @@ fieldset{margin:.6rem 0;border:1px solid #dce1e6}pre{white-space:pre-wrap}
 const token='TOKEN';
 const root=document.getElementById('domains');
 const error=document.getElementById('error');
+const count=document.getElementById('domain-count');
 function text(parent,tag,value){const item=document.createElement(tag);
 item.textContent=value;parent.append(item);return item;}
+function readable(value){const label=String(value||'unknown').replaceAll('_',' ');
+return label.charAt(0).toUpperCase()+label.slice(1);}
+function leafName(domain,leaf){if(leaf.name)return leaf.name;
+const prefix=domain.id+'.';return leaf.id.startsWith(prefix)?
+leaf.id.slice(prefix.length):leaf.id;}
 async function request(path,options){const response=await fetch(path,options);
 const data=await response.json();if(!response.ok){
 throw new Error(data.error?.message||'Request failed');}return data;}
 async function load(){try{const data=await request('/api/domains');
-root.replaceChildren();for(const domain of data.domains){
-const card=document.createElement('article');root.append(card);
-text(card,'h2',domain.id);text(card,'p',domain.entry_point);
-text(card,'p',domain.enabled?'Enabled':'Disabled');
-const auth=domain.auth||{};
-text(card,'p','Auth: '+(auth.outcome||'unknown')+
-(auth.updated_at?' — '+auth.updated_at:''));
+count.textContent=data.domains.length+' registered';root.replaceChildren();
+for(const domain of data.domains){
+const card=document.createElement('article');card.className='domain-card';\
+root.append(card);
+const header=document.createElement('div');header.className='domain-header';\
+card.append(header);
+text(header,'h2',domain.id);
+const state=text(header,'span',domain.enabled?'Enabled':'Disabled');
+state.className='domain-state '+(domain.enabled?'enabled':'disabled');
+const auth=domain.auth||{};const authText=text(card,'p',readable(auth.outcome));
+authText.className='auth';
+const leaves=document.createElement('section');leaves.className='leaves';\
+card.append(leaves);
+text(leaves,'h3','Leaves');const list=document.createElement('ul');
+list.className='leaf-list';leaves.append(list);for(const leaf of domain.leaves){
+const last=leaf.last_execution||{};const entry=document.createElement('li');
+entry.className='leaf';list.append(entry);text(entry,'span',leafName(domain,leaf));
+const outcome=text(entry,'span',readable(last.outcome));\
+outcome.className='leaf-outcome';
+if(!leaf.diagnostic){const name=leafName(domain,leaf);
+const edit=text(entry,'button','Docs');edit.className='leaf-docs';edit.type='button';
+edit.setAttribute('aria-label','Edit documentation for '+name);
+edit.onclick=()=>openEditor(domain.id,name);}}
+if(!domain.leaves.length)text(leaves,'small','No registered leaves');
+for(const diagnostic of domain.diagnostics||[]){
+const message=text(card,'p',diagnostic.id+': '+diagnostic.code+' — '+\
+diagnostic.message);
+message.className='diagnostic';}
 const button=text(card,'button',domain.enabled?'Disable':'Enable');
-button.type='button';button.setAttribute('aria-label',
+button.className='domain-toggle';button.type='button';button.setAttribute('aria-label',
 (domain.enabled?'Disable ':'Enable ')+domain.id);
 button.onclick=async()=>{button.disabled=true;error.textContent='';try{
 await request('/api/domains/'+encodeURIComponent(domain.id),{method:'POST',
 headers:{'Content-Type':'application/json','X-Dogopencli-Token':token},
 body:JSON.stringify({enabled:!domain.enabled})});await load();
 }catch(problem){error.textContent='Save failed: '+problem.message;
-button.disabled=false;}};
-text(card,'h3','Registered leaves');const list=document.createElement('ul');
-card.append(list);for(const leaf of domain.leaves){
-const last=leaf.last_execution||{};const entry=text(list,'li',leaf.id+' — '+
-(leaf.enabled?'enabled':'disabled')+' — '+(last.outcome||'unknown')+
-(last.updated_at?' — '+last.updated_at:''));
-if(!leaf.diagnostic){const edit=text(entry,'button','Edit documentation');
-edit.type='button';edit.onclick=()=>openEditor(domain.id,leaf.name||leaf.id.slice(domain.id.length+1));}}
-if(!domain.leaves.length)text(card,'small','No registered leaves');
-for(const diagnostic of domain.diagnostics||[]){
-text(card,'p',diagnostic.id+': '+diagnostic.code+' — '+diagnostic.message);}
-}}catch(problem){error.textContent='Unable to load domains: '+problem.message;}}
+button.disabled=false;}}}}
+catch(problem){error.textContent='Unable to load domains: '+problem.message;}}
 let editing=null;
 let editorGeneration=0;
 let editorBusy=false;

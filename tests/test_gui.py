@@ -77,6 +77,22 @@ def test_offline_domain_inventory_and_local_page(running_gui):
     assert failure.value.code == 404
 
 
+def test_card_layout_is_full_width_and_concise(running_gui):
+    _, url = running_gui
+    with urlopen(url) as response:
+        page = response.read().decode()
+    assert "font:18px system-ui" in page
+    assert "max-width:900px" not in page
+    assert "grid-template-rows:repeat(2,auto)" in page
+    assert "grid-auto-flow:column" in page
+    assert "grid-auto-columns:minmax(300px,1fr)" in page
+    assert "domain.entry_point" not in page
+    assert "auth.updated_at" not in page
+    assert "last.updated_at" not in page
+    assert "function readable(value)" in page
+    assert "function leafName(domain,leaf)" in page
+
+
 def page_token(url):
     with urlopen(url) as response:
         return re.search(r"const token='([^']+)'", response.read().decode())[1]
