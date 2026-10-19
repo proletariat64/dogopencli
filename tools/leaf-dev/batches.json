@@ -353,7 +353,7 @@
       "id": "B11",
       "title": "实时网络与路由额度",
       "issue": 270,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.network.realtime",
@@ -453,27 +453,30 @@
       "id": "B15",
       "title": "收款SLA与VA",
       "issue": 274,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "collection.sla.configs",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "collection.va.rules",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "collection.va.capacity",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         }
       ]
     },

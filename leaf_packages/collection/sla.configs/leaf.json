@@ -1,0 +1,148 @@
+{
+  "domain": "collection",
+  "name": "sla.configs",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List collection SLA target configurations.",
+      "parameters": [
+        {
+          "name": "business-line",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "businessCategory",
+          "description": "Exact case-sensitive local businessCategory match; repeat for alternatives, commas and * literal."
+        },
+        {
+          "name": "entity",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "legalEntityCode",
+          "description": "Exact case-sensitive local legalEntityCode match; repeat for alternatives, commas and * literal."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditorCurrency",
+          "description": "Exact case-sensitive local creditorCurrency match; repeat for alternatives, commas and * literal."
+        },
+        {
+          "name": "region",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditorRegion",
+          "description": "Exact case-sensitive local creditorRegion match; repeat for alternatives, commas and * literal."
+        }
+      ]
+    },
+    "get": {
+      "description": "Read an independent native collection SLA configuration detail.",
+      "parameters": [],
+      "lookup": {
+        "name": "slaConfigId",
+        "description": "Native nonblank slaConfigId from List or a verified product record."
+      },
+      "result_identity": {
+        "fields": [
+          "slaConfigId"
+        ],
+        "description": "Exact native slaConfigId echo."
+      },
+      "list_binding": {
+        "identity_field": "slaConfigId"
+      }
+    }
+  },
+  "summary": "Collection SLA configuration targets and native detail.",
+  "purpose": "Inspect end-to-end and internal SLA targets, not measured payment performance.",
+  "fields": [
+    {
+      "name": "slaConfigId",
+      "type": "string",
+      "meaning": "Native configuration identifier."
+    },
+    {
+      "name": "businessCategory",
+      "type": "string",
+      "meaning": "Native business category."
+    },
+    {
+      "name": "legalEntityCode",
+      "type": "string",
+      "meaning": "Native legal entity code."
+    },
+    {
+      "name": "creditorCurrency",
+      "type": "string",
+      "meaning": "Native creditor currency."
+    },
+    {
+      "name": "creditorRegion",
+      "type": "string",
+      "meaning": "Native creditor region."
+    },
+    {
+      "name": "endToEndSla",
+      "type": "integer",
+      "meaning": "Native end-to-end SLA target in seconds; nullable values retained."
+    },
+    {
+      "name": "ipayInnerSla",
+      "type": "integer",
+      "meaning": "Native internal SLA target in seconds; nullable values retained."
+    },
+    {
+      "name": "holidayLimit",
+      "type": "object",
+      "meaning": "Native nullable holiday settings; array order and values retained."
+    }
+  ],
+  "identity": [
+    "slaConfigId"
+  ],
+  "identity_description": "Nonblank native string slaConfigId; ASCII numeric IDs ordered by numeric value then original string, followed by other IDs lexically.",
+  "limitations": [
+    "One fixed first1000 List request with native total/unique-count checks; width is qualified, maximum capacity is not established.",
+    "Local filters are exact and case-sensitive: repeated values OR, dimensions AND; no backend business selectors.",
+    "List and Get retain their independent full native roots. List-only viewProcessInstanceRequired is not fabricated into Get.",
+    "Get and --with-detail are live-only and do not write saved List cache or Duckdog data. --with-detail queries only the selected output window.",
+    "These configuration targets do not establish measured arrival times or transaction performance."
+  ],
+  "examples": [
+    {
+      "title": "Read all native SLA targets",
+      "command": "dogopencli collection list sla.configs --live --limit 0 --require-complete"
+    },
+    {
+      "title": "Read native detail",
+      "command": "dogopencli collection get sla.configs CONFIG_ID"
+    },
+    {
+      "title": "Compose one selected native row and detail",
+      "command": "dogopencli collection list sla.configs --live --with-detail --limit 1"
+    }
+  ],
+  "dataset": {
+    "relation": "collection_sla_configs"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "slaConfigId"
+      ]
+    }
+  }
+}
