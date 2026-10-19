@@ -32,8 +32,8 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 
 - **39/39 Lists、23/23 Gets**，合计 **62/62 actions**；**42/42 leaves** 全操作完成。
 - 整批完成 B01、B02、B03、B05、B06、B07、B08、B09、B10；当前范围无 HOLD。
-- 全局逐 leaf/action 累计为 **42/80 完整 leaves、62/107 actions**；仍有 38 leaves、45 actions 未完成。
-- `batches.json.status` 只标整批；现与逐 leaf/action 口径一致：**42 packages / 62 actions**。
+- 全局逐 leaf/action 累计为 **44/80 完整 leaves、65/107 actions**；仍有 36 leaves、42 actions 未完成。
+- `batches.json.status` 只标整批；含后续已完成 B12 后，当前 delivered 汇总为 **44 packages / 65 actions**。
 
 | Batch | SDK List / 原范围 | SDK Get / 原范围 | 全操作完成 leaves | 范围依据 |
 | --- | --- | --- | --- | --- |
@@ -61,6 +61,14 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 保留 accrual/cash 原生子记录及各源独立范围。源内无记录不证明该父对象全部历史无记录。
 后续复杂关系继续经 helper 发现、实验和 HIL 确认后开发。
 
+## B11–B20 后续迁移
+
+按批次推进；不能表达或缺少验收证据的整个 leaf 暂停，集中 HIL 后再处理，不更改清单分母。
+
+- B11/#270：两项 leaf / 三项 actions 保持 HOLD。`network.realtime` 原 Get 的根/历史/路由额度依赖采集超出现有 Get SDK；`network.route_quotas` 原生根无标量身份。原生、前端及 PDKB 研究归该票，不以 root-only 或补造身份绕过。
+- B12/#271：两个 leaf / 三项 actions 完成。`investment.strategies` 仅 Get；`investment.strategy_results` 按显式任务类型查询 List/Get，原生根与嵌套数据保留。
+- B13–B20：按对应 ticket 原范围推进。
+
 ## 原始批次范围
 
 L = list，G = get。原始 action 集合保持完整；全操作通过前不将整个 leaf 或 batch 记为 delivered。
@@ -82,7 +90,7 @@ rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf.py batches
 | B09 | [#268](https://github.com/proletariat64/dogopencli/issues/268) | `liquidity.investment.rfqs` LG; `liquidity.investment.quotes` LG; `liquidity.investment.quote_groups` G | 3/5 | delivered |
 | B10 | [#269](https://github.com/proletariat64/dogopencli/issues/269) | `liquidity.ledger.customers` G; `liquidity.network.account_capabilities` LG | 2/3 | delivered |
 | B11 | [#270](https://github.com/proletariat64/dogopencli/issues/270) | `liquidity.network.realtime` LG; `liquidity.network.route_quotas` G | 2/3 | planned |
-| B12 | [#271](https://github.com/proletariat64/dogopencli/issues/271) | `liquidity.investment.strategies` G; `liquidity.investment.strategy_results` LG | 2/3 | planned |
+| B12 | [#271](https://github.com/proletariat64/dogopencli/issues/271) | `liquidity.investment.strategies` G; `liquidity.investment.strategy_results` LG | 2/3 | delivered |
 | B13 | [#272](https://github.com/proletariat64/dogopencli/issues/272) | `collection.clearing_system` L; `collection.card_template` L; `collection.account_isolation` L | 3/3 | planned |
 | B14 | [#273](https://github.com/proletariat64/dogopencli/issues/273) | `payment.rules.same_bank_transfer` L; `payment.rules.cost_reduction` L; `payment.rules.retry` L; `payment.rules.bank_switch` L | 4/4 | planned |
 | B15 | [#274](https://github.com/proletariat64/dogopencli/issues/274) | `collection.sla.configs` LG; `collection.va.rules` LG; `collection.va.capacity` L | 3/5 | planned |
