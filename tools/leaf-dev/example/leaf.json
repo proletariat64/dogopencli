@@ -6,10 +6,27 @@
     "list": {
       "description": "Read synthetic paginated records in the handbook tests.",
       "parameters": []
+    },
+    "get": {
+      "description": "Read one native synthetic detail without a prior List.",
+      "parameters": [],
+      "lookup": {
+        "name": "recordId",
+        "description": "Synthetic record ID; the same value appears in List id."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Native detail record ID matching the requested recordId."
+      },
+      "list_binding": {
+        "identity_field": "id"
+      }
     }
   },
-  "summary": "Synthetic standard list for learning the leaf interface.",
-  "purpose": "Demonstrate a self-contained request contract and parser with shared collection, cache and help.",
+  "summary": "Synthetic List and Get for learning the leaf interface.",
+  "purpose": "Demonstrate native request/parsing with host List, detail and selected-window composition.",
   "fields": [
     {
       "name": "id",
@@ -28,12 +45,21 @@
   "identity_description": "The synthetic endpoint guarantees unique nonempty string IDs.",
   "limitations": [
     "Educational fixture only; leaf-handbook.invalid is not a production endpoint.",
-    "No business filters or get operation; run inquiries only through the offline test harness."
+    "Run inquiries only through the offline test harness.",
+    "Get returns one native root; separate history or child endpoints are not queried."
   ],
   "examples": [
     {
       "title": "Inspect the installed declaration",
       "command": "dogopencli collection list sample.records -h --format text"
+    },
+    {
+      "title": "Read native detail directly",
+      "command": "dogopencli collection get sample.records one"
+    },
+    {
+      "title": "Read selected List rows with their native detail",
+      "command": "dogopencli collection list sample.records --live --with-detail --offset 1 --limit 1"
     }
   ],
   "dataset": {

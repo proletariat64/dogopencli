@@ -44,7 +44,20 @@
     },
     "get": {
       "description": "Fetch native detail by baseline ID.",
-      "parameters": []
+      "parameters": [],
+      "lookup": {
+        "name": "slaBaselineId",
+        "description": "Native slaBaselineId lookup value; use the id value from a List row."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Native detail id identity; validated against the requested slaBaselineId."
+      },
+      "list_binding": {
+        "identity_field": "id"
+      }
     }
   },
   "summary": "Payment SLA baseline configurations.",
@@ -117,7 +130,9 @@
   "identity_description": "Native id identifies each record.",
   "limitations": [
     "Legal entity is live/refresh only; its independent filter effect is unverified.",
-    "Detail uses its native endpoint and has no cache."
+    "Detail uses its native endpoint and has no cache.",
+    "Detail returns one native root response; separate histories, logs and child pages are not queried.",
+    "List with --live --with-detail fetches detail only for the selected offset/limit window as separate record/detail members; any detail failure fails the whole query. Get and combined queries preserve the saved List."
   ],
   "examples": [
     {
@@ -127,6 +142,10 @@
     {
       "title": "Fetch baseline detail",
       "command": "dogopencli payment get sla.baselines BASELINE_ID"
+    },
+    {
+      "title": "Read one List row with its native detail",
+      "command": "dogopencli payment list sla.baselines --live --with-detail --limit 1"
     }
   ],
   "dataset": {

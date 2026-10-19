@@ -1,16 +1,18 @@
 """Common inquiry, quality and single-slot cache policy for installed leaves."""
 
 import hashlib
+import inspect
 import math
 from argparse import Namespace
 from contextlib import nullcontext
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 from dogopencli.cache import Cache, SnapshotMeta
-from dogopencli.collect import collect_list, collect_scope
+from dogopencli.collect import collect_list, collect_scope, execute_bounded
 from dogopencli.config import DEFAULT_TTL_HOURS, tomllib
 from dogopencli.errors import CliError
 from dogopencli.inquiry import inquiry_session
@@ -110,6 +112,128 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
     return hashlib.sha256(canonical(context).encode()).hexdigest()
 
 
+def get_detail(
+    leaf: Leaf,
+    session: Any,
+    parameters: dict,
+    identity: str,
+    *,
+    capability: Any = None,
+    deadline: float | None = None,
+) -> dict:
+    """Acquire one validated native root through the restricted host transport."""
+    capability = capability or leaf.adapter.detail_capability(parameters)
+    for name, arguments in (
+        ("request_body", (parameters, identity)),
+        ("parse_detail", (b"", parameters, identity)),
+    ):
+        method = getattr(capability, name, None)
+        try:
+            if not callable(method):
+                raise TypeError
+            inspect.signature(method).bind(*arguments)
+        except (TypeError, ValueError) as error:
+            raise CliError("INVALID_LEAF", "invalid detail capability hooks") from error
+    transport = session.transport(capability)
+    try:
+        response = execute_bounded(
+            capability,
+            transport,
+            capability.request_body(parameters, identity),
+            deadline,
+        )
+    finally:
+        transport.close()
+    record = capability.parse_detail(response.body, parameters, identity)
+    if not isinstance(record, dict) or not record:
+        raise CliError("INVALID_RESPONSE", "detail response must be a nonempty object")
+    _validate_records(
+        [record], leaf.manifest["operations"]["get"]["result_identity"]["fields"]
+    )
+    return record
+
+
+def _compose_details(
+    leaf: Leaf,
+    session: Any,
+    rows: list[dict],
+    fields: list[str] | None,
+    deadline: float,
+    offset: int,
+) -> list[dict]:
+    binding = leaf.manifest["operations"]["get"]["list_binding"]
+    combined = []
+    for index, row in enumerate(rows, offset + 1):
+        try:
+            identity = row.get(binding["identity_field"])
+            if type(identity) not in (str, int) or not str(identity).strip():
+                raise CliError("INVALID_RESPONSE", "List binding identity is invalid")
+            parameters = {}
+            for definition in leaf.manifest["operations"]["get"]["parameters"]:
+                name = definition["name"]
+                source = binding.get("parameters", {}).get(name)
+                if source is not None:
+                    if source not in row:
+                        raise CliError(
+                            "INVALID_RESPONSE",
+                            f"List binding field {source} is missing",
+                        )
+                    value = row[source]
+                elif "default" in definition:
+                    value = definition["default"]
+                else:
+                    continue
+                values = value if definition.get("multiple") else [value]
+                kind = definition["type"]
+
+                def valid(item: Any, kind: str = kind) -> bool:
+                    if kind == "string":
+                        return isinstance(item, str)
+                    if kind == "boolean":
+                        return isinstance(item, bool)
+                    if kind == "integer":
+                        return type(item) is int
+                    return (
+                        type(item) is int
+                        or (isinstance(item, Decimal) and item.is_finite())
+                        or (type(item) is float and math.isfinite(item))
+                    )
+
+                if (
+                    not isinstance(values, list)
+                    or (definition.get("required") and not values)
+                    or any(not valid(item) for item in values)
+                    or (
+                        "choices" in definition
+                        and any(item not in definition["choices"] for item in values)
+                    )
+                ):
+                    raise CliError(
+                        "INVALID_RESPONSE",
+                        f"List binding context {name} has invalid type or choice",
+                    )
+                parameters[name.replace("-", "_")] = value
+            record = get_detail(
+                leaf, session, parameters, str(identity), deadline=deadline
+            )
+            combined.append({"record": _project([row], fields)[0], "detail": record})
+        except CliError as error:
+            raise CliError(
+                error.code,
+                f"Detail for output row {index}: {error.message}",
+                retryable=error.retryable,
+                exit_code=error.exit_code,
+                meta={**(error.meta or {}), "detail_row": index},
+            ) from error
+        except Exception as error:
+            raise CliError(
+                "INTERNAL_ERROR",
+                f"Detail for output row {index}: unexpected detail failure",
+                meta={"detail_row": index},
+            ) from error
+    return combined
+
+
 def execute(
     leaf: Leaf, operation: str, parameters: dict, args: Namespace, config_file: Path
 ) -> tuple[Any, dict]:
@@ -126,32 +250,26 @@ def execute(
             removed = store.remove(namespace)
         return {"leaf": leaf.id, "pruned": removed}, {"source": "cache"}
     if operation == "get":
-        capability = leaf.adapter.capability(parameters)
+        capability = leaf.adapter.detail_capability(parameters)
         with inquiry_session(
-            config_file=config_file, startup_url=getattr(capability, "page_url", None)
+            config_file=config_file, startup_url=capability.page_url
         ) as session:
-            record = leaf.adapter.get(session, parameters, args.detail_identity)
-        if not isinstance(record, dict):
-            raise CliError("INVALID_RESPONSE", "detail response must be an object")
-        _validate_records([record], leaf.manifest.get("identity", []))
+            record = get_detail(
+                leaf, session, parameters, args.detail_identity, capability=capability
+            )
         data = _project([record], fields)[0]
         return data, {
-            **AcquisitionEvidence(
-                scope_complete=True,
-                dataset_complete=True,
-                collected_total=1,
-                reported_total=1,
-                arrivals=1,
-                unique_count=1,
-                duplicate_count=0,
-                total_semantics="unique_objects",
-            ).meta(),
             "source": "live",
             "leaf": leaf.id,
             "operation": "get",
-            "query": {**parameters, "id": args.detail_identity},
+            "query": {"identity": args.detail_identity, "parameters": parameters},
             "fetched_at": now().isoformat(),
             "returned_count": 1,
+            "detail_scope": "native_root",
+            "detail_coverage": (
+                "One native root response; separate histories, logs and "
+                "child pages are not acquired."
+            ),
         }
     definitions = leaf.manifest["operations"]["list"].get("parameters", [])
     local_parameters = {
@@ -202,33 +320,38 @@ def execute(
                 else:
                     collector = getattr(leaf.adapter, "collector", collect_scope)
                     collected = collector(capability, transport, scope)
-            rows = _validate_records(
-                collected.records, leaf.manifest.get("identity", [])
-            )
-            evidence = evidence_for(collected)
-            query = parameters
-            stale = False
-            check_complete(
-                evidence,
-                require_complete=(
-                    args.require_complete
-                    or (operation == "refresh" and "collection" in leaf.manifest)
-                ),
-                mode=operation,
-            )
-            selected = (
-                leaf.adapter.filter(
-                    rows,
-                    {
-                        key: value
-                        for key, value in parameters.items()
-                        if key in local_parameters
-                    },
+                rows = _validate_records(
+                    collected.records, leaf.manifest.get("identity", [])
                 )
-                if operation == "list"
-                else rows
-            )
-            _project(window_rows(selected, limit, offset), fields)
+                evidence = evidence_for(collected)
+                query = parameters
+                stale = False
+                check_complete(
+                    evidence,
+                    require_complete=(
+                        args.require_complete
+                        or (operation == "refresh" and "collection" in leaf.manifest)
+                    ),
+                    mode=operation,
+                )
+                selected = (
+                    leaf.adapter.filter(
+                        rows,
+                        {
+                            key: value
+                            for key, value in parameters.items()
+                            if key in local_parameters
+                        },
+                    )
+                    if operation == "list"
+                    else rows
+                )
+                window = window_rows(selected, limit, offset)
+                _project(window, fields)
+                if args.with_detail:
+                    details = _compose_details(
+                        leaf, session, window, fields, collected.deadline, offset
+                    )
             published = operation == "refresh" and bool(rows)
             if published:
                 snapshot = SnapshotMeta(
@@ -319,7 +442,11 @@ def execute(
                 },
             )
         matched = len(rows)
-        displayed = _project(window_rows(rows, limit, offset), fields)
+        displayed = (
+            details
+            if args.with_detail
+            else _project(window_rows(rows, limit, offset), fields)
+        )
         source_acquisition = evidence.record()
         requested_coverage = True
         if not live:
@@ -371,6 +498,20 @@ def execute(
             "duplicate_count": evidence.duplicate_count,
             "total_semantics": evidence.total_semantics,
         }
+        if args.with_detail:
+            meta.update(
+                {
+                    "with_detail": True,
+                    "detail_scope": "native_root",
+                    "detail_count": len(displayed),
+                    "detail_window": {"offset": offset, "limit": limit},
+                    "detail_coverage": (
+                        "Only selected List rows; one native root response per row. "
+                        "Separate histories, logs and child pages are not acquired. "
+                        "Detail success does not expand List coverage."
+                    ),
+                }
+            )
         if not live:
             meta["source_acquisition"] = source_acquisition
             meta["requested_coverage"] = requested_coverage

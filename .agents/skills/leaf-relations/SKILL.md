@@ -32,13 +32,17 @@ Propose exactly one scope-relative classification and confidence (1–5/5):
   nested JSON, without resolving a new business relationship. Out-of-scope
   details/history can remain candidates without changing the classification.
 - **complex:** the requested output needs business relationship decisions or
-  composition. If the relationship needed by the scope is not established,
-  propose complex with the evidence gap, rather than a third classification.
+  acquisition beyond a qualified standard binding. If the relationship needed
+  by the scope is not established, propose complex with the evidence gap,
+  rather than a third classification.
 
 Nested shape or endpoint count alone does not decide the class. Distinguish row
 identity from parent references, same-object detail from children/history, and
 native nested fields from frontend enrichment. State counterevidence and limits;
 one matching sample or label does not prove a join or universal uniqueness.
+An already qualified same-object List-to-Get binding can use standard composition
+without a new relationship decision. A newly proposed binding needs evidence and
+HIL covering lookup identity, required context and native-root coverage.
 
 ## 2. HIL①: scope and plan
 
@@ -90,12 +94,19 @@ synthetic data. [Examples](references/examples.md) illustrate preservation and
 scope decisions. Keep coding guidance in the existing handbook/interfaces;
 [plugin-helper](../plugin-helper/SKILL.md) remains the verify/pack helper.
 
-Native nested JSON preservation by SDK/cache/Duckdog does not establish support
-for cross-endpoint acquisition. Standard List parsers receive response bytes,
-not a query session. If the accepted model exceeds current SDK execution, report
-the precise gap and a non-executing output sketch; do not invent a collector,
-parser-side queries or a runtime extension to make the sample appear supported.
-This task does not change SDK or unblock existing HOLD leaves.
+Read [Get SDK](../../../docs/agents/get-sdk.md) when scope includes direct detail
+or List plus Detail. Standard composition requires an explicit qualified
+`list_binding`; `list --live --with-detail` queries only selected rows and returns
+`{record, detail}` pairs. Qualify lookup versus returned identity, same-value List
+source, every required context field and failure/coverage semantics. A native root
+may contain nested children; separately paged history or child endpoints remain
+outside this composition. Direct Get is independent and may be Get-only.
+
+List and Detail parsers receive response bytes, not a query session. For joins,
+transformed bindings, extra child/history acquisition or other unsupported
+composition, report the precise execution gap and a non-executing output sketch.
+Keep SDK extensions and existing HOLD scope as separate assigned work; never
+invent a collector or parser-side queries to make a sample appear supported.
 
 Finally ask: **“转入／继续开发，还是研究到此结束？”** Bundle this with the final
 HIL packet when practical. Wait for the explicit choice; the original task does

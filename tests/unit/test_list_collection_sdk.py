@@ -473,6 +473,7 @@ def test_opted_in_refresh_rejects_partial_and_preserves_saved_rows(
         require_complete=False,
         require_fresh=False,
         live=False,
+        with_detail=False,
         explicit_parameters=set(),
     )
     config_file = tmp_path / "config.toml"

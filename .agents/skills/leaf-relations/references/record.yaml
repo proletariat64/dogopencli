@@ -16,6 +16,8 @@ candidates: []
 # Each candidate: {id, relation, grain, identities, field_mapping, cardinality,
 # scope, origin: native|ui_added|separate_inquiry, evidence_refs, counterevidence,
 # proposed_treatment, gaps}. Parent references are not automatically row IDs.
+# For List+Detail also record lookup/returned/List identities, required context,
+# same-value binding and native-root coverage; mark unsupported acquisition gaps.
 experiments: []
 # Each experiment: {candidate_refs, accepted_plan_ref, query_scope, result_ref,
 # source_completeness, observations, counterexamples, remaining_gaps}.

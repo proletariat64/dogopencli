@@ -172,9 +172,14 @@ def main(argv: list[str]) -> int:
             "require_complete": False,
             "require_fresh": False,
             "live": False,
+            "with_detail": False,
         }.items():
             if not hasattr(args, key):
                 setattr(args, key, value)
+        if args.with_detail and not args.live:
+            raise CliError(
+                "INVALID_ARGUMENT", "--with-detail requires --live", exit_code=2
+            )
         args.explicit_parameters = {
             token.partition("=")[0][2:].replace("-", "_")
             for token in remaining

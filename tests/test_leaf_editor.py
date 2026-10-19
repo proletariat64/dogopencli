@@ -20,7 +20,14 @@ def editor(tmp_path):
         "domain": "payment",
         "name": "sample",
         "adapter": "adapter.py:adapter",
-        "operations": {"get": {"description": "Read detail", "parameters": []}},
+        "operations": {
+            "get": {
+                "description": "Read detail",
+                "parameters": [],
+                "lookup": {"name": "reference", "description": "Native reference"},
+                "result_identity": {"fields": ["id"], "description": "Native id"},
+            }
+        },
         "fields": [{"name": "nativeId", "type": "string", "meaning": "Identifier"}],
         "identity": ["nativeId"],
         "summary": "Original summary",
@@ -33,7 +40,7 @@ def editor(tmp_path):
     (folder / "adapter.py").write_text(
         "class Adapter:\n"
         "    def capability(self, parameters): return None\n"
-        "    def get(self, *args): return {}\n"
+        "    def detail_capability(self, *args): return None\n"
         "adapter=Adapter()\n"
     )
     server = create_server(DomainService(tmp_path / "config.toml"))
@@ -83,6 +90,24 @@ def test_documentation_preview_and_save_preserve_technical_contract(editor):
     saved = write_editor(url, token, loaded)
     assert saved["manifest"]["summary"] == "Revised summary"
     assert json.loads(path.read_bytes())["identity"] == ["nativeId"]
+
+
+@pytest.mark.parametrize("declaration", ["lookup", "result_identity"])
+def test_get_identity_descriptions_are_consistently_read_only(editor, declaration):
+    url, token, path = editor
+    loaded = read_editor(url)
+    get_schema = loaded["schema"]["properties"]["operations"]["properties"]["get"]
+    assert (
+        get_schema["properties"][declaration]["properties"]["description"]["readOnly"]
+        is True
+    )
+    original = path.read_bytes()
+    loaded["manifest"]["operations"]["get"][declaration]["description"] = "Changed"
+    with pytest.raises(HTTPError) as failure:
+        write_editor(url, token, loaded)
+    assert failure.value.code == 400
+    assert json.load(failure.value)["error"]["code"] == "READ_ONLY_FIELD"
+    assert path.read_bytes() == original
 
 
 @pytest.mark.parametrize("change", ["technical", "invalid", "conflict"])

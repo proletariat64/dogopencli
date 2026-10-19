@@ -47,7 +47,7 @@ def queue_full(browser):
 
 
 @pytest.fixture(params=["directory", "zip"])
-def handbook(request, run_cli, tmp_path, monkeypatch, capsys):
+def handbook(request, sample_source, run_cli, tmp_path, monkeypatch, capsys):
     config = tmp_path / "config"
     config.mkdir()
     (config / "config.toml").write_text(
@@ -62,7 +62,7 @@ def handbook(request, run_cli, tmp_path, monkeypatch, capsys):
     browser = FakeBrowser(href="https://leaf-handbook.invalid/app")
     cdp.set_transport_factory(browser.transport)
     try:
-        source = SOURCE
+        source = sample_source
         helper = runpy.run_path(str(ROOT / "tools/leaf-dev/leaf.py"))["main"]
 
         def helper_cli(*args):
@@ -72,9 +72,12 @@ def handbook(request, run_cli, tmp_path, monkeypatch, capsys):
 
         assert helper_cli("verify", source)["state"] == "verified"
         if request.param == "zip":
-            source = tmp_path / "delivery/collection.sample.records.zip"
+            manifest = json.loads((source / "leaf.json").read_text())
+            source = (
+                tmp_path / "delivery" / (f"{manifest['domain']}.{manifest['name']}.zip")
+            )
             assert (
-                helper_cli("pack", SOURCE, "--output", source.parent)["state"]
+                helper_cli("pack", sample_source, "--output", source.parent)["state"]
                 == "packed"
             )
             assert helper_cli("verify", source)["state"] == "verified"
@@ -89,6 +92,11 @@ def handbook(request, run_cli, tmp_path, monkeypatch, capsys):
         yield cli, browser, config
     finally:
         cdp.set_transport_factory(None)
+
+
+@pytest.fixture
+def sample_source(request):
+    return getattr(request, "param", SOURCE)
 
 
 def test_handbook_end_to_end(handbook):
@@ -135,6 +143,101 @@ def test_handbook_end_to_end(handbook):
         cli("plugins", "uninstall", "collection.sample.records")["data"]["removed"]
         is False
     )
+
+
+def test_handbook_direct_get_needs_no_saved_list(handbook):
+    cli, browser, config = handbook
+    native = {
+        "id": "one",
+        "amount": Decimal("0.123456789012345678901"),
+        "children": [{"id": "child", "unknown": [False, None, "1.0000"]}],
+    }
+    browser.business_script.append(
+        {"status": 200, "body": {"success": True, "detail": native}}
+    )
+    result = cli("collection", "get", "sample.records", "one")
+    assert result["data"] == native
+    assert browser.business_requests == [{"recordId": "one"}]
+    assert result["meta"]["query"] == {"identity": "one", "parameters": {}}
+    assert result["meta"]["detail_scope"] == "native_root"
+    assert "complete" not in result["meta"]
+    assert not (config / "leaf-cache.sqlite3").exists()
+
+
+def test_handbook_selected_detail_preserves_native_views_and_saved_list(handbook):
+    cli, browser, _ = handbook
+    queue_full(browser)
+    cli("collection", "refresh", "sample.records")
+    saved = cli("collection", "list", "sample.records", "--limit", "0")
+    browser.business_requests.clear()
+    queue_full(browser)
+    detail = {"id": "two", "amount": "2.0000", "children": [{"unknown": True}]}
+    browser.business_script.append(
+        {"status": 200, "body": {"success": True, "detail": detail}}
+    )
+    result = cli(
+        "collection",
+        "list",
+        "sample.records",
+        "--live",
+        "--with-detail",
+        "--offset",
+        "1",
+        "--limit",
+        "1",
+        "--fields",
+        "amount",
+    )
+    assert result["data"] == [{"record": {"amount": "2.00"}, "detail": detail}]
+    assert browser.business_requests == [
+        {"scope": "all", "pageNo": 0, "pageSize": 2},
+        {"scope": "all", "pageNo": 1, "pageSize": 2},
+        {"recordId": "two"},
+    ]
+    after = cli("collection", "list", "sample.records", "--limit", "0")
+    assert after["data"] == saved["data"] == ROWS
+    assert after["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+@pytest.mark.parametrize(
+    "sample_source", [ROOT / "tools/leaf-dev/example-get-only"], indirect=True
+)
+def test_handbook_get_only_business_reference_requires_account(handbook):
+    cli, browser, config = handbook
+    for args in (
+        ("collection", "get", "sample.detail", "-h"),
+        ("collection", "describe", "sample.detail"),
+    ):
+        cli(*args)
+    assert not browser.business_requests
+    assert not (config / "duckdog.duckdb").exists()
+    missing = cli("collection", "get", "sample.detail", "REF-one", code=2)
+    assert missing["error"]["code"] == "INVALID_ARGUMENT"
+    assert not browser.business_requests
+    native = {
+        "nativeId": 71,
+        "reference": "REF-one",
+        "account": "account-one",
+        "amount": Decimal("0.123456789012345678901"),
+        "unknown": {"children": [None, False, "1.0000"]},
+    }
+    browser.business_script.append(
+        {"status": 200, "body": {"success": True, "detail": native}}
+    )
+    result = cli(
+        "collection", "get", "sample.detail", "REF-one", "--account", "account-one"
+    )
+    assert result["data"] == native
+    assert browser.business_requests == [
+        {"businessReference": "REF-one", "account": "account-one"}
+    ]
+    assert result["meta"]["query"] == {
+        "identity": "REF-one",
+        "parameters": {"account": "account-one"},
+    }
+    assert not (config / "duckdog.duckdb").exists()
+    assert not (config / "leaf-cache.sqlite3").exists()
+    cli("plugins", "uninstall", "collection.sample.detail")
 
 
 @pytest.mark.parametrize(

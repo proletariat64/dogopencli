@@ -1,6 +1,7 @@
 # 开发文档
 
 - [Leaf 开发](../tools/leaf-dev/README.md)：手册、接口、流程、样例、helper 和批次票据。
+- [Get SDK](agents/get-sdk.md)：独立详情、输入与返回身份、显式 List 组合及覆盖边界。
 - [Domain 与认证](agents/domain-components.md)：领域声明、配置、操作观察、认证和本地 GUI。
 - [领域术语](../CONTEXT.md)：业务对象和身份含义。
 - [文档与目录规范](agents/documentation.md)：当前指导的归属、命名和检查。

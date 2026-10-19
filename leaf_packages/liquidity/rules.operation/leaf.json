@@ -18,7 +18,20 @@
     },
     "get": {
       "description": "Query native detail by ruleId; reads online without changing the saved list.",
-      "parameters": []
+      "parameters": [],
+      "lookup": {
+        "name": "ruleId",
+        "description": "Native ruleId lookup value; use the ruleId value from a List row."
+      },
+      "result_identity": {
+        "fields": [
+          "ruleId"
+        ],
+        "description": "Native detail ruleId identity; validated against the requested ruleId."
+      },
+      "list_binding": {
+        "identity_field": "ruleId"
+      }
     }
   },
   "summary": "Operation rules.",
@@ -61,7 +74,9 @@
     "Pinned v0.4.3 provides contract provenance; current production qualification is recorded separately.",
     "Fixed GUAPW3SG tenant.",
     "status filters exact native ruleStatus locally after acquisition. Repeated values select alternatives without duplicate output; filtered refresh saves the full scope.",
-    "Native detail uses GET query /riskActionRuleDetail.json; sends ruleId as a string with GUAPW3SG tenant."
+    "Native detail uses GET query /riskActionRuleDetail.json; sends ruleId as a string with GUAPW3SG tenant.",
+    "Detail returns one native root response; separate histories, logs and child pages are not queried.",
+    "List with --live --with-detail fetches detail only for the selected offset/limit window as separate record/detail members; any detail failure fails the whole query. Get and combined queries preserve the saved List."
   ],
   "examples": [
     {
@@ -75,6 +90,10 @@
     {
       "title": "Query native detail",
       "command": "dogopencli liquidity get rules.operation RECORD_ID"
+    },
+    {
+      "title": "Read one List row with its native detail",
+      "command": "dogopencli liquidity list rules.operation --live --with-detail --limit 1"
     }
   ],
   "dataset": {
