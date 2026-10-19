@@ -553,7 +553,7 @@
       "id": "B19",
       "title": "账户与余额组合",
       "issue": 278,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.cash.accounts",
@@ -573,19 +573,21 @@
       "id": "B20",
       "title": "账户策略与容量",
       "issue": 279,
-      "status": "planned",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.operations.account_strategies",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.risk.account_capacity",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         }
       ]
     },
