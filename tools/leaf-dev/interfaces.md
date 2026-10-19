@@ -39,7 +39,10 @@ Replace these illustrative values with the endpoint's verified contract.
 `page_sizes` is descending and endpoint-qualified. Paging modes are `page_number`,
 `offset` (absolute zero-based rowStart), `single` (one request with a native total)
 and `single_response` (one separately qualified response without a native total).
-`single_response` requires one width and verified identity; use
+`single_response` requires one width and verified identity. For a genuinely
+unpaged endpoint, use `page_sizes: [0]` with `EndpointContract.page_size=0` and
+omit pagination fields from the native request; zero is not a capacity limit.
+Other modes require positive widths. Use
 [its sample](example-single-response/). A field identity
 has one native column; `hash` needs reviewed native columns and preserves native
 JSON. Optional `latest_by` selects the newest conflicting row; conflicts still

@@ -299,7 +299,13 @@ def _validate_paging(policy: dict) -> None:
     if (
         not pages
         or len(pages) > 8
-        or any(type(size) is not int or not 0 < size <= 100000 for size in pages)
+        or any(
+            type(size) is not int
+            or not (
+                0 <= size <= 100000 if mode == "single_response" else 0 < size <= 100000
+            )
+            for size in pages
+        )
         or pages != sorted(set(pages), reverse=True)
         or mode in {"single", "single_response"}
         and len(pages) != 1

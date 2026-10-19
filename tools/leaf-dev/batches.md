@@ -2,7 +2,8 @@
 
 [机器清单](batches.json)定义批次成员和原始 list/get 范围；[流程](workflow.md)定义开发与验收。
 清单随已验收的 SDK 实现合并，未合并的历史 WIP 不计交付。
-四个 bundled pilots 单独统计，不占原始 **79 packages / 106 actions** 的分母。
+四个 bundled pilots 单独统计。原始基线为 **79 packages / 106 actions**；
+经数据负责人确认，B07 的 `risk.metrics` 拆为两个独立 List，当前清单为 **80 packages / 107 actions**。
 
 ## 基础能力
 
@@ -27,13 +28,12 @@ Get 和 `list --live --with-detail` 不发布业务缓存或导入 Duckdog。
 ## B01–B10 交付
 
 B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issues/262)。
-这九个批次共 **41 leaves / 61 actions**：
+这九个批次共 **42 leaves / 62 actions**：
 
-- **37/38 Lists、23/23 Gets**，合计 **60/61 actions**；**40/41 leaves** 全操作完成。
-- 整批完成 B01、B02、B03、B05、B06、B08、B09、B10；B07 仅 `risk.metrics` List 保持 HOLD。
-- 全局逐 leaf/action 累计为 **40/79 完整 leaves、60/106 actions**；仍有 39 leaves、46 actions 未完成。
-- `batches.json.status` 只标整批：`leaf.py batches` 的 delivered 汇总为 **37 packages / 54 actions**，
-  另有 B07 的 3 leaves / 6 actions 已交付；两个统计口径不能相加重复计数。
+- **39/39 Lists、23/23 Gets**，合计 **62/62 actions**；**42/42 leaves** 全操作完成。
+- 整批完成 B01、B02、B03、B05、B06、B07、B08、B09、B10；当前范围无 HOLD。
+- 全局逐 leaf/action 累计为 **42/80 完整 leaves、62/107 actions**；仍有 38 leaves、45 actions 未完成。
+- `batches.json.status` 只标整批；现与逐 leaf/action 口径一致：**42 packages / 62 actions**。
 
 | Batch | SDK List / 原范围 | SDK Get / 原范围 | 全操作完成 leaves | 范围依据 |
 | --- | --- | --- | --- | --- |
@@ -42,16 +42,19 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 | B03 | 9/9 | 1/1 | 9/9 | [#262](https://github.com/proletariat64/dogopencli/issues/262) |
 | B05 | 5/5 | 3/3 | 5/5 | [#264](https://github.com/proletariat64/dogopencli/issues/264) |
 | B06 | 2/2 | 3/3 | 3/3 | [#265](https://github.com/proletariat64/dogopencli/issues/265) |
-| B07 | 3/4 | 3/3 | 3/4 | [#266](https://github.com/proletariat64/dogopencli/issues/266) |
+| B07 | 5/5 | 3/3 | 5/5 | [#266](https://github.com/proletariat64/dogopencli/issues/266) |
 | B08 | 6/6 | 5/5 | 6/6 | [#267](https://github.com/proletariat64/dogopencli/issues/267) |
 | B09 | 2/2 | 3/3 | 3/3 | [#268](https://github.com/proletariat64/dogopencli/issues/268) |
 | B10 | 1/1 | 2/2 | 2/2 | [#269](https://github.com/proletariat64/dogopencli/issues/269) |
 
-## 保留的 HOLD
+## B07 指标拆分
 
-`liquidity.risk.metrics` List 由 [#305](https://github.com/proletariat64/dogopencli/issues/305)
-跟踪：原生响应无 total，单次非空结果仍缺少整份响应覆盖范围的资格证明。
-它不因 SDK 提供 `single_response` 就自动满足完整性要求，B07 和父任务保持未完成。
+[#305](https://github.com/proletariat64/dogopencli/issues/305) 记录数据负责人确认的两个独立 simple Lists：
+`liquidity.risk.deposit_concentration` 固定查询 `CONCENTRATION_RATE`；
+`liquidity.risk.credit_usage` 固定查询 `CREDIT_USAGE_RATE`（银行交易对手额度使用率）。
+各自查询同一接口，保留原生整数 `id`、完整记录和每行独立的 `reportTime`，不对齐时间或合并结果。
+`single_response` 仅覆盖该租户与指标已发布的响应集合；原生 total 保持未知，
+不据此证明所有银行或历史时点均有记录。两项分别完成原生结果比较、独立缓存和安装验收，B07 全范围完成。
 
 已确认的复杂关系由 leaf 表达：waterlevel Get 返回按账户 alias 查询的完整配置数组，
 不绑定当前 List 行；quotes Get 保留完整根和嵌套身份；returns 以 `investmentNo` 为根，
@@ -74,7 +77,7 @@ rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf.py batches
 | B03 | [#262](https://github.com/proletariat64/dogopencli/issues/262) | `liquidity.cash.waterlevels` L; `liquidity.forecast.adjustments` L; `liquidity.cash.statements.intraday` L; `liquidity.cash.statements.end_of_day` L; `liquidity.cash.credit_lines` L; `liquidity.cash.credit_usage` L; `liquidity.cash.group_balances` L; `liquidity.cash.pool_balances` L; `liquidity.cash.pools` LG | 9/10 | delivered |
 | B05 | [#264](https://github.com/proletariat64/dogopencli/issues/264) | `liquidity.investment.holdings` LG; `liquidity.investment.transactions` LG; `liquidity.investment.compound_ledger` LG; `liquidity.investment.benchmark_values` L; `liquidity.investment.returns` L | 5/8 | delivered |
 | B06 | [#265](https://github.com/proletariat64/dogopencli/issues/265) | `liquidity.rules.notification` G; `liquidity.rules.transfer` LG; `liquidity.rules.waterlevel` LG | 3/5 | delivered |
-| B07 | [#266](https://github.com/proletariat64/dogopencli/issues/266) | `liquidity.risk.anomalies` LG; `liquidity.risk.events` LG; `liquidity.risk.metrics` L; `liquidity.risk.sla` LG | 4/7 | partial |
+| B07 | [#266](https://github.com/proletariat64/dogopencli/issues/266) | `liquidity.risk.anomalies` LG; `liquidity.risk.events` LG; `liquidity.risk.deposit_concentration` L; `liquidity.risk.credit_usage` L; `liquidity.risk.sla` LG | 5/8 | delivered |
 | B08 | [#267](https://github.com/proletariat64/dogopencli/issues/267) | `liquidity.operations.asset_trades` LG; `liquidity.operations.forwards` LG; `liquidity.operations.prefunds` LG; `liquidity.operations.demands` LG; `liquidity.operations.transfers` LG; `liquidity.operations.swaps` L | 6/11 | delivered |
 | B09 | [#268](https://github.com/proletariat64/dogopencli/issues/268) | `liquidity.investment.rfqs` LG; `liquidity.investment.quotes` LG; `liquidity.investment.quote_groups` G | 3/5 | delivered |
 | B10 | [#269](https://github.com/proletariat64/dogopencli/issues/269) | `liquidity.ledger.customers` G; `liquidity.network.account_capabilities` LG | 2/3 | delivered |
@@ -103,4 +106,4 @@ rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf.py batches
 | `feat/b06-issue265` | [#287](https://github.com/proletariat64/dogopencli/pull/287) | 暂保留，最后另行清理 |
 
 这些分支已有历史开发与验收记录，但不是当前已合并的 SDK 交付，不据此关闭批次。
-后续任务以当前 master、对应批次 ticket 和 SDK 手册为起点；原始批次与 HOLD 的收尾分别验收。
+后续任务以当前 master、对应批次 ticket 和 SDK 手册为起点；当前清单范围与待验收操作分别验收。

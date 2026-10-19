@@ -1,8 +1,8 @@
 {
   "parent_issue": 218,
   "tools_issue": 261,
-  "expected_packages": 79,
-  "expected_actions": 106,
+  "expected_packages": 80,
+  "expected_actions": 107,
   "reference_commit": "a7e5c5ead675487646eb9a53d73ec9e0aeb944f9",
   "batches": [
     {
@@ -214,7 +214,7 @@
       "id": "B07",
       "title": "风险事件、指标与SLA",
       "issue": 266,
-      "status": "planned",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.risk.anomalies",
@@ -231,7 +231,13 @@
           ]
         },
         {
-          "identity": "liquidity.risk.metrics",
+          "identity": "liquidity.risk.deposit_concentration",
+          "operations": [
+            "list"
+          ]
+        },
+        {
+          "identity": "liquidity.risk.credit_usage",
           "operations": [
             "list"
           ]

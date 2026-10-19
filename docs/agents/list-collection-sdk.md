@@ -42,7 +42,8 @@ For a List leaf, `collection` is optional during migration. When present, it is 
 ```
 
 `paging.mode`: `offset`, `page_number`, `single` or the explicitly qualified
-`single_response` described below. Sizes must be nonempty, unique, positive,
+`single_response` described below. Sizes must be nonempty, unique, positive
+(except the explicit unpaged declaration below),
 individually endpoint-qualified and descending. `single` and `single_response`
 have exactly one size. Offset position is absolute zero-based `rowStart`;
 numbered pages start at `contract.one_based ? 1 : 0`.
@@ -63,6 +64,12 @@ The capability implements pure `parse_rows(body) -> (native_rows, None)` and
 declares verified native identity. The host makes one logical page request;
 there is no offset iteration, alternate width, rebuild or learned width.
 Existing bounded transport retries still apply to that request.
+
+For a native endpoint with no pagination fields, declare `page_sizes: [0]` and
+`EndpointContract.page_size=0`. Zero means unpaged, not a capacity limit; the
+leaf request builder must omit pagination fields. Only `single_response` accepts
+this declaration, and its size must still match the endpoint-qualified contract.
+Do not invent a positive width for an unpaged endpoint.
 
 Evidence keeps `reported_total=null`, `total_semantics="unknown"` and
 `coverage_basis="qualified_single_response"`; arrivals, unique count and duplicate
