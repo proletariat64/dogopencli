@@ -4,6 +4,8 @@ Build ordinary List and native Get leaves with the host SDKs. Start from
 the executable [List+Get](example/) or [Get-only](example-get-only/) sample;
 use [interfaces](interfaces.md) for declarations and
 [Get SDK](../../docs/agents/get-sdk.md) for detail/composition semantics.
+For accepted dependent inquiries or Python orchestration, read
+[Custom query SDK](../../docs/agents/custom-query-sdk.md) before implementation.
 For an assigned migration batch, also follow [the migration procedure](workflow.md).
 
 ## 1. Qualify the native inquiry
@@ -71,13 +73,21 @@ Get-only starts from [its own sample](example-get-only/) and needs no List metho
 as `{record, detail}`. [Get SDK](../../docs/agents/get-sdk.md) owns binding rules,
 windowing, projection, atomic failure and native-root coverage limits.
 
-Keep the standard leaf in one root adapter file. Resolve optional resources from
+When queries depend on earlier results, explicitly choose `execution: "custom"`
+for the affected operation and implement its Python entry with the host's named
+query tools. The [custom contract](../../docs/agents/custom-query-sdk.md) owns
+declarations, shared budgets, qualified refusals and source/relationship evidence.
+Standard and custom execution may coexist across List and Get.
+
+Keep the leaf in one root adapter file. Resolve optional resources from
 `Path(__file__).parent` inside methods; bare sibling imports have no package-loader
 support. Installed adapters use host dependencies; installation installs no new
 Python dependencies. Imports and construction must be free of side effects.
 
-**Done:** a self-contained SDK declaration and native request/parser, with no
-leaf-owned querying, pagination or cache publisher.
+**Done:** a self-contained SDK declaration and native request/parser. Standard
+operations delegate acquisition to their SDK; custom operations orchestrate only
+through named tools and return business coverage. The host owns pagination,
+authentication and publication in both cases.
 
 ## 3. Exercise the public CLI with fake responses
 
@@ -101,6 +111,9 @@ For `single_response`, check one request, unknown total, declared coverage basis
 duplicates and a response larger than the requested width. For `sources`, check
 independent native totals/scopes, shared execution bounds, exact child preservation,
 atomic failure and persisted source evidence after refresh/offline replay.
+For custom execution, also check dependent requests, physical request budgets
+including retries/probes, qualified refusal versus hard failure, contradictory
+coverage rejection and retained source/relationship evidence.
 
 **Done:** focused CLI checks and required repository tests/lint/doc/review gates pass.
 Fake transport proves behavior, not production qualification.

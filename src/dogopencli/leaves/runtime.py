@@ -30,6 +30,13 @@ from dogopencli.result_policy import (
 )
 from dogopencli.temporary_query import display_options, is_stale, window_rows
 
+from .query import (
+    QueryBudget,
+    QueryTools,
+    query_capabilities,
+    validate_detail_lookup,
+    validate_detail_result,
+)
 from .registry import Leaf
 
 
@@ -109,6 +116,16 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
         "adapter_binding": leaf.manifest["adapter"],
         "adapter_sha256": leaf.adapter_sha256,
     }
+    custom = {
+        name: {
+            key: specification[key]
+            for key in ("execution", "queries", "max_requests", "budget_seconds")
+        }
+        for name, specification in leaf.manifest["operations"].items()
+        if specification.get("execution") == "custom"
+    }
+    if custom:
+        context["custom"] = custom
     if isinstance(capability, dict):
         context["sources"] = {
             name: {"name": item.name, "native_contract": basic(asdict(item.contract))}
@@ -132,56 +149,12 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
 
 
 def _list_capabilities(leaf: Leaf, parameters: dict) -> Any:
+    if leaf.manifest["operations"]["list"].get("execution") == "custom":
+        return query_capabilities(leaf, "list", parameters)
     sources = leaf.manifest.get("collection", {}).get("sources")
     if sources is None:
         return leaf.adapter.capability(parameters)
     return {name: leaf.adapter.source_capability(name, parameters) for name in sources}
-
-
-def _validate_detail_lookup(identity: Any) -> None:
-    if not isinstance(identity, str) or not identity.strip():
-        raise CliError(
-            "INVALID_ARGUMENT", "detail lookup must be nonempty", exit_code=2
-        )
-
-
-def _validate_detail_result(result: Any, specification: dict) -> None:
-    if specification.get("result_shape", "object") == "array":
-        if not isinstance(result, list):
-            raise CliError("INVALID_RESPONSE", "detail response must be an array")
-        rows = result
-    else:
-        if not isinstance(result, dict) or not result:
-            raise CliError(
-                "INVALID_RESPONSE", "detail response must be a nonempty object"
-            )
-        rows = [result]
-    identity = specification["result_identity"]
-    paths = identity.get("paths")
-    if paths is None:
-        paths = [[field] for field in identity["fields"]]
-    seen = set()
-    for row in rows:
-        if not isinstance(row, dict):
-            raise CliError("INVALID_RESPONSE", "detail members must be native objects")
-        values = []
-        for path in paths:
-            value = row
-            for key in path:
-                if not isinstance(value, dict) or key not in value:
-                    raise CliError("INVALID_RESPONSE", "detail identity is missing")
-                value = value[key]
-            if type(value) not in (str, int) or (
-                isinstance(value, str) and not value.strip()
-            ):
-                raise CliError(
-                    "INVALID_RESPONSE", "detail identity must be a scalar ID"
-                )
-            values.append(value)
-        key = canonical(values)
-        if key in seen:
-            raise CliError("INVALID_RESPONSE", "detail identity is duplicated")
-        seen.add(key)
 
 
 def get_detail(
@@ -192,9 +165,23 @@ def get_detail(
     *,
     capability: Any = None,
     deadline: float | None = None,
+    query_tools: QueryTools | None = None,
+    query_budget: QueryBudget | None = None,
 ) -> dict | list[dict]:
     """Acquire one validated native root through the restricted host transport."""
-    _validate_detail_lookup(identity)
+    validate_detail_lookup(identity)
+    if leaf.manifest["operations"]["get"].get("execution") == "custom":
+        tools = query_tools or QueryTools(
+            leaf,
+            "get",
+            parameters,
+            capability or query_capabilities(leaf, "get", parameters),
+            session.transport,
+            deadline=deadline,
+            budget=query_budget,
+        )
+        with tools:
+            return tools.finish_get(leaf.adapter.query_get(parameters, identity, tools))
     capability = capability or leaf.adapter.detail_capability(parameters)
     for name, arguments in (
         ("request_body", (parameters, identity)),
@@ -218,7 +205,7 @@ def get_detail(
     finally:
         transport.close()
     result = capability.parse_detail(response.body, parameters, identity)
-    _validate_detail_result(result, leaf.manifest["operations"]["get"])
+    validate_detail_result(result, leaf.manifest["operations"]["get"])
     return result
 
 
@@ -234,6 +221,15 @@ def _compose_details(
         raise CliError("INVALID_LEAF", "array Get cannot bind to List records")
     binding = leaf.manifest["operations"]["get"]["list_binding"]
     combined = []
+    query_budget = None
+    get_specification = leaf.manifest["operations"]["get"]
+    if get_specification.get("execution") == "custom":
+        from dogopencli.collect import _monotonic
+
+        query_budget = QueryBudget(
+            min(deadline, _monotonic() + get_specification["budget_seconds"]),
+            get_specification["max_requests"],
+        )
     for index, row in enumerate(rows, offset + 1):
         try:
             identity = row.get(binding["identity_field"])
@@ -285,7 +281,12 @@ def _compose_details(
                     )
                 parameters[name.replace("-", "_")] = value
             record = get_detail(
-                leaf, session, parameters, str(identity), deadline=deadline
+                leaf,
+                session,
+                parameters,
+                str(identity),
+                deadline=deadline,
+                query_budget=query_budget,
             )
             combined.append({"record": _project([row], fields)[0], "detail": record})
         except CliError as error:
@@ -321,13 +322,29 @@ def execute(
             removed = store.remove(namespace)
         return {"leaf": leaf.id, "pruned": removed}, {"source": "cache"}
     if operation == "get":
-        _validate_detail_lookup(args.detail_identity)
-        capability = leaf.adapter.detail_capability(parameters)
+        validate_detail_lookup(args.detail_identity)
+        custom_get = leaf.manifest["operations"]["get"].get("execution") == "custom"
+        capability = (
+            query_capabilities(leaf, "get", parameters)
+            if custom_get
+            else leaf.adapter.detail_capability(parameters)
+        )
+        startup = next(iter(capability.values())) if custom_get else capability
+        tools = None
         with inquiry_session(
-            config_file=config_file, startup_url=capability.page_url
+            config_file=config_file, startup_url=startup.page_url
         ) as session:
+            if custom_get:
+                tools = QueryTools(
+                    leaf, "get", parameters, capability, session.transport
+                )
             record = get_detail(
-                leaf, session, parameters, args.detail_identity, capability=capability
+                leaf,
+                session,
+                parameters,
+                args.detail_identity,
+                capability=capability,
+                query_tools=tools,
             )
         is_array = leaf.manifest["operations"]["get"].get("result_shape") == "array"
         rows = record if is_array else [record]
@@ -340,11 +357,15 @@ def execute(
             "query": {"identity": args.detail_identity, "parameters": parameters},
             "fetched_at": now().isoformat(),
             "returned_count": len(rows),
-            "detail_scope": "native_root",
+            "detail_scope": "custom" if custom_get else "native_root",
             "detail_coverage": (
-                "One native root response; separate histories, logs and "
+                "Leaf-defined custom query; relationships and coverage follow "
+                "the declared leaf contract."
+                if custom_get
+                else "One native root response; separate histories, logs and "
                 "child pages are not acquired."
             ),
+            **({"query_evidence": tools.evidence()} if tools is not None else {}),
         }
     definitions = leaf.manifest["operations"]["list"].get("parameters", [])
     local_parameters = {
@@ -377,6 +398,9 @@ def execute(
             contract_id = _contract_id(leaf, capability)
             fetched_at = now().isoformat()
             collection = leaf.manifest.get("collection")
+            custom_list = (
+                leaf.manifest["operations"]["list"].get("execution") == "custom"
+            )
             sources = (
                 {
                     name: (item, leaf.adapter.source_scope(name, parameters))
@@ -386,13 +410,27 @@ def execute(
                 else None
             )
             startup = (
-                next(iter(capability.values())) if sources is not None else capability
+                next(iter(capability.values()))
+                if sources is not None or custom_list
+                else capability
             )
             with inquiry_session(
                 config_file=config_file,
                 startup_url=getattr(startup, "page_url", None),
             ) as session:
-                if sources is not None:
+                if custom_list:
+                    with QueryTools(
+                        leaf,
+                        "list",
+                        parameters,
+                        capability,
+                        session.transport,
+                        state_file=config_file.parent / "collection-state.json",
+                    ) as tools:
+                        collected = tools.finish_list(
+                            leaf.adapter.query_list(parameters, tools)
+                        )
+                elif sources is not None:
                     collected = collect_sources(
                         sources,
                         session.transport,
@@ -428,7 +466,10 @@ def execute(
                     evidence,
                     require_complete=(
                         args.require_complete
-                        or (operation == "refresh" and "collection" in leaf.manifest)
+                        or (
+                            operation == "refresh"
+                            and ("collection" in leaf.manifest or custom_list)
+                        )
                     ),
                     mode=operation,
                 )
@@ -597,14 +638,22 @@ def execute(
             "total_semantics": evidence.total_semantics,
         }
         if args.with_detail:
+            custom_detail = (
+                leaf.manifest["operations"]["get"].get("execution") == "custom"
+            )
             meta.update(
                 {
                     "with_detail": True,
-                    "detail_scope": "native_root",
+                    "detail_scope": "custom" if custom_detail else "native_root",
                     "detail_count": len(displayed),
                     "detail_window": {"offset": offset, "limit": limit},
                     "detail_coverage": (
-                        "Only selected List rows; one native root response per row. "
+                        "Only selected List rows; each custom Get follows its "
+                        "declared leaf relationship and coverage contract. "
+                        "Detail success does not expand List coverage."
+                        if custom_detail
+                        else "Only selected List rows; "
+                        "one native root response per row. "
                         "Separate histories, logs and child pages are not acquired. "
                         "Detail success does not expand List coverage."
                     ),

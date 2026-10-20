@@ -14,6 +14,8 @@ fields. Start from [leaf.json](example/leaf.json), then run `leaf.py verify`.
 | `domain`, `name` | Known host domain and dotted leaf name; identity is `domain.name`. |
 | `adapter` | Root Python file and exported object, e.g. `adapter.py:adapter`. |
 | `operations` | Verified `list` and/or `get`, each with description and parameters. Host provides describe/help, plus refresh/prune for List. |
+| `operations.<action>.execution` | `standard` (also the omission convention) or explicit `custom`; chosen independently for List/Get. |
+| Custom operation `queries`, `max_requests`, `budget_seconds` | Named List/detail inquiries and shared execution bounds; see [Custom query SDK](../../docs/agents/custom-query-sdk.md). |
 | `summary`, `purpose`, `fields` | Discovery and business field meanings; preserve unknown native fields in output. |
 | `identity`, `identity_description` | Native List identity and its meaning; Get-only may use an empty List identity. |
 | `operations.get.lookup`, `result_identity` | Positional lookup meaning and independently declared returned identity. Use literal top-level `fields` or exact object-key `paths`, never both; include descriptions. |
@@ -21,7 +23,7 @@ fields. Start from [leaf.json](example/leaf.json), then run `leaf.py verify`.
 | `operations.get.list_binding` | Optional qualified same-value List field/context mapping enabling `--live --with-detail` for object Gets; array Gets cannot bind to List records. |
 | `limitations`, `examples` | Scope/interpretation limits and valid action-first commands. |
 | `dataset.relation` | Unique SQL binding for List; omit for get-only. |
-| `collection` | Host List SDK provider, primary ID and exactly one of native `paging` or flat `sources`; omit for get-only. |
+| `collection` | Standard List SDK provider, primary ID and exactly one of native `paging` or flat `sources`; omit for get-only and custom List. |
 
 A standard SDK List declares:
 
@@ -97,7 +99,10 @@ The [runtime](../../src/dogopencli/leaves/runtime.py) invokes these methods:
 | `assemble(records_by_source, parameters)` | Pure leaf-owned mapping of all complete sources to reviewed aggregate roots; no queries. |
 | `scope(parameters)` | Stable string describing the native acquisition scope; canonical JSON suits structured inputs. |
 | `filter(records, parameters)` | Supported local filters only; return unchanged records when none are supported. |
-| `detail_capability(parameters)` | For declared Get: independent endpoint and pure native request/parser hooks. No inquiry. |
+| `detail_capability(parameters)` | For standard Get: independent endpoint and pure native request/parser hooks. No inquiry. |
+| `query_capability(operation, name, parameters)` | Custom operation: pure capability for one declared named inquiry. |
+| `query_list(parameters, tools)` | Custom List: Python orchestration returning `CustomListResult` with records and business coverage. |
+| `query_get(parameters, identity, tools)` | Custom Get: Python orchestration returning its declared public root. |
 
 For SDK List, the capability supplies:
 
@@ -127,14 +132,16 @@ Get remains a native detail inquiry, independent of List. Its capability supplie
 status, declared native object/array shape, returned identity and scope before
 returning the native value unchanged. Nested identity paths resolve exact object
 keys; they neither flatten the result nor establish a business relationship.
-Hooks receive no session/transport. Get-only requires only `detail_capability`;
+Hooks receive no session/transport. Standard Get-only requires only `detail_capability`;
 List methods apply only when List is declared.
 
 [Get SDK](../../docs/agents/get-sdk.md) owns the exact declaration/binding,
 live-only execution, native-root coverage and `{record, detail}` output rules.
 
-An endpoint requiring custom acquisition or unresolved semantics needs a bounded
-ticket and explicit tests; consult the SDK contract first. Existing packages
+For dependent inquiries or accepted custom orchestration, follow
+[Custom query SDK](../../docs/agents/custom-query-sdk.md) for explicit operation
+declarations, named tools, execution bounds and coverage. Unresolved business
+semantics still require scoped qualification before implementation. Existing packages
 without `collection` require their own `collector`; this is not the standard
 SDK development path.
 

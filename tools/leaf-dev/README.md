@@ -1,6 +1,6 @@
 # Leaf 开发
 
-[手册](handbook.md) · [接口](interfaces.md) · [List SDK](../../docs/agents/list-collection-sdk.md) · [Get SDK](../../docs/agents/get-sdk.md) · [流程](workflow.md) · [批次](batches.md) · [Duckdog 导入](duckdog-import.md)
+[手册](handbook.md) · [接口](interfaces.md) · [List SDK](../../docs/agents/list-collection-sdk.md) · [Get SDK](../../docs/agents/get-sdk.md) · [Custom SDK](../../docs/agents/custom-query-sdk.md) · [流程](workflow.md) · [批次](batches.md) · [Duckdog 导入](duckdog-import.md)
 
 普通 List 使用宿主 SDK：leaf 声明 provider、分页和原生主键，只实现请求与解析；
 宿主负责采集循环、重试、完整性及缓存发布。
@@ -11,6 +11,9 @@
 已单独确认整份响应覆盖范围但无原生 total 的 List，可声明 `single_response`；
 已确认的多源关系声明 `sources`，由宿主完整采集各源后调用 leaf 的纯 `assemble`。
 缺少 total 或发现相似字段本身不构成这两种声明的依据。
+需要根据前一查询结果取得详情等依赖编排时，按操作显式选择 `execution: "custom"`；
+leaf 用 Python 调用宿主命名查询工具，宿主共享请求预算并保留失败和采集证据。
+声明、入口与覆盖责任见 [Custom SDK](../../docs/agents/custom-query-sdk.md)。
 Get 使用独立详情 capability，只实现原生请求构造和解析验证。已确认关联可声明
 `list_binding`，让 `list --live --with-detail` 组合本次输出窗口的 List 行与详情；
 Get 和组合查询不保存业务缓存，也不导入 Duckdog。完整契约见 [Get SDK](../../docs/agents/get-sdk.md)。
