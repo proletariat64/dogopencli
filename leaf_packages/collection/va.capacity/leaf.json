@@ -39,7 +39,7 @@
   "identity_description": "Nonblank native string ruleId; id, bankAccountVaId and accountNo are not row identities.",
   "limitations": [
     "Inquiry-only POST JSON /ivostro/api/warningUseCount/pageList.json with pageNo starting at 1 and pageSize=100. Width 100 is qualified, not a measured maximum.",
-    "The SDK acquires until the first actual short page, including an empty page after an exactly divisible scope. Native pagination totalCount and total pages are not used for stopping or completeness.",
+    "The SDK continues until two consecutive successful empty batches at width 100. A short batch alone is not terminal. Only width 100 is qualified here; smaller hole-localization probes are not allowed. Native pagination totals do not control stopping or completeness.",
     "Coverage is qualified_short_page with reported_total=null and total_semantics=unknown. Counts of arrivals, unique ruleIds, duplicates and conflicts remain distinct. Duplicates/conflicts prevent complete publication; errors and budget exhaustion never become successful empty data.",
     "All native fields, precise amounts, JSON types, unknown fields and nested array order are preserved. Output sorts ASCII digit ruleIds numerically with original-string tie-breakers, then other ruleIds lexically.",
     "Filters are exact case-sensitive local literal matches after full acquisition: same-field OR, cross-field AND. Values are not trimmed or normalized; missing/null values do not match. No backend filter is sent.",

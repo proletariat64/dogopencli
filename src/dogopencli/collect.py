@@ -471,6 +471,187 @@ class _PageBudget:
     remaining: int
 
 
+def _merge_list_row(
+    row: dict,
+    primary_id: dict,
+    latest_by: str | None,
+    ordered: list[dict],
+    positions: dict[str, int],
+    hashes: dict[str, str],
+) -> tuple[int, int]:
+    record_id = _list_identity(row, primary_id, hashes)
+    previous_index = positions.get(record_id)
+    if previous_index is None:
+        positions[record_id] = len(ordered)
+        ordered.append(row)
+        return 0, 0
+    previous = ordered[previous_index]
+    if canonical(row) == canonical(previous):
+        return 1, 0
+    if latest_by is None:
+        ordered[previous_index] = row
+    else:
+        newer = _list_timestamp(row.get(latest_by))
+        older = _list_timestamp(previous.get(latest_by))
+        if newer[0] != older[0]:
+            raise CliError(INVALID_RESPONSE, "mixed native timestamp formats")
+        if newer[1] >= older[1]:
+            ordered[previous_index] = row
+    return 1, 1
+
+
+def _short_page_candidate(
+    capability: Any,
+    transport: Any,
+    scope: str,
+    collection: dict,
+    size: int,
+    deadline: float,
+    page_budget: _PageBudget,
+    progress: Callable[[int, int], None] | None,
+    previous_holes: list[dict],
+    observations: list[dict],
+) -> CollectedScope:
+    import hashlib
+
+    from .short_page import RecordHole, ShortPageWalk
+
+    mode = collection["paging"]["mode"]
+    pages = 0
+    hashes: dict[str, str] = {}
+
+    def read(start: int, width: int) -> list[dict]:
+        nonlocal pages
+        remaining_seconds(deadline)
+        if page_budget.remaining < 1:
+            raise CliError(TIMEOUT, "List global page budget exhausted", retryable=True)
+        position = (
+            start
+            if mode == "offset"
+            else start // width + (1 if capability.contract.one_based else 0)
+        )
+        body = capability.page_body(scope, position, width)
+        page_budget.remaining -= 1
+        pages += 1
+        try:
+            response = execute_bounded(capability, transport, body, deadline)
+            if mode == "offset":
+                rows, _total = capability.parse_rows(response.body)
+            else:
+                page = capability.parse_page(response.body)
+                if page.page_size != width or page.page_num != position:
+                    raise CliError(INVALID_RESPONSE, "native page echo mismatch")
+                rows = page.records
+        except CliError as error:
+            classify = getattr(capability, "pagination_hole", None)
+            fingerprint = (
+                classify(error)
+                if error.code == BUSINESS_QUERY_FAILED and callable(classify)
+                else None
+            )
+            if fingerprint is None:
+                raise
+            if not isinstance(fingerprint, str) or not fingerprint.strip():
+                raise CliError(
+                    INVALID_RESPONSE, "invalid record-hole fingerprint"
+                ) from error
+            raise RecordHole(
+                hashlib.sha256(fingerprint.encode()).hexdigest()
+            ) from error
+        finally:
+            if progress is not None:
+                progress(pages, pages)
+        if (
+            not isinstance(rows, list)
+            or len(rows) > width
+            or any(not isinstance(row, dict) for row in rows)
+        ):
+            raise CliError(INVALID_RESPONSE, "invalid native List records or size")
+        if capability.contract.scope_field is not None and any(
+            row.get(capability.contract.scope_field) != scope for row in rows
+        ):
+            raise CliError(INVALID_RESPONSE, "native row is outside requested scope")
+        validator = getattr(capability, "validate_rows_scope", None)
+        if validator is not None:
+            validator(rows, scope)
+        return rows
+
+    def fingerprint(row: dict) -> str:
+        # Neighbor identities prevent stale positional skips after reordering.
+        # Hash field identities too: operational state never stores account IDs.
+        value = _list_identity(row, collection["primary_id"], hashes)
+        return hashlib.sha256(value.encode()).hexdigest()
+
+    walk = ShortPageWalk(
+        read,
+        fingerprint,
+        size=size,
+        sizes=_list_allowed_sizes(capability),
+        numbered=mode == "page_number",
+        observations=observations,
+    )
+    rows = walk.run(previous_holes)
+    remaining_seconds(deadline)
+    ordered: list[dict] = []
+    positions: dict[str, int] = {}
+    duplicates = conflicts = 0
+    for row in rows:
+        duplicate, conflict = _merge_list_row(
+            row,
+            collection["primary_id"],
+            collection.get("latest_by"),
+            ordered,
+            positions,
+            hashes,
+        )
+        duplicates += duplicate
+        conflicts += conflict
+    reasons = []
+    if observations:
+        reasons.append("PAGINATION_HOLES_BYPASSED")
+    if duplicates:
+        reasons.append("CROSS_PAGE_OR_INTRA_PAGE_DUPLICATES")
+    if conflicts:
+        reasons.append("IDENTITY_CONTENT_CONFLICT")
+        if collection.get("latest_by") is None:
+            reasons.append("LAST_ARRIVAL_WINS")
+    evidence = AcquisitionEvidence.for_collection(
+        complete=not duplicates and not conflicts,
+        reported_total=None,
+        collected_total=len(ordered),
+        arrivals=len(rows),
+        total_semantics="unknown",
+        coverage_basis="qualified_short_page",
+        reasons=tuple(reasons),
+    )
+    evidence = replace(
+        evidence,
+        attempts=(
+            {
+                "page_size": size,
+                "pages": pages,
+                "arrivals": len(rows),
+                "unique_count": len(ordered),
+                "duplicate_count": duplicates,
+                "conflict_count": conflicts,
+                "reported_total": None,
+                "complete": evidence.scope_complete,
+                "reasons": list(evidence.reasons),
+                "termination_reason": "two_empty_batches",
+                "terminal_batches": walk.terminal_batches,
+                "source_end": walk.end,
+                "holes": list(observations),
+                "hole_count": sum(h["end"] - h["start"] for h in observations),
+                "history_checked": walk.history_checked,
+                "history_matched": walk.history_matched,
+            },
+        ),
+    )
+    return CollectedScope(
+        ordered, evidence.scope_complete, None, size, pages, False, deadline, evidence
+    )
+
+
 def _list_candidate(
     capability: Any,
     transport: Any,
@@ -480,12 +661,27 @@ def _list_candidate(
     deadline: float,
     page_budget: _PageBudget,
     progress: Callable[[int, int], None] | None,
+    previous_holes: list[dict] | None = None,
+    observations: list[dict] | None = None,
 ) -> CollectedScope:
     """One independent native scope; positional pages are never cross-mixed."""
     mode = collection["paging"]["mode"]
     single_response = mode == "single_response"
     short_page = collection["paging"].get("termination") == "short_page"
-    without_total = single_response or short_page
+    if short_page:
+        return _short_page_candidate(
+            capability,
+            transport,
+            scope,
+            collection,
+            size,
+            deadline,
+            page_budget,
+            progress,
+            previous_holes or [],
+            observations if observations is not None else [],
+        )
+    without_total = single_response
     first_number = 1 if capability.contract.one_based else 0
     primary_id = collection["primary_id"]
     has_identity = primary_id["type"] != "unproven"
@@ -504,7 +700,6 @@ def _list_candidate(
     if not without_total and capability.contract.total_semantics != "unique_objects":
         problems.append("TOTAL_SEMANTICS_UNPROVEN")
     pages = 0
-    terminal_reason = None
 
     for index in range(page_budget.remaining):
         remaining_seconds(deadline)
@@ -520,8 +715,7 @@ def _list_candidate(
             page = capability.parse_page(response.body)
             rows, page_total = page.records, page.total_count
             empty_echo = (
-                not short_page
-                and page_total == 0
+                page_total == 0
                 and not rows
                 and page.page_num == 0
                 and page.total_pages == 0
@@ -530,17 +724,10 @@ def _list_candidate(
             if (
                 page.page_size != size
                 or (page.page_num != position and not empty_echo)
-                or (
-                    not short_page
-                    and page.total_pages != math.ceil(page_total / size)
-                    and not empty_echo
-                )
+                or (page.total_pages != math.ceil(page_total / size) and not empty_echo)
             ):
                 raise CliError(INVALID_RESPONSE, "native page echo mismatch")
 
-        if short_page:
-            # Backend totals/page counts are not coverage or termination inputs.
-            page_total = None
         if (
             (page_total is not None if without_total else type(page_total) is not int)
             or (page_total is not None and page_total < 0)
@@ -590,35 +777,17 @@ def _list_candidate(
                 observed.add(content)
                 ordered.append(row)
                 continue
-            record_id = _list_identity(row, primary_id, hashes)
-            previous_index = positions.get(record_id)
-            if previous_index is None:
-                positions[record_id] = len(ordered)
-                ordered.append(row)
-                continue
-            duplicate_count += 1
-            previous = ordered[previous_index]
-            if canonical(row) == canonical(previous):
-                continue
-            conflict_count += 1
-            if latest_by is None:
-                ordered[previous_index] = row  # last arrival, not proven newest
-                continue
-            newer = _list_timestamp(row.get(latest_by))
-            older = _list_timestamp(previous.get(latest_by))
-            if newer[0] != older[0]:
-                raise CliError(INVALID_RESPONSE, "mixed native timestamp formats")
-            if newer[1] >= older[1]:
-                ordered[previous_index] = row
+            duplicate, conflict = _merge_list_row(
+                row, primary_id, latest_by, ordered, positions, hashes
+            )
+            duplicate_count += duplicate
+            conflict_count += conflict
 
         if progress is not None:
             progress(
                 pages,
                 max(pages, math.ceil(reported / size)) if reported is not None else 1,
             )
-        if short_page and len(rows) < size:
-            terminal_reason = "short_page" if rows else "empty_page"
-            break
         if mode in ("single", "single_response") or (
             reported is not None and (index + 1) * size >= reported
         ):
@@ -644,9 +813,7 @@ def _list_candidate(
         problems.append("COUNT_MISMATCH")
     if mode == "single" and reported is not None and reported > size:
         problems.append("SINGLE_PAGE_CAPACITY")
-    complete = not problems and (
-        single_response or terminal_reason is not None or len(ordered) == reported
-    )
+    complete = not problems and (single_response or len(ordered) == reported)
     evidence = AcquisitionEvidence.for_collection(
         complete=complete,
         reported_total=reported,
@@ -656,13 +823,7 @@ def _list_candidate(
         total_semantics="unknown"
         if without_total
         else capability.contract.total_semantics,
-        coverage_basis=(
-            "qualified_short_page"
-            if short_page
-            else "qualified_single_response"
-            if single_response
-            else None
-        ),
+        coverage_basis="qualified_single_response" if single_response else None,
         reasons=tuple(problems),
         duplicate_policy="conservative",
     )
@@ -679,7 +840,6 @@ def _list_candidate(
                 "reported_total": reported,
                 "complete": evidence.scope_complete,
                 "reasons": list(evidence.reasons),
-                **({"termination_reason": terminal_reason} if short_page else {}),
             },
         ),
     )
@@ -716,7 +876,9 @@ def collect_list(
     identity and page semantics are never inferred from JSON field names.
     """
     from .collection_state import (
+        latest_holes,
         preferred_page_size,
+        remember_holes,
         remember_page_size,
         state_key,
     )
@@ -752,6 +914,32 @@ def collect_list(
     if not sizes or max_pages is not None and max_pages < 1:
         raise CliError(INVALID_RESPONSE, "invalid List acquisition limits")
     preferred_key = state_key(leaf_id, capability, scope, sizes)
+    previous_holes = (
+        latest_holes(state_file, preferred_key, collection) if short_page else []
+    )
+    observations: list[dict] = []
+
+    def save_history(status: str, holes: list[dict]) -> bool:
+        return remember_holes(
+            state_file, preferred_key, collection, {"status": status, "holes": holes}
+        )
+
+    def finish(result: CollectedScope, attempts: list[dict]) -> CollectedScope:
+        assert result.evidence is not None
+        if short_page and state_file is not None:
+            holes = result.evidence.attempts[-1]["holes"]
+            saved = save_history("complete" if result.complete else "incomplete", holes)
+            selected = max(
+                i for i, attempt in enumerate(attempts) if "holes" in attempt
+            )
+            attempts[selected] = {**attempts[selected], "history_saved": saved}
+        return replace(
+            result,
+            rebuilt=len(attempts) > 1,
+            deadline=deadline,
+            evidence=replace(result.evidence, attempts=tuple(attempts)),
+        )
+
     favored = (
         None
         if single_response
@@ -781,12 +969,18 @@ def collect_list(
     last_partial: CollectedScope | None = None
     last_timeout: CliError | None = None
     for number, size in enumerate(candidates):
-        remaining = remaining_seconds(deadline)
+        try:
+            remaining = remaining_seconds(deadline)
+        except CliError:
+            if short_page:
+                save_history("failed", observations)
+            raise
         slots = len(candidates) - number
         # Allocate time to the next qualified width, not to endless first-width retries.
         attempt_deadline = min(deadline, _monotonic() + remaining / slots)
         started = _monotonic()
         pages_before = page_budget.remaining
+        observations.clear()
         try:
             result = _list_candidate(
                 capability,
@@ -797,6 +991,8 @@ def collect_list(
                 attempt_deadline,
                 page_budget,
                 progress,
+                previous_holes,
+                observations,
             )
         except CliError as error:
             attempts.append(
@@ -809,6 +1005,8 @@ def collect_list(
                 }
             )
             if error.code != TIMEOUT:
+                if short_page:
+                    save_history("failed", observations)
                 raise
             last_timeout = error
             continue
@@ -821,23 +1019,15 @@ def collect_list(
         if result.complete:
             if not single_response:
                 remember_page_size(state_file, preferred_key, size)
-            return replace(
-                result,
-                rebuilt=number > 0,
-                deadline=deadline,
-                evidence=replace(result.evidence, attempts=tuple(attempts)),
-            )
+            return finish(result, attempts)
         last_partial = result
 
     if last_partial is not None:
         assert last_partial.evidence is not None
-        return replace(
-            last_partial,
-            rebuilt=len(attempts) > 1,
-            deadline=deadline,
-            evidence=replace(last_partial.evidence, attempts=tuple(attempts)),
-        )
+        return finish(last_partial, attempts)
     if last_timeout is not None:
+        if short_page:
+            save_history("failed", observations)
         raise last_timeout
     raise CliError(TIMEOUT, "List collection exhausted all permitted widths")
 
@@ -964,6 +1154,12 @@ def collect_sources(
         arrivals=len(assembled),
         total_semantics="assembled_roots",
         coverage_basis="validated_sources",
+        reasons=("PAGINATION_HOLES_BYPASSED",)
+        if any(
+            "PAGINATION_HOLES_BYPASSED" in source["acquisition"]["reasons"]
+            for source in source_evidence.values()
+        )
+        else (),
     )
     evidence = replace(evidence, sources=source_evidence)
     return CollectedScope(

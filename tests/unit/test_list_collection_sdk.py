@@ -655,22 +655,24 @@ def test_short_page_ignores_totals_and_retains_native_records(mode, final_rows):
     rows = [{"id": "one"}, {"id": "two", "native": [None, False, "0.000"]}]
     first = numbered(rows, 0, 0, 2)
     last = numbered(final_rows, "unreliable", 1, 2)
-    stream = Script(first, last)
+    empty = (
+        [numbered([], None, 2, 2), numbered([], None, 3, 2)]
+        if final_rows
+        else [numbered([], None, 2, 2)]
+    )
+    stream = Script(first, last, *empty)
     result = collect(source, stream, short_page_settings(mode=mode))
     assert result.records == rows + final_rows
     assert result.complete
     position = "rowStart" if mode == "offset" else "pageNo"
     assert [request[position] for request in stream.requests] == [
-        0,
-        2 if mode == "offset" else 1,
+        n * (2 if mode == "offset" else 1) for n in range(2 + len(empty))
     ]
     evidence = result.evidence
     assert evidence.reported_total is None
     assert evidence.total_semantics == "unknown"
     assert evidence.coverage_basis == "qualified_short_page"
-    assert evidence.attempts[-1]["termination_reason"] == (
-        "short_page" if final_rows else "empty_page"
-    )
+    assert evidence.attempts[-1]["termination_reason"] == "two_empty_batches"
     assert AcquisitionEvidence.from_record(evidence.record()) == evidence
 
 
@@ -678,21 +680,23 @@ def test_short_page_exact_multiple_requires_empty_request_and_uses_one_based_pag
     source = ShortPageNative(sizes=(2,), mode="page_number")
     source.contract = replace(source.contract, one_based=True)
     stream = Script(
-        numbered([{"id": "one"}, {"id": "two"}], 2, 1, 2), numbered([], None, 2, 2)
+        numbered([{"id": "one"}, {"id": "two"}], 2, 1, 2),
+        numbered([], None, 2, 2),
+        numbered([], None, 3, 2),
     )
     result = collect(source, stream, short_page_settings())
-    assert result.complete and result.pages == 2
-    assert [q["pageNo"] for q in stream.requests] == [1, 2]
+    assert result.complete and result.pages == 3
+    assert [q["pageNo"] for q in stream.requests] == [1, 2, 3]
 
 
 def test_short_page_empty_first_response_is_complete_without_total():
     result = collect(
         ShortPageNative(sizes=(2,), mode="page_number"),
-        Script(numbered([], None, 0, 2)),
+        Script(numbered([], None, 0, 2), numbered([], None, 1, 2)),
         short_page_settings(),
     )
     assert result.complete and result.records == []
-    assert result.evidence.attempts[-1]["termination_reason"] == "empty_page"
+    assert result.evidence.attempts[-1]["termination_reason"] == "two_empty_batches"
 
 
 @pytest.mark.parametrize("conflict", [False, True])
@@ -701,7 +705,12 @@ def test_short_page_preserves_deduplication_but_rejects_complete_claim(conflict)
     last = {"id": "one", "value": 2 if conflict else 1}
     result = collect(
         ShortPageNative(sizes=(2,), mode="page_number"),
-        Script(numbered([first, {"id": "two"}], 1, 0, 2), numbered([last], 1000, 1, 2)),
+        Script(
+            numbered([first, {"id": "two"}], 1, 0, 2),
+            numbered([last], 1000, 1, 2),
+            numbered([], None, 2, 2),
+            numbered([], None, 3, 2),
+        ),
         short_page_settings(),
     )
     assert not result.complete
@@ -782,7 +791,11 @@ def test_cached_short_page_requires_terminal_evidence():
 
     result = collect(
         ShortPageNative(sizes=(2,), mode="page_number"),
-        Script(numbered([{"id": "one"}], None, 0, 2)),
+        Script(
+            numbered([{"id": "one"}], None, 0, 2),
+            numbered([], None, 1, 2),
+            numbered([], None, 2, 2),
+        ),
         short_page_settings(),
     )
     record = result.evidence.record()
@@ -802,19 +815,25 @@ def test_short_page_width_fallback_restarts_and_shares_budget():
     source = ShortPageNative(sizes=(4, 2), mode="page_number")
     stream = Script(
         numbered([{"id": "one"}] * 2, 0, 0, 4),
+        numbered([], None, 1, 4),
+        numbered([], None, 2, 4),
         numbered([{"id": "one"}, {"id": "two"}], 999, 0, 2),
         numbered([], None, 1, 2),
+        numbered([], None, 2, 2),
     )
     result = collect(source, stream, short_page_settings(sizes=(4, 2)))
     assert result.complete and result.rebuilt
     assert stream.requests == [
         {"pageNo": 0, "pageSize": 4},
+        {"pageNo": 1, "pageSize": 4},
+        {"pageNo": 2, "pageSize": 4},
         {"pageNo": 0, "pageSize": 2},
         {"pageNo": 1, "pageSize": 2},
+        {"pageNo": 2, "pageSize": 2},
     ]
     assert len(result.evidence.attempts) == 2
     assert result.evidence.attempts[0]["complete"] is False
-    assert result.evidence.attempts[1]["termination_reason"] == "empty_page"
+    assert result.evidence.attempts[1]["termination_reason"] == "two_empty_batches"
 
 
 def test_short_page_independent_source_evidence_survives_replay():
@@ -827,7 +846,11 @@ def test_short_page_independent_source_evidence_survives_replay():
         def close(self):
             pass
 
-    stream = SourceStream(numbered([{"id": "one"}], None, 0, 2))
+    stream = SourceStream(
+        numbered([{"id": "one"}], None, 0, 2),
+        numbered([], None, 1, 2),
+        numbered([], None, 2, 2),
+    )
     settings = short_page_settings()
     policy = {key: settings[key] for key in ("paging", "primary_id")}
     result = collect_sources(

@@ -83,40 +83,84 @@ Native-total termination still requires native totals; a missing total alone doe
 not qualify this mode. See
 [the executable sample](../../tools/leaf-dev/example-single-response/).
 
-## Qualified short-page termination
+## Qualified short-page termination and hole recovery
 
-For an independently verified endpoint that exhausts at the first short page,
-declare `paging.termination: "short_page"` with `mode: "page_number"` or `"offset"`.
-Omission (or `"native_total"`) keeps existing native-total termination. The
-short-page strategy requires positive endpoint-qualified widths and a verified
-native identity; it cannot combine with `single` or `single_response`.
+Declare `paging.termination: "short_page"` for a separately qualified positional
+endpoint with stable ordering across its allowed widths. Use `mode: "offset"`
+or `"page_number"`, positive endpoint-qualified widths and verified native
+identity. Omission or `"native_total"` retains native-total collection. Single
+modes cannot select this strategy. The manifest syntax is unchanged.
 
-The host starts at the endpoint's first page/offset and advances by the requested
-page stride. A full page always requires another request, even if a native total
-says otherwise. Actual `len(rows) < requested_size` ends acquisition, including
-an empty page after an exactly divisible scope. Native totals and total-page
-counts are ignored for stopping and completeness. Numbered page/size echoes
-still must match the request; parsers may return `None` for both total fields in
-`ParsedPage`. Offset parsers may return `(rows, None)`. Never fabricate totals.
+The SDK advances at the selected large stride. Successful short batches trigger
+local inspection rather than immediate termination. Where smaller widths are
+qualified, the SDK subdivides only deficient intervals, retaining full intervals
+without further subdivision. Successful subdivisions must reconstruct their
+successful parent records exactly, including order and types. A contradiction is
+a hard invalid-response error, not a recovered hole. Probe responses never add
+arrivals or duplicates to the output. Actual primary batches remain native JSON.
 
-Shortness alone is not endpoint qualification. In particular, a server-side cap
-or ignored width must not silently become exhaustion evidence. Qualify each
-declared width and the stop rule separately. The
-[VA capacity package](../../leaf_packages/collection/va.capacity/) is a concrete
-numbered example with native records and no leaf-owned acquisition loop.
+Successful empty positions before later records are holes. Once revalidated,
+known hole intervals can be skipped with exact positional boundaries. The SDK
+ends only after **two consecutive successful empty batches at the original large
+stride**. Very large continuous omissions beyond that boundary are outside this
+accepted tolerance policy. Native totals and total-page counts are diagnostic,
+not stopping or completeness inputs; `reported_total` remains null. Numbered
+page/size echoes must still match exactly. No clamped page or duplicate identity
+is an end signal.
 
-This strategy reuses restricted transport, retries, global deadlines/page budgets,
-width fallback from the beginning, identity checks, deduplication and conflict
-diagnostics. Duplicates/conflicts still prevent complete publication. A full last
-budgeted page or any auth/business/schema failure cannot become terminal empty
-success. Live never publishes; failed/empty/incomplete refresh preserves prior
-records and capture time.
+Probe widths come only from `EndpointContract.allowed_page_sizes` or its nested
+`json_body_contracts`, bounded by the selected large width. The SDK never loosens
+transport permissions. Numbered requests must satisfy
+`start = (page_number - first_page) * width`; arbitrary widths do not imply
+arbitrary offsets. A normal fixed-width final short page still works after the
+two empty confirmations, but an interior deficient page cannot be excused if its
+endpoint has not qualified the smaller widths needed to locate the hole.
 
-Evidence uses `reported_total=null`, `total_semantics="unknown"` and
-`coverage_basis="qualified_short_page"`. Attempts retain actual pages, arrivals,
-unique/duplicate/conflict counts and `termination_reason` (`short_page` or
-`empty_page`). The observed unique count is not a backend total. This evidence
-survives offline replay and declared independent-source assembly.
+By default business failures remain hard errors. A leaf may supply pure
+`pagination_hole(error: CliError) -> str | None` to recognize a specific verified
+record-level failure. It receives only `BUSINESS_QUERY_FAILED`, returns a stable
+fingerprint string for that record error, and returns `None` for all other
+failures. The SDK hashes that fingerprint, subdivides failed intervals to single
+positions, and only bypasses confirmed points. Authentication, HTTP/network,
+permissions, schema failures and unclassified business errors never become holes.
+
+Every read, neighbor check, local subdivision and history validation consumes the
+same global page/deadline budget as ordinary collection and fallback. Different
+large-width fallback candidates still restart at zero and never mix their output.
+Duplicates or identity/content conflicts still prevent strict success and refresh.
+
+A recovered stable hole is a normal completed inquiry: strict live/refresh return
+exit 0 with `complete=true`. `warnings` includes the informational code
+`PAGINATION_HOLES_BYPASSED`. Acquisition evidence records the hole intervals,
+neighbor identity fingerprints, reused/checked history counts, actual request
+count, source end and the two terminal empty batches. Coverage remains
+`qualified_short_page`, total semantics `unknown`, termination reason
+`two_empty_batches`. The message and evidence survive refresh/offline replay and
+independent-source assembly. Old first-short-page cache contracts are invalidated.
+
+### Scoped hole memory
+
+The host keeps `<config-directory>/collection-state.holes.json`, separately from
+page-size preferences. Existing hashed keys isolate leaf/source, endpoint,
+canonical scope and qualified large widths. Each key retains a FIFO of **five
+query records**; every acquisition records its result, including an empty hole
+list or failure. Only the latest record is consulted. A latest failed/incomplete
+query, changed policy or empty list never falls back to an older record.
+
+Before bypassing a saved interval, requery the hole and its neighboring native
+identities. Repaired holes, changed error fingerprints or moved neighbors reject
+the hint and trigger ordinary discovery. Newly encountered holes enter the current
+record. Neighbor identity hashes prevent stale positional skips after reordering
+and keep account identities out of operational state; scopes, native rows, tokens,
+responses and raw error messages are never persisted there. Use private files,
+atomic replacement, a nonblocking writer lock and bounded scope retention. A busy
+or unavailable state file does not fail an otherwise successful inquiry; the
+attempt exposes `history_saved=false` and the next run discovers holes again.
+
+The [VA capacity package](../../leaf_packages/collection/va.capacity/) exercises
+normal fixed-width termination. The cash-directory source of
+`liquidity.cash.accounts` exercises stable successful-empty holes; qualifying
+that source does not deliver its separate baseline/detail composition.
 
 ## Declared independent sources
 
@@ -153,14 +197,71 @@ Raw source scopes never enter the preference file; its existing hashed keys appl
 
 - Identity must be selected by the leaf developer at design time and reviewed by a human (HIL) against business semantics. A hash cannot make non-unique columns unique. `hash` uses `sha256(canonical([typed_field_values,...]))` in declared field order, so numbers and strings cannot collide by string concatenation. Missing/null/non-scalar key parts are invalid. Collision of a 256-bit digest with different native tuples is a hard error. Do not mutate native row JSON or generate a synthetic source field.
 - Maintain a first-seen position per identity; collapse identical cross-page duplicates. On different content for the same identity, retain the row with the greatest parsed `latest_by` value when configured, breaking equal timestamps with last arrival; otherwise the **last loaded row wins**. Preserve explicit diagnostic reasons and counts, including conflicts. For an unverified ordering, last arrival is not a proof that the row is globally newest.
-- A duplicate or conflict is *not* automatically proof of complete coverage: a repeated row can conceal an omitted row. Report arrivals, unique count, duplicate count, conflicting count, reported total, and `scope_complete=false` on page overlaps or known holes.
+- A duplicate or conflict is *not* automatically proof of complete coverage: a repeated row can conceal an omitted row. Report arrivals, unique count, duplicate count, conflicting count, reported total, and `scope_complete=false` on page overlaps or unverified holes. Qualified short-page recovery records verified bypasses separately.
 - For a reported fixed unique-object total, require `unique_count == reported_total` and **no anomalous gaps/duplicates** to claim complete. Reject changing totals or invalid response envelopes; do not guess other total semantics. An unproven identity uses `primary_id: {"type":"unproven","fields":[]}` and `contract.has_identity=False`. Preserve every native arrival without deduplication; exact repeated JSON is diagnostic only. Unknown totals require a separately qualified `single_response` or short-page contract to establish completeness; count equality does not prove it. Stop an unproven read on overlap, a short page or the logical-page cap, retaining validated arrivals with explicit incomplete evidence; strict modes and refresh reject it. No synthetic ID or hash is justified.
 - Detect short pages before the expected end, empty interior pages and final unique/count shortfall. Advance by the requested page stride (not returned row count), so following valid ranges can still be read and exposed as explicitly partial. Never fill missing data or change effective reported total. A bounded fallback must **restart from position zero** using the next declared width, without mixing candidates.
 - If all declared widths fail to prove coverage, return the last validated *partial* candidate for live display with incomplete evidence where possible; strict modes reject it. An unavailable or malformed page producing a hard business/authorization/schema error never becomes partial success. Unsupported request widths are never guessed.
 
+## Upstream blacklist filtering and pagination holes
+
+这是多个 leaf 遇到 total 不符、短页、坏页或页面重复时的重要排查参考。
+业务负责人在 HIL 中确认：被 blacklist 排除的账户及相应数据不应进入业务输出。
+部分上游查询会在取数链路中旁路过滤这些账户；如果计数、分页、关联数据查询和
+前端展示没有协调处理，就可能留下输出空洞。排查时应先区分合理的业务排除与
+有缺陷的输出处理，不能为凑齐 total 恢复被排除的数据。
+
+### 业务解释与已验证现象
+
+Blacklist 是业务负责人提供的跨 leaf 根因线索；其他 leaf 的类似症状也可能同源，
+但相似现象不等于每个 endpoint 已确认该根因。即使返回 `account not exists`，
+也不能仅凭错误消息断定该账户已经进入 blacklist。
+
+付款渠道 [payment.channel / #275](https://github.com/proletariat64/dogopencli/issues/275)
+已通过原生查询和 Playwright 页面操作复现两类现象：
+
+- 同一账户／币种的 `debit account not exists` 会使包含它的整页查询业务失败，
+  后续页仍可成功。观测到的故障位置随 pageSize 移动：10 条／页时第 15 页，
+  50 条／页时第 3 页，100 条／页时第 2 页。这支持记录或关联数据相关的故障，
+  不是 total 驱动的终止问题；这些位置是定位例子，不是固定验收断言。
+- 前端在失败后仍推进显示页码，保留上一成功页的表格，因此相邻页看起来重复。
+  另有成功响应之间原生记录完全相同的跨页重复，必须与前端保留旧表格分别判断。
+- 该接口越界请求会回显末页页码并重复返回末页记录，而非返回成功空页。
+  单条向前遍历也会遇到此行为。必须保留请求与回显页码，不能把末页重复响应作为
+  新一批数据保存；诊断遍历因此停止不等于已证明业务数据完整，原有 SDK 的回显
+  校验仍然适用。重复 ID 本身也不能充当结束信号。
+
+上述实验验证了输出故障；没有验证后台 blacklist 的执行分支、过滤发生位置，
+也没有证明其他 leaf 的 total 偏差都由 blacklist 引起。
+
+位置稳定性与跨宽度覆盖必须分别验证：payment.channel 的单条坏位置、错误特征
+及邻接记录可重复命中，同一 pageSize 的查询也可重复返回相同记录；但大页与对应
+单条／小页查询的记录集合不一致，单条连续页也会重复返回相同记录。因此固定宽度
+下的 hole 提示稳定，不足以证明缩步、绕行及恢复大步长能覆盖同一个原生区间。
+采用可变步长前须证明跨宽度的位置映射，不能将 `pageSize=1` 自身当作完整性真值。
+
+### 遇到类似问题时如何定位
+
+1. 同时保留请求范围、页码／offset、pageSize、原生 total、原生响应和业务成功标志。
+   分开记录实际到达行数与已验证身份下的唯一行数，不用展示行数覆盖原生 total。
+2. 明确 total 统计的是过滤前候选还是过滤后可输出记录；含义未证实时保留未知。
+   total 大于输出数量可能与合理的业务排除有关，也可能是真正漏数，不能仅凭差额判断。
+3. 用限定范围内的不同 pageSize 定位故障区间，核对关联账户／币种及同一错误。
+   每种宽度保留独立证据；诊断实验不代表 SDK 可在业务失败后自动切换宽度。
+4. 页面复现同时检查网络响应、当前页码和表格内容。HTTP 200、页码推进或仍有表格
+   都不能证明本页业务成功；逐字段核对原生记录，不能从页面重复推定主键不唯一。
+5. 逐 leaf 确认过滤与分页的先后关系。total 不可信并不自动证明首个短页就是结尾；
+   页内过滤也可能在中间产生短页或空页。采用
+   [short-page 策略](#qualified-short-page-termination) 前仍须证明停止条件。
+6. 诊断中继续检查坏页之后的页面，只能证明后续范围可读，不能补齐坏页的未知记录。
+   保留缺口，不能把失败页当空页、用上一页顶替，或因最终出现短页而宣布完整。
+
+这些参考不授权把任意业务错误当作空页。当前 `short_page` 的稳定空洞容错范围、
+显式记录级错误识别及正常退出消息见上述契约。跨宽度返回集合不稳定的 channel
+不作为完整性验收依据；原始响应、实际账户与 blacklist 明细仍只保存在私有证据中。
+
 ## Page-size fallback and persistence
 
-- Prefer the last **completely successful** size if present and still declared; otherwise use manifest order. When the primary width times out within its per-attempt allocation or produces a validated short/duplicate/gap candidate, retry the **full** requested scope from offset zero using the next allowed size. No fallback on authentication errors, unknown schema, permissions, changed native totals or business failures.
+- Prefer the last **completely successful** size if present and still declared; otherwise use manifest order. When the primary width times out within its per-attempt allocation or produces a validated short/duplicate/gap candidate, retry the **full** requested scope from offset zero using the next allowed size. No fallback on authentication errors, unknown schema, permissions, changed native totals or unclassified business failures; short-page local hole recovery is distinct from whole-candidate width fallback.
 - Share an absolute global deadline and a **single maximum logical-page budget** across all fallback attempts, counting even a page that ends in transport timeout. Each retry of the same page by the existing network retry policy is part of that one logical position; never reset the page allowance on fallback.
 - Store only `preferred_page_size` and minimal harmless performance observations in `<config-directory>/collection-state.json`, keyed by a hash of leaf ID, endpoint/method and canonical scope + qualified widths. Never persist tokens, business rows, raw scopes, endpoint responses, or mutate the installed leaf manifest. Read corrupt/missing state or a no-longer-qualified width as no preference. A still-qualified preferred width is only request ordering; every candidate is revalidated, so adapter-source or identity fingerprints are unnecessary. Atomic replacement and restrictive permissions. Limit retained keys.
 - Updates happen **only after proven-complete acquisitions**; an unsuccessful fallback must not promote a width. Learning is best-effort: use a **nonblocking preference-file lock** and skip the optimization when another writer holds it, never stalling an otherwise successful inquiry.

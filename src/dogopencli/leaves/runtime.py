@@ -119,6 +119,15 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
         context["native_contract"] = basic(asdict(capability.contract))
     if "collection" in leaf.manifest:
         context["collection"] = leaf.manifest["collection"]
+        policies = leaf.manifest["collection"].get(
+            "sources", {"list": leaf.manifest["collection"]}
+        )
+        if any(
+            policy["paging"].get("termination") == "short_page"
+            for policy in policies.values()
+        ):
+            # Old first-short-page snapshots cannot prove the stronger stop rule.
+            context["short_page_terminal_batches"] = 2
     return hashlib.sha256(canonical(context).encode()).hexdigest()
 
 

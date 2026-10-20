@@ -51,15 +51,20 @@ bounds. Provider `general` works in any domain; `<domain>.collection` is private
 to its owner. Domain declarations do not register SDKs.
 
 Optional `paging.termination: "short_page"` opts numbered/offset acquisition into
-a separately qualified first-short-page stop rule. The host ignores native
-totals/total-page counts and continues after every full page; an empty page ends
-an exactly divisible scope. Require verified identity and positive qualified
-widths. Omission or `"native_total"` retains the existing stop rule. Single modes
-cannot select short-page termination. Numbered parsers retain exact page/size
-echoes but may return `None` for `ParsedPage.total_count` and `total_pages`;
-offset parsers may return `(rows, None)`. SDK deduplication, diagnostics and budgets
-still apply. Evidence uses null total and `qualified_short_page`; see the
-[VA capacity package](../../leaf_packages/collection/va.capacity/).
+stable-hole recovery and two consecutive successful empty large batches as the
+stop rule. Totals do not control progress. Require stable cross-width positions,
+verified identity and positive qualified widths; local probes use only smaller
+widths explicitly permitted by the endpoint contract. Normal fixed-width final
+short pages remain valid; interior deficiencies need qualified local probes.
+A pure optional `pagination_hole(error)` classifier may identify verified
+record-specific business errors; other failures remain hard errors. Successful
+bypasses are complete/exit 0 with a notice. The host retains five scoped query
+records and revalidates only the latest record's holes and neighboring identities.
+Omission or `"native_total"` keeps the existing rule; single modes cannot opt in.
+Numbered parsers retain exact page/size echoes and may return `None` for total
+fields; offset parsers may return `(rows, None)`. Evidence keeps null total and
+`qualified_short_page`; see the [full SDK contract](../../docs/agents/list-collection-sdk.md)
+and [VA capacity package](../../leaf_packages/collection/va.capacity/).
 
 For an accepted multi-source model, replace top-level `paging` with a nonempty
 `sources` map. Each source declares only its own `paging` and `primary_id`;

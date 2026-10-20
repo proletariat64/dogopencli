@@ -191,13 +191,51 @@ class AcquisitionEvidence:
                 INVALID_RESPONSE, "cached single-response coverage conflicts"
             )
         if coverage_basis == "qualified_short_page" and evidence.scope_complete:
-            if not attempts or attempts[-1].get("termination_reason") not in {
-                "short_page",
-                "empty_page",
-            }:
+            last = attempts[-1] if attempts else {}
+            terminal = last.get("terminal_batches")
+            size = last.get("page_size")
+            if (
+                last.get("termination_reason") != "two_empty_batches"
+                or not isinstance(terminal, list)
+                or len(terminal) != 2
+                or type(size) is not int
+                or size < 1
+                or any(
+                    not isinstance(item, dict)
+                    or type(item.get("start")) is not int
+                    or item["start"] < 0
+                    or item.get("size") != size
+                    for item in terminal
+                )
+                or terminal[1]["start"] != terminal[0]["start"] + size
+            ):
                 raise CliError(
                     INVALID_RESPONSE, "cached short-page termination is missing"
                 )
+            holes = last.get("holes")
+            end = last.get("source_end")
+            if (
+                not isinstance(holes, list)
+                or type(end) is not int
+                or end < 0
+                or end > terminal[0]["start"]
+                or any(
+                    not isinstance(hole, dict)
+                    or type(hole.get("start")) is not int
+                    or type(hole.get("end")) is not int
+                    or not 0 <= hole["start"] < hole["end"] <= end
+                    or hole.get("kind") not in ("empty", "error")
+                    for hole in holes
+                )
+                or last.get("hole_count")
+                != sum(hole["end"] - hole["start"] for hole in holes)
+                or any(
+                    a["end"] > b["start"]
+                    for a, b in zip(holes, holes[1:], strict=False)
+                )
+                or bool(holes) != ("PAGINATION_HOLES_BYPASSED" in reasons)
+            ):
+                raise CliError(INVALID_RESPONSE, "cached short-page holes are invalid")
         if (
             sources is not None
             or coverage_basis == "validated_sources"
@@ -409,8 +447,14 @@ def evaluate_result(
                     warning_code = reasons[0]
                     warning_message = "bank acquisition warnings: " + ", ".join(reasons)
             else:
-                warning_code = "DUPLICATE_ROWS"
-                warning_message = "identical duplicate rows removed"
+                if "PAGINATION_HOLES_BYPASSED" in reasons:
+                    warning_code = "PAGINATION_HOLES_BYPASSED"
+                    warning_message = (
+                        "query completed after bypassing verified pagination holes"
+                    )
+                else:
+                    warning_code = "DUPLICATE_ROWS"
+                    warning_message = "identical duplicate rows removed"
         warnings = (
             {
                 "code": warning_code,
