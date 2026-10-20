@@ -22,7 +22,9 @@ Existing leaves without `collection` retain their current collectors and behavio
 
 ## Leaf manifest
 
-For a List leaf, `collection` is optional during migration. When present, it is a closed object with no implicit defaults except optional `latest_by`, `max_pages` and `budget_seconds`:
+For a List leaf, `collection` is optional during migration. When present, it is a
+closed object. Optional `latest_by`, `max_pages` and `budget_seconds` retain their
+documented defaults; omitted `paging.termination` uses `native_total`:
 
 ```json
 {
@@ -77,8 +79,44 @@ count remain separate observations. Completeness follows the accepted response
 contract, never a fabricated total. A source ignoring requested pageSize is not
 rejected solely for returning more rows. Duplicate/conflict and native failures
 still prevent strict success/publication. Empty refresh preserves prior cache.
-Ordinary modes still require native totals; a missing total alone does not qualify
-this mode. See [the executable sample](../../tools/leaf-dev/example-single-response/).
+Native-total termination still requires native totals; a missing total alone does
+not qualify this mode. See
+[the executable sample](../../tools/leaf-dev/example-single-response/).
+
+## Qualified short-page termination
+
+For an independently verified endpoint that exhausts at the first short page,
+declare `paging.termination: "short_page"` with `mode: "page_number"` or `"offset"`.
+Omission (or `"native_total"`) keeps existing native-total termination. The
+short-page strategy requires positive endpoint-qualified widths and a verified
+native identity; it cannot combine with `single` or `single_response`.
+
+The host starts at the endpoint's first page/offset and advances by the requested
+page stride. A full page always requires another request, even if a native total
+says otherwise. Actual `len(rows) < requested_size` ends acquisition, including
+an empty page after an exactly divisible scope. Native totals and total-page
+counts are ignored for stopping and completeness. Numbered page/size echoes
+still must match the request; parsers may return `None` for both total fields in
+`ParsedPage`. Offset parsers may return `(rows, None)`. Never fabricate totals.
+
+Shortness alone is not endpoint qualification. In particular, a server-side cap
+or ignored width must not silently become exhaustion evidence. Qualify each
+declared width and the stop rule separately. The
+[VA capacity package](../../leaf_packages/collection/va.capacity/) is a concrete
+numbered example with native records and no leaf-owned acquisition loop.
+
+This strategy reuses restricted transport, retries, global deadlines/page budgets,
+width fallback from the beginning, identity checks, deduplication and conflict
+diagnostics. Duplicates/conflicts still prevent complete publication. A full last
+budgeted page or any auth/business/schema failure cannot become terminal empty
+success. Live never publishes; failed/empty/incomplete refresh preserves prior
+records and capture time.
+
+Evidence uses `reported_total=null`, `total_semantics="unknown"` and
+`coverage_basis="qualified_short_page"`. Attempts retain actual pages, arrivals,
+unique/duplicate/conflict counts and `termination_reason` (`short_page` or
+`empty_page`). The observed unique count is not a backend total. This evidence
+survives offline replay and declared independent-source assembly.
 
 ## Declared independent sources
 
@@ -116,7 +154,7 @@ Raw source scopes never enter the preference file; its existing hashed keys appl
 - Identity must be selected by the leaf developer at design time and reviewed by a human (HIL) against business semantics. A hash cannot make non-unique columns unique. `hash` uses `sha256(canonical([typed_field_values,...]))` in declared field order, so numbers and strings cannot collide by string concatenation. Missing/null/non-scalar key parts are invalid. Collision of a 256-bit digest with different native tuples is a hard error. Do not mutate native row JSON or generate a synthetic source field.
 - Maintain a first-seen position per identity; collapse identical cross-page duplicates. On different content for the same identity, retain the row with the greatest parsed `latest_by` value when configured, breaking equal timestamps with last arrival; otherwise the **last loaded row wins**. Preserve explicit diagnostic reasons and counts, including conflicts. For an unverified ordering, last arrival is not a proof that the row is globally newest.
 - A duplicate or conflict is *not* automatically proof of complete coverage: a repeated row can conceal an omitted row. Report arrivals, unique count, duplicate count, conflicting count, reported total, and `scope_complete=false` on page overlaps or known holes.
-- For a reported fixed unique-object total, require `unique_count == reported_total` and **no anomalous gaps/duplicates** to claim complete. Reject changing totals or invalid response envelopes; do not guess other total semantics. An unproven identity uses `primary_id: {"type":"unproven","fields":[]}` and `contract.has_identity=False`. Preserve every native arrival without deduplication; exact repeated JSON is diagnostic only. Outside a separately qualified `single_response` contract, unknown totals cannot establish completeness; count equality does not prove it. Stop an unproven read on overlap, a short page or the logical-page cap, retaining validated arrivals with explicit incomplete evidence; strict modes and refresh reject it. No synthetic ID or hash is justified.
+- For a reported fixed unique-object total, require `unique_count == reported_total` and **no anomalous gaps/duplicates** to claim complete. Reject changing totals or invalid response envelopes; do not guess other total semantics. An unproven identity uses `primary_id: {"type":"unproven","fields":[]}` and `contract.has_identity=False`. Preserve every native arrival without deduplication; exact repeated JSON is diagnostic only. Unknown totals require a separately qualified `single_response` or short-page contract to establish completeness; count equality does not prove it. Stop an unproven read on overlap, a short page or the logical-page cap, retaining validated arrivals with explicit incomplete evidence; strict modes and refresh reject it. No synthetic ID or hash is justified.
 - Detect short pages before the expected end, empty interior pages and final unique/count shortfall. Advance by the requested page stride (not returned row count), so following valid ranges can still be read and exposed as explicitly partial. Never fill missing data or change effective reported total. A bounded fallback must **restart from position zero** using the next declared width, without mixing candidates.
 - If all declared widths fail to prove coverage, return the last validated *partial* candidate for live display with incomplete evidence where possible; strict modes reject it. An unavailable or malformed page producing a hard business/authorization/schema error never becomes partial success. Unsupported request widths are never guessed.
 

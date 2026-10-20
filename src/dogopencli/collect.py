@@ -484,6 +484,8 @@ def _list_candidate(
     """One independent native scope; positional pages are never cross-mixed."""
     mode = collection["paging"]["mode"]
     single_response = mode == "single_response"
+    short_page = collection["paging"].get("termination") == "short_page"
+    without_total = single_response or short_page
     first_number = 1 if capability.contract.one_based else 0
     primary_id = collection["primary_id"]
     has_identity = primary_id["type"] != "unproven"
@@ -499,9 +501,10 @@ def _list_candidate(
     problems: list[str] = []
     if not has_identity:
         problems.append("IDENTITY_UNPROVEN")
-    if not single_response and capability.contract.total_semantics != "unique_objects":
+    if not without_total and capability.contract.total_semantics != "unique_objects":
         problems.append("TOTAL_SEMANTICS_UNPROVEN")
     pages = 0
+    terminal_reason = None
 
     for index in range(page_budget.remaining):
         remaining_seconds(deadline)
@@ -517,7 +520,8 @@ def _list_candidate(
             page = capability.parse_page(response.body)
             rows, page_total = page.records, page.total_count
             empty_echo = (
-                page_total == 0
+                not short_page
+                and page_total == 0
                 and not rows
                 and page.page_num == 0
                 and page.total_pages == 0
@@ -526,12 +530,19 @@ def _list_candidate(
             if (
                 page.page_size != size
                 or (page.page_num != position and not empty_echo)
-                or (page.total_pages != math.ceil(page_total / size) and not empty_echo)
+                or (
+                    not short_page
+                    and page.total_pages != math.ceil(page_total / size)
+                    and not empty_echo
+                )
             ):
                 raise CliError(INVALID_RESPONSE, "native page echo mismatch")
 
+        if short_page:
+            # Backend totals/page counts are not coverage or termination inputs.
+            page_total = None
         if (
-            (page_total is not None if single_response else type(page_total) is not int)
+            (page_total is not None if without_total else type(page_total) is not int)
             or (page_total is not None and page_total < 0)
             or not isinstance(rows, list)
             or any(not isinstance(row, dict) for row in rows)
@@ -539,7 +550,7 @@ def _list_candidate(
             raise CliError(INVALID_RESPONSE, "invalid native List records or total")
         if not single_response and len(rows) > size:
             raise CliError(INVALID_RESPONSE, "native page exceeded requested size")
-        if reported is None and not single_response:
+        if reported is None and not without_total:
             reported = page_total
             # The initial request has already consumed one slot. A fallback
             # cannot borrow the page allowance used by prior candidates.
@@ -551,7 +562,7 @@ def _list_candidate(
                 raise CliError(
                     TIMEOUT, "List global page budget exhausted", retryable=True
                 )
-        elif not single_response and reported != page_total:
+        elif not without_total and reported != page_total:
             raise CliError(INVALID_RESPONSE, "native List total changed during read")
         if capability.contract.scope_field is not None and any(
             row.get(capability.contract.scope_field) != scope for row in rows
@@ -605,7 +616,12 @@ def _list_candidate(
                 pages,
                 max(pages, math.ceil(reported / size)) if reported is not None else 1,
             )
-        if mode in ("single", "single_response") or (index + 1) * size >= reported:
+        if short_page and len(rows) < size:
+            terminal_reason = "short_page" if rows else "empty_page"
+            break
+        if mode in ("single", "single_response") or (
+            reported is not None and (index + 1) * size >= reported
+        ):
             break
         # An unqualified identity cannot diagnose or repair missing native rows.
         # Retain every arrival, but stop at observed overlap or a short page.
@@ -628,7 +644,9 @@ def _list_candidate(
         problems.append("COUNT_MISMATCH")
     if mode == "single" and reported is not None and reported > size:
         problems.append("SINGLE_PAGE_CAPACITY")
-    complete = not problems and (single_response or len(ordered) == reported)
+    complete = not problems and (
+        single_response or terminal_reason is not None or len(ordered) == reported
+    )
     evidence = AcquisitionEvidence.for_collection(
         complete=complete,
         reported_total=reported,
@@ -636,9 +654,15 @@ def _list_candidate(
         arrivals=arrivals,
         has_identity=has_identity,
         total_semantics="unknown"
-        if single_response
+        if without_total
         else capability.contract.total_semantics,
-        coverage_basis="qualified_single_response" if single_response else None,
+        coverage_basis=(
+            "qualified_short_page"
+            if short_page
+            else "qualified_single_response"
+            if single_response
+            else None
+        ),
         reasons=tuple(problems),
         duplicate_policy="conservative",
     )
@@ -655,6 +679,7 @@ def _list_candidate(
                 "reported_total": reported,
                 "complete": evidence.scope_complete,
                 "reasons": list(evidence.reasons),
+                **({"termination_reason": terminal_reason} if short_page else {}),
             },
         ),
     )
@@ -707,6 +732,15 @@ def collect_list(
         )
     sizes = tuple(collection["paging"]["page_sizes"])
     single_response = collection["paging"]["mode"] == "single_response"
+    short_page = collection["paging"].get("termination") == "short_page"
+    if short_page and (
+        collection["paging"]["mode"] not in {"offset", "page_number"}
+        or collection["primary_id"]["type"] == "unproven"
+    ):
+        raise CliError(
+            INVALID_RESPONSE,
+            "short-page termination requires paginated mode and verified identity",
+        )
     if single_response and (
         len(sizes) != 1 or collection["primary_id"]["type"] == "unproven"
     ):

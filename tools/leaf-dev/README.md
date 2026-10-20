@@ -4,6 +4,9 @@
 
 普通 List 使用宿主 SDK：leaf 声明 provider、分页和原生主键，只实现请求与解析；
 宿主负责采集循环、重试、完整性及缓存发布。
+已验证首个短页代表结束的编号／offset 查询可显式选择
+`paging.termination: "short_page"`；宿主忽略后端 total／总页数，仍负责去重、
+冲突检查及预算。示例见 [VA capacity](../../leaf_packages/collection/va.capacity/)。
 已单独确认整份响应覆盖范围但无原生 total 的 List，可声明 `single_response`；
 已确认的多源关系声明 `sources`，由宿主完整采集各源后调用 leaf 的纯 `assemble`。
 缺少 total 或发现相似字段本身不构成这两种声明的依据。

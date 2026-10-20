@@ -152,7 +152,12 @@ class AcquisitionEvidence:
             or any(not isinstance(item, dict) for item in attempts)
             or not isinstance(record.get("total_semantics", "unknown"), str)
             or coverage_basis
-            not in (None, "qualified_single_response", "validated_sources")
+            not in (
+                None,
+                "qualified_single_response",
+                "qualified_short_page",
+                "validated_sources",
+            )
         ):
             raise CliError(INVALID_RESPONSE, "cached acquisition reasons are invalid")
         evidence = cls(
@@ -171,7 +176,10 @@ class AcquisitionEvidence:
             coverage_basis=coverage_basis,
             sources=sources,
         )
-        if coverage_basis == "qualified_single_response" and (
+        if coverage_basis in {
+            "qualified_single_response",
+            "qualified_short_page",
+        } and (
             evidence.reported_total is not None
             or evidence.total_semantics != "unknown"
             or evidence.unique_count is None
@@ -182,6 +190,14 @@ class AcquisitionEvidence:
             raise CliError(
                 INVALID_RESPONSE, "cached single-response coverage conflicts"
             )
+        if coverage_basis == "qualified_short_page" and evidence.scope_complete:
+            if not attempts or attempts[-1].get("termination_reason") not in {
+                "short_page",
+                "empty_page",
+            }:
+                raise CliError(
+                    INVALID_RESPONSE, "cached short-page termination is missing"
+                )
         if (
             sources is not None
             or coverage_basis == "validated_sources"
@@ -218,7 +234,8 @@ class AcquisitionEvidence:
                     or not child.dataset_complete
                     or (
                         child.reported_total is None
-                        and child.coverage_basis != "qualified_single_response"
+                        and child.coverage_basis
+                        not in {"qualified_single_response", "qualified_short_page"}
                     )
                 ):
                     raise CliError(
