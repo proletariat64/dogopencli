@@ -42,7 +42,12 @@ def reply(rows, page, total=None):
 
 def pages(rows):
     # The first total is deliberately smaller than the first page's arrivals.
-    return [reply(rows[:100], 1, 1), reply(rows[100:], 2, "backend-bug")]
+    return [
+        reply(rows[:100], 1, 1),
+        reply(rows[100:], 2, "backend-bug"),
+        reply([], 3),
+        reply([], 4),
+    ]
 
 
 def test_installed_capacity_live_refresh_offline_and_local_filters(handbook):
@@ -63,6 +68,8 @@ def test_installed_capacity_live_refresh_offline_and_local_filters(handbook):
     assert browser.business_requests == [
         {"pageNo": 1, "pageSize": 100},
         {"pageNo": 2, "pageSize": 100},
+        {"pageNo": 3, "pageSize": 100},
+        {"pageNo": 4, "pageSize": 100},
     ]
     browser.business_script.extend(pages(rows))
     cli("collection", "refresh", LEAF, "--require-complete")
@@ -124,7 +131,7 @@ def test_failed_or_empty_capacity_refresh_preserves_snapshot(handbook, failure):
     browser.business_script.extend(pages(rows))
     cli("collection", "refresh", LEAF)
     saved = cli("collection", "list", LEAF, "--limit", "0")
-    first, last = pages(deepcopy(rows))
+    first, last, *confirmations = pages(deepcopy(rows))
     if failure in {"duplicate", "conflict"}:
         last["body"]["resultDataList"] = [deepcopy(rows[0])]
         if failure == "conflict":
@@ -140,10 +147,10 @@ def test_failed_or_empty_capacity_refresh_preserves_snapshot(handbook, failure):
     elif failure == "missing-id":
         del last["body"]["resultDataList"][0]["ruleId"]
     if failure == "empty":
-        browser.business_script.append(reply([], 1))
+        browser.business_script.extend([reply([], 1), reply([], 2)])
         assert cli("collection", "refresh", LEAF)["meta"]["published"] is False
     else:
-        browser.business_script.extend([first, last])
+        browser.business_script.extend([first, last, *confirmations])
         rejected = cli("collection", "refresh", LEAF, code=1)
         assert rejected["data"] is None
         assert rejected["error"]["code"] == (
@@ -163,13 +170,15 @@ def test_failed_or_empty_capacity_refresh_preserves_snapshot(handbook, failure):
 def test_exact_multiple_queries_empty_terminal_page(handbook):
     cli, browser, _ = handbook
     rows = records(100)
-    browser.business_script.extend([reply(rows, 1, 0), reply([], 2, 0)])
+    browser.business_script.extend(
+        [reply(rows, 1, 0), reply([], 2, 0), reply([], 3, 0)]
+    )
     result = cli(
         "collection", "list", LEAF, "--live", "--require-complete", "--limit", "0"
     )
     assert result["data"] == rows
     assert (
         result["meta"]["acquisition"]["attempts"][-1]["termination_reason"]
-        == "empty_page"
+        == "two_empty_batches"
     )
-    assert len(browser.business_requests) == 2
+    assert len(browser.business_requests) == 3

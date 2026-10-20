@@ -17,8 +17,10 @@ Both are repeatable exact local filters: OR within a flag, AND between flags.
 They do not narrow the native acquisition. All native fields and values remain
 unchanged; the output uses stable native-rule identity ordering.
 
-Completion follows the independently qualified first-short-page contract,
-including a zero-row page after an exact multiple of 100. The SDK retains
+Completion uses the SDK's two consecutive successful empty batches at width100;
+a short batch alone no longer ends acquisition. Only width100 is qualified here,
+so interior deficiencies cannot be excused through unqualified smaller probes.
+The SDK retains
 deduplication/conflict evidence, bounded execution and strict publication rules.
 `reported_total` stays null; row capacity counters named `totalCount` remain
 untouched. This does not infer warning classification, expand VA-rule details,

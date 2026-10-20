@@ -22,6 +22,11 @@ native request and business response within the accepted scope.
 
 Record the read-only endpoint/action, browser entry, allowed request fields, scope,
 paging mode, qualified widths, primary ID, total meaning and failure envelope.
+For persistent total/count mismatches, failed interior pages or apparent page
+repeats, consult the SDK's
+[upstream blacklist and pagination-hole reference](../../docs/agents/list-collection-sdk.md#upstream-blacklist-filtering-and-pagination-holes).
+Distinguish intended business exclusion from broken output handling; qualify the
+cause and stopping rule for this leaf rather than inferring them from another leaf.
 Choose the native ID that identifies one returned record. Prefer a native field;
 use a composite hash only for a reviewed composite identity without a suitable
 single field. Keep amounts, types, nested objects and unknown fields unchanged.
