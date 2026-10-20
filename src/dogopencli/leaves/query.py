@@ -32,17 +32,33 @@ class CustomListResult:
     evidence: AcquisitionEvidence
 
 
+def _native_error_meta(native_code: str | int | None) -> dict:
+    if type(native_code) in (str, int) and re.fullmatch(
+        r"[A-Za-z0-9_.:-]{1,80}", str(native_code)
+    ):
+        return {"native_code": native_code}
+    return {}
+
+
 class QueryRefused(CliError):
     """A parser-qualified individual-record refusal, retained as incomplete."""
 
     def __init__(self, *, native_code: str | int | None = None):
-        meta = {}
-        if type(native_code) in (str, int) and re.fullmatch(
-            r"[A-Za-z0-9_.:-]{1,80}", str(native_code)
-        ):
-            meta["native_code"] = native_code
         super().__init__(
-            BUSINESS_QUERY_FAILED, "backend refused record detail", meta=meta
+            BUSINESS_QUERY_FAILED,
+            "backend refused record detail",
+            meta=_native_error_meta(native_code),
+        )
+
+
+class QueryFailed(CliError):
+    """A leaf-qualified detail business failure, distinct from a refusal."""
+
+    def __init__(self, *, native_code: str | int | None = None):
+        super().__init__(
+            BUSINESS_QUERY_FAILED,
+            "backend failed record detail",
+            meta=_native_error_meta(native_code),
         )
 
 
@@ -188,7 +204,6 @@ class QueryTools:
         self._budget = budget or QueryBudget(end, self._declarations["max_requests"])
         self._fatal: CliError | None = None
         self._incomplete = False
-        self._refused = False
         self._queries: dict[str, dict] = {}
         self._transports: dict[str, _QueryTransport] = {}
 
@@ -288,7 +303,7 @@ class QueryTools:
     ) -> dict | list[dict]:
         capability, declaration, trace = self._query(name, "detail")
         before = self._budget.requests
-        parsed_refusal = False
+        parsed_business_error = False
         try:
             validate_detail_lookup(identity)
             context = self._parameters if parameters is None else parameters
@@ -303,18 +318,20 @@ class QueryTools:
             )
             try:
                 result = capability.parse_detail(response.body, context, identity)
-            except QueryRefused:
-                parsed_refusal = True
+            except (QueryRefused, QueryFailed):
+                parsed_business_error = True
                 raise
             validate_detail_result(result, declaration)
             trace["succeeded"] += 1
             return result
-        except QueryRefused as error:
-            if parsed_refusal:
-                self._refused = True
-                trace["refused"] = trace.get("refused", 0) + 1
+        except (QueryRefused, QueryFailed) as error:
+            if parsed_business_error:
+                self._incomplete = True
+                status = "refused" if isinstance(error, QueryRefused) else "failed"
+                trace[status] = trace.get(status, 0) + 1
             else:
                 self._fatal = error
+                trace["error"] = {"code": error.code, "retryable": error.retryable}
             raise
         except CliError as error:
             self._fatal = error
@@ -358,8 +375,7 @@ class QueryTools:
             raise CliError(INVALID_RESPONSE, "invalid custom List result")
         evidence = AcquisitionEvidence.from_record(result.evidence.record())
         if evidence.collected_total != len(result.records) or (
-            (self._incomplete or self._refused)
-            and (evidence.scope_complete or evidence.dataset_complete)
+            self._incomplete and (evidence.scope_complete or evidence.dataset_complete)
         ):
             raise CliError(INVALID_RESPONSE, "custom List coverage contradicts queries")
         evidence = replace(evidence, attempts=(*evidence.attempts, self.evidence()))
@@ -376,7 +392,7 @@ class QueryTools:
 
     def finish_get(self, result: Any) -> dict | list[dict]:
         self._finish()
-        if self._incomplete or self._refused:
+        if self._incomplete:
             raise CliError(
                 INVALID_RESPONSE, "custom Get has incomplete required queries"
             )

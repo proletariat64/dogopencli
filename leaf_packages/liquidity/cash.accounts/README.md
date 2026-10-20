@@ -24,14 +24,23 @@ Unknown fields, nested values and decimal precision remain unchanged.
 Baseline owns `accountType` and `status`; cash owns `gmtModified` and `operator`.
 Other fields prefer baseline, then cash, then detail. Provenance and conflicting
 source values remain visible in `source_metadata`. Detail coverage is explicitly
-`succeeded`, `refused` or `missing`.
+`succeeded`, `refused`, `failed` or `missing`.
 
-Only an outer-success response with inner `success=false` qualifies as an
-individual detail refusal. Authentication, transport, malformed responses and
-identity disagreement abort the operation. Qualified refusals and unmatched
-source rows produce usable incomplete live output. Strict queries reject them;
-refresh preserves the prior complete cache. Local currency, bank, status,
-account number and alias filters run after full acquisition.
+An outer-success response with inner `success=false` qualifies as an individual
+detail refusal. The observed HTTP 200 detail response with outer `resultFlag=false`,
+an object `result` containing `success=false`, explicit `data=null` and
+`errorCode=999` (string or integer) qualifies as an account detail failure.
+The failed row keeps its cash and baseline records, records `detail_state=failed`
+and a safe diagnostic, and collection continues with the remaining accounts.
+No detail object is fabricated and no account is blacklisted. Failed and refused
+details have separate coverage counts.
+
+Other outer failures, authentication, transport errors, malformed responses and
+identity disagreement abort the operation. Qualified failed/refused details and
+unmatched source rows produce usable incomplete live output with warnings.
+Strict queries and refresh reject that incomplete coverage; refresh preserves
+the prior complete cache. Local currency, bank, status, account number and alias
+filters run after full acquisition.
 
 The assembled directory has no fabricated backend total. Independent source
 evidence, list matching, detail coverage and field inventory are retained under

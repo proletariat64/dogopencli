@@ -129,13 +129,20 @@ Authentication, network, timeout, business, malformed-response and identity
 failures remain failures. The host remembers tool failures so catching an error
 inside the adapter cannot turn it into successful partial output.
 
-The sole qualified exception is an individual detail refusal: a detail parser
-may raise `QueryRefused(native_code=...)` only after establishing this endpoint's
-verified per-record refusal semantics. A custom List may catch that exception,
-retain the account and mark its detail refused, with both completeness flags
-false. Other business failures, including unqualified codes, remain hard errors.
-Raising this exception from request construction or transport is a hard failure.
-Custom Get cannot finish with refused or incomplete required inquiries.
+A detail parser may raise `QueryRefused(native_code=...)` after establishing the
+endpoint's verified per-record refusal semantics. It may separately raise
+`QueryFailed(native_code=...)` for a business failure that the leaf's accepted
+policy permits retaining. These exceptions are distinct: a failed query is not
+a business refusal. A custom List may catch either, retain the account and mark
+the appropriate detail state, with both completeness flags false. Query traces
+count `failed` and `refused` separately, and later declared inquiries may proceed.
+
+The leaf owns qualification and retention policy. The SDK contains no endpoint,
+native-code or account exceptions and does not automatically downgrade business
+errors. Unqualified business errors, authentication, transport, malformed data
+and identity conflicts remain hard failures. Raising either retained exception
+from request construction or transport is also fatal. Custom Get cannot finish
+with failed, refused or incomplete required inquiries.
 
 ## Preserve coverage and native values
 
@@ -145,14 +152,15 @@ does not infer joins or require every declared query to run: conditional Python
 branches are allowed, so leaf tests and evidence must prove required coverage.
 
 For List, return records and `AcquisitionEvidence` describing that exact output.
-Retain each source's independent coverage and required/attempted/succeeded/refused
-detail counts. An assembled root count cannot substitute for source coverage.
+Retain each source's independent coverage and
+required/attempted/succeeded/refused/failed detail counts. An assembled root count
+cannot substitute for source coverage.
 `collected_total` must equal the number of returned records. Incomplete collected
-sources or retained detail refusals cannot be upgraded to complete output.
+sources or retained detail refusals/failures cannot be upgraded to complete output.
 
 The host appends a `custom_query` trace to List `evidence.attempts`; direct custom
 Get exposes `query_evidence` metadata. These record query calls, requests,
-success/refusal/error status and collected-source evidence. Use stable, safe scope
+success/refusal/failure/error status and collected-source evidence. Use stable, safe scope
 and evidence values; credentials and raw production responses stay private.
 If a custom operation fails with a `CliError`, its error metadata retains the
 same `query_evidence` so completed source acquisition and the failed query remain
@@ -169,7 +177,7 @@ Static verify/pack checks declarations without importing the adapter. Installati
 imports it and binds entry signatures without executing business methods.
 Help/describe remain declaration-only. Test dependent calls and native
 preservation through the installed CLI, including mixed List/Get modes,
-shared budgets with retries/probes, retained qualified refusal, hard failure
+shared budgets with retries/probes, retained qualified refusals/failures, hard failure
 after an earlier success, completeness contradictions and cache preservation.
 
 `liquidity.cash.accounts` is a custom List case: cash directory, account baseline

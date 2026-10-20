@@ -13,6 +13,7 @@ from dogopencli.jsonutil import canonical, parse
 from dogopencli.leaves.query import (
     CustomListResult,
     QueryBudget,
+    QueryFailed,
     QueryRefused,
     QueryTools,
     query_capabilities,
@@ -63,6 +64,8 @@ class Detail:
         value = parse(body)
         if value.get("refused"):
             raise QueryRefused(native_code="999")
+        if value.get("failed"):
+            raise QueryFailed(native_code="999")
         if value.get("invalid"):
             raise CliError("INVALID_RESPONSE", "invalid native detail")
         if value.get("id") != identity:
@@ -260,18 +263,52 @@ def test_only_qualified_refusal_can_be_retained_and_never_as_complete():
     assert candidate.evidence.attempts[-1]["queries"]["detail"]["refused"] == 1
 
 
-def test_refusal_from_request_builder_is_a_hard_failure():
+def test_retained_detail_failure_allows_later_queries_but_never_complete_output():
+    script = Script({"failed": True, "secret": "native-secret"}, {"id": "two"})
+    tools, _, _ = setup(script)
+    with pytest.raises(QueryFailed) as caught:
+        tools.detail("detail", "private-lookup")
+    assert caught.value.meta == {"native_code": "999"}
+    assert tools.detail("detail", "two") == {"id": "two"}
+    with pytest.raises(CliError, match="coverage contradicts"):
+        tools.finish_list(result())
+    candidate = tools.finish_list(result(complete=False))
+    trace = candidate.evidence.attempts[-1]
+    assert trace["request_count"] == 2
+    assert trace["queries"]["detail"]["failed"] == 1
+    assert trace["queries"]["detail"]["succeeded"] == 1
+    assert "refused" not in trace["queries"]["detail"]
+    assert "private-lookup" not in canonical(trace)
+    assert "native-secret" not in canonical(trace)
+
+
+@pytest.mark.parametrize("error_type", [QueryRefused, QueryFailed])
+def test_retained_business_error_cannot_finish_custom_get(error_type):
+    script = Script({"refused" if error_type is QueryRefused else "failed": True})
+    tools, _, _ = setup(script)
+    with pytest.raises(error_type):
+        tools.detail("detail", "one")
+    with pytest.raises(CliError, match="incomplete required queries"):
+        tools.finish_get({"id": "one"})
+
+
+@pytest.mark.parametrize("error_type", [QueryRefused, QueryFailed])
+@pytest.mark.parametrize("stage", ["request", "transport"])
+def test_retained_business_error_outside_detail_parser_is_fatal(error_type, stage):
     class Invalid(Detail):
         def request_body(self, parameters, identity):
-            raise QueryRefused(native_code="unqueried")
+            if stage == "request":
+                raise error_type(native_code="unqueried")
+            return super().request_body(parameters, identity)
 
-    script = Script()
+    script = Script(error_type(native_code="transport"))
     tools, _, _ = setup(script, detail=Invalid())
-    with pytest.raises(QueryRefused):
+    with pytest.raises(error_type) as caught:
         tools.detail("detail", "one")
-    with pytest.raises(QueryRefused):
+    with pytest.raises(error_type) as final:
         tools.finish_list(result(complete=False))
-    assert not script.requests
+    assert final.value is caught.value
+    assert len(script.requests) == (stage == "transport")
 
 
 @pytest.mark.parametrize("kind", ["list", "detail"])

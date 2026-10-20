@@ -76,7 +76,8 @@ windowing, projection, atomic failure and native-root coverage limits.
 When queries depend on earlier results, explicitly choose `execution: "custom"`
 for the affected operation and implement its Python entry with the host's named
 query tools. The [custom contract](../../docs/agents/custom-query-sdk.md) owns
-declarations, shared budgets, qualified refusals and source/relationship evidence.
+declarations, shared budgets, leaf-qualified detail refusals/failures and
+source/relationship evidence.
 Standard and custom execution may coexist across List and Get.
 
 Keep the leaf in one root adapter file. Resolve optional resources from
@@ -112,7 +113,7 @@ duplicates and a response larger than the requested width. For `sources`, check
 independent native totals/scopes, shared execution bounds, exact child preservation,
 atomic failure and persisted source evidence after refresh/offline replay.
 For custom execution, also check dependent requests, physical request budgets
-including retries/probes, qualified refusal versus hard failure, contradictory
+including retries/probes, retained refusal/failure versus fatal errors, contradictory
 coverage rejection and retained source/relationship evidence.
 
 **Done:** focused CLI checks and required repository tests/lint/doc/review gates pass.

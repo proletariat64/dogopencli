@@ -14,7 +14,7 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
-from dogopencli.leaves.query import CustomListResult, QueryRefused
+from dogopencli.leaves.query import CustomListResult, QueryFailed, QueryRefused
 from dogopencli.result_policy import AcquisitionEvidence
 
 TENANT = "GUAPW3SG"
@@ -37,9 +37,21 @@ def envelope(body: bytes, *, detail: bool = False) -> dict[str, Any]:
         raise CliError(INVALID_RESPONSE, "response is not valid JSON") from error
     if not isinstance(document, dict) or type(document.get("resultFlag")) is not bool:
         invalid("invalid business success marker")
-    if not document["resultFlag"]:
-        raise CliError(BUSINESS_QUERY_FAILED, "backend reported a business failure")
     result = document.get("result")
+    if not document["resultFlag"]:
+        # This observed account-level failure has no detail record to expose.
+        # It is distinct from both a refusal and an unknown outer failure.
+        if (
+            detail
+            and isinstance(result, dict)
+            and result.get("success") is False
+            and "data" in result
+            and result["data"] is None
+            and type(result.get("errorCode")) in (str, int)
+            and str(result["errorCode"]) == "999"
+        ):
+            raise QueryFailed(native_code=result["errorCode"])
+        raise CliError(BUSINESS_QUERY_FAILED, "backend reported a business failure")
     if not isinstance(result, dict):
         invalid("result is not an object")
     if "success" in result and type(result["success"]) is not bool:
@@ -220,7 +232,9 @@ def agree(left: dict[str, Any], right: dict[str, Any]) -> None:
 
 
 def assemble_row(
-    sources: dict[str, dict[str, Any]], refusal: dict[str, Any] | None
+    sources: dict[str, dict[str, Any]],
+    refusal: dict[str, Any] | None,
+    failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     fields = dict.fromkeys(field for record in sources.values() for field in record)
     row, owners, conflicts = {}, {}, {}
@@ -259,7 +273,13 @@ def assemble_row(
         if owner is not None:
             row[field], owners[field] = values[owner], owner
     row["detail_state"] = (
-        "succeeded" if "detail" in sources else "refused" if refusal else "missing"
+        "succeeded"
+        if "detail" in sources
+        else "refused"
+        if refusal
+        else "failed"
+        if failure
+        else "missing"
     )
     row["source_metadata"] = {
         "schema_version": 2,
@@ -268,7 +288,7 @@ def assemble_row(
         "provenance": owners,
         "raw": sources,
         "conflicts": conflicts,
-        "detail_error": refusal,
+        "detail_error": refusal or failure,
     }
     return row
 
@@ -296,10 +316,19 @@ class Adapter:
         matched = indexes["cash"].keys() & indexes["baseline"].keys()
         for identity in matched:
             agree(indexes["cash"][identity], indexes["baseline"][identity])
-        details, refusals = {}, {}
+        details, refusals, failures = {}, {}, {}
         for identity, account in indexes["baseline"].items():
             try:
                 detail = query.detail("detail", account["aliasName"], parameters={})
+            except QueryFailed as error:
+                failure = {
+                    "code": BUSINESS_QUERY_FAILED,
+                    "message": "backend failed account detail",
+                }
+                if error.meta.get("native_code") is not None:
+                    failure["native_code"] = error.meta["native_code"]
+                failures[identity] = failure
+                continue
             except QueryRefused as error:
                 refusal = {
                     "code": BUSINESS_QUERY_FAILED,
@@ -323,7 +352,9 @@ class Adapter:
                 for name, index in (*indexes.items(), ("detail", details))
                 if identity in index
             }
-            records.append(assemble_row(sources, refusals.get(identity)))
+            records.append(
+                assemble_row(sources, refusals.get(identity), failures.get(identity))
+            )
         lists_complete = (
             cash.complete
             and baseline.complete
@@ -356,7 +387,7 @@ class Adapter:
                 "attempted": len(indexes["baseline"]),
                 "succeeded": len(details),
                 "refused": len(refusals),
-                "failed": 0,
+                "failed": len(failures),
             },
             "field_inventory": {
                 name: sorted(

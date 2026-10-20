@@ -92,6 +92,7 @@ def scripted(
     *,
     refusal=None,
     failure=None,
+    failures=None,
     baseline_total=None,
 ):
     details = details or {
@@ -129,6 +130,8 @@ def scripted(
             )
         assert set(body) == {"tntInstId", "aliasName"}
         assert body["tntInstId"] == "GUAPW3SG"
+        if failures and body["aliasName"] in failures:
+            return failures[body["aliasName"]]
         if failure:
             return failure
         if body["aliasName"] == refusal:
@@ -353,6 +356,173 @@ def test_incomplete_live_strict_and_refresh_preserve_complete_cache(installed, f
     offline = cli("liquidity", "list", LEAF, "--limit", "0")
     assert offline["data"] == saved["data"]
     assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+def failed_detail(native_code="999"):
+    return {
+        "status": 200,
+        "body": {
+            "resultFlag": False,
+            "result": {
+                "success": False,
+                "data": None,
+                "errorCode": native_code,
+                "errorMessage": "PRIVATE backend explanation",
+                "errorContext": {"private": "PRIVATE"},
+            },
+        },
+    }
+
+
+@pytest.mark.parametrize("native_code", ["999", 999])
+@pytest.mark.parametrize("with_refusal", [False, True])
+def test_failed_detail_continues_all_accounts_and_preserves_complete_cache(
+    installed, native_code, with_refusal
+):
+    cli, browser, _ = installed
+    aliases = [
+        "SYNTHETIC-FIRST",
+        "SYNTHETIC-FAILED",
+        "SYNTHETIC-REFUSAL",
+        "SYNTHETIC-LAST",
+    ]
+    rows = [account(alias) for alias in aliases]
+    scripted(browser, rows, rows)
+    cli("liquidity", "refresh", LEAF, "--require-complete")
+    saved = cli("liquidity", "list", LEAF, "--limit", "0")
+    scripted(
+        browser,
+        rows,
+        rows,
+        failures={aliases[1]: failed_detail(native_code)},
+        refusal=aliases[2] if with_refusal else None,
+    )
+    start = len(browser.business_requests)
+    live = cli("liquidity", "list", LEAF, "--live", "--limit", "0")
+    assert [
+        body["aliasName"]
+        for body in browser.business_requests[start:]
+        if "aliasName" in body
+    ] == aliases
+    assert [row["detail_state"] for row in live["data"]] == [
+        "succeeded",
+        "failed",
+        "refused" if with_refusal else "succeeded",
+        "succeeded",
+    ]
+    assert live["error"] is None and live["meta"]["complete"] is False
+    assert live["meta"]["dataset_complete"] is False
+    assert live["meta"]["warnings"][0]["code"] == "INCOMPLETE_RESULT"
+    assert "DETAIL_COVERAGE_INCOMPLETE" in live["meta"]["acquisition"]["reasons"]
+    failed = live["data"][1]["source_metadata"]
+    assert failed["raw"] == {"cash": rows[1], "baseline": rows[1]}
+    assert failed["presence"]["detail"] is False
+    assert failed["detail_error"] == {
+        "code": "BUSINESS_QUERY_FAILED",
+        "message": "backend failed account detail",
+        "native_code": native_code,
+    }
+    assert "PRIVATE" not in str(live)
+    expected_coverage = {
+        "complete": False,
+        "required": 4,
+        "attempted": 4,
+        "succeeded": 2 if with_refusal else 3,
+        "refused": int(with_refusal),
+        "failed": 1,
+    }
+    assert coverage(live)["detail_coverage"] == expected_coverage
+    trace = next(
+        item
+        for item in live["meta"]["acquisition"]["attempts"]
+        if item.get("kind") == "custom_query"
+    )["queries"]["detail"]
+    assert trace["calls"] == 4 and trace["requests"] == 4
+    assert trace["succeeded"] == expected_coverage["succeeded"]
+    assert trace["failed"] == 1
+    assert trace.get("refused", 0) == int(with_refusal)
+    for operation, flags in (
+        ("list", ("--live", "--require-complete")),
+        ("refresh", ()),
+    ):
+        start = len(browser.business_requests)
+        rejected = cli("liquidity", operation, LEAF, *flags, code=1)
+        assert rejected["error"]["code"] == "INCOMPLETE_RESULT"
+        assert [
+            body["aliasName"]
+            for body in browser.business_requests[start:]
+            if "aliasName" in body
+        ] == aliases
+        if operation == "refresh":
+            assert rejected["meta"]["published"] is False
+    offline = cli("liquidity", "list", LEAF, "--limit", "0")
+    assert offline["data"] == saved["data"]
+    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "other_code",
+        "bool_code",
+        "decimal_code",
+        "missing_code",
+        "top_level_code",
+        "missing_data",
+        "nonnull_data",
+        "missing_success",
+        "string_success",
+        "missing_result",
+        "array_result",
+        "string_outer",
+        "auth",
+    ],
+)
+def test_unqualified_outer_failure_shape_remains_hard_and_stops_details(
+    installed, change
+):
+    cli, browser, _ = installed
+    rows = [account("SYNTHETIC-REJECTED"), account("SYNTHETIC-UNREACHED")]
+    failure = failed_detail()
+    document = failure["body"]
+    node = document["result"]
+    expected = "BUSINESS_QUERY_FAILED"
+    if change == "other_code":
+        node["errorCode"] = "998"
+    elif change == "bool_code":
+        node["errorCode"] = True
+    elif change == "decimal_code":
+        node["errorCode"] = Decimal("999.0")
+    elif change == "missing_code":
+        del node["errorCode"]
+    elif change == "top_level_code":
+        document["errorCode"] = node.pop("errorCode")
+    elif change == "missing_data":
+        del node["data"]
+    elif change == "nonnull_data":
+        node["data"] = {}
+    elif change == "missing_success":
+        del node["success"]
+    elif change == "string_success":
+        node["success"] = "false"
+    elif change == "missing_result":
+        del document["result"]
+    elif change == "array_result":
+        document["result"] = []
+    elif change == "string_outer":
+        document["resultFlag"] = "false"
+        expected = "INVALID_RESPONSE"
+    else:
+        failure["status"] = 403
+        expected = "AUTH_REQUIRED"
+    scripted(browser, rows, rows, failure=failure)
+    result = cli("liquidity", "list", LEAF, "--live", code=1)
+    assert result["error"]["code"] == expected
+    assert result.get("data") in (None, [])
+    assert "PRIVATE" not in str(result)
+    assert [
+        body["aliasName"] for body in browser.business_requests if "aliasName" in body
+    ] == [rows[0]["aliasName"]]
 
 
 @pytest.mark.parametrize("field", ["aliasName", "currency", "bankId", "instId"])
