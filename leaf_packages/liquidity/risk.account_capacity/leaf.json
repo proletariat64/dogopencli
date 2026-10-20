@@ -1,0 +1,117 @@
+{
+  "domain": "liquidity",
+  "name": "risk.account_capacity",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native capacity snapshots for 1–10 explicit accounts.",
+      "parameters": [
+        {
+          "name": "account-alias",
+          "type": "string",
+          "multiple": true,
+          "required": true,
+          "local_field": "aliasName",
+          "description": "Repeat for 1–10 distinct nonempty native aliases. Acquisition queries the sorted explicit set; offline selection cannot expand saved coverage."
+        }
+      ],
+      "execution": "custom",
+      "queries": {
+        "capacity": {
+          "kind": "detail",
+          "result_identity": {
+            "fields": [
+              "aliasName"
+            ],
+            "description": "Native aliasName must exactly echo the requested alias."
+          }
+        }
+      },
+      "max_requests": 30,
+      "budget_seconds": 300
+    }
+  },
+  "summary": "Native capacity snapshots for an explicit account set.",
+  "purpose": "Inspect account capacity without account discovery or changing funds, limits or configuration.",
+  "fields": [
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native account alias within the authorized origin/tenant; explicit requested-set identity. Sampled values were strings; optional native value types remain unchanged."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native currency attribute; not an additional identity or inferred currency audit. Sampled values were strings; optional native value types remain unchanged."
+    },
+    {
+      "name": "accountAvailableBalance",
+      "type": "string",
+      "meaning": "Native account available balance; UI Avl Bal, with no arithmetic or scaling. Sampled values were strings; optional native value types remain unchanged."
+    },
+    {
+      "name": "availableIod",
+      "type": "string",
+      "meaning": "Native available IOD; UI Avl IOD, unchanged. Sampled values were strings; optional native value types remain unchanged."
+    },
+    {
+      "name": "availableResource",
+      "type": "string",
+      "meaning": "Native availableResource; UI Outflow Capacity, distinct from outFlowCapacity. Sampled values were strings; optional native value types remain unchanged."
+    },
+    {
+      "name": "cashPoolSupportAvailableResource",
+      "type": "string",
+      "meaning": "Native cash-pool support attribute; business definition is unverified. Sampled values were strings; optional native value types remain unchanged."
+    },
+    {
+      "name": "outFlowCapacity",
+      "type": "string",
+      "meaning": "Native outFlowCapacity; distinct from availableResource, business definition unverified. Sampled values were strings; optional native value types remain unchanged."
+    },
+    {
+      "name": "totalIod",
+      "type": "string",
+      "meaning": "Native total IOD value, unchanged. Sampled values were strings; optional native value types remain unchanged."
+    },
+    {
+      "name": "usedIod",
+      "type": "string",
+      "meaning": "Native used IOD value, unchanged. Sampled values were strings; optional native value types remain unchanged."
+    },
+    {
+      "name": "valueTime",
+      "type": "string",
+      "meaning": "Native source-time string; timezone is unknown, distinct from fetched_at. Sampled values were strings; optional native value types remain unchanged."
+    }
+  ],
+  "identity": [
+    "aliasName"
+  ],
+  "identity_description": "Native account alias, one validated object for every requested alias.",
+  "limitations": [
+    "One GET per explicit alias with only aliasName; no tenant, date, paging or account discovery input. The 10-account limit is a client bound.",
+    "Any request, authentication, business, schema or alias-echo failure rejects the whole candidate. No skipped aliases, synthetic empty rows or capacity fallback.",
+    "Complete means every requested alias resolved; requested_count/resolved_count refer to that explicit set, and reported_total remains null.",
+    "Business output retains the ten assigned native capacity fields when present. Values, precision, null, empty, zero and negative amounts are unchanged; no scaling or inferred calculations.",
+    "availableResource and outFlowCapacity remain separate native fields. valueTime timezone is unknown. Sequential account inquiries do not establish an atomic snapshot.",
+    "Ordinary live does not publish; complete nonempty refresh saves the explicit set. Offline List replays that capture; changed account selections retain explicit coverage diagnostics. No public Get or history action."
+  ],
+  "examples": [
+    {
+      "title": "Acquire two explicit accounts",
+      "command": "dogopencli liquidity list risk.account_capacity --live --account-alias ACCOUNT_A --account-alias ACCOUNT_B --limit 0 --require-complete"
+    },
+    {
+      "title": "Save one requested account",
+      "command": "dogopencli liquidity refresh risk.account_capacity --account-alias ACCOUNT_A --require-complete"
+    },
+    {
+      "title": "Read the saved explicit account set",
+      "command": "dogopencli liquidity list risk.account_capacity --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_risk_account_capacity"
+  }
+}
