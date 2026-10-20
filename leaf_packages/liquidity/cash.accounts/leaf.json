@@ -1,0 +1,175 @@
+{
+  "domain": "liquidity",
+  "name": "cash.accounts",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List the three-source account directory, including native cash, baseline and dependent detail records.",
+      "parameters": [
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "currency",
+          "description": "Exact local currency selection after full acquisition; repeated values select alternatives."
+        },
+        {
+          "name": "bank",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "bankId",
+          "description": "Exact local bankId selection after full acquisition; repeated values select alternatives."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "status",
+          "description": "Exact local status selection after full acquisition; repeated values select alternatives."
+        },
+        {
+          "name": "account-no",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "accountNo",
+          "description": "Exact local accountNo selection after full acquisition; repeated values select alternatives."
+        },
+        {
+          "name": "account-alias",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "aliasName",
+          "description": "Exact local aliasName selection after full acquisition; repeated values select alternatives."
+        }
+      ],
+      "execution": "custom",
+      "queries": {
+        "cash": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                1000
+              ],
+              "termination": "short_page"
+            },
+            "primary_id": {
+              "type": "hash",
+              "fields": [
+                "aliasName",
+                "currency"
+              ]
+            }
+          }
+        },
+        "baseline": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                1000
+              ]
+            },
+            "primary_id": {
+              "type": "field",
+              "fields": [
+                "aliasName"
+              ]
+            }
+          }
+        },
+        "detail": {
+          "kind": "detail",
+          "result_identity": {
+            "fields": [
+              "aliasName"
+            ],
+            "description": "Native detail aliasName must equal the baseline alias requested."
+          },
+          "result_shape": "object"
+        }
+      },
+      "max_requests": 10000,
+      "budget_seconds": 1800
+    }
+  },
+  "summary": "Cash account directory with baseline configuration and native detail.",
+  "purpose": "Inspect accounts and their source records without changing account configuration.",
+  "fields": [
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native account alias; combined with currency identifies a directory row."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native account currency."
+    },
+    {
+      "name": "bankId",
+      "type": "string",
+      "meaning": "Native bank identifier."
+    },
+    {
+      "name": "accountType",
+      "type": "string",
+      "meaning": "Classification exclusively from the baseline list."
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "meaning": "Status exclusively from the baseline list; no normalization."
+    },
+    {
+      "name": "gmtModified",
+      "type": "string",
+      "meaning": "Modification value exclusively from the cash list."
+    },
+    {
+      "name": "detail_state",
+      "type": "string",
+      "meaning": "succeeded, refused, failed or missing detail coverage."
+    },
+    {
+      "name": "source_metadata",
+      "type": "object",
+      "meaning": "Native source records, field provenance, conflicts, presence and safe detail failure/refusal diagnostics."
+    }
+  ],
+  "identity": [
+    "aliasName",
+    "currency"
+  ],
+  "identity_description": "Native (aliasName, currency) identifies one row; baseline alias must also be unique for dependent detail lookup.",
+  "dataset": {
+    "relation": "liquidity_cash_accounts"
+  },
+  "limitations": [
+    "List only; baseline and detail remain internal inquiries, with no public Get.",
+    "Cash uses qualified short-page/hole acquisition; baseline requires its own fixed-total coverage.",
+    "The assembled directory has no native aggregate total; source totals and coverage remain in acquisition attempts.",
+    "Cash-only and baseline-only rows and qualified detail failures/refusals remain visible in incomplete live output; strict and refresh reject incomplete coverage.",
+    "Historical v0.4.3 business scope is preserved; current full baseline/detail production acceptance remains required.",
+    "Only the observed HTTP 200 outer-false, inner-false, explicit null detail with result.errorCode=999 may be retained as failed while remaining details continue; other outer failures abort."
+  ],
+  "examples": [
+    {
+      "title": "Inspect live accounts with full native source records",
+      "command": "dogopencli liquidity list cash.accounts --live --limit 0"
+    },
+    {
+      "title": "Refresh only a complete directory",
+      "command": "dogopencli liquidity refresh cash.accounts --require-complete"
+    }
+  ]
+}

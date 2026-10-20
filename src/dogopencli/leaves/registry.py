@@ -85,6 +85,42 @@ SOURCE_SCHEMA = {
     "additionalProperties": False,
     "properties": {"paging": PAGING_SCHEMA, "primary_id": PRIMARY_ID_SCHEMA},
 }
+RESULT_IDENTITY_SCHEMA = {
+    "type": "object",
+    "required": ["description"],
+    "additionalProperties": False,
+    "properties": {
+        "fields": {"type": "array", "items": {"type": "string"}},
+        "paths": {
+            "type": "array",
+            "items": {"type": "array", "items": {"type": "string"}},
+        },
+        "description": {"type": "string"},
+    },
+}
+QUERY_SCHEMA = {
+    "type": "object",
+    "required": ["kind"],
+    "additionalProperties": False,
+    "properties": {
+        "kind": {"enum": ["list", "detail"]},
+        "collection": {
+            "type": "object",
+            "required": ["provider", "paging", "primary_id"],
+            "additionalProperties": False,
+            "properties": {
+                "provider": {"type": "string"},
+                "paging": PAGING_SCHEMA,
+                "primary_id": PRIMARY_ID_SCHEMA,
+                "latest_by": {"type": "string"},
+                "max_pages": {"type": "integer", "minimum": 1, "maximum": 1000},
+                "budget_seconds": {"type": "integer", "minimum": 1, "maximum": 900},
+            },
+        },
+        "result_identity": RESULT_IDENTITY_SCHEMA,
+        "result_shape": {"enum": ["object", "array"]},
+    },
+}
 MANIFEST_SCHEMA = {
     "type": "object",
     "required": [
@@ -115,6 +151,22 @@ MANIFEST_SCHEMA = {
                     "properties": {
                         "description": {"type": "string"},
                         "parameters": {"type": "array", "items": PARAMETER_SCHEMA},
+                        "execution": {"enum": ["standard", "custom"]},
+                        "queries": {
+                            "type": "object",
+                            "minProperties": 1,
+                            "additionalProperties": QUERY_SCHEMA,
+                        },
+                        "max_requests": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000,
+                        },
+                        "budget_seconds": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 1800,
+                        },
                         **(
                             {
                                 "lookup": {
@@ -126,25 +178,7 @@ MANIFEST_SCHEMA = {
                                         for key in ("name", "description")
                                     },
                                 },
-                                "result_identity": {
-                                    "type": "object",
-                                    "required": ["description"],
-                                    "additionalProperties": False,
-                                    "properties": {
-                                        "fields": {
-                                            "type": "array",
-                                            "items": {"type": "string"},
-                                        },
-                                        "paths": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "array",
-                                                "items": {"type": "string"},
-                                            },
-                                        },
-                                        "description": {"type": "string"},
-                                    },
-                                },
+                                "result_identity": RESULT_IDENTITY_SCHEMA,
                                 "result_shape": {"enum": ["object", "array"]},
                                 "list_binding": {
                                     "type": "object",
@@ -318,9 +352,71 @@ def _validate_paging(policy: dict) -> None:
     _validate_primary(policy, verified=mode == "single_response" or short_page)
 
 
+def _validate_result_identity(identity: dict) -> None:
+    if ("fields" in identity) == ("paths" in identity):
+        raise _invalid("Get result identity requires exactly one of fields or paths")
+    if "fields" in identity:
+        fields = identity["fields"]
+        if (
+            not fields
+            or len(fields) != len(set(fields))
+            or any(not field.strip() for field in fields)
+        ):
+            raise _invalid("Get result identity fields must be nonempty and unique")
+    else:
+        paths = identity["paths"]
+        if (
+            not paths
+            or any(not path or any(not key.strip() for key in path) for path in paths)
+            or len(paths) != len({tuple(path) for path in paths})
+        ):
+            raise _invalid("Get result identity paths must be nonempty and unique")
+    if not identity["description"].strip():
+        raise _invalid("Get result identity meaning must be nonempty")
+
+
+def _validate_custom_queries(domain: str, operation: dict) -> None:
+    from ..contracts import resolve_collection_provider
+
+    required = {"queries", "max_requests", "budget_seconds"}
+    if required - operation.keys():
+        raise _invalid(
+            "custom execution requires queries, max_requests and budget_seconds"
+        )
+    for name, query in operation["queries"].items():
+        if re.fullmatch(r"[a-z][a-z0-9_]*", name) is None:
+            raise _invalid("custom query name has invalid spelling")
+        if query["kind"] == "list":
+            if set(query) != {"kind", "collection"}:
+                raise _invalid("custom List query requires only kind and collection")
+            collection = query["collection"]
+            try:
+                resolve_collection_provider(domain, collection["provider"])
+            except CliError as error:
+                raise _invalid(error.message) from error
+            _validate_paging(collection)
+        else:
+            if "result_identity" not in query or "collection" in query:
+                raise _invalid(
+                    "custom detail query requires result_identity and no collection"
+                )
+            _validate_result_identity(query["result_identity"])
+
+
 def validate_manifest(value: Any) -> None:
     _validate(value, MANIFEST_SCHEMA, "leaf")
-    for operation in value["operations"].values():
+    for action, operation in value["operations"].items():
+        if operation.get("execution", "standard") == "custom":
+            supported = MANIFEST_SCHEMA["properties"]["operations"]["properties"][
+                action
+            ]["properties"]
+            if set(operation) - supported.keys():
+                raise _invalid("custom operation has unsupported entries")
+            if action == "list" and "collection" in value:
+                raise _invalid("custom List cannot declare a standard collection")
+            _validate_custom_queries(value["domain"], operation)
+        elif {"queries", "max_requests", "budget_seconds"} & operation.keys():
+            raise _invalid("standard execution cannot declare custom query settings")
         names = set()
         for parameter in operation["parameters"]:
             name = parameter["name"]
@@ -347,31 +443,7 @@ def validate_manifest(value: Any) -> None:
             raise _invalid("get requires lookup and result_identity declarations")
         if any(not item.strip() for item in detail["lookup"].values()):
             raise _invalid("Get lookup meaning must be nonempty")
-        identity = detail["result_identity"]
-        if ("fields" in identity) == ("paths" in identity):
-            raise _invalid(
-                "Get result identity requires exactly one of fields or paths"
-            )
-        if "fields" in identity:
-            fields = identity["fields"]
-            if (
-                not fields
-                or len(fields) != len(set(fields))
-                or any(not field.strip() for field in fields)
-            ):
-                raise _invalid("Get result identity fields must be nonempty and unique")
-        else:
-            paths = identity["paths"]
-            if (
-                not paths
-                or any(
-                    not path or any(not key.strip() for key in path) for path in paths
-                )
-                or len(paths) != len({tuple(path) for path in paths})
-            ):
-                raise _invalid("Get result identity paths must be nonempty and unique")
-        if not detail["result_identity"]["description"].strip():
-            raise _invalid("Get result identity meaning must be nonempty")
+        _validate_result_identity(detail["result_identity"])
         binding = detail.get("list_binding")
         if binding is not None:
             if detail.get("result_shape", "object") == "array":
@@ -599,15 +671,20 @@ class Registry:
             adapter_sha256 = hashlib.sha256(source).hexdigest()
             exec(compile(source, str(location), "exec"), module.__dict__)
             adapter = getattr(module, attribute)
-            required = {"detail_capability"} if "get" in value["operations"] else set()
-            if "list" in value["operations"]:
-                required |= {"scope", "filter"}
-                if "sources" in value.get("collection", {}):
+            required = set()
+            for action, operation in value["operations"].items():
+                if action == "list":
+                    required |= {"scope", "filter"}
+                if operation.get("execution", "standard") == "custom":
+                    required |= {"query_capability", f"query_{action}"}
+                elif action == "get":
+                    required.add("detail_capability")
+                elif "sources" in value.get("collection", {}):
                     required |= {"source_capability", "source_scope", "assemble"}
                 else:
                     required.add("capability")
-                if "collection" not in value:
-                    required.add("collector")
+                    if "collection" not in value:
+                        required.add("collector")
             arguments = {
                 "capability": ({},),
                 "scope": ({},),
@@ -617,6 +694,9 @@ class Registry:
                 "source_capability": ("source", {}),
                 "source_scope": ("source", {}),
                 "assemble": ({}, {}),
+                "query_capability": ("list", "query", {}),
+                "query_list": ({}, None),
+                "query_get": ({}, "identity", None),
             }
             for name in required:
                 method = getattr(adapter, name, None)
