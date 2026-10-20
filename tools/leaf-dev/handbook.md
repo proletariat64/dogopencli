@@ -41,6 +41,12 @@ together. The sample's `.invalid` endpoint is synthetic; run it only in its test
   parser. See [the SDK adapter contract](interfaces.md#adapter).
 - Host: owns `collect_list`, page loops, retries, quality evidence and publication.
 
+For a separately qualified paged endpoint that exhausts at the first short page,
+select `paging.termination: "short_page"` on numbered/offset paging. The host
+continues after full pages and ignores native totals while retaining verified
+identity, duplicate/conflict checks, budgets and publication rules. See
+[VA capacity](../../leaf_packages/collection/va.capacity/) and the
+[SDK contract](../../docs/agents/list-collection-sdk.md#qualified-short-page-termination).
 For a separately qualified whole response without a native total, use
 [`single_response`](example-single-response/): one width and `parse_rows` returning
 `(rows, None)`. Retain the unknown total; observed row counts are not a substitute.

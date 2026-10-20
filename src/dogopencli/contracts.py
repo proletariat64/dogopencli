@@ -70,8 +70,9 @@ class ParsedPage:
     records: list[dict[str, Any]]
     page_num: int
     page_size: int
-    total_count: int
-    total_pages: int
+    # Short-page acquisition does not require native total metadata.
+    total_count: int | None
+    total_pages: int | None
 
 
 class TransportCapability(Protocol):

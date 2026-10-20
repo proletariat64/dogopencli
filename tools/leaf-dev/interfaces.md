@@ -50,6 +50,17 @@ leave coverage incomplete. Optional `max_pages` and `budget_seconds` narrow host
 bounds. Provider `general` works in any domain; `<domain>.collection` is private
 to its owner. Domain declarations do not register SDKs.
 
+Optional `paging.termination: "short_page"` opts numbered/offset acquisition into
+a separately qualified first-short-page stop rule. The host ignores native
+totals/total-page counts and continues after every full page; an empty page ends
+an exactly divisible scope. Require verified identity and positive qualified
+widths. Omission or `"native_total"` retains the existing stop rule. Single modes
+cannot select short-page termination. Numbered parsers retain exact page/size
+echoes but may return `None` for `ParsedPage.total_count` and `total_pages`;
+offset parsers may return `(rows, None)`. SDK deduplication, diagnostics and budgets
+still apply. Evidence uses null total and `qualified_short_page`; see the
+[VA capacity package](../../leaf_packages/collection/va.capacity/).
+
 For an accepted multi-source model, replace top-level `paging` with a nonempty
 `sources` map. Each source declares only its own `paging` and `primary_id`;
 the provider and overall execution bounds are shared. Keep top-level

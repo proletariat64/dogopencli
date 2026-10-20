@@ -67,6 +67,7 @@ PAGING_SCHEMA = {
     "properties": {
         "mode": {"enum": ["offset", "page_number", "single", "single_response"]},
         "page_sizes": {"type": "array"},
+        "termination": {"enum": ["native_total", "short_page"]},
     },
 }
 PRIMARY_ID_SCHEMA = {
@@ -296,6 +297,9 @@ def _validate_primary(policy: dict, *, verified: bool = False) -> None:
 def _validate_paging(policy: dict) -> None:
     pages = policy["paging"]["page_sizes"]
     mode = policy["paging"]["mode"]
+    short_page = policy["paging"].get("termination") == "short_page"
+    if short_page and mode not in {"offset", "page_number"}:
+        raise _invalid("Short-page termination requires offset or numbered paging")
     if (
         not pages
         or len(pages) > 8
@@ -311,7 +315,7 @@ def _validate_paging(policy: dict) -> None:
         and len(pages) != 1
     ):
         raise _invalid("List page sizes must be unique, descending and qualified")
-    _validate_primary(policy, verified=mode == "single_response")
+    _validate_primary(policy, verified=mode == "single_response" or short_page)
 
 
 def validate_manifest(value: Any) -> None:

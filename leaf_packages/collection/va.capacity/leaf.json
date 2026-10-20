@@ -1,0 +1,60 @@
+{
+  "domain": "collection",
+  "name": "va.capacity",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Inspect VA-rule capacity and warning counters, with optional exact local filters.",
+      "parameters": [
+        {
+          "name": "bank-va-rule-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "bankAccountVaId",
+          "description": "Exact local match on bankAccountVaId, distinct from the native id field."
+        },
+        {
+          "name": "va-rule-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "ruleId",
+          "description": "Exact local match on the native VA-rule ruleId."
+        }
+      ]
+    }
+  },
+  "summary": "VA-rule capacity and warning counters.",
+  "purpose": "Inspect native VA-rule usage and capacity without expanding rules or individual virtual accounts.",
+  "fields": [
+    {"name": "ruleId", "type": "string", "meaning": "Native unique VA-rule capacity row identity."},
+    {"name": "bankAccountVaId", "type": "native JSON value", "meaning": "Bank-account VA-rule reference; not the capacity row identity."},
+    {"name": "totalCount", "type": "native JSON value", "meaning": "Native per-row capacity counter, distinct from the response pagination totalCount."},
+    {"name": "usedCount", "type": "native JSON value", "meaning": "Native used-capacity counter; never recomputed."},
+    {"name": "availableCount", "type": "native JSON value", "meaning": "Native available-capacity counter; never derived from other fields."},
+    {"name": "canUseDays", "type": "native JSON value", "meaning": "Backend remaining-days estimate; aggregation periods are unverified."}
+  ],
+  "identity": ["ruleId"],
+  "identity_description": "Nonblank native string ruleId; id, bankAccountVaId and accountNo are not row identities.",
+  "limitations": [
+    "Inquiry-only POST JSON /ivostro/api/warningUseCount/pageList.json with pageNo starting at 1 and pageSize=100. Width 100 is qualified, not a measured maximum.",
+    "The SDK acquires until the first actual short page, including an empty page after an exactly divisible scope. Native pagination totalCount and total pages are not used for stopping or completeness.",
+    "Coverage is qualified_short_page with reported_total=null and total_semantics=unknown. Counts of arrivals, unique ruleIds, duplicates and conflicts remain distinct. Duplicates/conflicts prevent complete publication; errors and budget exhaustion never become successful empty data.",
+    "All native fields, precise amounts, JSON types, unknown fields and nested array order are preserved. Output sorts ASCII digit ruleIds numerically with original-string tie-breakers, then other ruleIds lexically.",
+    "Filters are exact case-sensitive local literal matches after full acquisition: same-field OR, cross-field AND. Values are not trimmed or normalized; missing/null values do not match. No backend filter is sent.",
+    "One record is a VA-rule capacity/warning projection, not a VA-rule detail or an individual VA. UI warning classification is not inferred from counters. gmtCreate/gmtModified units and average/peak aggregation periods remain unverified.",
+    "Live performs no business-cache publication. Only complete nonempty refresh publishes; failed, empty or incomplete refresh preserves previous records and capture time. No new Duckdog import or detail crawling."
+  ],
+  "examples": [
+    {"title": "Acquire all capacity rows", "command": "dogopencli collection list va.capacity --live --require-complete --limit 0"},
+    {"title": "Filter a VA rule locally", "command": "dogopencli collection list va.capacity --va-rule-id RULE_ID --limit 0"},
+    {"title": "Refresh the complete native scope", "command": "dogopencli collection refresh va.capacity --require-complete"}
+  ],
+  "dataset": {"relation": "collection_va_capacity"},
+  "collection": {
+    "provider": "general",
+    "paging": {"mode": "page_number", "page_sizes": [100], "termination": "short_page"},
+    "primary_id": {"type": "field", "fields": ["ruleId"]}
+  }
+}
