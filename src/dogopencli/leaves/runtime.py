@@ -66,13 +66,26 @@ def _ttl(config_file: Path) -> float:
         ) from exc
 
 
-def _validate_records(rows: Any, identity: list[str]) -> list[dict]:
+def _validate_records(
+    rows: Any, identity: list[str], primary_id: dict | None = None
+) -> list[dict]:
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise CliError("INVALID_RESPONSE", "records must be business objects")
     seen = set()
+    empty_components = (
+        set(primary_id["fields"])
+        if primary_id is not None
+        and primary_id.get("type") == "hash"
+        and primary_id.get("allow_empty_components") is True
+        else set()
+    )
     for row in rows:
         if identity:
-            if any(field not in row or row[field] is None for field in identity):
+            if any(
+                field not in row
+                or (row[field] is None and field not in empty_components)
+                for field in identity
+            ):
                 raise CliError("INVALID_RESPONSE", "record identity is missing")
             key = canonical([row[field] for field in identity])
             if key in seen:
@@ -511,7 +524,9 @@ def execute(
                     collector = getattr(leaf.adapter, "collector", collect_scope)
                     collected = collector(capability, transport, scope)
                 rows = _validate_records(
-                    collected.records, leaf.manifest.get("identity", [])
+                    collected.records,
+                    leaf.manifest.get("identity", []),
+                    leaf.manifest.get("collection", {}).get("primary_id"),
                 )
                 evidence = evidence_for(collected)
                 query = parameters
@@ -587,6 +602,7 @@ def execute(
                 rows = _validate_records(
                     [parse(body) for _, body in stored],
                     leaf.manifest.get("identity", []),
+                    leaf.manifest.get("collection", {}).get("primary_id"),
                 )
                 context = parse(snapshot.scope)
                 query = context["parameters"]
@@ -674,6 +690,11 @@ def execute(
                 evidence = replace(
                     evidence,
                     scope_complete=False,
+                    dataset_complete=(
+                        False
+                        if evidence.coverage_basis == "qualified_single_response"
+                        else evidence.dataset_complete
+                    ),
                     reasons=tuple(
                         dict.fromkeys((*evidence.reasons, "COVERAGE_UNPROVEN"))
                     ),

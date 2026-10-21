@@ -1,0 +1,198 @@
+{
+  "domain": "liquidity",
+  "name": "forecast.cashflows",
+  "adapter": "adapter.py:adapter",
+  "summary": "Native account forecast output points by target time and model.",
+  "purpose": "Inspect native forecast amounts without confusing creation/update time with future target time.",
+  "operations": {
+    "list": {
+      "description": "Read one account/currency/entity and explicit target date range.",
+      "parameters": [
+        {
+          "name": "account-alias",
+          "required": true,
+          "type": "string",
+          "local_field": "bankAccountAliasName",
+          "description": "One native account alias."
+        },
+        {
+          "name": "currency",
+          "required": true,
+          "type": "string",
+          "local_field": "currency",
+          "description": "One native currency."
+        },
+        {
+          "name": "inst-id",
+          "required": false,
+          "type": "string",
+          "local_field": "entity",
+          "description": "Native owning entity; acquisition default Z21."
+        },
+        {
+          "name": "from-date",
+          "required": true,
+          "type": "string",
+          "local_field": "expectValueDateTime",
+          "description": "Inclusive native forecast target day YYYYMMDD."
+        },
+        {
+          "name": "to-date",
+          "required": true,
+          "type": "string",
+          "local_field": "expectValueDateTime",
+          "description": "Inclusive native forecast target day YYYYMMDD."
+        }
+      ]
+    }
+  },
+  "identity": [
+    "entity",
+    "bankId",
+    "bankAccountAliasName",
+    "bankAccountNo",
+    "accountType",
+    "currency",
+    "bankAccountFlowDateSourceType",
+    "fundDirection",
+    "expectValueDateTime",
+    "extBizType",
+    "subBizType",
+    "originalBizNo",
+    "gmtCreate"
+  ],
+  "identity_description": "Owner-approved full business dimensions plus native gmtCreate distinguish coexisting forecast models. Null creation means no valid forecast so far, retained unchanged.",
+  "fields": [
+    {
+      "name": "entity",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "bankId",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "bankAccountAliasName",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "bankAccountNo",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "accountType",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "currency",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "bankAccountFlowDateSourceType",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "fundDirection",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "expectValueDateTime",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "extBizType",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "subBizType",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "originalBizNo",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "gmtCreate",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "amount",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "amountStr",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "gmtModified",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    },
+    {
+      "name": "timeZone",
+      "type": "native JSON value",
+      "meaning": "Native forecast-point dimension or value; preserved unchanged."
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_forecast_cashflows"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single_response",
+      "page_sizes": [
+        0
+      ]
+    },
+    "primary_id": {
+      "type": "hash",
+      "fields": [
+        "entity",
+        "bankId",
+        "bankAccountAliasName",
+        "bankAccountNo",
+        "accountType",
+        "currency",
+        "bankAccountFlowDateSourceType",
+        "fundDirection",
+        "expectValueDateTime",
+        "extBizType",
+        "subBizType",
+        "originalBizNo",
+        "gmtCreate"
+      ],
+      "allow_empty_components": true
+    }
+  },
+  "limitations": [
+    "GET /queryCashFlowData.json once with exact JSON-string cashFlowDataQueryVO. Required account/currency/date range; entity defaults to Z21, explicit entity is preserved. No amount filters, timezone conversion or pagination invented.",
+    "Both native actutalRecordNum and currentRecordNum must equal response arrivals before accepting this unpaged response. Unknown reported total remains null in SDK evidence; failed or mismatched count witnesses reject the candidate.",
+    "Internal typed-tuple SHA-256 includes all13 approved dimensions, including gmtCreate. Empty strings and explicit null are meaningful components; missing fields remain errors. No synthetic business ID is added.",
+    "Amounts and gmtModified are mutable values, excluded from identity. Same-key duplicates retain diagnostics and conservative publication policy; conflicting values are not silently declared complete.",
+    "Null gmtCreate means no valid forecast value exists yet, even if amount is present. Retain that point and raw amounts, nulls and all unknown/nested fields without manufacturing a valid flag or dropping it.",
+    "Empty timeZone has owner-confirmed UTC+8 business meaning; raw JSON stays empty. Millisecond timestamps stay native because general SDK currently has no declarative time formatting.",
+    "Complete nonempty refresh publishes; offline replays its own saved scope. Live does not publish and failed/empty refresh preserves the prior capture. No legacy runtime or new Duckdog import."
+  ],
+  "examples": [
+    {
+      "title": "Read native forecast points",
+      "command": "dogopencli liquidity list forecast.cashflows --live --account-alias ACCOUNT --currency USD --inst-id ENTITY --from-date 20261015 --to-date 20261015 --require-complete --limit 0"
+    }
+  ]
+}

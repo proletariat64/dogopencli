@@ -77,6 +77,7 @@ PRIMARY_ID_SCHEMA = {
     "properties": {
         "type": {"enum": ["field", "hash", "unproven"]},
         "fields": {"type": "array", "items": {"type": "string"}},
+        "allow_empty_components": {"type": "boolean"},
     },
 }
 SOURCE_SCHEMA = {
@@ -326,6 +327,7 @@ def _validate_primary(policy: dict, *, verified: bool = False) -> None:
         or any(not field.strip() for field in fields)
         or kind == "field"
         and len(fields) != 1
+        or ("allow_empty_components" in policy["primary_id"] and kind != "hash")
         or not policy.get("latest_by", "present").strip()
     ):
         raise _invalid("List primary identity or timestamp declaration is invalid")

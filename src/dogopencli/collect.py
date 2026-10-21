@@ -415,9 +415,12 @@ def _list_identity(
     for field in primary_id["fields"]:
         value = row.get(field)
         if (
-            value is None
+            field not in row
             or isinstance(value, (dict, list))
-            or (isinstance(value, str) and not value.strip())
+            or (
+                (value is None or (isinstance(value, str) and not value.strip()))
+                and not primary_id.get("allow_empty_components", False)
+            )
         ):
             raise CliError(INVALID_RESPONSE, f"missing native identity field {field}")
         values.append(value)

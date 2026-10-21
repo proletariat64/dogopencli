@@ -1,0 +1,86 @@
+{
+  "domain": "liquidity",
+  "name": "operations.decisions.history",
+  "adapter": "adapter.py:adapter",
+  "summary": "Native decision report history bound to current report lineage.",
+  "purpose": "Read the native history array of one current decision report without appending the current row.",
+  "operations": {
+    "list": {
+      "description": "Verify current report context, then read all returned native history versions.",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "integer",
+          "required": true,
+          "description": "Native integer id of the current decision report; distinct from historical version ids."
+        }
+      ],
+      "execution": "custom",
+      "queries": {
+        "root": {
+          "kind": "detail",
+          "result_identity": {
+            "fields": [
+              "id"
+            ],
+            "description": "Native integer current report id, independently matched to the selected request."
+          }
+        },
+        "history": {
+          "kind": "inquiry",
+          "result_shape": "array"
+        }
+      },
+      "max_requests": 6,
+      "budget_seconds": 300
+    }
+  },
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native integer historical row id; version is preserved independently, and duplicate row ids fail.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "integer",
+      "meaning": "Native historical row identity."
+    },
+    {
+      "name": "version",
+      "type": "integer",
+      "meaning": "Native history version."
+    },
+    {
+      "name": "reportId",
+      "type": "string",
+      "meaning": "Verified report lineage from current detail."
+    },
+    {
+      "name": "groupId",
+      "type": "string",
+      "meaning": "Verified report group lineage from current detail."
+    },
+    {
+      "name": "tntInstId",
+      "type": "string",
+      "meaning": "Verified native tenant GUAPW3SG."
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_decisions_history"
+  },
+  "limitations": [
+    "POST /api/ai/decision/report/getDetail.json and then /api/ai/decision/report/getHistory.json with exactly tntInstId=GUAPW3SG and the selected integer id. Both inquiries share the host request allowance and deadline.",
+    "Current native detail must echo the requested integer id and provide nonblank reportId/groupId/tntInstId. Every historical row must match all three fields and have integer id/version. Duplicate history ids fail; no winner is selected.",
+    "The accepted completion boundary is the entire native history response array. Native total remains unknown; no claim is made about backend versions absent from that array or atomic consistency between the two inquiries.",
+    "Return only native historical records in response order, preserving all fields, nested values, numeric precision and nulls. Never append the current detail. An empty history array is valid and remains empty.",
+    "Live does not publish. Complete nonempty refresh publishes and offline replays its own saved scope; failed or empty refresh preserves the previous capture. Auth, business, schema, identity and lineage failures abort the entire inquiry.",
+    "No public Get, arbitrary report query, legacy runtime dependency, native value conversion or new Duckdog import."
+  ],
+  "examples": [
+    {
+      "title": "Read one decision report history",
+      "command": "dogopencli liquidity list operations.decisions.history --live --id 123 --require-complete --limit 0"
+    }
+  ]
+}

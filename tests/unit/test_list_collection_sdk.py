@@ -179,6 +179,44 @@ def test_offset_two_pages_complete_without_unqualified_requests():
     assert result.evidence.attempts[0]["page_size"] == 4
 
 
+def test_opted_in_hash_keeps_empty_null_and_zero_distinct():
+    rows = [
+        {"account": "A", "kind": "", "created": None},
+        {"account": "A", "kind": "", "created": 0},
+        {"account": "A", "kind": None, "created": None},
+    ]
+    settings = config((4,), primary="hash", fields=("account", "kind", "created"))
+    with pytest.raises(CliError, match="identity"):
+        collect(Native(sizes=(4,)), Script(offset(rows, 3)), settings)
+    settings["primary_id"]["allow_empty_components"] = True
+    result = collect(Native(sizes=(4,)), Script(offset(rows, 3)), settings)
+    assert result.complete and result.records == rows
+    assert result.evidence.unique_count == 3
+    from dogopencli.leaves.runtime import _validate_records
+
+    assert _validate_records(rows, list(rows[0]), settings["primary_id"]) == rows
+    with pytest.raises(CliError, match="identity"):
+        _validate_records(rows, list(rows[0]))
+
+
+@pytest.mark.parametrize("bad", [{"account": "A"}, {"account": "A", "created": []}])
+def test_nullable_hash_still_rejects_missing_or_structured_components(bad):
+    settings = config((4,), primary="hash", fields=("account", "created"))
+    settings["primary_id"]["allow_empty_components"] = True
+    with pytest.raises(CliError, match="identity"):
+        collect(Native(sizes=(4,)), Script(offset([bad], 1)), settings)
+
+
+@pytest.mark.parametrize("kind,flag", [("field", True), ("hash", "true")])
+def test_empty_component_opt_in_requires_a_hash_and_boolean(kind, flag):
+    manifest = json.loads(
+        (Path(__file__).parents[2] / "tools/leaf-dev/example/leaf.json").read_text()
+    )
+    manifest["collection"]["primary_id"].update(type=kind, allow_empty_components=flag)
+    with pytest.raises(CliError):
+        validate_manifest(manifest)
+
+
 def test_numbered_and_single_page_modes():
     rows = [{"id": n} for n in range(3)]
     numbered_stream = Script(numbered(rows[:2], 3, 0, 2), numbered(rows[2:], 3, 1, 2))

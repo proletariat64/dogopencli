@@ -52,6 +52,13 @@ leave coverage incomplete. Optional `max_pages` and `budget_seconds` narrow host
 bounds. Provider `general` works in any domain; `<domain>.collection` is private
 to its owner. Domain declarations do not register SDKs.
 
+A reviewed hash identity may set `primary_id.allow_empty_components: true` when
+explicit native null/empty values are meaningful business dimensions. The typed
+tuple preserves null, empty strings and zero distinctly; missing fields and
+object/array components still fail. Default identity validation stays strict.
+Public List identity validation and saved replay apply the same opt-in only to
+the declared hash components. No synthetic native ID or substituted value is added.
+
 Optional `paging.termination: "short_page"` opts numbered/offset acquisition into
 stable-hole recovery and two consecutive successful empty large batches as the
 stop rule. Totals do not control progress. Require stable cross-width positions,
