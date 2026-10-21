@@ -10,7 +10,7 @@ from typing import Any
 
 from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
 
-BANK_ROW_OCCURRENCES = "bank_row_occurrences_latest_gmtCreate"
+SOURCE_ROW_OCCURRENCES = "source_row_occurrences"
 
 
 @dataclass(frozen=True)
@@ -318,7 +318,7 @@ class AcquisitionEvidence:
             or (
                 evidence.scope_complete
                 and evidence.total_semantics
-                not in ("quote_date_groups", BANK_ROW_OCCURRENCES)
+                not in ("quote_date_groups", SOURCE_ROW_OCCURRENCES)
                 and evidence.reported_total is not None
                 and evidence.collected_total != evidence.reported_total
             )
@@ -328,11 +328,9 @@ class AcquisitionEvidence:
             )
         ):
             raise CliError(INVALID_RESPONSE, "cached acquisition evidence conflicts")
-        if evidence.total_semantics == BANK_ROW_OCCURRENCES:
+        if evidence.total_semantics == SOURCE_ROW_OCCURRENCES:
             selections = [
-                item
-                for item in attempts
-                if item.get("contract") == "bank-blacklist-latest-gmtCreate-v1"
+                item for item in attempts if item.get("kind") == "source_selection"
             ]
             if (
                 evidence.reported_total is None
@@ -346,17 +344,26 @@ class AcquisitionEvidence:
                     and evidence.arrivals != evidence.reported_total
                 )
                 or len(selections) != 1
+                or any(
+                    not isinstance(selections[0].get(field), list)
+                    or not selections[0][field]
+                    or any(
+                        not isinstance(value, str) or not value.strip()
+                        for value in selections[0][field]
+                    )
+                    for field in ("selection_fields", "selection_order")
+                )
                 or type(selections[0].get("raw_rows")) is not int
-                or type(selections[0].get("selected_banks")) is not int
+                or type(selections[0].get("selected_records")) is not int
                 or selections[0].get("raw_rows") != evidence.arrivals
-                or selections[0].get("selected_banks") != evidence.collected_total
+                or selections[0].get("selected_records") != evidence.collected_total
                 or selections[0].get("raw_coverage_complete")
                 is not evidence.scope_complete
                 or bool(evidence.duplicate_count)
-                != ("BANK_LATEST_CREATED_SELECTED" in evidence.reasons)
+                != ("SOURCE_ROWS_SELECTED" in evidence.reasons)
             ):
                 raise CliError(
-                    INVALID_RESPONSE, "cached bank selection evidence conflicts"
+                    INVALID_RESPONSE, "cached source selection evidence conflicts"
                 )
         return evidence
 
@@ -374,7 +381,7 @@ class AcquisitionEvidence:
             else None
         )
         if (
-            self.total_semantics == BANK_ROW_OCCURRENCES
+            self.total_semantics == SOURCE_ROW_OCCURRENCES
             and self.reported_total is not None
         ):
             missing = max(0, self.reported_total - (self.arrivals or 0))
@@ -435,17 +442,18 @@ def evaluate_result(
         warning_code = INCOMPLETE_RESULT
         warning_message = message
         if not incomplete:
-            if evidence.total_semantics == BANK_ROW_OCCURRENCES:
+            if evidence.total_semantics == SOURCE_ROW_OCCURRENCES:
                 if evidence.duplicate_count:
-                    warning_code = "BANK_LATEST_CREATED_SELECTED"
+                    warning_code = "SOURCE_ROWS_SELECTED"
                     warning_message = (
-                        "selected latest gmtCreate per bankId; "
-                        f"{evidence.duplicate_count} additional native bank rows"
-                        " omitted"
+                        "selected records from independently covered native rows; "
+                        f"{evidence.duplicate_count} additional source rows omitted"
                     )
                 else:
                     warning_code = reasons[0]
-                    warning_message = "bank acquisition warnings: " + ", ".join(reasons)
+                    warning_message = "source acquisition warnings: " + ", ".join(
+                        reasons
+                    )
             else:
                 if "PAGINATION_HOLES_BYPASSED" in reasons:
                     warning_code = "PAGINATION_HOLES_BYPASSED"

@@ -85,13 +85,17 @@ def render_text(document: dict[str, Any]) -> str:
             lines.append(
                 "  Returned shape: " + specification.get("result_shape", "object")
             )
-            identity_names = identity.get("fields")
+            identity_names = identity.get("request_fields", identity.get("fields"))
             if identity_names is None:
                 identity_names = [
                     json.dumps(path, ensure_ascii=False) for path in identity["paths"]
                 ]
             lines.append(
-                "  Returned identity "
+                (
+                    "  Request context identity "
+                    if "request_fields" in identity
+                    else "  Returned identity "
+                )
                 + ", ".join(identity_names)
                 + ": "
                 + identity["description"]

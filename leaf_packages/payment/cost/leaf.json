@@ -1,0 +1,170 @@
+{
+  "domain": "payment",
+  "name": "cost",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Acquire the fixed payment cost-type source and select fee specifications by exact local filters.",
+      "parameters": [
+        {
+          "name": "legal-entity-code",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "legalEntity",
+          "description": "Exact case-sensitive local legalEntity whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "financial-inst-code",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "financialInst",
+          "description": "Exact case-sensitive local financialInst whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "account-alias",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "bankAccountAliasName",
+          "description": "Exact case-sensitive local bankAccountAliasName whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "trans-currency-code",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "transCurrencyCode",
+          "description": "Exact case-sensitive local transCurrencyCode whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "charge-bearer",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "chargeBearer",
+          "description": "Exact case-sensitive local chargeBearer whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        },
+        {
+          "name": "clearing-network-name",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "clearingNetworkName",
+          "description": "Exact case-sensitive local clearingNetworkName whole-string match. Repeated values OR; different fields AND; commas and * literal."
+        }
+      ]
+    }
+  },
+  "summary": "Payment channel fee specifications.",
+  "purpose": "Inspect payment fee specifications with identical exact local filters in live and offline views.",
+  "fields": [
+    {
+      "name": "itemId",
+      "type": "string",
+      "meaning": "Native configuration identifier.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "itemType",
+      "type": "string",
+      "meaning": "Fixed FUND_OUT_CHANNEL_TRANS_FEE payment cost type.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "meaning": "Native cost configuration status.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "legalEntity",
+      "type": "string",
+      "meaning": "Native legal entity reference.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "financialInst",
+      "type": "string",
+      "meaning": "Native financial institution reference.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "bankAccountAliasName",
+      "type": "string",
+      "meaning": "Native bank-account alias.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "transCurrencyCode",
+      "type": "string",
+      "meaning": "Transaction currency code.",
+      "unit": "currency code"
+    },
+    {
+      "name": "costCurrencyCode",
+      "type": "string",
+      "meaning": "Cost currency code.",
+      "unit": "currency code"
+    },
+    {
+      "name": "chargeBearer",
+      "type": "string",
+      "meaning": "Native charge-bearer code.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "clearingNetworkName",
+      "type": "string",
+      "meaning": "Native clearing network name.",
+      "unit": "not applicable"
+    },
+    {
+      "name": "costRateConfigList",
+      "type": "array",
+      "meaning": "Native rate configuration structures; fees are not calculated locally.",
+      "unit": "as declared by native rate objects"
+    }
+  ],
+  "identity": [
+    "itemId"
+  ],
+  "identity_description": "Native itemId identifies each independent fee specification; preserve distinct IDs even for the same channel.",
+  "limitations": [
+    "POST /api/fundCost/query.json on iglobalfundcontrol.alipay.com; fixed FUND_OUT_CHANNEL_TRANS_FEE, zero-based pageNo and qualified pageSize 5000. No business filters enter native requests.",
+    "Native itemId is the primary key; different fee specifications remain separate, without timestamp deduplication.",
+    "All six filters are exact local scalar matches in live and offline views. Repeated same-field values OR; different fields AND. Missing or null do not match; no substring, wildcard, comma splitting, trimming or coercion.",
+    "Full native records including unknown fields, nested costRateConfigList, precision, nulls and array order remain unchanged. Display order is lexical itemId. Fees are not computed.",
+    "Source native totals and acquisition coverage remain separate from matched_total. SDK validates identity, totals, page echoes and coverage; incomplete or conflicting acquisitions cannot publish.",
+    "Live does not publish. Only complete nonempty refresh publishes; failed, empty or incomplete refresh preserves the prior snapshot. No Get or new Duckdog import."
+  ],
+  "examples": [
+    {
+      "title": "Query an exact network",
+      "command": "dogopencli payment list cost --live --clearing-network-name NETWORK --require-complete --limit 0"
+    },
+    {
+      "title": "Filter the saved source",
+      "command": "dogopencli payment list cost --account-alias ACCOUNT --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "payment_cost"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "page_number",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "itemId"
+      ]
+    }
+  }
+}

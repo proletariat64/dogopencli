@@ -139,6 +139,11 @@ def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
         if operation == "get"
         else ()
     )
+    if (
+        operation == "get"
+        and leaf.manifest["operations"]["get"].get("execution") == "custom"
+    ):
+        host = (*host, WINDOW[3])
     if operation == "list" and leaf.manifest["operations"].get("get", {}).get(
         "list_binding"
     ):
@@ -336,7 +341,9 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
             detail_constraints = ()
             if operation == "get":
                 result_identity = detail["result_identity"]
-                identity_names = result_identity.get("fields")
+                identity_names = result_identity.get(
+                    "request_fields", result_identity.get("fields")
+                )
                 if identity_names is None:
                     identity_names = [
                         json.dumps(path, ensure_ascii=False)
@@ -344,7 +351,12 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                     ]
                 shape = detail.get("result_shape", "object")
                 detail_constraints = (
-                    f"Live-only native root {shape}; returned identity: "
+                    f"Live-only native root {shape}; "
+                    + (
+                        "request context identity: "
+                        if "request_fields" in result_identity
+                        else "returned identity: "
+                    )
                     + ", ".join(identity_names)
                     + ". "
                     + result_identity["description"],

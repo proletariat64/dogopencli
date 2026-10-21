@@ -90,7 +90,7 @@ Custom entry points are:
 | `scope(parameters)` | Stable native scope string; required for every List. |
 | `filter(records, parameters)` | Qualified local filtering; required for every List. |
 
-The host passes `QueryTools`, with two inquiry methods:
+The host passes `QueryTools`, with these declared inquiry methods:
 
 - `collect(name, scope="")` returns a standard `CollectedScope`, including records
   and acquisition evidence. It uses that query's declared provider and policy;
@@ -99,6 +99,54 @@ The host passes `QueryTools`, with two inquiry methods:
   array. Identity is a nonblank string. Omitted parameters use the operation's
   parameters; an explicit object supplies per-record native context. The parser
   still validates lookup echo and scope.
+
+For an accepted native aggregate or occurrence-oriented source lacking a native
+root ID, declare a named query with `{"kind": "inquiry", "result_shape": "object"}`
+(or `"array"`). Its capability provides pure `request_body(parameters)` and
+`parse_inquiry(body, parameters)` hooks. `tools.inquire(name, parameters=None)`
+executes exactly one allowlisted native request, validates the declared shape,
+and preserves the native result without wrapping or manufacturing identity.
+It shares the operation's physical request allowance, deadline, transport lifecycle,
+error retention and trace. The leaf must independently validate request binding,
+source rows, coverage witnesses and any dependent acquisition; successful shape
+validation is not a claim of completeness. Standard List/Detail identity checks
+remain unchanged. Raw occurrence selection must retain native total and arrivals
+separately from selected business-record counts in `source_row_occurrences` evidence.
+
+A custom object Get may explicitly declare `result_identity.request_fields` instead
+of native `fields`/`paths` for an approved request-scoped aggregate. Names reference
+the public lookup name and normalized parameter names (hyphens become underscores).
+Every component must be a nonempty scalar. The result remains the native object;
+request parameters are query metadata, never fabricated response echoes. This mode
+cannot bind to List or declare an array root. Internal native Detail queries retain
+native identity declarations; use a named inquiry for unkeyed aggregates.
+
+For an approved account resolver, set the custom operation's
+`account_directory: true`. `tools.account_directory("duckdog" | "cache")` reads
+only the configured account ownership source and returns `{records, quality}`,
+or `None` when an optional source is absent. Configured corruption remains an
+error; there is no arbitrary path, SQL or storage write. The cache source is the
+current `liquidity.cash.accounts` capture and preserves acquisition quality.
+The leaf owns explicit constraints, source precedence, ambiguity warnings and
+provenance; the tool never infers historical ownership or silently acquires live data.
+A separate declared native query supplies any live fallback under the same budget.
+
+A custom List that preserves explicit `entity=["ANY"]` selection may opt into
+`entity_selector: true`. Before scope/cache selection the host freezes only the
+registered Duckdog `liquidity/reference/entities` / `instId` selector into
+`_resolved_entities`; the adapter includes that frozen universe in its native
+scope and acquisition evidence. This also applies to offline scope validation,
+so changed selector membership cannot reuse a different saved universe. The
+query tools expose the same bounded read as `entity_selector()`; neither path
+accepts arbitrary SQL, paths or selector names.
+
+For an accepted composed Get with relationship coverage limits, return
+`CustomGetResult(data, evidence)` rather than discarding that limitation.
+`data` retains the declared object/array identity contract; `evidence` is an
+`AcquisitionEvidence` with unknown reported total and the actual returned root
+count. The host preserves it under `query_evidence.coverage`, including unknown
+history coverage and component attempts. This annotation cannot turn failed or
+incomplete required named queries into success, and does not publish any cache.
 
 The host opens transport lazily and reuses one transport per declared query name
 within the operation, so a detail loop can reuse its query target. All opened

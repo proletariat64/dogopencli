@@ -1,0 +1,99 @@
+{
+  "domain": "liquidity",
+  "name": "reference.blacklist.bank",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "List native bank blacklist settings, selecting the latest configuration per bank and Swift code.",
+      "parameters": [
+        {
+          "name": "bank-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "bankId",
+          "description": "Exact local bankId match; repeated values OR, dimensions AND. Never sent to the backend."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "status",
+          "description": "Exact local status match; repeated values OR, dimensions AND. Never sent to the backend.",
+          "choices": [
+            "VALID",
+            "INVALID"
+          ]
+        }
+      ],
+      "execution": "custom",
+      "queries": {
+        "rows": {
+          "kind": "inquiry",
+          "result_shape": "object"
+        }
+      },
+      "max_requests": 10000,
+      "budget_seconds": 1800
+    }
+  },
+  "summary": "Latest bank blacklist settings per native bank and Swift code.",
+  "purpose": "Inspect maintained bank blacklist configurations without inferring enforcement from status.",
+  "fields": [
+    {
+      "name": "bankId",
+      "type": "string",
+      "meaning": "Native bank identifier."
+    },
+    {
+      "name": "bankSwiftCode",
+      "type": "string",
+      "meaning": "Native Swift code; an observed empty string is preserved."
+    },
+    {
+      "name": "bankName",
+      "type": "string",
+      "meaning": "Native bank name."
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "meaning": "Native configuration status; enforcement is not inferred."
+    },
+    {
+      "name": "gmtModified",
+      "type": "integer",
+      "meaning": "Native modification epoch milliseconds, first selection criterion."
+    },
+    {
+      "name": "gmtCreate",
+      "type": "integer",
+      "meaning": "Native creation epoch milliseconds, breaking modification ties."
+    }
+  ],
+  "identity": [
+    "bankId",
+    "bankSwiftCode"
+  ],
+  "identity_description": "Native (bankId, bankSwiftCode); empty native Swift is preserved as a literal key component.",
+  "limitations": [
+    "Fixed qualified query context GUAPW3SG, timezone GMT+08, currentArea 2; inquiry-only GET with JSON-string bankFilterConfigQuery.",
+    "Select greatest (gmtModified, gmtCreate) per (bankId, bankSwiftCode), preserving the full selected native record and first-key order. Identical ties collapse; divergent fully tied configurations are unresolved.",
+    "Native total counts raw row occurrences, independently from selected configurations. Source coverage requires stable overlaps and an empty exact-total terminal response.",
+    "Exact local bank-id/status filters apply after selection; all statuses are retained by default. No Get or bank-directory joins."
+  ],
+  "examples": [
+    {
+      "title": "Read complete bank blacklist settings",
+      "command": "dogopencli liquidity list reference.blacklist.bank --live --limit 0 --require-complete"
+    },
+    {
+      "title": "Refresh selected bank blacklist settings",
+      "command": "dogopencli liquidity refresh reference.blacklist.bank --require-complete"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_reference_blacklist_bank"
+  }
+}

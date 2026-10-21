@@ -1,0 +1,204 @@
+{
+  "domain": "payment",
+  "name": "channel",
+  "adapter": "adapter.py:adapter",
+  "summary": "Native payment channel configurations.",
+  "purpose": "Inspect channel configurations by native abilityId within a fixed payout scope.",
+  "operations": {
+    "list": {
+      "description": "Read one payout scope and apply exact local channel filters. Coverage remains pending production qualification.",
+      "parameters": [
+        {
+          "name": "payout-type",
+          "type": "string",
+          "required": false,
+          "default": "EXTERNAL",
+          "choices": [
+            "EXTERNAL",
+            "LIQUIDITY",
+            "MANUAL",
+            "SETTLEMENT"
+          ],
+          "description": "One native payout scope; separate saved source coverage."
+        },
+        {
+          "name": "financial-inst-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "financialInstCode",
+          "description": "Exact local financialInstCode match; same-field values OR and different fields AND."
+        },
+        {
+          "name": "debit-inst-country-code",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "debitInstCountryCode",
+          "description": "Exact local debitInstCountryCode match; same-field values OR and different fields AND."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "status",
+          "description": "Exact local status match; same-field values OR and different fields AND.",
+          "choices": [
+            "ENABLE",
+            "DISABLE",
+            "GRAY",
+            "TEST",
+            "INIT"
+          ]
+        },
+        {
+          "name": "debit-account-name",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "debitAccountName",
+          "description": "Exact local debitAccountName match; same-field values OR and different fields AND."
+        },
+        {
+          "name": "debit-account-no",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "debitAccountNo",
+          "description": "Exact local debitAccountNo match; same-field values OR and different fields AND."
+        },
+        {
+          "name": "clearing-system-name",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "clearingSystemName",
+          "description": "Exact local clearingSystemName match; same-field values OR and different fields AND."
+        },
+        {
+          "name": "debit-currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "debitCurrency",
+          "description": "Exact local debitCurrency match; same-field values OR and different fields AND."
+        },
+        {
+          "name": "credit-currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditCurrency",
+          "description": "Exact local creditCurrency match; same-field values OR and different fields AND."
+        }
+      ],
+      "execution": "custom",
+      "max_requests": 1000,
+      "budget_seconds": 300,
+      "queries": {
+        "channels": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "page_number",
+              "page_sizes": [
+                100
+              ]
+            },
+            "primary_id": {
+              "type": "field",
+              "fields": [
+                "abilityId"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "identity": [
+    "abilityId"
+  ],
+  "identity_description": "User-confirmed native abilityId identifies each payment channel configuration.",
+  "fields": [
+    {
+      "name": "abilityId",
+      "type": "integer",
+      "meaning": "Native configuration primary key, preserved without conversion."
+    },
+    {
+      "name": "payoutType",
+      "type": "string",
+      "meaning": "Native channel field, unchanged."
+    },
+    {
+      "name": "financialInstCode",
+      "type": "string",
+      "meaning": "Native channel field, unchanged."
+    },
+    {
+      "name": "debitInstCountryCode",
+      "type": "string",
+      "meaning": "Native channel field, unchanged."
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "meaning": "Native channel field, unchanged."
+    },
+    {
+      "name": "debitAccountName",
+      "type": "string",
+      "meaning": "Native channel field, unchanged."
+    },
+    {
+      "name": "debitAccountNo",
+      "type": "string",
+      "meaning": "Native channel field, unchanged."
+    },
+    {
+      "name": "clearingSystemName",
+      "type": "string",
+      "meaning": "Native channel field, unchanged."
+    },
+    {
+      "name": "debitCurrency",
+      "type": "string",
+      "meaning": "Native channel field, unchanged."
+    },
+    {
+      "name": "creditCurrency",
+      "type": "string",
+      "meaning": "Native channel field, unchanged."
+    },
+    {
+      "name": "configVersion",
+      "type": "string",
+      "meaning": "Native channel field, unchanged."
+    }
+  ],
+  "dataset": {
+    "relation": "payment_channel"
+  },
+  "limitations": [
+    "WIP: production full-source coverage remains unqualified. Sample cross-page duplicate IDs do not prove complete acquisition; this package is not a delivered leaf.",
+    "POST ifundboss-api.alipay.com/payout/api/ability/search.json; one-based pageNum and fixed pageSize 100. No unqualified cross-width repair or short-page termination.",
+    "Acquire the complete chosen payout scope, then apply all eight exact local filters in live and offline views. Business filters never alter source acquisition. Native totals remain separate from matched_total.",
+    "Native abilityId is the primary key. Identical repeated IDs retain one native record and incomplete coverage; conflicting contents for the same ID fail the whole command.",
+    "Custom execution only enforces the approved hard conflict failure on host-collected evidence. The general SDK owns pagination, budgets, identity and total coverage.",
+    "All native fields, configVersion, nested values, types and response order remain unchanged. No synthetic ID, timestamp winner or fee computation.",
+    "Live does not publish; incomplete, conflicting, failed or empty refresh preserves the previous capture. No Get or new Duckdog import."
+  ],
+  "examples": [
+    {
+      "title": "Inspect one payout source",
+      "command": "dogopencli payment list channel --live --payout-type EXTERNAL --limit 0 --require-complete"
+    },
+    {
+      "title": "Filter the saved source",
+      "command": "dogopencli payment list channel --financial-inst-id BANK --status ENABLE --limit 0"
+    }
+  ]
+}

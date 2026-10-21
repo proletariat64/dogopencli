@@ -24,6 +24,13 @@ Every resolved identity component must be a nonblank string or an integer,
 excluding booleans. Missing, null and non-scalar identities fail before projection.
 The leaf still validates the identity's actual lookup echo and requested context.
 
+An explicitly custom object Get may use the separately approved
+`result_identity.request_fields` contract for a request-scoped aggregate whose
+native root has no ID. See [Custom query SDK](custom-query-sdk.md). The composite
+key belongs to the request metadata; it is not injected into the native response.
+Standard Get continues to require native identity. Request-scoped Gets cannot
+bind to List or declare an array root.
+
 `operations.get.result_shape` defaults to `"object"`. An explicitly qualified
 `"array"` Get returns the native root array without wrapping, deduplication or
 latest-version selection. Declare identity over each member object; ambiguous or

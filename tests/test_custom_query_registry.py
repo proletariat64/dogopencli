@@ -211,3 +211,49 @@ def test_custom_list_cannot_also_declare_standard_collection():
     ]
     with pytest.raises(CliError, match="custom List cannot declare"):
         validate_manifest(value)
+
+
+def test_inquiry_requires_explicit_shape_without_fake_native_identity():
+    value = manifest()
+    op = value["operations"]["list"]
+    op["queries"] = {"native": {"kind": "inquiry", "result_shape": "object"}}
+    op["account_directory"] = True
+    validate_manifest(value)
+    op["queries"]["native"]["result_identity"] = {"fields": ["id"], "description": "ID"}
+    with pytest.raises(CliError):
+        validate_manifest(value)
+
+
+@pytest.mark.parametrize("mode", ["standard", "array", "undeclared", "internal"])
+def test_request_identity_only_allows_declared_context_custom_object_get(mode):
+    value = manifest()
+    get = custom_operation()
+    get.update(
+        lookup={"name": "route", "description": "Route reference"},
+        result_identity={
+            "request_fields": ["route", "account"],
+            "description": "Exact request scope",
+        },
+        parameters=[
+            {
+                "name": "account",
+                "type": "string",
+                "required": True,
+                "description": "Account",
+            }
+        ],
+    )
+    value["operations"]["get"] = get
+    validate_manifest(value)
+    if mode == "standard":
+        for key in ("queries", "max_requests", "budget_seconds"):
+            del get[key]
+        get["execution"] = "standard"
+    elif mode == "array":
+        get["result_shape"] = "array"
+    elif mode == "undeclared":
+        get["result_identity"]["request_fields"].append("undeclared")
+    else:
+        get["queries"]["detail"]["result_identity"] = get["result_identity"]
+    with pytest.raises(CliError):
+        validate_manifest(value)

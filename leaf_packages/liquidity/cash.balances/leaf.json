@@ -1,0 +1,129 @@
+{
+  "domain": "liquidity",
+  "name": "cash.balances",
+  "adapter": "adapter.py:adapter",
+  "summary": "Latest account snapshots or source daily closing balance observations.",
+  "purpose": "Read native balances with explicit scope and frozen current-roster daily labels.",
+  "operations": {
+    "list": {
+      "description": "List latest snapshots, or daily observations when paired dates are supplied.",
+      "parameters": [
+        {
+          "name": "entity",
+          "type": "string",
+          "required": false,
+          "description": "Exact native instId selection; default ALIPAYGM; ANY freezes the local entity selector.",
+          "multiple": true,
+          "local_field": "entity"
+        },
+        {
+          "name": "account-alias",
+          "type": "string",
+          "required": false,
+          "description": "Optional exact native account aliases.",
+          "multiple": true,
+          "local_field": "aliasName"
+        },
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": false,
+          "description": "Inclusive daily start YYYY-MM-DD or YYYYMMDD; requires to-date.",
+          "local_field": "statisticalDate"
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": false,
+          "description": "Inclusive daily end; requires from-date.",
+          "local_field": "statisticalDate"
+        },
+        {
+          "name": "timezone",
+          "type": "string",
+          "required": false,
+          "description": "Latest only; qualified GMT+08.",
+          "local_field": "timeZone"
+        },
+        {
+          "name": "page-size",
+          "type": "integer",
+          "required": false,
+          "description": "Latest only; native request width 1 through 100, default100."
+        }
+      ],
+      "execution": "custom",
+      "queries": {
+        "latest": {
+          "kind": "inquiry",
+          "result_shape": "object"
+        },
+        "daily": {
+          "kind": "inquiry",
+          "result_shape": "object"
+        },
+        "roster": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                1000
+              ],
+              "termination": "short_page"
+            },
+            "primary_id": {
+              "type": "hash",
+              "fields": [
+                "aliasName",
+                "currency"
+              ]
+            }
+          }
+        }
+      },
+      "max_requests": 10000,
+      "budget_seconds": 900,
+      "entity_selector": true
+    }
+  },
+  "identity": [],
+  "identity_description": "Adapter validates mode-specific native primary keys: latest balId; daily (entity,aliasName,currency,statisticalDate). No common native ID exists across modes.",
+  "fields": [
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native alias or explicitly attributed current-roster label."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native currency or frozen current-roster currency."
+    },
+    {
+      "name": "entity",
+      "type": "string",
+      "meaning": "Latest native entity; daily current-roster label, not historical ownership."
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_cash_balances"
+  },
+  "limitations": [
+    "No dates selects latest snapshots. Paired dates select daily observations with fixed GMT+08 and closing book balance semantics.",
+    "Daily queries use disjoint at-most30-alias and at-most7-day chunks, at most1000 chunks; one900-second deadline includes roster acquisition.",
+    "Daily output retains every native field plus validated current roster entity/alias/currency labels; missing observations are not zero-filled.",
+    "Source counts, roster coverage, frozen selection and all chunk outcomes are retained independently. No unsupported Duckdog import or forecast computation."
+  ],
+  "examples": [
+    {
+      "title": "Latest snapshots",
+      "command": "dogopencli liquidity list cash.balances --live --entity ALIPAYGM --limit 0 --require-complete"
+    },
+    {
+      "title": "Source daily observations",
+      "command": "dogopencli liquidity list cash.balances --live --entity ALIPAYGM --account-alias ACCOUNT --from-date 2026-10-01 --to-date 2026-10-07 --require-complete"
+    }
+  ]
+}
