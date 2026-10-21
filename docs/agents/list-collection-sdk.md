@@ -144,7 +144,16 @@ permissions, schema failures and unclassified business errors never become holes
 Every read, neighbor check, local subdivision and history validation consumes the
 same global page/deadline budget as ordinary collection and fallback. Different
 large-width fallback candidates still restart at zero and never mix their output.
-Duplicates or identity/content conflicts still prevent strict success and refresh.
+By default duplicates or identity/content conflicts still prevent strict success and refresh.
+The explicitly accepted channel contract sets `EndpointContract.duplicate_policy`
+to `allow_identical_overlap`: identical repeats are deduplicated without requiring
+a native-total or business-wide completeness proof. Evidence uses
+`coverage_basis="accepted_short_page"`, retains arrival/duplicate counts and native
+terminal witnesses, and permits strict success, refresh and offline after traversal
+completes. Here complete means the accepted traversal contract completed; it is
+not a claim that the defective backend exposed every business record. Identity
+content conflicts and unknown source errors remain failures. Other leaves retain
+the conservative policy.
 
 A recovered stable hole is a normal completed inquiry: strict live/refresh return
 exit 0 with `complete=true`. `warnings` includes the informational code
@@ -257,7 +266,8 @@ Blacklist 是业务负责人提供的跨 leaf 根因线索；其他 leaf 的类�
 下的 hole 提示稳定，不足以证明缩步、绕行及恢复大步长能覆盖同一个原生区间。
 channel 已接受使用 `short_page` 的大步长绕行策略；上述差异作为独立覆盖诊断保留，
 不再仅因已知报错暂停接入。不能将 `pageSize=1` 自身当作完整性真值，也不能将
-绕行遍历完成、去重或用户接受策略等同于已证明业务全量完整。
+绕行遍历完成、去重或用户接受策略等同于已证明业务全量完整。channel 的发布以
+已接受的遍历契约为准，不额外要求无法取得的业务全量证明。
 
 ### 遇到类似问题时如何定位
 

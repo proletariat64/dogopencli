@@ -53,6 +53,7 @@ class Inquiry:
         scope_field="payoutType",
         allowed_body_keys=frozenset({"payoutType", "pageNum", "pageSize"}),
         allowed_page_sizes=PAGE_SIZES,
+        duplicate_policy="allow_identical_overlap",
     )
 
     def page_body(self, scope: str, page_num: int, page_size: int) -> dict:

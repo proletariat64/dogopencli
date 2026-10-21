@@ -76,7 +76,11 @@ class AcquisitionEvidence:
             if duplicate_policy != "allow_identical_overlap":
                 codes.append("UNEXPECTED_DUPLICATE_ROWS")
                 complete = False
-            elif semantics != "unique_objects":
+            elif semantics != "unique_objects" and not (
+                semantics == "unknown"
+                and reported_total is None
+                and coverage_basis == "accepted_short_page"
+            ):
                 raise CliError(
                     INVALID_RESPONSE, "duplicate tolerance needs unique total"
                 )
@@ -156,6 +160,7 @@ class AcquisitionEvidence:
                 None,
                 "qualified_single_response",
                 "qualified_short_page",
+                "accepted_short_page",
                 "validated_sources",
             )
         ):
@@ -179,18 +184,26 @@ class AcquisitionEvidence:
         if coverage_basis in {
             "qualified_single_response",
             "qualified_short_page",
+            "accepted_short_page",
         } and (
             evidence.reported_total is not None
             or evidence.total_semantics != "unknown"
             or evidence.unique_count is None
             or sources is not None
             or evidence.dataset_complete is not evidence.scope_complete
-            or (evidence.scope_complete and evidence.duplicate_count != 0)
+            or (
+                coverage_basis != "accepted_short_page"
+                and evidence.scope_complete
+                and evidence.duplicate_count != 0
+            )
         ):
             raise CliError(
                 INVALID_RESPONSE, "cached single-response coverage conflicts"
             )
-        if coverage_basis == "qualified_short_page" and evidence.scope_complete:
+        if (
+            coverage_basis in {"qualified_short_page", "accepted_short_page"}
+            and evidence.scope_complete
+        ):
             last = next(
                 (
                     attempt
@@ -199,6 +212,13 @@ class AcquisitionEvidence:
                 ),
                 {},
             )
+            if coverage_basis == "accepted_short_page" and (
+                "IDENTITY_CONTENT_CONFLICT" in reasons
+                or last.get("conflict_count") != 0
+            ):
+                raise CliError(
+                    INVALID_RESPONSE, "cached accepted traversal has conflicts"
+                )
             terminal = last.get("terminal_batches")
             size = last.get("page_size")
             if (

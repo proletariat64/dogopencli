@@ -643,12 +643,21 @@ def _short_page_candidate(
         if collection.get("latest_by") is None:
             reasons.append("LAST_ARRIVAL_WINS")
     evidence = AcquisitionEvidence.for_collection(
-        complete=not duplicates and not conflicts,
+        complete=not conflicts
+        and (
+            not duplicates
+            or capability.contract.duplicate_policy == "allow_identical_overlap"
+        ),
         reported_total=None,
         collected_total=len(ordered),
         arrivals=len(rows),
         total_semantics="unknown",
-        coverage_basis="qualified_short_page",
+        coverage_basis=(
+            "accepted_short_page"
+            if capability.contract.duplicate_policy == "allow_identical_overlap"
+            else "qualified_short_page"
+        ),
+        duplicate_policy=capability.contract.duplicate_policy,
         reasons=tuple(reasons),
     )
     evidence = replace(

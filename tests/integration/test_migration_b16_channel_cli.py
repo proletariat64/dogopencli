@@ -173,42 +173,41 @@ def test_four_native_payout_scopes(installed, scope):
     ]
 
 
+@pytest.mark.parametrize("installed", ["directory", "zip"], indirect=True)
 @pytest.mark.parametrize("conflict", [False, True])
-def test_duplicate_primary_keys_keep_coverage_incomplete_or_hard_fail(
-    installed, conflict
-):
+def test_duplicate_primary_keys_deduplicate_or_hard_fail(installed, conflict):
     cli, browser, _ = installed
     scripted(browser, [row(999)])
     saved = cli("refresh", "--require-complete")
     original = [row(i) for i in range(100)]
     repeated = {**original[0], **({"status": "DISABLE"} if conflict else {})}
-    native = [*original, repeated]
-    scripted(browser, native)
+    scripted(browser, [*original, repeated])
     if conflict:
         rejected = cli("list", "--live", "--limit", "0", code=1)
         assert rejected["error"]["code"] == "INVALID_RESPONSE"
         assert rejected.get("data") in (None, [])
+        failed = cli("refresh", "--require-complete", code=1)
+        assert failed["meta"]["published"] is False
+        assert failed["error"]["code"] == "INVALID_RESPONSE"
+        offline = cli("list")
+        assert offline["data"] == [row(999)]
+        assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
     else:
-        got = cli("list", "--live", "--limit", "0")
+        got = cli("list", "--live", "--require-complete", "--limit", "0")
         assert got["data"] == original
-        assert got["meta"]["complete"] is False
+        assert got["meta"]["complete"] is True
         assert got["meta"]["reported_total"] is None
-        assert got["meta"]["collected_total"] == got["meta"]["matched_total"] == 100
         evidence = got["meta"]["acquisition"]
+        assert evidence["coverage_basis"] == "accepted_short_page"
         assert evidence["arrivals"] == 101 and evidence["duplicate_count"] == 1
-        assert "CROSS_PAGE_OR_INTRA_PAGE_DUPLICATES" in evidence["reasons"]
-        assert (
-            cli("list", "--live", "--require-complete", code=1)["error"]["code"]
-            == "INCOMPLETE_RESULT"
-        )
-    failed = cli("refresh", "--require-complete", code=1)
-    assert failed["meta"]["published"] is False
-    assert failed["error"]["code"] == (
-        "INVALID_RESPONSE" if conflict else "INCOMPLETE_RESULT"
-    )
-    offline = cli("list")
-    assert offline["data"] == [row(999)]
-    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+        assert "UNEXPECTED_DUPLICATE_ROWS" not in evidence["reasons"]
+        refreshed = cli("refresh", "--require-complete")
+        assert refreshed["meta"]["published"] is True
+        count = len(browser.business_requests)
+        offline = cli("list", "--require-complete", "--limit", "0")
+        assert offline["data"] == original
+        assert offline["meta"]["acquisition"]["coverage_basis"] == "accepted_short_page"
+        assert len(browser.business_requests) == count
 
 
 @pytest.mark.parametrize(
