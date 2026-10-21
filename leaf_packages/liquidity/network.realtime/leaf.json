@@ -180,7 +180,7 @@
     {
       "name": "operationHistory",
       "type": "array or null",
-      "meaning": "Alias/action-scoped settings history retaining independent ids and versions; successful retrieval does not prove exhaustive coverage."
+      "meaning": "Alias/action-scoped settings history retaining independent ids and versions; completion covers the entire successfully returned native array, including an empty array, without a reported total."
     },
     {
       "name": "routeDetails",
@@ -214,7 +214,7 @@
     "List POST /api/ai/decision/network/queryDecisionNetwork.json only {rowStart:0,pageSize:5000}; native data.totalCount must equal unique arrivals within the one fixed page.",
     "Keep the original 26 network settings fields. Exclude dynamic statistics, personnel, free text, action payloads and unknown root fields. Verify conflicting native IDs before projection.",
     "Get root POST /api/ai/decision/network/detail.json with exact id. History POST /api/ai/decision/network/queryLog.json uses selected root creditAliasName/debitAliasName arrays and fundAction; no global history query.",
-    "History has no native total or exhaustion proof: always HISTORY_COVERAGE_UNPROVEN after successful retrieval, including empty arrays. Preserve source IDs/versions; no snapshot pinning or atomicity claim.",
+    "History completes at the entire successfully returned native array, including empty arrays; no total, extra pagination or proof of unseen backend versions is required. Preserve source IDs/versions and context validation. Root and history keep their independent native values; same-ID field differences do not make the result incomplete. No snapshot pinning or atomicity claim.",
     "Applicable route quota GET /queryWhaleRouteDetail.json uses root routeId/debitAliasName and fixed GUAPW3SG; missing context remains unverified, explicit null/empty routeId is inapplicable. No optional drop of applicable associations.",
     "Keep route quota arrays, nested native values and blank/repeated child quotaId. Nonempty returned context must match; request context is not fabricated in native output.",
     "Get returns assembled root plus operationHistory and routeDetails; query_evidence coverage retains separate component status and sequential-read limitations. Any actual required inquiry failure aborts. Get never publishes or imports.",

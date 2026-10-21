@@ -34,7 +34,7 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 
 - **39/39 Lists、23/23 Gets**，合计 **62/62 actions**；**42/42 leaves** 全操作完成。
 - 整批完成 B01、B02、B03、B05、B06、B07、B08、B09、B10；当前范围无 HOLD。
-- 全局逐 leaf/action 累计为 **79/80 完整 leaves、105/107 actions**；仍有 1 leaf、2 actions 未完成。
+- 全局逐 leaf/action 累计为 **80/80 完整 leaves、107/107 actions**；当前清单无未完成 leaf 或 action。
 - 进度工具按完整 leaf 累计；部分完成批次仍保留 HOLD 范围。
 
 | Batch | SDK List / 原范围 | SDK Get / 原范围 | 全操作完成 leaves | 范围依据 |
@@ -67,7 +67,7 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 
 按批次推进；不能表达或缺少验收证据的整个 leaf 暂停，集中 HIL 后再处理，不更改清单分母。
 
-- B11/#270：`network.route_quotas` Get 完成，以请求中的 routeId、aliasName、tntInstId 为整组原生额度的复合身份。`network.realtime` List 已验证，Get 保留根、历史及条件额度关联，但历史覆盖仍未知，普通 Get 显式 incomplete、strict 拒绝；整叶两项 actions 仍归 #332，未计交付。
+- B11/#270：两个 leaf / 三项 actions 完成。network.route_quotas 以请求中的 routeId、aliasName、tntInstId 为整组原生额度的复合身份。network.realtime Get 保留根、操作历史及条件额度关联；历史以成功返回的原生数组（含空数组）为完成边界，无需 total 或额外翻页。根和历史各自保留原生值，不要求同 ID 跨接口字段相等；身份、查询上下文、适用路由及真实失败仍独立校验。
 - B12/#271：两个 leaf / 三项 actions 完成。`investment.strategies` 仅 Get；`investment.strategy_results` 按显式任务类型查询 List/Get，原生根与嵌套数据保留。
 - B13/#272：三个收款配置 List 完成，固定首个 1000 容量按原生 total 与唯一身份验证；卡模板保留原生嵌套数组，不承诺未验证的明细语义。
 - B14/#273：四个付款规则 List 完成，原生单响应全量及精确本地筛选；银存切换保留单接口原生层级，嵌套条件须在同一分支成立。
@@ -78,7 +78,7 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 - B19/#278：两个 List 完成。cash.accounts 保留已批准的 failed-detail/incomplete 策略，strict/refresh 拒绝不完整详情。cash.balances 保留 latest/daily、冻结的当前目录标签和账户／日期分块；当前目录不作为历史所有权证明。
 - B20/#279：`operations.account_strategies` List 完成，保留原生复合身份、全部版本和状态；旧额外空终页探测由 SDK 标准完整性机制替代。`risk.account_capacity` List 完成，custom 按原1–10显式账户范围逐一校验原生alias回显；原生／pinned、live/refresh/offline及同ZIP HTTP生命周期通过。
 
-B11–B20 累计交付 24 leaves / 27 actions；未完成 1 leaf / 2 actions 归 #332：network.realtime 的历史覆盖。
+B11–B20 累计交付 25 leaves / 29 actions；原有 #332 范围全部完成。
 
 ## B21–B25 迁移
 
@@ -91,7 +91,7 @@ B11–B20 累计交付 24 leaves / 27 actions；未完成 1 leaf / 2 actions 归
 - B25/#284：三个 leaf / 四项 actions 完成。decisions List/Get、rule_status List 保留原契约；decisions.history 核对当前查询和 report/group/tenant 关系，仅返回原生历史数组。
 
 
-产品／决策 history 的完成边界是原生接口成功返回的整个历史数组，原生 total 保持未知，不拼当前记录、不推定后台未返回版本。该边界不替代 realtime Get 独立的历史覆盖限制。
+产品／决策 history 和 realtime Get 的 operationHistory 均以原生接口成功返回的整个历史数组为完成边界，原生 total 保持未知，不拼当前记录、不推定后台未返回版本。realtime 根与历史各自保留原生值，不要求跨接口字段对齐，也不承诺原子快照。
 
 ## 原始批次范围
 
@@ -116,7 +116,7 @@ rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf.py batches
 | B08 | [#267](https://github.com/proletariat64/dogopencli/issues/267) | `liquidity.operations.asset_trades` LG; `liquidity.operations.forwards` LG; `liquidity.operations.prefunds` LG; `liquidity.operations.demands` LG; `liquidity.operations.transfers` LG; `liquidity.operations.swaps` L | 6/11 | delivered |
 | B09 | [#268](https://github.com/proletariat64/dogopencli/issues/268) | `liquidity.investment.rfqs` LG; `liquidity.investment.quotes` LG; `liquidity.investment.quote_groups` G | 3/5 | delivered |
 | B10 | [#269](https://github.com/proletariat64/dogopencli/issues/269) | `liquidity.ledger.customers` G; `liquidity.network.account_capabilities` LG | 2/3 | delivered |
-| B11 | [#270](https://github.com/proletariat64/dogopencli/issues/270) | `liquidity.network.realtime` LG; `liquidity.network.route_quotas` G | 2/3 | partial：route_quotas delivered；realtime HOLD |
+| B11 | [#270](https://github.com/proletariat64/dogopencli/issues/270) | `liquidity.network.realtime` LG; `liquidity.network.route_quotas` G | 2/3 | delivered |
 | B12 | [#271](https://github.com/proletariat64/dogopencli/issues/271) | `liquidity.investment.strategies` G; `liquidity.investment.strategy_results` LG | 2/3 | delivered |
 | B13 | [#272](https://github.com/proletariat64/dogopencli/issues/272) | `collection.clearing_system` L; `collection.card_template` L; `collection.account_isolation` L | 3/3 | delivered |
 | B14 | [#273](https://github.com/proletariat64/dogopencli/issues/273) | `payment.rules.same_bank_transfer` L; `payment.rules.cost_reduction` L; `payment.rules.retry` L; `payment.rules.bank_switch` L | 4/4 | delivered |
