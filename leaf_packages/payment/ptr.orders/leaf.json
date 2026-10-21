@@ -1,0 +1,318 @@
+{
+  "domain": "payment",
+  "name": "ptr.orders",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Inspect existing outflow PTR orders after two complete stable padded reads and half-open window trimming.",
+      "parameters": [
+        {
+          "name": "updated-from",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive updated-time lower instant: YYYY-MM-DDTHH:MM:SS with numeric offset; normalized to Shanghai +08:00."
+        },
+        {
+          "name": "updated-to",
+          "type": "string",
+          "required": true,
+          "description": "Exclusive updated-time upper instant: explicit numeric offset, ordered, at most 31 days after updated-from and not future."
+        },
+        {
+          "name": "id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "ptrOrderId",
+          "description": "Exact whole-string local ptrOrderId match. Repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "case-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "caseId",
+          "description": "Exact whole-string local caseId match. Repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "channel",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "productionTrialRunFundOutAbilityVO.financialInstCode",
+          "description": "Exact whole-string local productionTrialRunFundOutAbilityVO.financialInstCode match. Repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "debtor-account",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "productionTrialRunFundOutAbilityVO.debtorAccountAliasName",
+          "description": "Exact whole-string local productionTrialRunFundOutAbilityVO.debtorAccountAliasName match. Repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "debtor-currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "debtorAmount.currencyCode",
+          "description": "Exact whole-string local debtorAmount.currencyCode match. Repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "creditor-currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditorCurrency",
+          "description": "Exact whole-string local creditorCurrency match. Repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "clearing-system",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "productionTrialRunFundOutAbilityVO.clearingSystemName",
+          "description": "Exact whole-string local productionTrialRunFundOutAbilityVO.clearingSystemName match. Repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "order-status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "orderStatus",
+          "description": "Exact whole-string local orderStatus match. Repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "verify-status",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "verifyStatus",
+          "description": "Exact whole-string local verifyStatus match. Repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "final-result",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "ptrFinalResult",
+          "description": "Exact whole-string local ptrFinalResult match. Repeated values OR, different fields AND; commas and * literal."
+        }
+      ],
+      "execution": "custom",
+      "queries": {
+        "orders": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "single",
+              "page_sizes": [
+                500
+              ]
+            },
+            "primary_id": {
+              "type": "field",
+              "fields": [
+                "ptrOrderId"
+              ]
+            }
+          }
+        }
+      },
+      "max_requests": 6,
+      "budget_seconds": 900
+    }
+  },
+  "summary": "Existing outflow PTR orders in an explicit updated-time interval.",
+  "purpose": "Inspect existing PTR orders and retained verification results without initiating, executing or updating a PTR.",
+  "fields": [
+    {
+      "name": "allocateOrderId",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "allocatePayoutTime",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "bizRequestId",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "bizRequestTime",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "caseId",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "caseName",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "caseType",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "creditorAccountAliasName",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "creditorCurrency",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "debtorAmount",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "failureReason",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "finNetId",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "fvt",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "gmtCreate",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "gmtModified",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "lastVerificationDt",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "obo",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "orderStatus",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "productionTrialRunFundOutAbilityVO",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "ptrFinalResult",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "ptrOrderId",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "purposeCode",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "referenceObo",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "returnAmount",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "spentTime",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "spentTimeInfoSource",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "transactionRate",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "transactionRateRef",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "verifyFvtResult",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "verifyOboResult",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "verifyReferenceOboResult",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    },
+    {
+      "name": "verifyStatus",
+      "type": "native JSON value",
+      "meaning": "Retained native PTR field; amounts, nulls and types stay unchanged."
+    }
+  ],
+  "identity": [
+    "ptrOrderId"
+  ],
+  "identity_description": "Exact nonblank native string ptrOrderId, distinct from caseId; native gmtModified is required integer milliseconds.",
+  "dataset": {
+    "relation": "payment_ptr_orders"
+  },
+  "limitations": [
+    "GET /api/ptr/manage/query.json on iglobalfundcontrol.alipay.com, pageNo=0/pageSize=500 and only bound modifiedTimeBegin/modifiedTimeEnd. Application entry: https://ifundcontrol.alipay.com/productOperation/paymentProductManagement/productPTRManagement/orderInquiry.",
+    "Explicit second-precision numeric offsets only; normalize instants to Shanghai +08:00. Reject unknown -00:00, fractional seconds, missing offsets, nonordered spans, spans exceeding 31 days and future upper bounds.",
+    "Each native query expands both boundaries by one second. Each padded read must prove native total/unique identity coverage within fixed width 500; 500 is the scoped fixed policy, not a measured backend maximum.",
+    "Read the same padded scope twice under one shared request/deadline budget. Compare retained projections sorted by native ptrOrderId before trimming; changed padding records fail too.",
+    "After full padded stability, retain start <= gmtModified < end, sorted lexically by ptrOrderId. Padded native totals and both acquisition records remain in evidence; public output count is separate.",
+    "Preserve the assigned PTR field allowlist, retained debtorAmount/returnAmount money keys and productionTrialRunFundOutAbilityVO baseline keys. Unknown fields are omitted; no money normalization or derived verification interpretation.",
+    "Exact local scalar/nested whole-string filters only. Live never publishes; complete nonempty refresh publishes, and failed/incomplete/empty refresh preserves the saved snapshot. Offline uses the saved window; explicit acquisition bounds require a fresh live query.",
+    "List only; no Get, execution, trial, withdrawal, approval or update action. No new Duckdog import."
+  ],
+  "examples": [
+    {
+      "title": "Inspect a completed updated-time interval",
+      "command": "dogopencli payment list ptr.orders --live --updated-from 2026-10-01T00:00:00+08:00 --updated-to 2026-10-02T00:00:00+08:00 --require-complete --limit 0"
+    },
+    {
+      "title": "Filter the saved order scope locally",
+      "command": "dogopencli payment list ptr.orders --order-status FUND_OUT_SUC --limit 0"
+    }
+  ]
+}

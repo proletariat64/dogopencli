@@ -1,0 +1,260 @@
+{
+  "domain": "payment",
+  "name": "ptr.cases",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Inspect the outflow PTR case library after two successful complete retained-content reads.",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "id",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "caseName",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "channel",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "fundOutAbilityBaselineVO.financialInstCode",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "debtor-account",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "fundOutAbilityBaselineVO.debtorAccountAliasName",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "debtor-currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "fundOutAbilityBaselineVO.debtorCurrency",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "creditor-currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditorCurrency",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "clearing-system",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "fundOutAbilityBaselineVO.clearingSystemName",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "obo",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "obo",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "fvt",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "fvt",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "case-type",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "caseType",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "baseline-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "baselineId",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        },
+        {
+          "name": "creditor-account-alias",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "creditorAccountAliasName",
+          "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
+        }
+      ],
+      "execution": "custom",
+      "queries": {
+        "cases": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "single",
+              "page_sizes": [
+                5000
+              ]
+            },
+            "primary_id": {
+              "type": "field",
+              "fields": [
+                "id"
+              ]
+            }
+          }
+        }
+      },
+      "max_requests": 20,
+      "budget_seconds": 120
+    }
+  },
+  "summary": "Outflow PTR case library.",
+  "purpose": "Inspect retained PTR case and outflow baseline fields without initiating trials or execution.",
+  "fields": [
+    {
+      "name": "baselineId",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "caseAutomationRuleId",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "caseName",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "caseType",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "creditorAccountAliasName",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "creditorAccountType",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "creditorAmount",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "creditorCurrency",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "debtorAmount",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "fundOutAbilityBaselineVO",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "fvt",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "gmtCreate",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "gmtModified",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "id",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "obo",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "purposeCode",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "referenceObo",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "verifyFundOutOrderId",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "verifyResult",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    },
+    {
+      "name": "verifyTime",
+      "type": "native retained JSON value",
+      "meaning": "Allowlisted native PTR case field, retaining values and types."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native nonblank string case id.",
+  "limitations": [
+    "Only inquiry GET /api/ptr/case/query.json with fixed pageNo=0/pageSize=5000. No backend filtering, Get, trial, execute or update.",
+    "Two successful complete acquisitions of the same full outflow library must have equal totals and equal sorted retained-field contents; a failed read is not a stability retry.",
+    "Preserves the pinned case, baseline and monetary field whitelist. Other native fields are deliberately omitted, and changes to omitted fields do not establish retained-content instability.",
+    "Both complete scopes remain in custom query evidence. Empty, failed, duplicate, truncated or unstable refresh cannot replace the saved nonempty capture.",
+    "Exact local whole-string filters OR within a field and AND across fields; no wildcard, substring, comma splitting or coercion.",
+    "The verified native contract is a fixed page0/5000 full-library inquiry with top-level boolean success, resultDataList, exact page echoes, integer totalCount and unique native id. Two complete retained-content reads are required before output."
+  ],
+  "examples": [
+    {
+      "title": "Inspect the stable outflow case library",
+      "command": "dogopencli payment list ptr.cases --live --require-complete --limit 0"
+    },
+    {
+      "title": "Select a retained channel locally",
+      "command": "dogopencli payment list ptr.cases --channel BANK"
+    }
+  ],
+  "dataset": {
+    "relation": "payment_ptr_cases"
+  }
+}

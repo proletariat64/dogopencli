@@ -453,7 +453,7 @@
       "id": "B15",
       "title": "收款SLA与VA",
       "issue": 274,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "collection.sla.configs",
@@ -476,7 +476,7 @@
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         }
       ]
     },
@@ -504,19 +504,21 @@
       "id": "B17",
       "title": "付款PTR",
       "issue": 276,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "payment.ptr.cases",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "payment.ptr.orders",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         }
       ]
     },
@@ -559,13 +561,15 @@
           "identity": "liquidity.cash.accounts",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.cash.balances",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
         }
       ]
     },
@@ -573,7 +577,7 @@
       "id": "B20",
       "title": "账户策略与容量",
       "issue": 279,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.operations.account_strategies",
@@ -587,7 +591,7 @@
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         }
       ]
     },
