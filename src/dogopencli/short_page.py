@@ -20,10 +20,18 @@ class RecordHole(Exception):
         self.fingerprint = fingerprint
 
 
+class TerminalPage(Exception):
+    """A leaf-qualified repeated short last page, with original native echoes."""
+
+    def __init__(self, witness: dict):
+        self.witness = witness
+
+
 @dataclass
 class _Page:
     rows: list[dict[str, Any]] | None
     fingerprint: str = "empty"
+    terminal: dict | None = None
 
 
 class ShortPageWalk:
@@ -36,6 +44,7 @@ class ShortPageWalk:
         sizes: set[int],
         numbered: bool,
         observations: list[dict],
+        retain_final_short: bool = False,
     ):
         self.fetch = read
         self.identity = identity
@@ -43,6 +52,7 @@ class ShortPageWalk:
         self.sizes = sorted((w for w in sizes if 0 < w <= size), reverse=True)
         self.numbered = numbered
         self.observations = observations
+        self.retain_final_short = retain_final_short
         self.cache: dict[tuple[int, int], _Page] = {}
         self.pieces: list[tuple[int, int, _Page]] = []
         self.unresolved: list[tuple[int, int]] = []
@@ -58,6 +68,8 @@ class ShortPageWalk:
                 self.cache[key] = _Page(self.fetch(start, size))
             except RecordHole as error:
                 self.cache[key] = _Page(None, error.fingerprint)
+            except TerminalPage as end:
+                self.cache[key] = _Page([], terminal=end.witness)
         return self.cache[key]
 
     def width(self, start: int, limit: int) -> int:
@@ -217,9 +229,36 @@ class ShortPageWalk:
                 limit = min(limit, self.size - cursor % self.size)
             width = self.width(cursor, limit)
             page = self.read(cursor, width)
-            rows.extend(self.inspect(cursor, width, page))
+            # A final successful short page needs no width-changing probes.
+            # Only an interior short page needs subdivision and reconstruction.
+            final_short = False
+            if (
+                self.retain_final_short
+                and page.rows
+                and len(page.rows) < width
+                and width == self.size
+            ):
+                following = self.read(cursor + width, self.size)
+                if following.rows == []:
+                    after = self.read(cursor + 2 * width, self.size)
+                    final_short = after.rows == []
+            if final_short:
+                self.piece(cursor, width, page)
+                rows.extend(page.rows)
+            else:
+                rows.extend(self.inspect(cursor, width, page))
             if page.rows == [] and width == self.size:
-                self.terminal_batches.append({"start": cursor, "size": width})
+                if self.terminal_batches and bool(
+                    self.terminal_batches[-1].get("native_terminal")
+                ) != bool(page.terminal):
+                    self.terminal_batches.clear()
+                self.terminal_batches.append(
+                    {
+                        "start": cursor,
+                        "size": width,
+                        **({"native_terminal": page.terminal} if page.terminal else {}),
+                    }
+                )
             elif page.rows is None or page.rows:
                 self.terminal_batches.clear()
             cursor += width

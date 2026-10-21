@@ -9,6 +9,7 @@ from dogopencli.leaves.query import CustomListResult
 
 SCOPES = ("EXTERNAL", "LIQUIDITY", "MANUAL", "SETTLEMENT")
 PAGE_SIZE = 100
+PAGE_SIZES = tuple(range(1, PAGE_SIZE + 1))
 FILTERS = {
     "financial_inst_id": "financialInstCode",
     "debit_inst_country_code": "debitInstCountryCode",
@@ -51,7 +52,7 @@ class Inquiry:
         one_based=True,
         scope_field="payoutType",
         allowed_body_keys=frozenset({"payoutType", "pageNum", "pageSize"}),
-        fixed_body_values=(("pageSize", PAGE_SIZE),),
+        allowed_page_sizes=PAGE_SIZES,
     )
 
     def page_body(self, scope: str, page_num: int, page_size: int) -> dict:
@@ -60,10 +61,10 @@ class Inquiry:
             or type(page_num) is not int
             or page_num < 1
             or type(page_size) is not int
-            or page_size != PAGE_SIZE
+            or page_size not in PAGE_SIZES
         ):
             fail("unverified payment channel request", "REQUEST_NOT_ALLOWED")
-        return {"payoutType": scope, "pageNum": page_num, "pageSize": PAGE_SIZE}
+        return {"payoutType": scope, "pageNum": page_num, "pageSize": page_size}
 
     def parse_page(self, body: bytes) -> ParsedPage:
         try:
@@ -75,6 +76,18 @@ class Inquiry:
         if not isinstance(document, dict) or type(document.get("success")) is not bool:
             fail("channel outer success must be boolean")
         if not document["success"]:
+            message = document.get("msg")
+            if (
+                document.get("msgCode") == "IPAY_RS_510090020"
+                and document.get("status") is False
+                and isinstance(message, str)
+                and "debit account not exists" in message
+            ):
+                raise CliError(
+                    "BUSINESS_QUERY_FAILED",
+                    "channel query encountered the known missing debit account",
+                    meta={"channel_record_hole": message},
+                )
             fail("backend outer channel query failed", "BUSINESS_QUERY_FAILED")
         if "status" in document:
             if type(document["status"]) is not bool:
@@ -90,15 +103,10 @@ class Inquiry:
         if any(type(result.get(key)) is not int for key in keys):
             fail("channel page metadata must be native integers")
         page, size, total, pages = (result[key] for key in keys)
-        if size != PAGE_SIZE or total < 0 or pages < 0 or page < 0:
+        if size not in PAGE_SIZES or total < 0 or pages < 0 or page < 1:
             fail("channel native pagination is invalid or clamped")
         rows = result.get("payoutAbilityVOList")
-        if (
-            not isinstance(rows, list)
-            or len(rows) > PAGE_SIZE
-            or (total == 0 and (rows or pages != 0))
-            or (total > 0 and page < 1)
-        ):
+        if not isinstance(rows, list) or len(rows) > size:
             fail("channel native records or pagination are invalid")
         for row in rows:
             if not isinstance(row, dict):
@@ -109,6 +117,18 @@ class Inquiry:
             ):
                 fail("channel requires native abilityId")
         return ParsedPage(rows, page, size, total, pages)
+
+    def pagination_hole(self, error: CliError) -> str | None:
+        if error.code == "BUSINESS_QUERY_FAILED" and isinstance(error.meta, dict):
+            value = error.meta.get("channel_record_hole")
+            if isinstance(value, str) and value:
+                return value
+        return None
+
+    def pagination_terminal(self, page: ParsedPage, requested_page: int) -> bool:
+        # The host additionally requires exact repetition of a previously read
+        # successful short page at this same width, including every native field.
+        return page.page_num < requested_page and 0 < len(page.records) < page.page_size
 
 
 CAPABILITY = Inquiry()

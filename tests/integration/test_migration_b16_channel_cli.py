@@ -1,4 +1,4 @@
-"""Conservative channel candidate; production coverage remains unqualified."""
+"""Channel short-page traversal, classified holes and conservative coverage."""
 
 from copy import deepcopy
 from dataclasses import replace
@@ -38,7 +38,7 @@ def row(identity=1, scope="EXTERNAL", **extra):
     }
 
 
-def page(records, number=1, total=None, **paging):
+def page(records, number=1, total=None, size=100, **paging):
     count = len(records) if total is None else total
     return {
         "status": 200,
@@ -49,7 +49,7 @@ def page(records, number=1, total=None, **paging):
                 "success": True,
                 "payoutAbilityVOList": records,
                 "pageNum": number,
-                "pageSize": 100,
+                "pageSize": size,
                 "totalCount": count,
                 "totalPages": -(-count // 100),
                 **paging,
@@ -61,9 +61,12 @@ def page(records, number=1, total=None, **paging):
 def scripted(browser, records):
     def handler(body, _):
         assert set(body) == {"payoutType", "pageNum", "pageSize"}
-        assert body["pageSize"] == 100
-        start = (body["pageNum"] - 1) * 100
-        return page(records[start : start + 100], body["pageNum"], len(records))
+        width = body["pageSize"]
+        assert 1 <= width <= 100
+        start = (body["pageNum"] - 1) * width
+        return page(
+            records[start : start + width], body["pageNum"], len(records), size=width
+        )
 
     browser.business_handler = handler
 
@@ -127,9 +130,13 @@ def test_native_records_multipage_local_filters_and_refresh_replay(installed):
         "0",
     )
     assert live["data"] == native[-1:]
-    assert live["meta"]["reported_total"] == live["meta"]["collected_total"] == 102
+    assert live["meta"]["reported_total"] is None
+    assert live["meta"]["collected_total"] == 102
     assert live["meta"]["matched_total"] == 1
-    assert [body["pageNum"] for body in browser.business_requests] == [1, 2]
+    assert [body["pageNum"] for body in browser.business_requests[:2]] == [1, 2]
+    assert browser.business_requests[-2:] == [
+        {"payoutType": "EXTERNAL", "pageNum": n, "pageSize": 100} for n in (3, 4)
+    ]
     assert all(
         set(body) == {"pageNum", "pageSize", "payoutType"}
         for body in browser.business_requests
@@ -142,7 +149,7 @@ def test_native_records_multipage_local_filters_and_refresh_replay(installed):
     )
     assert offline["data"] == live["data"]
     assert offline["meta"]["matched_total"] == 1
-    assert offline["meta"]["reported_total"] == 102
+    assert offline["meta"]["reported_total"] is None
     assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
     assert len(browser.business_requests) == count
     assert cli("list", "--clearing-system-name", "book")["data"] == []
@@ -156,8 +163,13 @@ def test_four_native_payout_scopes(installed, scope):
     scripted(browser, [row(scope=scope)])
     got = cli("list", "--live", "--payout-type", scope, "--require-complete")
     assert got["data"][0]["payoutType"] == scope
-    assert browser.business_requests == [
-        {"payoutType": scope, "pageNum": 1, "pageSize": 100}
+    assert browser.business_requests[0] == {
+        "payoutType": scope,
+        "pageNum": 1,
+        "pageSize": 100,
+    }
+    assert browser.business_requests[-2:] == [
+        {"payoutType": scope, "pageNum": n, "pageSize": 100} for n in (2, 3)
     ]
 
 
@@ -180,11 +192,11 @@ def test_duplicate_primary_keys_keep_coverage_incomplete_or_hard_fail(
         got = cli("list", "--live", "--limit", "0")
         assert got["data"] == original
         assert got["meta"]["complete"] is False
-        assert got["meta"]["reported_total"] == 101
+        assert got["meta"]["reported_total"] is None
         assert got["meta"]["collected_total"] == got["meta"]["matched_total"] == 100
         evidence = got["meta"]["acquisition"]
         assert evidence["arrivals"] == 101 and evidence["duplicate_count"] == 1
-        assert "COUNT_MISMATCH" in evidence["reasons"]
+        assert "CROSS_PAGE_OR_INTRA_PAGE_DUPLICATES" in evidence["reasons"]
         assert (
             cli("list", "--live", "--require-complete", code=1)["error"]["code"]
             == "INCOMPLETE_RESULT"
@@ -215,8 +227,6 @@ def test_duplicate_primary_keys_keep_coverage_incomplete_or_hard_fail(
         "scope",
         "page",
         "clamp",
-        "total_pages",
-        "total_changed",
     ],
 )
 def test_failures_and_page_echoes_preserve_previous_capture(installed, failure):
@@ -256,11 +266,6 @@ def test_failures_and_page_echoes_preserve_previous_capture(installed, failure):
         result["pageNum"] = 2
     elif failure == "clamp":
         result["pageSize"] = 10
-    elif failure == "total_pages":
-        result["totalPages"] = 2
-    else:
-        browser.business_script.append(page([row(i) for i in range(100)], total=101))
-        reply = page([row(100)], number=2, total=102)
     browser.business_script.append(reply)
     failed = cli("refresh", "--require-complete", code=1)
     assert failed["error"]["code"] == expected
@@ -299,7 +304,8 @@ def test_each_exact_local_filter_and_repeated_value_or(installed, flag, field):
         "--require-complete",
     )
     assert got["data"] == records[:2]
-    assert got["meta"]["reported_total"] == 3 and got["meta"]["matched_total"] == 2
+    assert got["meta"]["reported_total"] is None
+    assert got["meta"]["matched_total"] == 2
     assert set(browser.business_requests[0]) == {"payoutType", "pageNum", "pageSize"}
 
 
@@ -321,7 +327,7 @@ def test_native_request_default_deny(installed, change):
     elif change == "extra":
         request.body["action"] = "save"
     elif change == "width":
-        request.body["pageSize"] = 10
+        request.body["pageSize"] = 101
     else:
         with pytest.raises(CliError) as failure:
             capability.page_body("ANY", 1, 100)
@@ -330,3 +336,151 @@ def test_native_request_default_deny(installed, change):
     with pytest.raises(CliError) as failure:
         validate_request(request, contract)
     assert failure.value.code == "REQUEST_NOT_ALLOWED"
+
+
+def record_hole(
+    message="debit account not exists: test-account USD", code="IPAY_RS_510090020"
+):
+    return {
+        "status": 200,
+        "body": {"success": False, "status": False, "msgCode": code, "msg": message},
+    }
+
+
+@pytest.mark.parametrize("installed", ["directory", "zip"], indirect=True)
+@pytest.mark.parametrize("clamped", [False, True])
+def test_known_holes_cold_hot_refresh_and_offline(installed, clamped):
+    cli, browser, config = installed
+    native = [row(i) for i in range(230)]
+    holes = {103, 147, 148} if clamped else {147, 148, 203}
+
+    def handler(body, _):
+        width = body["pageSize"]
+        number = body["pageNum"]
+        start = (number - 1) * width
+        if clamped and start >= len(native):
+            number = -(-len(native) // width)
+            start = (number - 1) * width
+        if any(start <= position < start + width for position in holes):
+            return record_hole()
+        return page(native[start : start + width], number, total=9999, size=width)
+
+    browser.business_handler = handler
+    cold = cli("list", "--live", "--require-complete", "--limit", "0")
+    assert cold["data"] == [r for i, r in enumerate(native) if i not in holes]
+    assert cold["meta"]["complete"] is True
+    assert cold["meta"]["reported_total"] is None
+    assert "PAGINATION_HOLES_BYPASSED" in {w["code"] for w in cold["meta"]["warnings"]}
+    attempt = cold["meta"]["acquisition"]["attempts"][0]
+    assert attempt["hole_count"] == 3
+    assert [(h["start"], h["end"]) for h in attempt["holes"]] == (
+        [(103, 104), (147, 149)] if clamped else [(147, 149), (203, 204)]
+    )
+    assert attempt["termination_reason"] == (
+        "two_clamped_batches" if clamped else "two_empty_batches"
+    )
+    if clamped:
+        from dogopencli.result_policy import AcquisitionEvidence
+
+        assert [
+            b["native_terminal"]["native_page"] for b in attempt["terminal_batches"]
+        ] == [3, 3]
+        for field in ("requested_page", "native_page", "native_rows"):
+            evidence = deepcopy(cold["meta"]["acquisition"])
+            evidence["attempts"][0]["terminal_batches"][0]["native_terminal"][
+                field
+            ] = -1
+            with pytest.raises(CliError, match="clamped terminal"):
+                AcquisitionEvidence.from_record(evidence)
+    saved = cli("refresh", "--require-complete")
+    count = len(browser.business_requests)
+    offline = cli("list", "--require-complete", "--limit", "0")
+    assert offline["data"] == cold["data"]
+    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+    assert len(browser.business_requests) == count
+    hot = offline["meta"]["acquisition"]["attempts"][0]
+    assert hot["history_checked"] == hot["history_matched"] == 2
+    history = (config / "collection-state.holes.json").read_text()
+    assert "test-account" not in history and "debit account not exists" not in history
+
+
+@pytest.mark.parametrize(
+    "failure", [record_hole(code="OTHER"), record_hole(message="permission denied")]
+)
+def test_similar_business_errors_are_never_holes(installed, failure):
+    cli, browser, _ = installed
+    scripted(browser, [row()])
+    saved = cli("refresh", "--require-complete")
+    browser.business_handler = None
+    browser.business_script.append(failure)
+    got = cli("refresh", code=1)
+    assert got["error"]["code"] == "BUSINESS_QUERY_FAILED"
+    assert got["meta"]["published"] is False
+    assert cli("list")["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+def test_native_totals_are_diagnostic_and_do_not_end_traversal(installed):
+    cli, browser, _ = installed
+    native = [row(i) for i in range(101)]
+
+    def handler(body, _):
+        width = body["pageSize"]
+        start = (body["pageNum"] - 1) * width
+        return page(
+            native[start : start + width],
+            body["pageNum"],
+            total=0,
+            size=width,
+            totalPages=999,
+        )
+
+    browser.business_handler = handler
+    got = cli("list", "--live", "--require-complete", "--limit", "0")
+    assert got["data"] == native
+    assert got["meta"]["reported_total"] is None
+
+
+@pytest.mark.parametrize("invalid_terminal", ["full", "changed", "stale", "size"])
+def test_unqualified_last_page_repetition_preserves_previous_capture(
+    installed, invalid_terminal
+):
+    cli, browser, _ = installed
+    scripted(browser, [row(999)])
+    saved = cli("refresh", "--require-complete")
+    native = [
+        row(i)
+        for i in range(
+            200
+            if invalid_terminal == "stale"
+            else 100
+            if invalid_terminal == "full"
+            else 3
+        )
+    ]
+
+    def handler(body, _):
+        width = body["pageSize"]
+        number = body["pageNum"]
+        start = (number - 1) * width
+        if start >= len(native):
+            records = [
+                r
+                for r in native[:100]
+                if invalid_terminal != "stale" or r["abilityId"] != 5
+            ]
+            if invalid_terminal == "changed":
+                records[0] = {**records[0], "status": "DISABLE"}
+            return page(records, 1, size=50 if invalid_terminal == "size" else width)
+        records = [
+            r
+            for r in native[start : start + width]
+            if invalid_terminal != "stale" or r["abilityId"] != 5
+        ]
+        return page(records, number, total=len(native), size=width)
+
+    browser.business_handler = handler
+    got = cli("refresh", code=1)
+    assert got["error"]["code"] == "INVALID_RESPONSE"
+    assert got["meta"]["published"] is False
+    assert cli("list")["data"] == [row(999)]
+    assert cli("list")["meta"]["fetched_at"] == saved["meta"]["fetched_at"]

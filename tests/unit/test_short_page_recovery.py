@@ -333,15 +333,20 @@ def test_busy_history_writer_does_not_fail_completed_query(tmp_path):
     assert result.complete and result.evidence.attempts[-1]["history_saved"] is False
 
 
-def test_cached_termination_and_hole_metadata_are_validated():
+@pytest.mark.parametrize("custom_trace", [False, True])
+def test_cached_termination_and_hole_metadata_are_validated(custom_trace):
     source = Native()
     result = acquire(source, Dataset(source, holes=(3,)))
     record = result.evidence.record()
     record["attempts"][-1]["terminal_batches"][1]["start"] += 1
+    if custom_trace:
+        record["attempts"].append({"kind": "custom_query", "request_count": 1})
     with pytest.raises(CliError, match="termination"):
         AcquisitionEvidence.from_record(record)
     record = acquire(source, Dataset(source, holes=(3,))).evidence.record()
     record["attempts"][-1]["hole_count"] = 0
+    if custom_trace:
+        record["attempts"].append({"kind": "custom_query", "request_count": 1})
     with pytest.raises(CliError, match="holes"):
         AcquisitionEvidence.from_record(record)
 
@@ -404,3 +409,28 @@ def test_refresh_offline_replays_successful_hole_notice(tmp_path, monkeypatch, c
     assert refreshed["row_count"] == len(offline) and len(data.requests) == calls
     assert canonical(replay["acquisition"]) == canonical(meta["acquisition"])
     assert "PAGINATION_HOLES_BYPASSED" in capsys.readouterr().err
+
+
+def test_mixed_terminal_kinds_do_not_combine_into_one_end_proof():
+    from dogopencli.short_page import ShortPageWalk, TerminalPage
+
+    def read(start, width):
+        if start == 0:
+            return [{"id": "last"}]
+        if start == 8:
+            return []
+        raise TerminalPage(
+            {
+                "kind": "repeated_short_page",
+                "requested_page": start // width + 1,
+                "native_page": 1,
+                "native_rows": 1,
+            }
+        )
+
+    walk = ShortPageWalk(
+        read, lambda row: row["id"], size=8, sizes={8}, numbered=True, observations=[]
+    )
+    assert walk.run([]) == [{"id": "last"}]
+    assert [item["start"] for item in walk.terminal_batches] == [16, 24]
+    assert all("native_terminal" in item for item in walk.terminal_batches)

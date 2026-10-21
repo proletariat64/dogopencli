@@ -191,11 +191,19 @@ class AcquisitionEvidence:
                 INVALID_RESPONSE, "cached single-response coverage conflicts"
             )
         if coverage_basis == "qualified_short_page" and evidence.scope_complete:
-            last = attempts[-1] if attempts else {}
+            last = next(
+                (
+                    attempt
+                    for attempt in reversed(attempts)
+                    if attempt.get("kind") != "custom_query"
+                ),
+                {},
+            )
             terminal = last.get("terminal_batches")
             size = last.get("page_size")
             if (
-                last.get("termination_reason") != "two_empty_batches"
+                last.get("termination_reason")
+                not in {"two_empty_batches", "two_clamped_batches"}
                 or not isinstance(terminal, list)
                 or len(terminal) != 2
                 or type(size) is not int
@@ -212,6 +220,31 @@ class AcquisitionEvidence:
                 raise CliError(
                     INVALID_RESPONSE, "cached short-page termination is missing"
                 )
+            clamped = last["termination_reason"] == "two_clamped_batches"
+            for item in terminal:
+                witness = item.get("native_terminal")
+                if not clamped:
+                    if witness is not None:
+                        raise CliError(
+                            INVALID_RESPONSE, "cached terminal kind conflicts"
+                        )
+                    continue
+                if (
+                    not isinstance(witness, dict)
+                    or witness.get("kind") != "repeated_short_page"
+                    or type(witness.get("requested_page")) is not int
+                    or type(witness.get("native_page")) is not int
+                    or witness["native_page"] < 1
+                    or witness["requested_page"] != item["start"] // size + 1
+                    or witness["requested_page"] <= witness["native_page"]
+                    or type(witness.get("native_rows")) is not int
+                    or not 0 < witness["native_rows"] < size
+                    or last.get("source_end")
+                    != (witness["native_page"] - 1) * size + witness["native_rows"]
+                ):
+                    raise CliError(
+                        INVALID_RESPONSE, "cached clamped terminal is invalid"
+                    )
             holes = last.get("holes")
             end = last.get("source_end")
             if (

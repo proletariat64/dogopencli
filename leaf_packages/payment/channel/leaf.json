@@ -6,7 +6,7 @@
   "purpose": "Inspect channel configurations by native abilityId within a fixed payout scope.",
   "operations": {
     "list": {
-      "description": "Read one payout scope and apply exact local channel filters. Coverage remains pending production qualification.",
+      "description": "Read one payout scope with short-page hole recovery, then apply exact local channel filters.",
       "parameters": [
         {
           "name": "payout-type",
@@ -94,8 +94,8 @@
         }
       ],
       "execution": "custom",
-      "max_requests": 1000,
-      "budget_seconds": 300,
+      "max_requests": 3000,
+      "budget_seconds": 1800,
       "queries": {
         "channels": {
           "kind": "list",
@@ -105,7 +105,8 @@
               "mode": "page_number",
               "page_sizes": [
                 100
-              ]
+              ],
+              "termination": "short_page"
             },
             "primary_id": {
               "type": "field",
@@ -183,13 +184,14 @@
     "relation": "payment_channel"
   },
   "limitations": [
-    "WIP: production full-source coverage remains unqualified. Sample cross-page duplicate IDs do not prove complete acquisition; this package is not a delivered leaf.",
-    "POST ifundboss-api.alipay.com/payout/api/ability/search.json; one-based pageNum and fixed pageSize 100. No unqualified cross-width repair or short-page termination.",
-    "Acquire the complete chosen payout scope, then apply all eight exact local filters in live and offline views. Business filters never alter source acquisition. Native totals remain separate from matched_total.",
-    "Native abilityId is the primary key. Identical repeated IDs retain one native record and incomplete coverage; conflicting contents for the same ID fail the whole command.",
-    "Custom execution only enforces the approved hard conflict failure on host-collected evidence. The general SDK owns pagination, budgets, identity and total coverage.",
-    "All native fields, configVersion, nested values, types and response order remain unchanged. No synthetic ID, timestamp winner or fee computation.",
-    "Live does not publish; incomplete, conflicting, failed or empty refresh preserves the previous capture. No Get or new Duckdog import."
+    "One-based pageNum with stride 100; qualified widths 1 through 100 permit aligned local hole probes. Native totalCount and totalPages do not control traversal or completeness.",
+    "Only IPAY_RS_510090020 with the verified debit account not exists record failure is classified as a hole. Other business failures, authentication, transport and schema errors remain fatal.",
+    "The host short_page strategy owns large-stride traversal, local hole discovery and latest-five history with newest-only revalidation. Two successful empty batches terminate normally. This endpoint may instead repeat its already-read short last page: two later large requests must reproduce that complete native page at the same width, with original request/response echoes retained as two_clamped_batches. Repeated full pages or unqualified echo mismatches remain failures.",
+    "Acquire the chosen payout scope before applying all eight exact local filters in live and offline views. No business filter is silently sent to change acquisition scope.",
+    "Native abilityId is the primary key. Identical repeated IDs retain one native record with overlap coverage diagnostics; differing native contents fail the whole command. Deduplication alone does not establish complete coverage.",
+    "Known backend ordering differences across page widths are retained as coverage limitations; traversal completion is distinct from proof of the entire business dataset.",
+    "All native fields, nested values, types and first-identity response order remain unchanged. No synthetic ID, timestamp winner, Get or new Duckdog import.",
+    "Live does not publish. Rejected or incomplete refresh preserves the previous capture."
   ],
   "examples": [
     {

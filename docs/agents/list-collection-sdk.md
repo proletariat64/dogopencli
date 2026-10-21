@@ -92,7 +92,11 @@ identity. Omission or `"native_total"` retains native-total collection. Single
 modes cannot select this strategy. The manifest syntax is unchanged.
 
 The SDK advances at the selected large stride. Successful short batches trigger
-local inspection rather than immediate termination. Where smaller widths are
+local inspection rather than immediate termination. Only an endpoint declaring
+the explicit last-page clamping hook below retains a final short batch unchanged
+after two following large batches confirm its end; these terminal responses need
+no smaller-width probes. Other sources still inspect final short batches to retain
+their successful-empty hole evidence. Where smaller widths are
 qualified, the SDK subdivides only deficient intervals, retaining full intervals
 without further subdivision. Successful subdivisions must reconstruct their
 successful parent records exactly, including order and types. A contradiction is
@@ -106,7 +110,20 @@ stride**. Very large continuous omissions beyond that boundary are outside this
 accepted tolerance policy. Native totals and total-page counts are diagnostic,
 not stopping or completeness inputs; `reported_total` remains null. Numbered
 page/size echoes must still match exactly. No clamped page or duplicate identity
-is an end signal.
+is an end signal by itself.
+
+A separately qualified one-based endpoint may declare pure
+`pagination_terminal(page: ParsedPage, requested_page: int) -> bool` for its
+verified last-page clamping behavior. The host additionally requires exact
+repetition of a previously read successful **short** page at the same width,
+including all native values, with the native page strictly before the requested
+page. Two later original-stride requests must each satisfy this contract.
+Evidence uses `termination_reason="two_clamped_batches"` and retains each
+request's original requested/native page numbers and native row count; these
+responses are not native empty pages and their repeated rows are not collected.
+Full-page repetition, changed content, unknown/clamped widths and undeclared echo
+mismatches still fail. This is the explicit terminal contract of `payment.channel`;
+its known overlap diagnostics remain independent of traversal termination.
 
 Probe widths come only from `EndpointContract.allowed_page_sizes` or its nested
 `json_body_contracts`, bounded by the selected large width. The SDK never loosens
@@ -135,7 +152,8 @@ exit 0 with `complete=true`. `warnings` includes the informational code
 neighbor identity fingerprints, reused/checked history counts, actual request
 count, source end and the two terminal empty batches. Coverage remains
 `qualified_short_page`, total semantics `unknown`, termination reason
-`two_empty_batches`. The message and evidence survive refresh/offline replay and
+`two_empty_batches` (or the explicitly qualified `two_clamped_batches` above).
+The message and evidence survive refresh/offline replay and
 independent-source assembly. Old first-short-page cache contracts are invalidated.
 
 ### Scoped hole memory
@@ -237,7 +255,9 @@ Blacklist 是业务负责人提供的跨 leaf 根因线索；其他 leaf 的类�
 及邻接记录可重复命中，同一 pageSize 的查询也可重复返回相同记录；但大页与对应
 单条／小页查询的记录集合不一致，单条连续页也会重复返回相同记录。因此固定宽度
 下的 hole 提示稳定，不足以证明缩步、绕行及恢复大步长能覆盖同一个原生区间。
-采用可变步长前须证明跨宽度的位置映射，不能将 `pageSize=1` 自身当作完整性真值。
+channel 已接受使用 `short_page` 的大步长绕行策略；上述差异作为独立覆盖诊断保留，
+不再仅因已知报错暂停接入。不能将 `pageSize=1` 自身当作完整性真值，也不能将
+绕行遍历完成、去重或用户接受策略等同于已证明业务全量完整。
 
 ### 遇到类似问题时如何定位
 
@@ -256,8 +276,9 @@ Blacklist 是业务负责人提供的跨 leaf 根因线索；其他 leaf 的类�
    保留缺口，不能把失败页当空页、用上一页顶替，或因最终出现短页而宣布完整。
 
 这些参考不授权把任意业务错误当作空页。当前 `short_page` 的稳定空洞容错范围、
-显式记录级错误识别及正常退出消息见上述契约。跨宽度返回集合不稳定的 channel
-不作为完整性验收依据；原始响应、实际账户与 blacklist 明细仍只保存在私有证据中。
+显式记录级错误识别及正常退出消息见上述契约。channel 接入该策略时仍保留重复、
+跨宽度矛盾和原生页码回显检查；其不稳定结果不作为 SDK 完整性保证的验收依据。
+原始响应、实际账户与 blacklist 明细仍只保存在私有证据中。
 
 ## Page-size fallback and persistence
 
