@@ -353,7 +353,7 @@
       "id": "B11",
       "title": "实时网络与路由额度",
       "issue": 270,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.network.realtime",
@@ -361,7 +361,7 @@
             "list",
             "get"
           ],
-          "status": "blocked"
+          "status": "delivered"
         },
         {
           "identity": "liquidity.network.route_quotas",

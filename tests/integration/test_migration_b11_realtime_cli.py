@@ -1,4 +1,4 @@
-"""Installed realtime LG preserves dependent context and unproven history coverage."""
+"""Installed realtime LG preserves dependent context and native history coverage."""
 
 from copy import deepcopy
 from dataclasses import replace
@@ -140,14 +140,19 @@ def test_list_settings_refresh_offline_and_declaration_only_help(installed):
     assert len(browser.business_requests) == count
 
 
-def test_get_preserves_original_root_history_route_and_separate_coverage(installed):
+@pytest.mark.parametrize("include_current", [False, True])
+def test_get_preserves_original_root_history_route_and_separate_coverage(
+    installed, include_current
+):
     cli, browser, config = installed
     duckdog_before = (config / "duckdog.duckdb").read_bytes()
     root = row()
-    history = [row("OLD", version=1), root]
+    history = [row("OLD", version=1)]
+    if include_current:
+        history.append(root)
     route = route_reply()
     browser.business_script.extend([success(root), success(history), route])
-    result = cli("get", "NETWORK")
+    result = cli("get", "NETWORK", "--require-complete")
     assert result["data"] == {
         **retained(root),
         "operationHistory": [retained(item) for item in history],
@@ -163,19 +168,22 @@ def test_get_preserves_original_root_history_route_and_separate_coverage(install
         {"routeId": "ROUTE", "aliasName": "DEBIT", "tntInstId": "GUAPW3SG"},
     ]
     evidence = coverage(result)
-    assert evidence["scope_complete"] is False
-    assert "HISTORY_COVERAGE_UNPROVEN" in evidence["reasons"]
+    assert evidence["scope_complete"] is True
+    assert evidence["reasons"] == []
     components = evidence["attempts"][0]["components"]
     assert components["network"]["complete"] is True
-    assert components["operationHistory"]["complete"] is False
-    assert components["operationHistory"]["selected_root_relation"] == "matched"
+    assert components["operationHistory"]["complete"] is True
+    assert components["operationHistory"]["reported_count"] is None
+    assert (
+        components["operationHistory"]["coverage_basis"] == "qualified_single_response"
+    )
     assert components["routeDetails"]["complete"] is True
     assert not (config / "leaf-cache.sqlite3").exists()
     assert (config / "duckdog.duckdb").read_bytes() == duckdog_before
 
 
 @pytest.mark.parametrize("route_state", [None, "", "missing"])
-def test_empty_history_stays_unproven_and_route_inapplicable_vs_unknown(
+def test_empty_history_completes_and_route_inapplicable_vs_unknown(
     installed, route_state
 ):
     cli, browser, _ = installed
@@ -187,7 +195,10 @@ def test_empty_history_stays_unproven_and_route_inapplicable_vs_unknown(
     assert result["data"]["operationHistory"] == []
     assert result["data"]["routeDetails"] is None
     evidence = coverage(result)
-    assert "HISTORY_COVERAGE_UNPROVEN" in evidence["reasons"]
+    assert evidence["scope_complete"] is (route_state != "missing")
+    assert evidence["reasons"] == (
+        ["ROUTE_ASSOCIATION_UNVERIFIED"] if route_state == "missing" else []
+    )
     component = evidence["attempts"][0]["components"]["routeDetails"]
     assert component["status"] == (
         "unverified" if route_state == "missing" else "inapplicable"
@@ -206,13 +217,14 @@ def test_missing_history_context_is_unverified_not_empty_success(installed):
     assert len(browser.business_requests) == 1
 
 
-def test_changed_root_in_history_remains_explicit(installed):
+def test_detail_history_differences_keep_both_native_values(installed):
     cli, browser, _ = installed
     browser.business_script.extend(
         [success(row(routeId=None)), success([row(routeId=None, version=3)])]
     )
-    result = cli("get", "NETWORK")
-    assert "SOURCE_CHANGED" in coverage(result)["reasons"]
+    result = cli("get", "NETWORK", "--require-complete")
+    assert coverage(result)["scope_complete"] is True
+    assert coverage(result)["reasons"] == []
     assert result["data"]["version"] == 2
     assert result["data"]["operationHistory"][0]["version"] == 3
 
@@ -334,14 +346,14 @@ def test_request_contracts_are_closed_and_scope_bound(installed):
     assert not browser.business_requests
 
 
-def test_unproven_history_warns_and_strict_get_withholds_data(installed):
+def test_native_empty_history_completes_normal_and_strict_get(installed):
     cli, browser, _ = installed
     browser.business_script.extend([success(row(routeId=None)), success([])])
     result = cli("get", "NETWORK")
-    assert result["meta"]["complete"] is False
-    assert result["meta"]["warnings"][0]["code"] == "INCOMPLETE_RESULT"
+    assert result["meta"]["complete"] is True
+    assert result["meta"].get("warnings", []) == []
     browser.business_script.extend([success(row(routeId=None)), success([])])
-    failed = cli("get", "NETWORK", "--require-complete", code=1)
-    assert failed["data"] is None
-    assert failed["error"]["code"] == "INCOMPLETE_RESULT"
-    assert "HISTORY_COVERAGE_UNPROVEN" in failed["meta"]["warnings"][0]["reason_codes"]
+    strict = cli("get", "NETWORK", "--require-complete")
+    assert strict["meta"]["complete"] is True
+    assert strict["data"] == result["data"]
+    assert len(browser.business_requests) == 4

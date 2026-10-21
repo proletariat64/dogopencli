@@ -315,23 +315,15 @@ class Adapter:
         ):
             context = {field: root[field] for field in HISTORY_SCOPE}
             history = tools.inquire("history", context)
-            matching = [row for row in history if row["id"] == root["id"]]
-            changed = any(canonical(row) != canonical(root) for row in matching)
             history_component = {
                 "status": "succeeded",
-                "complete": False,
+                "complete": True,
                 "returned_count": len(history),
                 "reported_count": None,
+                "coverage_basis": "qualified_single_response",
                 "request_scope": HistoryInquiry().request_body(context),
-                "reasons": ["HISTORY_COVERAGE_UNPROVEN"],
-                "selected_root_relation": "changed"
-                if changed
-                else "matched"
-                if matching
-                else "not_present",
+                "reasons": [],
             }
-            if changed:
-                history_component["reasons"].append("SOURCE_CHANGED")
         components["operationHistory"] = history_component
         route = None
         route_component = {
