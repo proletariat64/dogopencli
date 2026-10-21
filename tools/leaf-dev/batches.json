@@ -360,13 +360,15 @@
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "blocked"
         },
         {
           "identity": "liquidity.network.route_quotas",
           "operations": [
             "get"
-          ]
+          ],
+          "status": "delivered"
         }
       ]
     },
@@ -484,7 +486,7 @@
       "id": "B16",
       "title": "付款渠道与成本",
       "issue": 275,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "payment.channel",
@@ -526,7 +528,7 @@
       "id": "B18",
       "title": "黑白名单",
       "issue": 277,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.reference.blacklist.account",
@@ -540,7 +542,7 @@
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         },
         {
           "identity": "liquidity.reference.whitelist.entity",
@@ -555,7 +557,7 @@
       "id": "B19",
       "title": "账户与余额组合",
       "issue": 278,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.cash.accounts",
@@ -569,7 +571,7 @@
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         }
       ]
     },
@@ -599,7 +601,7 @@
       "id": "B21",
       "title": "账户现金流与需求",
       "issue": 280,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.forecast.account_cashflows",
@@ -619,7 +621,7 @@
       "id": "B22",
       "title": "账户预测时段",
       "issue": 281,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.forecast.account_t3",
@@ -633,7 +635,7 @@
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         }
       ]
     },
@@ -641,7 +643,7 @@
       "id": "B23",
       "title": "预测结果与准确率",
       "issue": 282,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.forecast.results",
@@ -655,14 +657,14 @@
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         },
         {
           "identity": "liquidity.forecast.accuracy",
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         }
       ]
     },
@@ -670,7 +672,7 @@
       "id": "B24",
       "title": "利率、产品与历史",
       "issue": 283,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.investment.interest_rates",
@@ -678,7 +680,7 @@
             "list",
             "get"
           ],
-          "status": "blocked"
+          "status": "delivered"
         },
         {
           "identity": "liquidity.investment.products",
@@ -693,7 +695,7 @@
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         }
       ]
     },
@@ -701,7 +703,7 @@
       "id": "B25",
       "title": "决策、历史与规则状态",
       "issue": 284,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.operations.decisions",
@@ -716,7 +718,7 @@
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         },
         {
           "identity": "liquidity.operations.rule_status",
