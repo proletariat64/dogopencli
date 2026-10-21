@@ -1,0 +1,233 @@
+{
+  "domain": "liquidity",
+  "name": "network.realtime",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Inspect one complete fixed-page realtime network settings scope.",
+      "parameters": []
+    },
+    "get": {
+      "description": "Inspect a network root, alias/action operation history and conditional route quota aggregate with separate coverage evidence.",
+      "parameters": [],
+      "lookup": {
+        "name": "id",
+        "description": "Native network identifier; distinct from the routeId reference."
+      },
+      "result_identity": {
+        "fields": [
+          "id"
+        ],
+        "description": "Native selected network id; child history records retain their own IDs and versions."
+      },
+      "execution": "custom",
+      "queries": {
+        "root": {
+          "kind": "detail",
+          "result_identity": {
+            "fields": [
+              "id"
+            ],
+            "description": "Native network identifier matching the request."
+          }
+        },
+        "history": {
+          "kind": "inquiry",
+          "result_shape": "array"
+        },
+        "route": {
+          "kind": "inquiry",
+          "result_shape": "object"
+        }
+      },
+      "max_requests": 9,
+      "budget_seconds": 300
+    }
+  },
+  "summary": "Realtime network configuration and contextual associations.",
+  "purpose": "Inspect settings, alias/action history and applicable account-context route quotas without executing network operations.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "routeId",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "version",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "scene",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "fundAction",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "debitAliasName",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "debitBankId",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "debitCurrency",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "debitLegalEntityCode",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "creditAliasName",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "creditBankId",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "creditCurrency",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "creditLegalEntityCode",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "clearingNetworkName",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "clearingNetworkType",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "networkStatus",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "runStatus",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "processStatus",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "operationCalendar",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "operationDateType",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "operationTime",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "operationTool",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "singlePaymentLimit",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "timeZone",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "gmtCreate",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "gmtModified",
+      "type": "native JSON value",
+      "meaning": "Retained native network configuration setting; missing units and timezone remain unverified."
+    },
+    {
+      "name": "operationHistory",
+      "type": "array or null",
+      "meaning": "Alias/action-scoped settings history retaining independent ids and versions; successful retrieval does not prove exhaustive coverage."
+    },
+    {
+      "name": "routeDetails",
+      "type": "object or null",
+      "meaning": "Conditional route/account/tenant quota aggregate; null for inapplicable or unverified association, distinguished in metadata."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Nonblank native string id identifies a network configuration. routeId is a separate reference, version a configuration version.",
+  "dataset": {
+    "relation": "liquidity_network_realtime"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "single",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  },
+  "limitations": [
+    "List POST /api/ai/decision/network/queryDecisionNetwork.json only {rowStart:0,pageSize:5000}; native data.totalCount must equal unique arrivals within the one fixed page.",
+    "Keep the original 26 network settings fields. Exclude dynamic statistics, personnel, free text, action payloads and unknown root fields. Verify conflicting native IDs before projection.",
+    "Get root POST /api/ai/decision/network/detail.json with exact id. History POST /api/ai/decision/network/queryLog.json uses selected root creditAliasName/debitAliasName arrays and fundAction; no global history query.",
+    "History has no native total or exhaustion proof: always HISTORY_COVERAGE_UNPROVEN after successful retrieval, including empty arrays. Preserve source IDs/versions; no snapshot pinning or atomicity claim.",
+    "Applicable route quota GET /queryWhaleRouteDetail.json uses root routeId/debitAliasName and fixed GUAPW3SG; missing context remains unverified, explicit null/empty routeId is inapplicable. No optional drop of applicable associations.",
+    "Keep route quota arrays, nested native values and blank/repeated child quotaId. Nonempty returned context must match; request context is not fabricated in native output.",
+    "Get returns assembled root plus operationHistory and routeDetails; query_evidence coverage retains separate component status and sequential-read limitations. Any actual required inquiry failure aborts. Get never publishes or imports.",
+    "List live does not publish; complete nonempty refresh publishes the settings source only. Incomplete/failed/empty refresh preserves the saved List. No new Duckdog import or list-with-detail binding."
+  ],
+  "examples": [
+    {
+      "title": "Read settings",
+      "command": "dogopencli liquidity list network.realtime --live --require-complete --limit 0"
+    },
+    {
+      "title": "Read root and contextual associations",
+      "command": "dogopencli liquidity get network.realtime NETWORK"
+    }
+  ]
+}

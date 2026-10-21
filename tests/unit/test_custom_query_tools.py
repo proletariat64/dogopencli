@@ -391,3 +391,157 @@ def test_invalid_custom_result_is_rejected(candidate):
     tools, _, _ = setup(Script())
     with pytest.raises(CliError, match="invalid custom List result"):
         tools.finish_list(candidate)
+
+
+class Aggregate:
+    name = "payment.synthetic.aggregate"
+    page_url = "https://fixture.invalid/"
+    contract = EndpointContract(
+        method="GET",
+        host="fixture.invalid",
+        path="/aggregate",
+        page_size=0,
+        one_based=False,
+        allowed_body_keys=frozenset({"account"}),
+    )
+
+    def request_body(self, parameters):
+        return {"account": parameters["account"]}
+
+    def parse_inquiry(self, body, parameters):
+        value = parse(body)
+        if value.get("failure"):
+            raise CliError("BUSINESS_QUERY_FAILED", "native inquiry failed")
+        return value
+
+
+def aggregate_tools(script, *, maximum=20):
+    tools, leaf, capabilities = setup(script, maximum=maximum)
+    leaf.manifest["operations"]["list"]["queries"]["aggregate"] = {
+        "kind": "inquiry",
+        "result_shape": "object",
+    }
+    capabilities["aggregate"] = Aggregate()
+    return tools, leaf, capabilities
+
+
+def test_native_aggregate_retains_unkeyed_duplicates_and_shared_budget():
+    native = {"rows": [{"quotaId": "", "amount": Decimal("1.234567890123456789")}] * 2}
+    script = Script(native)
+    tools, _, _ = aggregate_tools(script, maximum=1)
+    assert tools.inquire("aggregate", {"account": "private-account"}) == native
+    with pytest.raises(CliError, match="request budget exhausted"):
+        tools.inquire("aggregate", {"account": "private-account"})
+    with pytest.raises(CliError, match="request budget exhausted"):
+        tools.finish_list(result())
+    trace = tools.evidence()
+    assert trace["request_count"] == 1
+    assert "private-account" not in canonical(trace)
+
+
+def test_aggregate_parser_failure_remains_fatal_if_leaf_catches_it():
+    tools, _, _ = aggregate_tools(Script({"failure": True}))
+    with pytest.raises(CliError, match="native inquiry failed"):
+        tools.inquire("aggregate", {"account": "a"})
+    with pytest.raises(CliError, match="native inquiry failed"):
+        tools.finish_list(result(complete=False))
+
+
+def test_aggregate_allowlist_rejects_unregistered_fields():
+    tools, _, caps = aggregate_tools(Script())
+    caps["aggregate"].contract = replace(
+        caps["aggregate"].contract, allowed_body_keys=frozenset()
+    )
+    with pytest.raises(CliError) as caught:
+        tools.inquire("aggregate", {"account": "a"})
+    assert caught.value.code == "REQUEST_NOT_ALLOWED"
+
+
+def test_aggregate_capability_hooks_are_checked_before_transport():
+    tools, leaf, caps = aggregate_tools(Script())
+    leaf.adapter = SimpleNamespace(query_capability=lambda op, name, params: caps[name])
+    assert query_capabilities(leaf, "list", {}) == caps
+    caps["aggregate"].parse_inquiry = lambda body: {}
+    with pytest.raises(CliError, match="hooks"):
+        query_capabilities(leaf, "list", {})
+    assert tools.evidence()["request_count"] == 0
+
+
+def test_request_identity_validates_context_without_changing_native_root():
+    tools, leaf, _ = aggregate_tools(Script())
+    spec = leaf.manifest["operations"]["list"]
+    spec["lookup"] = {"name": "route"}
+    spec["result_identity"] = {"request_fields": ["route", "account", "tenant"]}
+    tools._parameters = {"account": "account-a", "tenant": "tenant-a"}
+    native = {"dynamicQuotas": [], "staticQuotas": []}
+    assert tools.finish_get(native, "route-a") is native
+    assert native == {"dynamicQuotas": [], "staticQuotas": []}
+    tools._parameters["account"] = ""
+    with pytest.raises(CliError, match="scalar components"):
+        tools.finish_get(native, "route-a")
+
+
+def test_local_account_source_requires_opt_in_and_denial_is_fatal(tmp_path):
+    tools, _, _ = setup(Script())
+    tools._config_file = tmp_path / "config.toml"
+    with pytest.raises(CliError) as caught:
+        tools.account_directory("cache")
+    assert caught.value.code == "REQUEST_NOT_ALLOWED"
+    with pytest.raises(CliError):
+        tools.finish_list(result())
+
+
+def test_opted_in_local_absence_never_initializes_cache_or_duckdog(tmp_path):
+    tools, leaf, _ = setup(Script())
+    leaf.manifest["operations"]["list"]["account_directory"] = True
+    tools._config_file = tmp_path / "config.toml"
+    assert tools.account_directory("duckdog") is None
+    assert tools.account_directory("cache") is None
+    assert not list(tmp_path.iterdir())
+    assert tools.evidence()["request_count"] == 0
+
+
+def test_custom_get_retains_unproven_relationship_coverage_in_metadata():
+    from dogopencli.leaves.query import CustomGetResult
+
+    tools, leaf, _ = setup(Script())
+    leaf.manifest["operations"]["list"]["result_identity"] = {"fields": ["id"]}
+    native = {"id": "private-root-identity", "history": [{"id": "old", "version": 1}]}
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=None,
+        collected_total=1,
+        reasons=("HISTORY_COVERAGE_UNPROVEN",),
+        attempts=({"component": "history", "complete": False},),
+    )
+    assert tools.finish_get(CustomGetResult(native, evidence)) is native
+    retained = tools.evidence()["coverage"]
+    assert retained["scope_complete"] is False
+    assert retained["reasons"] == ["HISTORY_COVERAGE_UNPROVEN"]
+    assert "private-root-identity" not in canonical(tools.evidence())
+
+
+def test_caught_local_reader_exception_cannot_finish_success(tmp_path, monkeypatch):
+    from dogopencli.leaves import account_sources
+
+    tools, leaf, _ = setup(Script())
+    leaf.manifest["operations"]["list"]["account_directory"] = True
+    tools._config_file = tmp_path / "config.toml"
+
+    def broken(*args):
+        raise ValueError("private values")
+
+    monkeypatch.setattr(account_sources, "read_account_directory", broken)
+    with pytest.raises(CliError, match="account directory source failed"):
+        tools.account_directory("cache")
+    with pytest.raises(CliError, match="account directory source failed"):
+        tools.finish_list(result())
+
+
+def test_entity_selector_is_opt_in_and_never_accepts_arbitrary_selector(tmp_path):
+    tools, _, _ = setup(Script())
+    tools._config_file = tmp_path / "config.toml"
+    with pytest.raises(CliError) as caught:
+        tools.entity_selector()
+    assert caught.value.code == "REQUEST_NOT_ALLOWED"
+    assert not list(tmp_path.iterdir())

@@ -1,0 +1,77 @@
+{
+  "domain": "liquidity",
+  "name": "network.route_quotas",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "get": {
+      "description": "Read all dynamic and static quotas for one route, account and tenant context.",
+      "parameters": [
+        {
+          "name": "account-alias",
+          "type": "string",
+          "required": true,
+          "description": "Exact nonblank native account alias; ANY is forbidden."
+        },
+        {
+          "name": "tenant",
+          "type": "string",
+          "required": false,
+          "default": "GUAPW3SG",
+          "choices": [
+            "GUAPW3SG"
+          ],
+          "description": "Verified tenant GUAPW3SG only."
+        }
+      ],
+      "lookup": {
+        "name": "routeId",
+        "description": "Exact nonblank native route reference; ANY is forbidden."
+      },
+      "result_identity": {
+        "request_fields": [
+          "routeId",
+          "account_alias",
+          "tenant"
+        ],
+        "description": "Request-context composite primary key (routeId, aliasName, tntInstId); absent native echoes are not fabricated."
+      },
+      "execution": "custom",
+      "queries": {
+        "quotas": {
+          "kind": "inquiry",
+          "result_shape": "object"
+        }
+      },
+      "max_requests": 3,
+      "budget_seconds": 120
+    }
+  },
+  "summary": "Account-context route quota aggregate.",
+  "purpose": "Inspect complete native dynamic and static quota arrays for an explicitly identified route, account and tenant.",
+  "fields": [
+    {
+      "name": "dynamicQuotas",
+      "type": "array",
+      "meaning": "Native dynamic quota objects, with order, duplicates and numeric precision preserved."
+    },
+    {
+      "name": "staticQuotas",
+      "type": "array",
+      "meaning": "Native static quota objects, including blank quotaId and nested time configurations."
+    }
+  ],
+  "identity": [],
+  "identity_description": "Get-only aggregate identified by the routeId, aliasName and tntInstId request context; no inferred quota member identity.",
+  "limitations": [
+    "GET /queryWhaleRouteDetail.json on iliquidity.alipay.com; exact routeId and aliasName, fixed tntInstId GUAPW3SG. No ANY or unbounded query.",
+    "Return the complete native result.data object. Both quota arrays are required arrays of objects; unknown fields, nested values, order and duplicate members remain native.",
+    "The composite key belongs to the request context. Native context echoes may be missing or empty; any nonempty echo must match the request. Request parameters are metadata, never injected into native output.",
+    "result.count is not quota coverage or member identity. Blank or duplicate quotaId is preserved. No List, refresh, cache publication, Duckdog import or modification."
+  ],
+  "examples": [
+    {
+      "title": "Read one account route aggregate",
+      "command": "dogopencli liquidity get network.route_quotas ROUTE --account-alias ACCOUNT"
+    }
+  ]
+}

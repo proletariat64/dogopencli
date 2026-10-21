@@ -4,14 +4,14 @@ import pytest
 
 from dogopencli.errors import CliError
 from dogopencli.result_policy import (
-    BANK_ROW_OCCURRENCES,
+    SOURCE_ROW_OCCURRENCES,
     AcquisitionEvidence,
     evaluate_result,
     prepare_result,
 )
 
 
-def bank_selection_evidence():
+def source_selection_evidence():
     return AcquisitionEvidence(
         scope_complete=True,
         dataset_complete=True,
@@ -20,13 +20,15 @@ def bank_selection_evidence():
         collected_total=2,
         unique_count=2,
         duplicate_count=1,
-        total_semantics=BANK_ROW_OCCURRENCES,
-        reasons=("BANK_LATEST_CREATED_SELECTED",),
+        total_semantics=SOURCE_ROW_OCCURRENCES,
+        reasons=("SOURCE_ROWS_SELECTED",),
         attempts=(
             {
-                "contract": "bank-blacklist-latest-gmtCreate-v1",
+                "kind": "source_selection",
+                "selection_fields": ["businessKey", "dimension"],
+                "selection_order": ["modified", "created"],
                 "raw_rows": 3,
-                "selected_banks": 2,
+                "selected_records": 2,
                 "raw_coverage_complete": True,
             },
         ),
@@ -43,21 +45,52 @@ def bank_selection_evidence():
         {"reasons": []},
     ],
 )
-def test_bank_selection_cannot_claim_complete_with_bad_native_evidence(change):
-    record = bank_selection_evidence().record()
+def test_source_selection_cannot_claim_complete_with_bad_native_evidence(change):
+    record = source_selection_evidence().record()
     record.update(change)
     with pytest.raises(CliError):
         AcquisitionEvidence.from_record(record)
 
 
-def test_bank_selection_roundtrip_keeps_native_counts_and_honest_warning():
-    evidence = AcquisitionEvidence.from_record(bank_selection_evidence().record())
+def test_source_selection_roundtrip_keeps_native_counts_and_honest_warning():
+    evidence = AcquisitionEvidence.from_record(source_selection_evidence().record())
     decision = evaluate_result(evidence, mode="refresh", require_complete=True)
     assert decision.publishable and decision.expose_data
-    assert decision.warnings[0]["code"] == "BANK_LATEST_CREATED_SELECTED"
+    assert decision.warnings[0]["code"] == "SOURCE_ROWS_SELECTED"
     assert "identical" not in decision.warnings[0]["message"]
     assert evidence.meta()["missing_count"] == 0
     assert evidence.meta()["coverage_ratio"] == 1
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("raw_rows", 2),
+        ("selected_records", 1),
+        ("raw_coverage_complete", False),
+        ("selection_fields", []),
+        ("selection_order", []),
+        ("selection_order", [False]),
+        ("selection_fields", [""]),
+    ],
+)
+def test_source_selection_requires_consistent_counts_coverage_and_rule(field, value):
+    record = source_selection_evidence().record()
+    record["attempts"][0][field] = value
+    with pytest.raises(CliError, match="selection evidence"):
+        AcquisitionEvidence.from_record(record)
+
+
+def test_incomplete_source_selection_reports_raw_shortfall_and_strict_rejects():
+    record = source_selection_evidence().record()
+    record.update(scope_complete=False, dataset_complete=False, reported_total=5)
+    record["attempts"][0]["raw_coverage_complete"] = False
+    evidence = AcquisitionEvidence.from_record(record)
+    assert evidence.meta()["missing_count"] == 2
+    assert evidence.meta()["coverage_ratio"] == 0.6
+    decision = evaluate_result(evidence, mode="refresh", require_complete=True)
+    assert not decision.publishable
+    assert decision.error["code"] == "INCOMPLETE_RESULT"
 
 
 def test_safe_shortfall_is_usable_and_publishable_but_strictly_rejected():

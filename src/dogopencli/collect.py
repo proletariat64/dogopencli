@@ -25,7 +25,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
-from .contracts import Capability, TransportCapability
+from .contracts import Capability, ParsedPage, TransportCapability
 from .errors import (
     AUTH_REQUIRED,
     BUSINESS_QUERY_FAILED,
@@ -415,9 +415,12 @@ def _list_identity(
     for field in primary_id["fields"]:
         value = row.get(field)
         if (
-            value is None
+            field not in row
             or isinstance(value, (dict, list))
-            or (isinstance(value, str) and not value.strip())
+            or (
+                (value is None or (isinstance(value, str) and not value.strip()))
+                and not primary_id.get("allow_empty_components", False)
+            )
         ):
             raise CliError(INVALID_RESPONSE, f"missing native identity field {field}")
         values.append(value)
@@ -514,11 +517,12 @@ def _short_page_candidate(
 ) -> CollectedScope:
     import hashlib
 
-    from .short_page import RecordHole, ShortPageWalk
+    from .short_page import RecordHole, ShortPageWalk, TerminalPage
 
     mode = collection["paging"]["mode"]
     pages = 0
     hashes: dict[str, str] = {}
+    short_pages: dict[int, ParsedPage] = {}
 
     def read(start: int, width: int) -> list[dict]:
         nonlocal pages
@@ -540,9 +544,29 @@ def _short_page_candidate(
             else:
                 page = capability.parse_page(response.body)
                 if page.page_size != width or page.page_num != position:
+                    terminal = getattr(capability, "pagination_terminal", None)
+                    previous = short_pages.get(width)
+                    if (
+                        page.page_size == width
+                        and capability.contract.one_based
+                        and previous is not None
+                        and page.page_num == previous.page_num < position
+                        and canonical(page.records) == canonical(previous.records)
+                        and callable(terminal)
+                        and terminal(page, position) is True
+                    ):
+                        raise TerminalPage(
+                            {
+                                "kind": "repeated_short_page",
+                                "requested_page": position,
+                                "native_page": page.page_num,
+                                "native_rows": len(page.records),
+                            }
+                        )
                     raise CliError(INVALID_RESPONSE, "native page echo mismatch")
                 rows = page.records
         except CliError as error:
+            short_pages.pop(width, None)
             classify = getattr(capability, "pagination_hole", None)
             fingerprint = (
                 classify(error)
@@ -574,6 +598,11 @@ def _short_page_candidate(
         validator = getattr(capability, "validate_rows_scope", None)
         if validator is not None:
             validator(rows, scope)
+        if mode == "page_number":
+            if 0 < len(rows) < width:
+                short_pages[width] = page
+            else:
+                short_pages.pop(width, None)
         return rows
 
     def fingerprint(row: dict) -> str:
@@ -589,6 +618,7 @@ def _short_page_candidate(
         sizes=_list_allowed_sizes(capability),
         numbered=mode == "page_number",
         observations=observations,
+        retain_final_short=callable(getattr(capability, "pagination_terminal", None)),
     )
     rows = walk.run(previous_holes)
     remaining_seconds(deadline)
@@ -616,12 +646,21 @@ def _short_page_candidate(
         if collection.get("latest_by") is None:
             reasons.append("LAST_ARRIVAL_WINS")
     evidence = AcquisitionEvidence.for_collection(
-        complete=not duplicates and not conflicts,
+        complete=not conflicts
+        and (
+            not duplicates
+            or capability.contract.duplicate_policy == "allow_identical_overlap"
+        ),
         reported_total=None,
         collected_total=len(ordered),
         arrivals=len(rows),
         total_semantics="unknown",
-        coverage_basis="qualified_short_page",
+        coverage_basis=(
+            "accepted_short_page"
+            if capability.contract.duplicate_policy == "allow_identical_overlap"
+            else "qualified_short_page"
+        ),
+        duplicate_policy=capability.contract.duplicate_policy,
         reasons=tuple(reasons),
     )
     evidence = replace(
@@ -637,7 +676,11 @@ def _short_page_candidate(
                 "reported_total": None,
                 "complete": evidence.scope_complete,
                 "reasons": list(evidence.reasons),
-                "termination_reason": "two_empty_batches",
+                "termination_reason": (
+                    "two_clamped_batches"
+                    if any("native_terminal" in b for b in walk.terminal_batches)
+                    else "two_empty_batches"
+                ),
                 "terminal_batches": walk.terminal_batches,
                 "source_end": walk.end,
                 "holes": list(observations),

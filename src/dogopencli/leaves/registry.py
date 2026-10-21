@@ -77,6 +77,7 @@ PRIMARY_ID_SCHEMA = {
     "properties": {
         "type": {"enum": ["field", "hash", "unproven"]},
         "fields": {"type": "array", "items": {"type": "string"}},
+        "allow_empty_components": {"type": "boolean"},
     },
 }
 SOURCE_SCHEMA = {
@@ -91,6 +92,7 @@ RESULT_IDENTITY_SCHEMA = {
     "additionalProperties": False,
     "properties": {
         "fields": {"type": "array", "items": {"type": "string"}},
+        "request_fields": {"type": "array", "items": {"type": "string"}},
         "paths": {
             "type": "array",
             "items": {"type": "array", "items": {"type": "string"}},
@@ -103,7 +105,7 @@ QUERY_SCHEMA = {
     "required": ["kind"],
     "additionalProperties": False,
     "properties": {
-        "kind": {"enum": ["list", "detail"]},
+        "kind": {"enum": ["list", "detail", "inquiry"]},
         "collection": {
             "type": "object",
             "required": ["provider", "paging", "primary_id"],
@@ -152,6 +154,8 @@ MANIFEST_SCHEMA = {
                         "description": {"type": "string"},
                         "parameters": {"type": "array", "items": PARAMETER_SCHEMA},
                         "execution": {"enum": ["standard", "custom"]},
+                        "account_directory": {"type": "boolean"},
+                        "entity_selector": {"type": "boolean"},
                         "queries": {
                             "type": "object",
                             "minProperties": 1,
@@ -323,6 +327,7 @@ def _validate_primary(policy: dict, *, verified: bool = False) -> None:
         or any(not field.strip() for field in fields)
         or kind == "field"
         and len(fields) != 1
+        or ("allow_empty_components" in policy["primary_id"] and kind != "hash")
         or not policy.get("latest_by", "present").strip()
     ):
         raise _invalid("List primary identity or timestamp declaration is invalid")
@@ -353,6 +358,19 @@ def _validate_paging(policy: dict) -> None:
 
 
 def _validate_result_identity(identity: dict) -> None:
+    if "request_fields" in identity:
+        fields = identity["request_fields"]
+        if (
+            set(identity) != {"request_fields", "description"}
+            or not fields
+            or len(fields) != len(set(fields))
+            or any(not field.strip() for field in fields)
+            or not identity["description"].strip()
+        ):
+            raise _invalid(
+                "request identity requires nonempty unique fields and meaning"
+            )
+        return
     if ("fields" in identity) == ("paths" in identity):
         raise _invalid("Get result identity requires exactly one of fields or paths")
     if "fields" in identity:
@@ -395,12 +413,20 @@ def _validate_custom_queries(domain: str, operation: dict) -> None:
             except CliError as error:
                 raise _invalid(error.message) from error
             _validate_paging(collection)
+        elif query["kind"] == "inquiry":
+            if set(query) != {"kind", "result_shape"}:
+                raise _invalid("custom inquiry requires only kind and result_shape")
         else:
             if "result_identity" not in query or "collection" in query:
                 raise _invalid(
                     "custom detail query requires result_identity and no collection"
                 )
             _validate_result_identity(query["result_identity"])
+            if "request_fields" in query["result_identity"]:
+                raise _invalid(
+                    "internal detail requires native identity; "
+                    "use an inquiry for request-scoped aggregates"
+                )
 
 
 def validate_manifest(value: Any) -> None:
@@ -415,7 +441,13 @@ def validate_manifest(value: Any) -> None:
             if action == "list" and "collection" in value:
                 raise _invalid("custom List cannot declare a standard collection")
             _validate_custom_queries(value["domain"], operation)
-        elif {"queries", "max_requests", "budget_seconds"} & operation.keys():
+        elif {
+            "queries",
+            "max_requests",
+            "budget_seconds",
+            "account_directory",
+            "entity_selector",
+        } & operation.keys():
             raise _invalid("standard execution cannot declare custom query settings")
         names = set()
         for parameter in operation["parameters"]:
@@ -444,6 +476,23 @@ def validate_manifest(value: Any) -> None:
         if any(not item.strip() for item in detail["lookup"].values()):
             raise _invalid("Get lookup meaning must be nonempty")
         _validate_result_identity(detail["result_identity"])
+        if "request_fields" in detail["result_identity"]:
+            if (
+                detail.get("execution") != "custom"
+                or detail.get("result_shape", "object") != "object"
+                or "list_binding" in detail
+            ):
+                raise _invalid(
+                    "request-scoped identity requires unbound custom object Get"
+                )
+            allowed = {detail["lookup"]["name"]} | {
+                parameter["name"].replace("-", "_")
+                for parameter in detail["parameters"]
+            }
+            if set(detail["result_identity"]["request_fields"]) - allowed:
+                raise _invalid(
+                    "request identity must name lookup or declared parameters"
+                )
         binding = detail.get("list_binding")
         if binding is not None:
             if detail.get("result_shape", "object") == "array":

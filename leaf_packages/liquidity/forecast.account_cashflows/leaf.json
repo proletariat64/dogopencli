@@ -1,0 +1,190 @@
+{
+  "domain": "liquidity",
+  "name": "forecast.account_cashflows",
+  "adapter": "adapter.py:adapter",
+  "summary": "Account-scoped native account_cashflows.",
+  "purpose": "Query one account and date window with ordered ownership resolution and unchanged native records.",
+  "operations": {
+    "list": {
+      "description": "Read native account records; resolve omitted ownership from Duckdog, cache, then live directory.",
+      "parameters": [
+        {
+          "name": "alias",
+          "type": "string",
+          "required": true,
+          "description": "One explicit account alias; ANY and batches are refused.",
+          "local_field": "bankAccountAliasName"
+        },
+        {
+          "name": "entity",
+          "type": "string",
+          "required": false,
+          "description": "Explicit entity constraint; resolved from account directory when omitted.",
+          "local_field": "entity"
+        },
+        {
+          "name": "bank",
+          "type": "string",
+          "required": false,
+          "description": "Explicit bank constraint; resolved from account directory when omitted.",
+          "local_field": "bankId"
+        },
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native value date YYYYMMDD.",
+          "local_field": "expectValueDate"
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native value date YYYYMMDD; intraday requires the same day.",
+          "local_field": "expectValueDate"
+        }
+      ],
+      "execution": "custom",
+      "account_directory": true,
+      "max_requests": 1000,
+      "budget_seconds": 300,
+      "queries": {
+        "accounts": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                1000,
+                100,
+                10,
+                1
+              ],
+              "termination": "short_page"
+            },
+            "primary_id": {
+              "type": "hash",
+              "fields": [
+                "aliasName",
+                "currency"
+              ]
+            }
+          }
+        },
+        "records": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                5000
+              ]
+            },
+            "primary_id": {
+              "type": "hash",
+              "fields": [
+                "bankAccountAliasName",
+                "bankAccountFlowDateSourceTypeStr",
+                "originalBizNo",
+                "expectValueDate",
+                "expectValueTime",
+                "currency"
+              ]
+            }
+          }
+        },
+        "baselines": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                1000
+              ]
+            },
+            "primary_id": {
+              "type": "hash",
+              "fields": [
+                "aliasName",
+                "currency"
+              ]
+            }
+          }
+        },
+        "ownership_detail": {
+          "kind": "detail",
+          "result_identity": {
+            "fields": [
+              "aliasName"
+            ],
+            "description": "Native selected account alias returned by baseline detail."
+          }
+        }
+      }
+    }
+  },
+  "identity": [
+    "bankAccountAliasName",
+    "bankAccountFlowDateSourceTypeStr",
+    "originalBizNo",
+    "expectValueDate",
+    "expectValueTime",
+    "currency"
+  ],
+  "identity_description": "Native identity within the exact saved account/date scope.",
+  "fields": [
+    {
+      "name": "bankAccountAliasName",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "bankAccountFlowDateSourceTypeStr",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "originalBizNo",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "expectValueDate",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "expectValueTime",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native identity component, unchanged."
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_forecast_account_cashflows"
+  },
+  "limitations": [
+    "Account alias and ordered YYYYMMDD date bounds are required. No ANY acquisition or fanout.",
+    "Explicit entity and bank together skip directory acquisition; partial constraints are never overwritten.",
+    "Missing ownership resolves in source order Duckdog, saved cash.accounts, live directory. Multiple matches select the first source row with provenance warning.",
+    "Directory is a current ownership reference and does not establish historical ownership. Configured source corruption or selected simulated ownership is a hard failure without live fallback.",
+    "All native record fields, nested values and response order are retained; no legacy runtime imports.",
+    "Fixed pageSize 5000. Host native-total and identity coverage replaces the historical terminal-empty probe; no extra business sources are inferred.",
+    "Bare offline reads replay the saved query; different account/date/ownership scopes have unproved coverage.",
+    "Live ownership unions internal cash and baseline catalogs with independent source coverage and nonblank ownership conflict guards. Baseline-present keys own the value, including null; selected baseline detail only fills absent required ownership keys. No directory-wide detail sweep.",
+    "Live ownership directory quality retains ACCOUNT_SOURCE_MISMATCH when cash and baseline identity inventories differ. A resolved alias can still return in default live mode, but strict queries and refresh reject incomplete directory coverage."
+  ],
+  "examples": [
+    {
+      "title": "Query one account",
+      "command": "dogopencli liquidity list forecast.account_cashflows --live --alias ACCOUNT --from-date 20261019 --to-date 20261019 --require-complete --limit 0"
+    }
+  ]
+}

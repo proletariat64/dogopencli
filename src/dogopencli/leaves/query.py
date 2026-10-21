@@ -32,6 +32,14 @@ class CustomListResult:
     evidence: AcquisitionEvidence
 
 
+@dataclass(frozen=True)
+class CustomGetResult:
+    """Custom Get data and independently qualified relationship coverage."""
+
+    data: dict | list[dict]
+    evidence: AcquisitionEvidence
+
+
 def _native_error_meta(native_code: str | int | None) -> dict:
     if type(native_code) in (str, int) and re.fullmatch(
         r"[A-Za-z0-9_.:-]{1,80}", str(native_code)
@@ -69,7 +77,9 @@ def validate_detail_lookup(identity: Any) -> None:
         )
 
 
-def validate_detail_result(result: Any, specification: dict) -> None:
+def validate_detail_result(
+    result: Any, specification: dict, context: dict | None = None
+) -> None:
     if specification.get("result_shape", "object") == "array":
         if not isinstance(result, list):
             raise CliError(INVALID_RESPONSE, "detail response must be an array")
@@ -81,6 +91,19 @@ def validate_detail_result(result: Any, specification: dict) -> None:
             )
         rows = [result]
     identity = specification["result_identity"]
+    if "request_fields" in identity:
+        if not isinstance(context, dict):
+            raise CliError(INVALID_RESPONSE, "request identity context is missing")
+        for field in identity["request_fields"]:
+            value = context.get(field)
+            if type(value) not in (str, int) or (
+                isinstance(value, str) and not value.strip()
+            ):
+                raise CliError(
+                    INVALID_RESPONSE,
+                    "request identity must contain nonempty scalar components",
+                )
+        return
     paths = identity.get("paths")
     if paths is None:
         paths = [[field] for field in identity["fields"]]
@@ -124,6 +147,8 @@ def query_capabilities(leaf: Any, operation: str, parameters: dict) -> dict[str,
                 "request_body": ({}, "identity"),
                 "parse_detail": (b"", {}, "identity"),
             }
+        elif declaration["kind"] == "inquiry":
+            signatures = {"request_body": ({},), "parse_inquiry": (b"", {})}
         else:
             mode = declaration["collection"]["paging"]["mode"]
             parser = (
@@ -188,6 +213,7 @@ class QueryTools:
         transport_factory: Callable[[Any], Any],
         *,
         state_file: Path | None = None,
+        config_file: Path | None = None,
         budget: QueryBudget | None = None,
         deadline: float | None = None,
     ):
@@ -198,6 +224,7 @@ class QueryTools:
         self._capabilities = capabilities
         self._transport_factory = transport_factory
         self._state_file = state_file
+        self._config_file = config_file
         end = collection._monotonic() + self._declarations["budget_seconds"]
         if deadline is not None:
             end = min(end, deadline)
@@ -205,6 +232,7 @@ class QueryTools:
         self._fatal: CliError | None = None
         self._incomplete = False
         self._queries: dict[str, dict] = {}
+        self._coverage: dict | None = None
         self._transports: dict[str, _QueryTransport] = {}
 
     @property
@@ -345,6 +373,119 @@ class QueryTools:
         finally:
             trace["requests"] += self._budget.requests - before
 
+    def inquire(self, name: str, parameters: dict | None = None) -> dict | list[dict]:
+        """Read one declared native aggregate without inventing response identity."""
+        capability, declaration, trace = self._query(name, "inquiry")
+        before = self._budget.requests
+        try:
+            context = self._parameters if parameters is None else parameters
+            if not isinstance(context, dict):
+                raise CliError(
+                    INVALID_RESPONSE, "custom inquiry context must be an object"
+                )
+            body = capability.request_body(context)
+            response = collection.execute_bounded(
+                capability, self._transport(name, capability), body, self.deadline
+            )
+            result = capability.parse_inquiry(response.body, context)
+            if declaration["result_shape"] == "object":
+                valid = isinstance(result, dict) and bool(result)
+            else:
+                valid = isinstance(result, list) and all(
+                    isinstance(row, dict) for row in result
+                )
+            if not valid:
+                raise CliError(
+                    INVALID_RESPONSE, "custom inquiry has invalid native shape"
+                )
+            trace["succeeded"] += 1
+            return result
+        except CliError as error:
+            self._fatal = error
+            trace["error"] = {"code": error.code, "retryable": error.retryable}
+            raise
+        except Exception as error:
+            failure = CliError(INVALID_RESPONSE, "custom inquiry failed")
+            self._fatal = failure
+            trace["error"] = {"code": failure.code, "retryable": False}
+            raise failure from error
+        finally:
+            trace["requests"] += self._budget.requests - before
+
+    def account_directory(self, source: str) -> dict | None:
+        """Read an explicitly enabled local ownership source without publishing."""
+        if self._fatal is not None:
+            raise self._fatal
+        try:
+            collection.remaining_seconds(self.deadline)
+            if self._declarations.get(
+                "account_directory"
+            ) is not True or source not in ("duckdog", "cache"):
+                raise CliError(
+                    REQUEST_NOT_ALLOWED, "account directory source is not declared"
+                )
+            if self._config_file is None:
+                raise CliError(
+                    INVALID_RESPONSE, "account directory configuration is missing"
+                )
+            from .account_sources import read_account_directory
+
+            result = read_account_directory(source, self._config_file)
+            collection.remaining_seconds(self.deadline)
+            self._queries.setdefault(
+                "account_directory",
+                {"kind": "local_source", "calls": 0, "requests": 0, "succeeded": 0},
+            )
+            trace = self._queries["account_directory"]
+            trace["calls"] += 1
+            trace["succeeded"] += 1
+            trace.setdefault("sources", []).append(
+                {"source": source, "available": result is not None}
+            )
+            return result
+        except CliError as error:
+            self._fatal = error
+            raise
+        except Exception as error:
+            failure = CliError(INVALID_RESPONSE, "account directory source failed")
+            self._fatal = failure
+            raise failure from error
+
+    def entity_selector(self) -> list[str]:
+        """Freeze only the registered read-only entity selector for explicit ANY."""
+        if self._fatal is not None:
+            raise self._fatal
+        try:
+            collection.remaining_seconds(self.deadline)
+            if self._declarations.get("entity_selector") is not True:
+                raise CliError(REQUEST_NOT_ALLOWED, "entity selector is not declared")
+            if self._config_file is None:
+                raise CliError(
+                    INVALID_RESPONSE, "entity selector configuration is missing"
+                )
+            from dogopencli.duckdog import resolve_selector
+
+            result = resolve_selector(
+                "liquidity/reference/entities", "instId", config_file=self._config_file
+            )
+            collection.remaining_seconds(self.deadline)
+            self._queries.setdefault(
+                "entity_selector",
+                {"kind": "local_selector", "calls": 0, "requests": 0, "succeeded": 0},
+            )
+            trace = self._queries["entity_selector"]
+            trace["calls"] += 1
+            trace["succeeded"] += 1
+            trace["selected_count"] = len(result)
+            return result
+        except CliError as error:
+            self._fatal = error
+            raise
+        except Exception as error:
+            failure = CliError(INVALID_RESPONSE, "entity selector failed")
+            self._fatal = failure
+            raise failure from error
+
     def evidence(self) -> dict:
         """Return query facts without lookup identities, rows, or auth material."""
         from copy import deepcopy
@@ -354,6 +495,11 @@ class QueryTools:
             "operation": self._operation,
             "request_count": self._budget.requests,
             "queries": deepcopy(self._queries),
+            **(
+                {"coverage": deepcopy(self._coverage)}
+                if self._coverage is not None
+                else {}
+            ),
         }
 
     def _finish(self) -> None:
@@ -390,11 +536,28 @@ class QueryTools:
             evidence,
         )
 
-    def finish_get(self, result: Any) -> dict | list[dict]:
+    def finish_get(self, result: Any, identity: str | None = None) -> dict | list[dict]:
         self._finish()
         if self._incomplete:
             raise CliError(
                 INVALID_RESPONSE, "custom Get has incomplete required queries"
             )
-        validate_detail_result(result, self._declarations)
+        if isinstance(result, CustomGetResult):
+            if not isinstance(result.evidence, AcquisitionEvidence):
+                raise CliError(INVALID_RESPONSE, "custom Get coverage is invalid")
+            evidence = AcquisitionEvidence.from_record(result.evidence.record())
+            count = len(result.data) if isinstance(result.data, list) else 1
+            if evidence.collected_total != count or evidence.reported_total is not None:
+                raise CliError(
+                    INVALID_RESPONSE, "custom Get coverage contradicts result"
+                )
+            self._coverage = evidence.record()
+            result = result.data
+        context = None
+        if "request_fields" in self._declarations["result_identity"]:
+            context = {
+                **self._parameters,
+                self._declarations["lookup"]["name"]: identity,
+            }
+        validate_detail_result(result, self._declarations, context)
         return result

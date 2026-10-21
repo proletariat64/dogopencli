@@ -1,0 +1,231 @@
+{
+  "domain": "liquidity",
+  "name": "investment.interest_rates",
+  "adapter": "adapter.py:adapter",
+  "summary": "Four native interest-rate sources with date-group bank coverage.",
+  "purpose": "Inspect original raw rates and native external-rule details without scaling rates or merging different source models.",
+  "operations": {
+    "list": {
+      "description": "Read one explicit rate source with its native counting unit.",
+      "parameters": [
+        {
+          "name": "source",
+          "type": "string",
+          "required": true,
+          "choices": [
+            "market",
+            "bank",
+            "expectation-rule",
+            "expection"
+          ],
+          "description": "Select exactly one original native source."
+        },
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": false,
+          "description": "Inclusive rate date; required for market and bank only, YYYYMMDD or YYYY-MM-DD."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": false,
+          "description": "Inclusive end date; required for market and bank only."
+        },
+        {
+          "name": "timezone",
+          "type": "string",
+          "required": false,
+          "choices": [
+            "GMT+08"
+          ],
+          "description": "Verified market/bank timezone; acquisition default GMT+08. Unavailable for rule sources."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "currency",
+          "description": "Exact local currency filter after complete source acquisition."
+        }
+      ],
+      "execution": "custom",
+      "queries": {
+        "market": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                1000
+              ]
+            },
+            "primary_id": {
+              "type": "hash",
+              "fields": [
+                "currency",
+                "rateName",
+                "ratePeriod",
+                "effectiveDate"
+              ]
+            }
+          }
+        },
+        "expectation_rule": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                1000
+              ]
+            },
+            "primary_id": {
+              "type": "field",
+              "fields": [
+                "ruleId"
+              ]
+            }
+          }
+        },
+        "expection": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                1000
+              ]
+            },
+            "primary_id": {
+              "type": "field",
+              "fields": [
+                "ruleId"
+              ]
+            }
+          }
+        },
+        "bank": {
+          "kind": "inquiry",
+          "result_shape": "object"
+        }
+      },
+      "max_requests": 1000,
+      "budget_seconds": 300
+    },
+    "get": {
+      "description": "Read one genuine external financial-institution expectation rule.",
+      "parameters": [
+        {
+          "name": "source",
+          "type": "string",
+          "required": true,
+          "choices": [
+            "expection"
+          ],
+          "description": "Only expection supports native Get; spelling follows legacy."
+        }
+      ],
+      "lookup": {
+        "name": "id",
+        "description": "Native expection ruleId from its List."
+      },
+      "result_identity": {
+        "fields": [
+          "ruleId"
+        ],
+        "description": "Native external rule identifier echoed by Detail."
+      }
+    }
+  },
+  "identity": [],
+  "identity_description": "Source-specific native identity: market currency/rateName/ratePeriod/effectiveDate; bank bankId/currency/productTerm/productType/quoteDate; rule sources ruleId. Validated by selected named collection or bank group assembler.",
+  "fields": [
+    {
+      "name": "currency",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "rateName",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "ratePeriod",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "effectiveDate",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "bankId",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "productTerm",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "productType",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "quoteDate",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "rateValue",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "ruleId",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "ruleValue",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    },
+    {
+      "name": "version",
+      "type": "native JSON value",
+      "meaning": "Native source field, raw units and types retained."
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_interest_rates"
+  },
+  "limitations": [
+    "Four original source selectors remain one leaf: market and bank are dated rate observations, expectation-rule and expection are configurations retaining all statuses. Currency filtering is local and exact.",
+    "Market/expectation-rule/expection use host general offset collection with verified width1000 and native unique-object totals. Unknown source errors, identity conflicts, changed totals and incomplete scopes retain SDK failure/publication rules.",
+    "Bank rowStart/pageSize count descending quote-date groups, not rate rows. Retain every native product row; require fixed native group total, exact group stride/count without cross-page repeats and unique native row tuples. Metadata total_semantics=quote_date_groups distinguishes reported group count from collected product rows.",
+    "Raw rateValue/ruleValue units are source-specific and unconfirmed; no scale conversion or derived rate. Native fields, nested values, blank and null values and source order remain unchanged.",
+    "Only expection has Get: POST-query /queryFinancialInstRateRuleDetail.json with selected native ruleId, one native response retaining nested detail, without downloading attachments or recursive inquiries.",
+    "Public source/date selection is a query scope; offline replays one saved selected source. Get and List are independent; no cross-source fallback or current-plus-history synthesis.",
+    "Live does not publish; complete nonempty refresh publishes, failed/empty/incomplete refresh preserves prior capture. No new Duckdog import or legacy runtime."
+  ],
+  "examples": [
+    {
+      "title": "Bank quote-date groups",
+      "command": "dogopencli liquidity list investment.interest_rates --live --source bank --from-date 20261015 --to-date 20261021 --require-complete --limit 0"
+    },
+    {
+      "title": "External expectation rule",
+      "command": "dogopencli liquidity get investment.interest_rates RULE --source expection"
+    }
+  ]
+}

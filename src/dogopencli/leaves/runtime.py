@@ -66,13 +66,26 @@ def _ttl(config_file: Path) -> float:
         ) from exc
 
 
-def _validate_records(rows: Any, identity: list[str]) -> list[dict]:
+def _validate_records(
+    rows: Any, identity: list[str], primary_id: dict | None = None
+) -> list[dict]:
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise CliError("INVALID_RESPONSE", "records must be business objects")
     seen = set()
+    empty_components = (
+        set(primary_id["fields"])
+        if primary_id is not None
+        and primary_id.get("type") == "hash"
+        and primary_id.get("allow_empty_components") is True
+        else set()
+    )
     for row in rows:
         if identity:
-            if any(field not in row or row[field] is None for field in identity):
+            if any(
+                field not in row
+                or (row[field] is None and field not in empty_components)
+                for field in identity
+            ):
                 raise CliError("INVALID_RESPONSE", "record identity is missing")
             key = canonical([row[field] for field in identity])
             if key in seen:
@@ -119,7 +132,15 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
     custom = {
         name: {
             key: specification[key]
-            for key in ("execution", "queries", "max_requests", "budget_seconds")
+            for key in (
+                "execution",
+                "queries",
+                "max_requests",
+                "budget_seconds",
+                "account_directory",
+                "entity_selector",
+            )
+            if key in specification
         }
         for name, specification in leaf.manifest["operations"].items()
         if specification.get("execution") == "custom"
@@ -181,7 +202,9 @@ def get_detail(
             budget=query_budget,
         )
         with tools:
-            return tools.finish_get(leaf.adapter.query_get(parameters, identity, tools))
+            return tools.finish_get(
+                leaf.adapter.query_get(parameters, identity, tools), identity
+            )
     capability = capability or leaf.adapter.detail_capability(parameters)
     for name, arguments in (
         ("request_body", (parameters, identity)),
@@ -314,6 +337,21 @@ def execute(
     def now() -> datetime:
         return datetime.now(timezone.utc)
 
+    specification = leaf.manifest["operations"].get("list", {})
+    if (
+        operation in {"list", "refresh"}
+        and specification.get("entity_selector") is True
+    ):
+        if parameters.get("entity") == ["ANY"]:
+            from dogopencli.duckdog import resolve_selector
+
+            parameters = {
+                **parameters,
+                "_resolved_entities": resolve_selector(
+                    "liquidity/reference/entities", "instId", config_file=config_file
+                ),
+            }
+
     store = cache_for(config_file)
     namespace = "leaf:" + leaf.id
     limit, offset, fields = display_options(args)
@@ -336,7 +374,12 @@ def execute(
         ) as session:
             if custom_get:
                 tools = QueryTools(
-                    leaf, "get", parameters, capability, session.transport
+                    leaf,
+                    "get",
+                    parameters,
+                    capability,
+                    session.transport,
+                    config_file=config_file,
                 )
             record = get_detail(
                 leaf,
@@ -345,6 +388,11 @@ def execute(
                 args.detail_identity,
                 capability=capability,
                 query_tools=tools,
+            )
+        if tools is not None and "coverage" in tools.evidence():
+            coverage = AcquisitionEvidence.from_record(tools.evidence()["coverage"])
+            check_complete(
+                coverage, require_complete=getattr(args, "require_complete", False)
             )
         is_array = leaf.manifest["operations"]["get"].get("result_shape") == "array"
         rows = record if is_array else [record]
@@ -366,6 +414,24 @@ def execute(
                 "child pages are not acquired."
             ),
             **({"query_evidence": tools.evidence()} if tools is not None else {}),
+            **(
+                {
+                    "complete": coverage.scope_complete,
+                    "dataset_complete": coverage.dataset_complete,
+                    "warnings": [
+                        {
+                            "code": "INCOMPLETE_RESULT",
+                            "message": "custom Get relationship coverage is incomplete",
+                            "reason_codes": list(coverage.reasons),
+                            "retryable": False,
+                        }
+                    ]
+                    if not (coverage.scope_complete and coverage.dataset_complete)
+                    else [],
+                }
+                if tools is not None and "coverage" in tools.evidence()
+                else {}
+            ),
         }
     definitions = leaf.manifest["operations"]["list"].get("parameters", [])
     local_parameters = {
@@ -426,6 +492,7 @@ def execute(
                         capability,
                         session.transport,
                         state_file=config_file.parent / "collection-state.json",
+                        config_file=config_file,
                     ) as tools:
                         collected = tools.finish_list(
                             leaf.adapter.query_list(parameters, tools)
@@ -457,7 +524,9 @@ def execute(
                     collector = getattr(leaf.adapter, "collector", collect_scope)
                     collected = collector(capability, transport, scope)
                 rows = _validate_records(
-                    collected.records, leaf.manifest.get("identity", [])
+                    collected.records,
+                    leaf.manifest.get("identity", []),
+                    leaf.manifest.get("collection", {}).get("primary_id"),
                 )
                 evidence = evidence_for(collected)
                 query = parameters
@@ -533,6 +602,7 @@ def execute(
                 rows = _validate_records(
                     [parse(body) for _, body in stored],
                     leaf.manifest.get("identity", []),
+                    leaf.manifest.get("collection", {}).get("primary_id"),
                 )
                 context = parse(snapshot.scope)
                 query = context["parameters"]
@@ -548,6 +618,15 @@ def execute(
                 raise CliError(
                     "INVALID_RESPONSE", "cached snapshot is invalid"
                 ) from exc
+            if (
+                specification.get("entity_selector") is True
+                and "_resolved_entities" in parameters
+            ):
+                if parameters["_resolved_entities"] != query.get("_resolved_entities"):
+                    raise CliError(
+                        "CACHE_MISS",
+                        "saved ANY entity selection differs; refresh before replay",
+                    )
             capability = _list_capabilities(leaf, query)
             if contract_id != _contract_id(leaf, capability):
                 raise CliError(
@@ -611,6 +690,11 @@ def execute(
                 evidence = replace(
                     evidence,
                     scope_complete=False,
+                    dataset_complete=(
+                        False
+                        if evidence.coverage_basis == "qualified_single_response"
+                        else evidence.dataset_complete
+                    ),
                     reasons=tuple(
                         dict.fromkeys((*evidence.reasons, "COVERAGE_UNPROVEN"))
                     ),

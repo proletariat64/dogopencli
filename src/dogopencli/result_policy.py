@@ -10,7 +10,7 @@ from typing import Any
 
 from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
 
-BANK_ROW_OCCURRENCES = "bank_row_occurrences_latest_gmtCreate"
+SOURCE_ROW_OCCURRENCES = "source_row_occurrences"
 
 
 @dataclass(frozen=True)
@@ -76,7 +76,11 @@ class AcquisitionEvidence:
             if duplicate_policy != "allow_identical_overlap":
                 codes.append("UNEXPECTED_DUPLICATE_ROWS")
                 complete = False
-            elif semantics != "unique_objects":
+            elif semantics != "unique_objects" and not (
+                semantics == "unknown"
+                and reported_total is None
+                and coverage_basis == "accepted_short_page"
+            ):
                 raise CliError(
                     INVALID_RESPONSE, "duplicate tolerance needs unique total"
                 )
@@ -156,6 +160,7 @@ class AcquisitionEvidence:
                 None,
                 "qualified_single_response",
                 "qualified_short_page",
+                "accepted_short_page",
                 "validated_sources",
             )
         ):
@@ -179,23 +184,46 @@ class AcquisitionEvidence:
         if coverage_basis in {
             "qualified_single_response",
             "qualified_short_page",
+            "accepted_short_page",
         } and (
             evidence.reported_total is not None
             or evidence.total_semantics != "unknown"
             or evidence.unique_count is None
             or sources is not None
             or evidence.dataset_complete is not evidence.scope_complete
-            or (evidence.scope_complete and evidence.duplicate_count != 0)
+            or (
+                coverage_basis != "accepted_short_page"
+                and evidence.scope_complete
+                and evidence.duplicate_count != 0
+            )
         ):
             raise CliError(
                 INVALID_RESPONSE, "cached single-response coverage conflicts"
             )
-        if coverage_basis == "qualified_short_page" and evidence.scope_complete:
-            last = attempts[-1] if attempts else {}
+        if (
+            coverage_basis in {"qualified_short_page", "accepted_short_page"}
+            and evidence.scope_complete
+        ):
+            last = next(
+                (
+                    attempt
+                    for attempt in reversed(attempts)
+                    if attempt.get("kind") != "custom_query"
+                ),
+                {},
+            )
+            if coverage_basis == "accepted_short_page" and (
+                "IDENTITY_CONTENT_CONFLICT" in reasons
+                or last.get("conflict_count") != 0
+            ):
+                raise CliError(
+                    INVALID_RESPONSE, "cached accepted traversal has conflicts"
+                )
             terminal = last.get("terminal_batches")
             size = last.get("page_size")
             if (
-                last.get("termination_reason") != "two_empty_batches"
+                last.get("termination_reason")
+                not in {"two_empty_batches", "two_clamped_batches"}
                 or not isinstance(terminal, list)
                 or len(terminal) != 2
                 or type(size) is not int
@@ -212,6 +240,31 @@ class AcquisitionEvidence:
                 raise CliError(
                     INVALID_RESPONSE, "cached short-page termination is missing"
                 )
+            clamped = last["termination_reason"] == "two_clamped_batches"
+            for item in terminal:
+                witness = item.get("native_terminal")
+                if not clamped:
+                    if witness is not None:
+                        raise CliError(
+                            INVALID_RESPONSE, "cached terminal kind conflicts"
+                        )
+                    continue
+                if (
+                    not isinstance(witness, dict)
+                    or witness.get("kind") != "repeated_short_page"
+                    or type(witness.get("requested_page")) is not int
+                    or type(witness.get("native_page")) is not int
+                    or witness["native_page"] < 1
+                    or witness["requested_page"] != item["start"] // size + 1
+                    or witness["requested_page"] <= witness["native_page"]
+                    or type(witness.get("native_rows")) is not int
+                    or not 0 < witness["native_rows"] < size
+                    or last.get("source_end")
+                    != (witness["native_page"] - 1) * size + witness["native_rows"]
+                ):
+                    raise CliError(
+                        INVALID_RESPONSE, "cached clamped terminal is invalid"
+                    )
             holes = last.get("holes")
             end = last.get("source_end")
             if (
@@ -318,7 +371,7 @@ class AcquisitionEvidence:
             or (
                 evidence.scope_complete
                 and evidence.total_semantics
-                not in ("quote_date_groups", BANK_ROW_OCCURRENCES)
+                not in ("quote_date_groups", SOURCE_ROW_OCCURRENCES)
                 and evidence.reported_total is not None
                 and evidence.collected_total != evidence.reported_total
             )
@@ -328,11 +381,9 @@ class AcquisitionEvidence:
             )
         ):
             raise CliError(INVALID_RESPONSE, "cached acquisition evidence conflicts")
-        if evidence.total_semantics == BANK_ROW_OCCURRENCES:
+        if evidence.total_semantics == SOURCE_ROW_OCCURRENCES:
             selections = [
-                item
-                for item in attempts
-                if item.get("contract") == "bank-blacklist-latest-gmtCreate-v1"
+                item for item in attempts if item.get("kind") == "source_selection"
             ]
             if (
                 evidence.reported_total is None
@@ -346,17 +397,26 @@ class AcquisitionEvidence:
                     and evidence.arrivals != evidence.reported_total
                 )
                 or len(selections) != 1
+                or any(
+                    not isinstance(selections[0].get(field), list)
+                    or not selections[0][field]
+                    or any(
+                        not isinstance(value, str) or not value.strip()
+                        for value in selections[0][field]
+                    )
+                    for field in ("selection_fields", "selection_order")
+                )
                 or type(selections[0].get("raw_rows")) is not int
-                or type(selections[0].get("selected_banks")) is not int
+                or type(selections[0].get("selected_records")) is not int
                 or selections[0].get("raw_rows") != evidence.arrivals
-                or selections[0].get("selected_banks") != evidence.collected_total
+                or selections[0].get("selected_records") != evidence.collected_total
                 or selections[0].get("raw_coverage_complete")
                 is not evidence.scope_complete
                 or bool(evidence.duplicate_count)
-                != ("BANK_LATEST_CREATED_SELECTED" in evidence.reasons)
+                != ("SOURCE_ROWS_SELECTED" in evidence.reasons)
             ):
                 raise CliError(
-                    INVALID_RESPONSE, "cached bank selection evidence conflicts"
+                    INVALID_RESPONSE, "cached source selection evidence conflicts"
                 )
         return evidence
 
@@ -374,7 +434,7 @@ class AcquisitionEvidence:
             else None
         )
         if (
-            self.total_semantics == BANK_ROW_OCCURRENCES
+            self.total_semantics == SOURCE_ROW_OCCURRENCES
             and self.reported_total is not None
         ):
             missing = max(0, self.reported_total - (self.arrivals or 0))
@@ -435,17 +495,18 @@ def evaluate_result(
         warning_code = INCOMPLETE_RESULT
         warning_message = message
         if not incomplete:
-            if evidence.total_semantics == BANK_ROW_OCCURRENCES:
+            if evidence.total_semantics == SOURCE_ROW_OCCURRENCES:
                 if evidence.duplicate_count:
-                    warning_code = "BANK_LATEST_CREATED_SELECTED"
+                    warning_code = "SOURCE_ROWS_SELECTED"
                     warning_message = (
-                        "selected latest gmtCreate per bankId; "
-                        f"{evidence.duplicate_count} additional native bank rows"
-                        " omitted"
+                        "selected records from independently covered native rows; "
+                        f"{evidence.duplicate_count} additional source rows omitted"
                     )
                 else:
                     warning_code = reasons[0]
-                    warning_message = "bank acquisition warnings: " + ", ".join(reasons)
+                    warning_message = "source acquisition warnings: " + ", ".join(
+                        reasons
+                    )
             else:
                 if "PAGINATION_HOLES_BYPASSED" in reasons:
                     warning_code = "PAGINATION_HOLES_BYPASSED"
