@@ -132,13 +132,8 @@ rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf.py batches
 | B24 | [#283](https://github.com/proletariat64/dogopencli/issues/283) | `liquidity.investment.interest_rates` LG; `liquidity.investment.products` LG; `liquidity.investment.products.history` L | 3/5 | delivered |
 | B25 | [#284](https://github.com/proletariat64/dogopencli/issues/284) | `liquidity.operations.decisions` LG; `liquidity.operations.decisions.history` L; `liquidity.operations.rule_status` L | 3/4 | delivered |
 
-## 暂保留的非 SDK WIP
+## 历史非 SDK 实现
 
-| Branch | 未合并 PR | 处理 |
-| --- | --- | --- |
-| `feat/b03-issue262` | [#286](https://github.com/proletariat64/dogopencli/pull/286) | 暂保留，最后另行清理 |
-| `feat/b05-issue264` | [#289](https://github.com/proletariat64/dogopencli/pull/289) | 暂保留，最后另行清理 |
-| `feat/b06-issue265` | [#287](https://github.com/proletariat64/dogopencli/pull/287) | 暂保留，最后另行清理 |
-
-这些分支已有历史开发与验收记录，但不是当前已合并的 SDK 交付，不据此关闭批次。
-后续任务以当前 master、对应批次 ticket 和 SDK 手册为起点；当前清单范围与待验收操作分别验收。
+B03、B05、B06 已由当前 SDK 迁移版本交付。旧实现的 PR #286、#289、#287 已被替代，
+不合并到新架构，不作为当前交付或后续开发入口。
+后续任务以当前 master、对应批次 ticket 和 SDK 手册为起点。
