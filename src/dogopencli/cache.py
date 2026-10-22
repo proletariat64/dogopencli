@@ -256,11 +256,14 @@ class Cache:
             connection.execute("PRAGMA busy_timeout=200")
             if (
                 connection.execute(
-                    "SELECT 1 FROM sqlite_master WHERE name='snapshots'"
+                    "SELECT 1 FROM sqlite_master "
+                    "WHERE name='snapshots' AND type='table'"
                 ).fetchone()
                 is None
             ):
-                return []
+                raise CliError(
+                    INVALID_RESPONSE, "cache snapshot metadata is unavailable"
+                )
             rows = connection.execute(
                 "SELECT " + SNAPSHOT_COLUMNS + " FROM snapshots ORDER BY namespace"
             ).fetchall()

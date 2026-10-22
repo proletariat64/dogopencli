@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import sqlite3
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError
@@ -158,6 +159,92 @@ def test_bad_config_and_unknown_capture_time_do_not_invent_freshness(system_scop
     assert result["configuration"]["ttl_hours"] is None
     assert result["cache"]["leaves"][0]["freshness"] == "unknown"
     assert result["cache"]["row_count"] == 1
+
+
+@pytest.mark.parametrize("profile", ["1", '"~dogopencli_missing_user_593687/chrome"'])
+def test_invalid_browser_configuration_does_not_hide_other_sections(
+    system_scope, profile
+):
+    config, _ = system_scope
+    config.write_text(f"[auth]\nprofile = {profile}\n")
+    result = read_system_info(config)
+    assert result["configuration"]["state"] == "unavailable"
+    assert result["configuration"]["cdp_url"] is None
+    assert result["installation"]["version"]
+    assert result["cache"]["snapshot_count"] == 1
+    assert result["duckdog"]["dataset_count"] == 2
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "[::1]"])
+def test_browser_endpoint_displays_only_origin_without_credentials(system_scope, host):
+    config, _ = system_scope
+    config.write_text(
+        '[auth]\ncdp_url = "http://user:secret-password@'
+        + host
+        + ':9222/secret-path?token=secret-token#secret-fragment"\n'
+    )
+    result = read_system_info(config)
+    assert result["configuration"]["cdp_url"] == f"http://{host}:9222"
+    serialized = json.dumps(result)
+    for private in [
+        "user:",
+        "secret-password",
+        "secret-path",
+        "secret-token",
+        "secret-fragment",
+    ]:
+        assert private not in serialized
+
+
+def test_missing_cdp_port_is_confined_to_configuration(system_scope):
+    config, _ = system_scope
+    config.write_text('[auth]\ncdp_url = "http://127.0.0.1"\n')
+    result = read_system_info(config)
+    assert result["configuration"]["state"] == "unavailable"
+    assert result["installation"]["version"]
+    assert result["cache"]["snapshot_count"] == 1
+
+
+def test_mixed_case_owned_table_has_catalog_estimate(system_scope):
+    config, _ = system_scope
+    with duckdb.connect(str(config.parent / "duckdog.duckdb")) as database:
+        database.execute('ALTER TABLE sample_rows RENAME TO "Sample_Rows"')
+    result = read_system_info(config)
+    database = result["duckdog"]["databases"][0]
+    assert database["state"] == "available"
+    dataset = next(d for d in database["datasets"] if d["relation"] == "sample_rows")
+    assert dataset["estimated_rows"] == 1
+
+
+def test_non_text_capture_time_remains_serializable_and_unknown(system_scope):
+    config, _ = system_scope
+    with sqlite3.connect(config.parent / "leaf-cache.sqlite3") as database:
+        database.execute("UPDATE snapshots SET fetched_at=x'00'")
+    result = read_system_info(config)
+    snapshot = result["cache"]["leaves"][0]
+    assert snapshot["fetched_at"] is None
+    assert snapshot["freshness"] == "unknown"
+    assert result["cache"]["snapshot_count"] == 1
+    assert result["installation"]["version"]
+    json.dumps(result)
+
+
+@pytest.mark.parametrize("replacement_view", [False, True])
+def test_missing_snapshot_table_is_unknown_without_repair(
+    system_scope, replacement_view
+):
+    config, _ = system_scope
+    with sqlite3.connect(config.parent / "leaf-cache.sqlite3") as database:
+        database.execute("DROP TABLE snapshots")
+        if replacement_view:
+            database.execute("CREATE VIEW snapshots AS SELECT * FROM records")
+    original = files(config.parent)
+    result = read_system_info(config)
+    assert result["cache"]["state"] == "unavailable"
+    assert result["cache"]["snapshot_count"] is None
+    assert result["cache"]["row_count"] is None
+    assert result["installation"]["version"]
+    assert files(config.parent) == original
 
 
 def test_system_http_has_existing_origin_and_method_restrictions(editor):

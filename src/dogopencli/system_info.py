@@ -9,9 +9,11 @@ from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from . import __version__
 from .browser.environment import resolve_environment
+from .browser.errors import AuthError
 from .cache import Cache
 from .config import cache_ttl_hours
 from .domain_contracts import domain_declarations
@@ -40,8 +42,18 @@ def _configuration(config_file: Path) -> dict[str, Any]:
     try:
         result["ttl_hours"] = cache_ttl_hours(config_file)
         browser = resolve_environment(config_file=config_file)
-        result.update(cdp_url=browser.cdp_url, profile=str(browser.profile))
-    except CliError:
+        endpoint = urlsplit(browser.cdp_url)
+        host = endpoint.hostname
+        if endpoint.scheme not in {"http", "https"} or not host or not endpoint.port:
+            raise ValueError("invalid browser endpoint")
+        authority = f"[{host}]" if ":" in host else host
+        result.update(
+            cdp_url=urlunsplit(
+                (endpoint.scheme, f"{authority}:{endpoint.port}", "", "", "")
+            ),
+            profile=str(browser.profile),
+        )
+    except (CliError, AuthError, RuntimeError, ValueError, OSError):
         result.update(state="unavailable", error_code="CONFIG_ERROR")
     return result
 
@@ -95,7 +107,9 @@ def _cache_info(registry: Registry, ttl: float | None, now: datetime) -> dict[st
                 row.update(
                     state="available",
                     row_count=snapshot.row_count,
-                    fetched_at=snapshot.fetched_at,
+                    fetched_at=snapshot.fetched_at
+                    if isinstance(snapshot.fetched_at, str)
+                    else None,
                     simulated=snapshot.simulated,
                 )
                 try:
@@ -184,12 +198,13 @@ def _database_info(path: Path, rows: list[tuple], installed: set[str]) -> dict:
             },
         ) as database:
             database.execute("BEGIN TRANSACTION")
-            tables = dict(
-                database.execute(
+            tables = {
+                name.lower(): estimate
+                for name, estimate in database.execute(
                     "SELECT table_name, estimated_size FROM duckdb_tables() "
                     "WHERE schema_name='main' AND NOT internal"
                 ).fetchall()
-            )
+            }
             if "_dogopencli_leaf_ownership" not in tables:
                 raise ValueError("ownership metadata is unavailable")
             for dataset in datasets:
