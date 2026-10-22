@@ -44,7 +44,6 @@
   .system-nav>small { display:block; margin:0 6px 10px; letter-spacing:.08em; font-size:10px; text-transform:uppercase; }
   #system-nav { width:100%; text-align:left; display:flex; gap:11px; align-items:center; padding:13px 14px; border-color:var(--line); }
   #system-nav[aria-current="page"] { background:#f3f7fd; border-color:#6585b9; color:#243f68; }
-  .system-icon { width:29px; height:29px; display:grid; place-items:center; border:1px solid #d4dfed; border-radius:6px; color:#53729d; background:#f5f8fc; flex-shrink:0; }
   #system-nav strong { display:block; font-size:14px; font-weight:600; }
   #system-nav small { display:block; margin-top:2px; font-size:11px; }
   .aside-note { margin:28px 6px 0; color:var(--muted); font-size:11px; line-height:1.8; }
@@ -134,7 +133,7 @@
   html:not([data-prototype="true"]) .prototype-bar,html:not([data-prototype="true"]) #prototype-state { display:none; }
   @media(min-width:1550px) { main { padding:30px 42px 130px; } }
   @media(max-width:1100px) { .shell { grid-template-columns:230px minmax(0,1fr); } main { padding:24px 22px 130px; } .metric { padding:0 14px; } .metric-value { font-size:23px; } .sections { grid-template-columns:1fr; } .section.wide { grid-column:auto; } .report-sections .kv { display:block; } }
-  @media(max-width:760px) { .shell { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); padding:16px; } #domains { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; } .domain { margin:0; } .domain button { padding:9px; } .domain-heading { display:block; margin-bottom:3px; } .domain-heading small,.domain-foot,.nav-hint,.aside-note { display:none; } .domain-name { font-size:12px; } .domain button>small { font-size:10px; } .nav-heading { margin-bottom:10px; } .system-nav { margin-top:14px; padding-top:12px; } .system-nav>small { display:none; } #system-nav { padding:8px 11px; } #system-nav small { display:inline; margin-left:10px; } #system-nav>span:last-child { display:flex; align-items:baseline; } .system-icon { width:25px; height:25px; } main { padding:22px 16px 140px; } .app-bar { padding:0 16px; gap:12px; } .app-bar small,.app-bar .crumb { display:none; } .prototype-label { margin-left:auto; } .metrics { grid-template-columns:repeat(3,1fr); row-gap:20px; } .metric:nth-child(3) { border:0; } .page-header { gap:12px; } .page-header p { max-width:240px; } .summary-head { padding:14px; } .summary-head small { font-size:10px; } .metric { padding:0 14px; } .sample-note { padding:9px 14px; } .query-grid { grid-template-columns:1fr; } .prototype-bar { bottom:26px; flex-wrap:wrap; justify-content:center; gap:8px; width:355px; } .prototype-bar label { padding-left:8px; } #variant-label { min-width:132px; } #prototype-state { font-size:9px; } }
+  @media(max-width:760px) { .shell { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); padding:16px; } #domains { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; } .domain { margin:0; } .domain button { padding:9px; } .domain-heading { display:block; margin-bottom:3px; } .domain-heading small,.domain-foot,.nav-hint,.aside-note { display:none; } .domain-name { font-size:12px; } .domain button>small { font-size:10px; } .nav-heading { margin-bottom:10px; } .system-nav { margin-top:14px; padding-top:12px; } .system-nav>small { display:none; } #system-nav { padding:8px 11px; } #system-nav small { display:inline; margin-left:10px; } #system-nav>span:last-child { display:flex; align-items:baseline; } main { padding:22px 16px 140px; } .app-bar { padding:0 16px; gap:12px; } .app-bar small,.app-bar .crumb { display:none; } .prototype-label { margin-left:auto; } .metrics { grid-template-columns:repeat(3,1fr); row-gap:20px; } .metric:nth-child(3) { border:0; } .page-header { gap:12px; } .page-header p { max-width:240px; } .summary-head { padding:14px; } .summary-head small { font-size:10px; } .metric { padding:0 14px; } .sample-note { padding:9px 14px; } .query-grid { grid-template-columns:1fr; } .prototype-bar { bottom:26px; flex-wrap:wrap; justify-content:center; gap:8px; width:355px; } .prototype-bar label { padding-left:8px; } #variant-label { min-width:132px; } #prototype-state { font-size:9px; } }
 </style>
 <style>
   @media(max-width:760px) {
@@ -152,7 +151,7 @@
     <div class="nav-heading"><h2>Domains</h2><small>4 domains</small></div>
     <p class="nav-hint">Select a domain to view its queries.</p>
     <nav id="domains" aria-label="Domains"></nav>
-    <div class="system-nav"><small>Workspace</small><button id="system-nav" type="button" data-view="system"><span class="system-icon" aria-hidden="true">⚙</span><span><strong>System</strong><small>系统信息与存储概览</small></span></button></div>
+    <div class="system-nav"><small>Console</small><button id="system-nav" type="button" data-view="system"><span><strong>System</strong><small>info &amp; storage</small></span></button></div>
     <p class="aside-note">所有数值与路径均为原型示例。<br>切换页面不会读取配置或业务数据库。</p>
   </aside>
   <main id="content"></main>
@@ -243,7 +242,7 @@
   function VariantB() { return `<nav class="section-links" aria-label="System 信息目录">${Object.keys(sectionFns).map((k,i)=>`<a href="#${k}">0${i+1} ${['基础配置','安装信息','Cache','Duckdog'][i]}</a>`).join('')}</nav><div class="report-sections">${Object.values(sectionFns).map(fn=>fn()).join('')}</div>`; }
   function VariantC() { return `<div class="tabs" role="tablist" aria-label="System 分类">${Object.keys(sectionFns).map((k,i)=>`<button role="tab" id="tab-${k}" aria-controls="system-tab-panel" aria-selected="${state.tab===k}" data-tab="${k}">${['基础配置','安装信息','Cache','Duckdog'][i]}</button>`).join('')}</div><div id="system-tab-panel" class="tab-panel" role="tabpanel" aria-labelledby="tab-${state.tab}">${sectionFns[state.tab]()}</div>`; }
   function systemView() {
-    return `<p class="breadcrumb">Workspace / System</p><header class="page-header"><div><h1>System</h1><p>查看本机配置、安装环境和已保存的数据概况。</p></div><div><button id="reread">↻ 重新读取</button><div class="action-note" role="status">${state.reread?'已重新载入示例数据':'只读 · 不修改配置'}</div></div></header>${summaryBox()}${{A:VariantA,B:VariantB,C:VariantC}[state.variant]()}`;
+    return `<p class="breadcrumb">Console / System</p><header class="page-header"><div><h1>System</h1><p>查看本机配置、安装环境和已保存的数据概况。</p></div><div><button id="reread">↻ 重新读取</button><div class="action-note" role="status">${state.reread?'已重新载入示例数据':'只读 · 不修改配置'}</div></div></header>${summaryBox()}${{A:VariantA,B:VariantB,C:VariantC}[state.variant]()}`;
   }
   function domainView() {
     const domain=domains.find(d=>d.id===state.view)||domains[0];
