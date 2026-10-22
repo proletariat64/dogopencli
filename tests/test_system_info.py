@@ -205,6 +205,18 @@ def test_missing_cdp_port_is_confined_to_configuration(system_scope):
     assert result["cache"]["snapshot_count"] == 1
 
 
+def test_unresolvable_database_path_does_not_hide_other_sections(system_scope):
+    config, _ = system_scope
+    config.write_text(
+        '[duckdog]\npath = "~dogopencli_missing_user_593687/data.duckdb"\n'
+    )
+    result = read_system_info(config)
+    assert result["duckdog"]["state"] == "unavailable"
+    assert result["duckdog"]["dataset_count"] is None
+    assert result["installation"]["version"]
+    assert result["cache"]["snapshot_count"] == 1
+
+
 def test_mixed_case_owned_table_has_catalog_estimate(system_scope):
     config, _ = system_scope
     with duckdb.connect(str(config.parent / "duckdog.duckdb")) as database:

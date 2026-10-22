@@ -241,7 +241,7 @@ def _duckdog_info(registry: Registry) -> dict[str, Any]:
     try:
         rows = _bindings(registry.config_file)
         configured = registry.database_path()
-    except (sqlite3.Error, OSError, ValueError, CliError):
+    except (sqlite3.Error, OSError, ValueError, RuntimeError, CliError):
         return {"state": "unavailable", "databases": [], "dataset_count": None}
     groups: dict[Path, list[tuple]] = {configured: []}
     for row in rows:
