@@ -75,9 +75,6 @@ class BaselineList:
             raise CliError(REQUEST_NOT_ALLOWED, "unverified SLA filters")
         return {**filters, "pageNo": page_num, "pageSize": page_size}
 
-    def identity_key(self, row: dict[str, Any]) -> str:
-        return row["id"]
-
     def parse_page(self, body: bytes) -> ParsedPage:
         document = response_document(body)
         for key in ("pageNo", "pageSize", "totalCount"):

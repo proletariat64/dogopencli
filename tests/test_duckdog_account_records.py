@@ -65,7 +65,7 @@ def test_invalid_configured_database_does_not_become_unavailable(tmp_path):
     assert database.read_text() == "corrupt"
 
 
-def test_missing_optional_dependency_allows_fallback(tmp_path, monkeypatch):
+def test_missing_required_dependency_is_an_installation_error(tmp_path, monkeypatch):
     import sys
 
     (tmp_path / "native.duckdb").touch()
@@ -74,7 +74,7 @@ def test_missing_optional_dependency_allows_fallback(tmp_path, monkeypatch):
         '[duckdog]\npath="native.duckdb"\n[duckdog.selectors]\n"liquidity/cash/accounts"="accounts"\n'
     )
     monkeypatch.setitem(sys.modules, "duckdb", None)
-    with pytest.raises(AccountSourceUnavailable, match="not installed"):
+    with pytest.raises(CliError, match="required; reinstall dogopencli"):
         read_account_records(config_file=config)
 
 

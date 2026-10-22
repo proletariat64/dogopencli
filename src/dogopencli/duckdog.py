@@ -34,7 +34,7 @@ def resolve_selector(
     try:
         import duckdb
     except ImportError as error:
-        raise _error("install dogopencli[duckdog] to use online ANY") from error
+        raise _error("DuckDB support is required; reinstall dogopencli") from error
     try:
         with duckdb.connect(str(configuration.path), read_only=True) as connection:
             records = connection.execute(
@@ -69,7 +69,7 @@ def read_account_records(*, config_file: Path | None = None) -> list[dict]:
     """Read only the registered cash-account ownership columns, in source order.
 
     No database, relation or SQL is accepted from callers. Missing optional
-    configuration/dependency is distinct from failure of configured storage.
+    configuration is distinct from failure of configured storage.
     """
     from .config import config_path, tomllib
 
@@ -93,9 +93,7 @@ def read_account_records(*, config_file: Path | None = None) -> list[dict]:
     try:
         import duckdb
     except ImportError as error:
-        raise AccountSourceUnavailable(
-            "optional dogopencli[duckdog] is not installed"
-        ) from error
+        raise _error("DuckDB support is required; reinstall dogopencli") from error
     try:
         with duckdb.connect(str(configuration.path), read_only=True) as connection:
             cursor = connection.execute(f"SELECT * FROM {_quote(relation)} LIMIT 0")

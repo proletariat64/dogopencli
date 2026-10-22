@@ -142,7 +142,6 @@ class Inquiry:
         path="/queryTransferRulePreRunRecords.json",
         page_size=PAGE_SIZE,
         one_based=False,
-        single_page=True,
         encoding="query",
         allowed_body_keys=frozenset({"tntInstId", VO}),
         fixed_body_values=(("tntInstId", TENANT),),

@@ -49,7 +49,7 @@ class DomainService:
 
         registry = self._registry
         if registry is None:
-            registry = Registry(self.config_file).scan(wait_seconds=5)
+            registry = Registry(self.config_file).discover()
         return [
             {
                 "id": domain.id,

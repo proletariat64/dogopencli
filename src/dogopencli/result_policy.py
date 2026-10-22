@@ -1,7 +1,7 @@
 """Shared acquisition evidence and result decisions, independent of storage.
 
 Only validated candidates reach this policy. Domain failures are never caught
-or converted to partial success here; publishing remains a domain transaction.
+or converted to partial success here; publishing remains a host transaction.
 """
 
 import sys
@@ -454,18 +454,6 @@ class AcquisitionEvidence:
         return result
 
 
-def evidence_for(result: Any) -> AcquisitionEvidence:
-    """Compatibility adapter for existing registered collectors."""
-    evidence = getattr(result, "evidence", None)
-    if evidence is not None:
-        return evidence
-    return AcquisitionEvidence.for_collection(
-        complete=result.complete,
-        reported_total=result.total_count,
-        collected_total=len(result.records),
-    )
-
-
 @dataclass(frozen=True)
 class ResultDecision:
     expose_data: bool
@@ -480,7 +468,6 @@ def evaluate_result(
     *,
     mode: str,
     require_complete: bool = False,
-    complete_only: bool = False,
 ) -> ResultDecision:
     incomplete = not (evidence.scope_complete and evidence.dataset_complete)
     reasons = list(evidence.reasons)
@@ -524,7 +511,7 @@ def evaluate_result(
                 "retryable": False,
             },
         )
-    rejected = incomplete and (require_complete or complete_only)
+    rejected = incomplete and (require_complete or mode == "refresh")
     error = (
         {"code": INCOMPLETE_RESULT, "message": message, "retryable": False}
         if rejected
@@ -532,7 +519,7 @@ def evaluate_result(
     )
     return ResultDecision(
         expose_data=not rejected,
-        publishable=mode == "refresh" and not rejected,
+        publishable=mode == "refresh" and not rejected and evidence.collected_total > 0,
         warnings=warnings,
         error=error,
         exit_code=1 if rejected else 0,
@@ -555,21 +542,12 @@ def prepare_result(
     meta: dict[str, Any], *, require_complete: bool = False, mode: str = "cache"
 ) -> dict[str, Any]:
     """Apply one decision and render its diagnostics at the output boundary."""
-    if "complete" not in meta:
-        return meta
-    if meta.get("acquisition") is not None:
-        evidence = AcquisitionEvidence.from_record(meta["acquisition"])
-        if meta["complete"] is not evidence.scope_complete or (
-            meta.get("dataset_complete") is not None
-            and meta["dataset_complete"] is not evidence.dataset_complete
-        ):
-            raise CliError(INVALID_RESPONSE, "output acquisition evidence conflicts")
-    else:
-        evidence = AcquisitionEvidence(
-            scope_complete=meta["complete"],
-            dataset_complete=meta.get("dataset_complete") is not False,
-            collected_total=meta.get("collected_total", meta.get("matched_total", 0)),
-        )
+    evidence = AcquisitionEvidence.from_record(meta.get("acquisition"))
+    if (
+        meta.get("complete") is not evidence.scope_complete
+        or meta.get("dataset_complete") is not evidence.dataset_complete
+    ):
+        raise CliError(INVALID_RESPONSE, "output acquisition evidence conflicts")
     check_complete(evidence, require_complete=require_complete, mode=mode)
     decision = evaluate_result(evidence, mode=mode)
     output = {**meta, **evidence.meta()}

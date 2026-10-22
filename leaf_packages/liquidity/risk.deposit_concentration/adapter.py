@@ -26,7 +26,6 @@ class Inquiry:
         path="/api/metric/manyMetricQuery.json",
         page_size=0,
         one_based=False,
-        single_page=True,
         allowed_body_keys=frozenset({"tntInstId", "metricName"}),
         fixed_body_values=(("tntInstId", TENANT), ("metricName", METRIC)),
         total_semantics="unknown",

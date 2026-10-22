@@ -37,7 +37,6 @@ class Inquiry:
         path="/payout/api/bookDecisionRule/search.json",
         page_size=PAGE_SIZE,
         one_based=True,
-        single_page=True,
         allowed_body_keys=frozenset({"pageNum", "pageSize"}),
         fixed_body_values=(("pageNum", 1), ("pageSize", PAGE_SIZE)),
     )

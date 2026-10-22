@@ -112,8 +112,6 @@ def delivery(tmp_path, monkeypatch):
         raise AssertionError("business inquiry forbidden in delivery smoke")
     def scope(self, parameters):
         raise AssertionError("business inquiry forbidden in delivery smoke")
-    def collector(self, capability, transport, scope, *, progress=None):
-        raise AssertionError("business inquiry forbidden in delivery smoke")
     def filter(self, records, parameters):
         raise AssertionError("business inquiry forbidden in delivery smoke")
 adapter = Adapter()

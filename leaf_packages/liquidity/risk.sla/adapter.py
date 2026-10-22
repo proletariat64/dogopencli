@@ -26,7 +26,6 @@ class Inquiry:
         path="/api/risk/sla/slaConfigPageQuery.json",
         page_size=PAGE_SIZE,
         one_based=False,
-        single_page=True,
         allowed_body_keys=frozenset({"rowStart", "pageSize"}),
         fixed_body_values=(("rowStart", 0), ("pageSize", PAGE_SIZE)),
     )

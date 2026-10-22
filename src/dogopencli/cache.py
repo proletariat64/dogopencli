@@ -51,6 +51,13 @@ CREATE TABLE IF NOT EXISTS records (
 );
 """
 
+SNAPSHOT_COLUMNS = (
+    "namespace, capability, scope, source_kind, snapshot_id,"
+    " dataset_id, simulated, backend_complete, dataset_complete,"
+    " fetched_at, loaded_at, source_observed_from,"
+    " source_observed_to, row_count, source_path, acquisition"
+)
+
 
 @dataclass(frozen=True)
 class SnapshotMeta:
@@ -147,22 +154,6 @@ class Cache:
             timeout=10.0,
         )
 
-    @staticmethod
-    def _snapshot_columns(connection: sqlite3.Connection) -> str | None:
-        columns = {row[1] for row in connection.execute("PRAGMA table_info(snapshots)")}
-        if not columns:
-            return None
-        optional = ", ".join(
-            name if name in columns else f"NULL AS {name}"
-            for name in ("source_path", "acquisition")
-        )
-        return (
-            "namespace, capability, scope, source_kind, snapshot_id,"
-            " dataset_id, simulated, backend_complete, dataset_complete,"
-            " fetched_at, loaded_at, source_observed_from,"
-            " source_observed_to, row_count, " + optional
-        )
-
     def _connect(self) -> sqlite3.Connection:
         parent = self._path.parent
         parent.mkdir(parents=True, exist_ok=True)
@@ -198,25 +189,7 @@ class Cache:
                     connection.execute(f"PRAGMA busy_timeout={timeout}")
                 if mode is None or str(mode[0]).lower() != "wal":
                     raise CliError("CACHE_ERROR", "cache requires WAL journal mode")
-            connection.executescript(SCHEMA)
-            columns = {
-                row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
-            }
-            if not {"source_path", "acquisition"} <= columns:
-                # Another connection may have migrated since our first check.
-                connection.execute("BEGIN IMMEDIATE")
-                columns = {
-                    row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
-                }
-                if "source_path" not in columns:
-                    connection.execute(
-                        "ALTER TABLE snapshots ADD COLUMN source_path TEXT"
-                    )
-                if "acquisition" not in columns:
-                    connection.execute(
-                        "ALTER TABLE snapshots ADD COLUMN acquisition TEXT"
-                    )
-                connection.execute("COMMIT")
+            connection.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "COMMIT;\n")
             return connection
         except BaseException:
             connection.close()
@@ -279,11 +252,17 @@ class Cache:
             return None
         connection = self._connect_readonly()
         try:
-            columns = self._snapshot_columns(connection)
-            if columns is None:
+            # A first publisher may have created the SQLite file but not yet
+            # committed the current schema. No snapshot exists at that point.
+            if (
+                connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE name = 'snapshots'"
+                ).fetchone()
+                is None
+            ):
                 return None
             row = connection.execute(
-                "SELECT " + columns + " FROM snapshots WHERE namespace = ?",
+                "SELECT " + SNAPSHOT_COLUMNS + " FROM snapshots WHERE namespace = ?",
                 (namespace_name,),
             ).fetchone()
         finally:
@@ -316,18 +295,17 @@ class Cache:
         connection = self._connect_readonly()
         try:
             connection.execute("BEGIN DEFERRED")
-            columns = self._snapshot_columns(connection)
-            if columns is None:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE name = 'snapshots'"
+                ).fetchone()
+                is None
+            ):
                 return None, []
             row = connection.execute(
-                "SELECT " + columns + " FROM snapshots WHERE namespace = ?",
+                "SELECT " + SNAPSHOT_COLUMNS + " FROM snapshots WHERE namespace = ?",
                 (namespace_name,),
             ).fetchone()
-            records_exist = connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE name = 'records'"
-            ).fetchone()
-            if records_exist is None and row is None:
-                return None, []
             rows = connection.execute(
                 "SELECT seqid, body FROM records WHERE namespace = ? ORDER BY seqid",
                 (namespace_name,),
@@ -362,15 +340,6 @@ class Cache:
                 connection.execute("DELETE FROM records WHERE namespace = ?", (name,))
                 connection.execute("DELETE FROM snapshots WHERE namespace = ?", (name,))
             for meta, records in writes:
-                if meta.namespace.startswith("temporary-query:"):
-                    connection.execute(
-                        "CREATE TABLE IF NOT EXISTS cache_format "
-                        "(version INTEGER NOT NULL)"
-                    )
-                    connection.execute(
-                        "INSERT INTO cache_format SELECT 157 "
-                        "WHERE NOT EXISTS (SELECT 1 FROM cache_format)"
-                    )
                 if meta.acquisition is not None:
                     evidence = AcquisitionEvidence.from_record(meta.acquisition)
                     if (

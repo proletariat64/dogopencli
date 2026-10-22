@@ -113,7 +113,7 @@ def test_missing_dependency_is_actionable(tmp_path, monkeypatch):
         '"liquidity/reference/entities" = "entities"\n'
     )
     monkeypatch.setitem(sys.modules, "duckdb", None)
-    with pytest.raises(CliError, match=r"dogopencli\[duckdog\]"):
+    with pytest.raises(CliError, match="required; reinstall dogopencli"):
         resolve_selector("liquidity/reference/entities", "instId", config_file=config)
     assert database.read_bytes() == b""
 

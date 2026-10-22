@@ -32,6 +32,9 @@ Python 使用四空格缩进、类型注解、`snake_case` 模块/函数和 `Pas
 显式配置的私有 Duckdog 目录也可使用。私有目录0700、数据文件0600。
 认证、profile、真实响应、缓存、数据集和构建产物不进入 Git 或公共日志。
 
+缓存和 Duckdog 只支持当前数据契约。旧格式数据清除后重建；宿主不迁移旧 schema，
+不补造历史记录缺失的元数据，也不保留旧查询格式的读取回退。
+
 Markdown 使用 UTF-8、一个 H1、末尾换行，文件名使用小写英文、数字、连字符；
 README/AGENTS/CONTEXT 等入口名和现有 leaf identity 目录为例外。
 仓库文件使用相对 Markdown 链接；外部资料使用 HTTPS；本机私有资料只写路径和必要定位。

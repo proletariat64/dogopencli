@@ -521,6 +521,12 @@ def validate_manifest(value: Any) -> None:
             ):
                 raise _invalid("Get List binding must supply required context")
     collection = value.get("collection")
+    if (
+        "list" in value["operations"]
+        and value["operations"]["list"].get("execution") != "custom"
+        and collection is None
+    ):
+        raise _invalid("standard List requires a collection declaration")
     if collection is not None:
         from ..contracts import resolve_collection_provider
 
@@ -732,12 +738,9 @@ class Registry:
                     required |= {"source_capability", "source_scope", "assemble"}
                 else:
                     required.add("capability")
-                    if "collection" not in value:
-                        required.add("collector")
             arguments = {
                 "capability": ({},),
                 "scope": ({},),
-                "collector": (None, None, "scope"),
                 "filter": ([], {}),
                 "detail_capability": ({},),
                 "source_capability": ("source", {}),

@@ -152,7 +152,6 @@ class Cases:
         path="/api/ptr/case/query.json",
         page_size=5000,
         one_based=False,
-        single_page=True,
         allowed_body_keys=frozenset({"pageNo", "pageSize"}),
         fixed_body_values=(("pageNo", 0), ("pageSize", 5000)),
         encoding="query",

@@ -21,7 +21,9 @@ def test_deadline_is_passed_and_late_success_rejected(monkeypatch):
             return TransportResponse(200, b"{}", ORIGIN_CDP)
 
     with pytest.raises(CliError) as error:
-        collect.collect_scope(SAMPLE, Transport(), SCOPE, budget_seconds=1)
+        collect.execute_bounded(
+            SAMPLE, Transport(), SAMPLE.page_body(SCOPE, 0, 5000), deadline=1
+        )
     assert error.value.code == "TIMEOUT"
     assert observed == [1.0]
 

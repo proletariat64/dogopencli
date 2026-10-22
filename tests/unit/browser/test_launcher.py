@@ -191,6 +191,58 @@ def test_require_profile_rejects_multiple_profile_switches(
         launcher.require_profile(env)
 
 
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://remote.example:9222",
+        "http://127.0.0.1:9222/proxy",
+        "http://user:secret@127.0.0.1:9222",
+    ],
+)
+def test_local_socket_owner_does_not_prove_a_different_endpoint(
+    tmp_path, monkeypatch, endpoint
+):
+    from dataclasses import replace
+
+    env = replace(_environment(tmp_path), cdp_url=endpoint)
+    monkeypatch.setattr(
+        launcher,
+        "_endpoint_process_args",
+        lambda port: [["chrome", f"--user-data-dir={env.profile}"]],
+    )
+    with pytest.raises(launcher.LauncherError):
+        launcher.require_profile(env)
+
+
+def test_startup_failure_closes_only_its_created_target(tmp_path, monkeypatch):
+    import time
+
+    from dogopencli.browser.cdp import CdpError
+
+    closed = []
+
+    class Transport:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def new_target(self, url, **kwargs):
+            assert url == "about:blank"
+            return {"id": "owned-entry", "webSocketDebuggerUrl": "ws://entry"}
+
+        def open_session(self, *args, **kwargs):
+            raise CdpError("cannot attach created target")
+
+        def close_target(self, target_id):
+            closed.append(target_id)
+
+    monkeypatch.setattr(launcher, "HttpCdpTransport", Transport)
+    with pytest.raises(CdpError):
+        launcher._open_single_entry(
+            _environment(tmp_path), deadline=time.monotonic() + 1
+        )
+    assert closed == ["owned-entry"]
+
+
 def test_chrome_keeps_sandbox_and_origin_protection(tmp_path):
     args = launcher._chrome_args(_environment(tmp_path), "headless")
     assert "--no-sandbox" not in args
@@ -199,7 +251,7 @@ def test_chrome_keeps_sandbox_and_origin_protection(tmp_path):
 
 @pytest.mark.parametrize("mode", ["headless", "headed"])
 def test_spawn_opens_one_entry_only_after_profile_verification(
-    tmp_path, monkeypatch, mode
+    tmp_path, monkeypatch, capsys, mode
 ):
     env = _environment(tmp_path)
     env.profile.mkdir()
@@ -222,9 +274,19 @@ def test_spawn_opens_one_entry_only_after_profile_verification(
         def __init__(self, url, **kwargs):
             assert url == env.cdp_url
             self.targets = [
-                {"type": "page", "id": "entry", "webSocketDebuggerUrl": "ws://entry"},
-                {"type": "page", "id": "old-probe"},
+                {"type": "page", "id": "restored-draft", "url": "https://other.test"},
             ]
+
+        def new_target(self, url, **kwargs):
+            assert url == "about:blank"
+            events.append("created-entry")
+            target = {
+                "type": "page",
+                "id": "entry",
+                "webSocketDebuggerUrl": "ws://entry",
+            }
+            self.targets.append(target)
+            return target
 
         def list_targets(self, **kwargs):
             return self.targets
@@ -234,9 +296,7 @@ def test_spawn_opens_one_entry_only_after_profile_verification(
             return Session()
 
         def close_target(self, target_id):
-            assert target_id == "old-probe"
-            events.append("closed-probe")
-            self.targets = self.targets[:1]
+            pytest.fail("Restored pages must be preserved")
 
     def popen(command, **kwargs):
         commands.append(command)
@@ -260,7 +320,8 @@ def test_spawn_opens_one_entry_only_after_profile_verification(
     launcher._spawn(env, mode, owner)
     assert env.startup_url not in commands[0]
     assert "--no-startup-window" not in commands[0]
-    assert events == ["verified", "entry", "closed-probe"]
+    assert events == ["verified", "created-entry", "entry"]
+    assert "existing Chrome pages were preserved" in capsys.readouterr().err
 
 
 def test_spawn_entry_failure_is_not_reported_as_ready(tmp_path, monkeypatch):
@@ -277,8 +338,8 @@ def test_spawn_entry_failure_is_not_reported_as_ready(tmp_path, monkeypatch):
         def __init__(self, url, **kwargs):
             pass
 
-        def list_targets(self, **kwargs):
-            raise CdpError("entry discovery failed")
+        def new_target(self, url, **kwargs):
+            raise CdpError("entry creation failed")
 
     monkeypatch.setattr(launcher.subprocess, "Popen", lambda *a, **kw: Process())
     monkeypatch.setattr(launcher, "_proc_state_ticks", lambda pid: ("S", "1234"))

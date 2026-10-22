@@ -148,9 +148,9 @@ live-only execution, native-root coverage and `{record, detail}` output rules.
 For dependent inquiries or accepted custom orchestration, follow
 [Custom query SDK](../../docs/agents/custom-query-sdk.md) for explicit operation
 declarations, named tools, execution bounds and coverage. Unresolved business
-semantics still require scoped qualification before implementation. Existing packages
-without `collection` require their own `collector`; this is not the standard
-SDK development path.
+semantics still require scoped qualification before implementation. Every standard
+List requires `collection`; custom List declares named host tools instead.
+Transport-taking adapter collectors are unsupported.
 
 ## Package
 

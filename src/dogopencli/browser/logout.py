@@ -99,8 +99,8 @@ def _clear(
     timeout: float,
     before_clear: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    transport = make_transport(environment.cdp_url)
     try:
+        transport = make_transport(environment)
         version = transport.version()
     except CdpError as exc:
         # Endpoint failure says nothing about profile ownership. Never clear

@@ -16,7 +16,7 @@ from ..errors import CliError
 COMMON_GUIDANCE = (
     "List defaults to offline cache replay; --live queries without publishing. "
     "Refresh replaces cache only for accepted nonempty results. "
-    "Get performs native detail lookup without cache or dataset. "
+    "Get is live-only and follows its declared query scope without cache or dataset. "
     "Display: --limit 100 (0 for all remaining), --offset 0, --fields. "
     "Output: --format json|text. Incomplete results carry warnings; "
     "--require-complete rejects them. --require-fresh rejects stale cache. "
@@ -28,7 +28,8 @@ DETAIL_GUIDANCE = (
 )
 ARRAY_DETAIL_GUIDANCE = (
     "Get is live-only and returns the validated native root array in source order, "
-    "including a qualified successful empty array. --fields projects each member; "
+    "including empty results. A qualified successful empty array stays empty. "
+    "--fields projects each member; "
     "returned_count is the actual member count. No List binding or paging applies. "
     "Separate histories, logs and child pages are not acquired."
 )
@@ -36,11 +37,35 @@ COMPOSITION_GUIDANCE = (
     "list --live --with-detail selects the output window after local filtering "
     "and offset/limit; limit 0 means all remaining rows, empty windows issue no Gets. "
     "Each entry is {record, detail}; --fields projects record only. Any detail or "
-    "binding failure fails the whole command. List coverage is retained; separate "
-    "histories, logs and child pages are not acquired. "
+    "binding failure fails the whole command. List coverage is retained. "
     "No cache or dataset is published."
 )
 DOC_KEYS = {"summary", "purpose", "identity_description", "limitations", "examples"}
+
+
+def detail_guidance(operation: dict[str, Any]) -> str:
+    """Describe the declared execution contract without inferring relationships."""
+    shape = operation.get("result_shape", "object")
+    if operation.get("execution") == "custom":
+        return (
+            f"Custom Get is live-only and returns the declared root {shape}. "
+            "Its operation description and limitations define any related inquiries. "
+            "query_evidence records executed inquiries and their coverage; success "
+            "does not prove coverage outside that declared scope. "
+            "No cache or dataset is published."
+        )
+    return ARRAY_DETAIL_GUIDANCE if shape == "array" else DETAIL_GUIDANCE
+
+
+def composition_guidance(operation: dict[str, Any]) -> str:
+    """Keep the selected-window policy shared with the Get's declared scope."""
+    scope = (
+        "Each detail follows its custom Get description and limitations; "
+        "query_evidence records executed inquiries and their coverage."
+        if operation.get("execution") == "custom"
+        else "Separate histories, logs and child pages are not acquired."
+    )
+    return COMPOSITION_GUIDANCE + " " + scope
 
 
 def describe(leaf: Any) -> dict[str, Any]:
@@ -52,16 +77,16 @@ def describe(leaf: Any) -> dict[str, Any]:
         **copy.deepcopy(leaf.manifest),
         "guidance": COMMON_GUIDANCE,
         **(
-            {
-                "detail_guidance": ARRAY_DETAIL_GUIDANCE
-                if leaf.manifest["operations"]["get"].get("result_shape") == "array"
-                else DETAIL_GUIDANCE
-            }
+            {"detail_guidance": detail_guidance(leaf.manifest["operations"]["get"])}
             if "get" in leaf.manifest["operations"]
             else {}
         ),
         **(
-            {"composition_guidance": COMPOSITION_GUIDANCE}
+            {
+                "composition_guidance": composition_guidance(
+                    leaf.manifest["operations"]["get"]
+                )
+            }
             if leaf.manifest["operations"].get("get", {}).get("list_binding")
             else {}
         ),
@@ -223,7 +248,7 @@ class DocumentationEditor:
     def _leaf(self, domain: str, name: str):
         from .registry import Registry
 
-        return Registry(self.config_file).scan().get(domain, name)
+        return Registry(self.config_file).discover().get(domain, name)
 
     @staticmethod
     def _revision(raw: bytes) -> str:

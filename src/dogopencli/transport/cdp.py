@@ -93,7 +93,7 @@ def _fetch_expression(
         f"const timer = setTimeout(() => controller.abort(), {timeout_ms});"
         "try {"
         f"{prepare}"
-        f"const response = await fetch({target}, {{{options}}});"
+        f'const response = await fetch({target}, {{{options}, redirect: "error"}});'
         "const text = await response.text();"
         "return {status: response.status, body: text, "
         "finalUrl: response.url, redirected: response.redirected, "

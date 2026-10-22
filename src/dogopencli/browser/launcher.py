@@ -15,9 +15,11 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import time
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from . import coordination
 from .cdp import CdpError, HttpCdpTransport
@@ -265,6 +267,17 @@ def _endpoint_process_args(
 def require_profile(environment: BrowserEnvironment) -> None:
     """Prove the CDP listener belongs to the configured profile before reuse."""
     try:
+        endpoint = urlsplit(environment.cdp_url)
+        if (
+            endpoint.scheme != "http"
+            or endpoint.hostname not in {"127.0.0.1", "localhost", "::1"}
+            or endpoint.username is not None
+            or endpoint.password is not None
+            or endpoint.path not in {"", "/"}
+            or endpoint.query
+            or endpoint.fragment
+        ):
+            raise ValueError("CDP must identify the local Chrome listener")
         owners = _endpoint_process_args(cdp_port(environment.cdp_url))
         expected = f"--user-data-dir={environment.profile}"
         if len(owners) == 1:
@@ -427,12 +440,7 @@ def _spawn(environment: BrowserEnvironment, mode: str, owner: _Owner) -> str:
 
 
 def _open_single_entry(environment: BrowserEnvironment, *, deadline: float) -> None:
-    """Reuse Chrome's startup page; normalize only this newly started browser.
-
-    With no positional URL Chrome creates/restores its window itself. Creating
-    another target would trigger delayed restore and duplicate that window.
-    This runs under the launch/control locks, before the human-wait phase.
-    """
+    """Initialize only a target created here; preserve ambiguous restored pages."""
     transport = HttpCdpTransport(environment.cdp_url, timeout=1.0)
 
     def remaining() -> float:
@@ -441,33 +449,38 @@ def _open_single_entry(environment: BrowserEnvironment, *, deadline: float) -> N
             raise CdpError("entry-page startup deadline exhausted")
         return budget
 
-    def pages() -> list[dict]:
-        return [
-            t
-            for t in transport.list_targets(timeout=remaining())
-            if t.get("type") == "page"
-        ]
-
-    targets = pages()
-    while not targets:
-        time.sleep(min(0.1, remaining()))
-        targets = pages()
-    keep = targets[0]
-    if not keep.get("id") or not keep.get("webSocketDebuggerUrl"):
-        raise CdpError("startup page has no target/session identifier")
-    session = transport.open_session(keep["webSocketDebuggerUrl"], timeout=remaining())
+    target = transport.new_target("about:blank", timeout=remaining())
+    target_id = target.get("id")
+    session = None
     try:
+        ws_url = target.get("webSocketDebuggerUrl")
+        if (
+            not isinstance(target_id, str)
+            or not target_id
+            or not isinstance(ws_url, str)
+            or not ws_url
+        ):
+            raise CdpError("startup page has no target/session identifier")
+        session = transport.open_session(ws_url, timeout=remaining())
         session.navigate(environment.startup_url, remaining())
+    except BaseException:
+        if isinstance(target_id, str) and target_id:
+            transport.close_target(target_id)
+        raise
     finally:
-        session.close()
-    stable = 0
-    while stable < 2:
-        targets = pages()
-        if not any(t.get("id") == keep["id"] for t in targets):
-            raise CdpError("startup entry page disappeared")
-        extra = [t for t in targets if t.get("id") != keep["id"]]
-        for target in extra:
-            remaining()
-            transport.close_target(target["id"])
-        stable = 0 if extra else stable + 1
-        time.sleep(min(0.1, remaining()))
+        if session is not None:
+            session.close()
+    try:
+        targets = transport.list_targets(timeout=remaining())
+        extra = any(
+            item.get("type") == "page" and item.get("id") != target_id
+            for item in targets
+        )
+    except CdpError:
+        extra = True  # Unknown restoration state cannot establish a single page.
+    if extra:
+        print(
+            "warning: existing Chrome pages were preserved; "
+            "single-entry startup was not established",
+            file=sys.stderr,
+        )

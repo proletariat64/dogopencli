@@ -100,7 +100,6 @@ class Inquiry:
         page_size=1000,
         one_based=False,
         encoding="query",
-        single_page=True,
         allowed_body_keys=frozenset({"pageNo", "pageSize"}),
         fixed_body_values=(("pageNo", 0), ("pageSize", 1000)),
     )

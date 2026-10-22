@@ -99,6 +99,11 @@ def context_package(tmp_path):
     }
     manifest["dataset"] = {"relation": "synthetic_details"}
     manifest["identity"] = ["reference"]
+    manifest["collection"] = {
+        "provider": "general",
+        "paging": {"mode": "single", "page_sizes": [500]},
+        "primary_id": {"type": "field", "fields": ["reference"]},
+    }
     detail = manifest["operations"]["get"]
     detail["parameters"].append(
         {
@@ -131,14 +136,11 @@ def context_package(tmp_path):
         allowed_body_keys=frozenset({"pageNo", "pageSize"}),
     )
     def page_body(self, scope, page, size): return {"pageNo": page, "pageSize": size}
-    def identity_key(self, row): return row["reference"]
     def parse_page(self, body):
         from dogopencli.contracts import ParsedPage
         rows = parse(body)["rows"]
-        return ParsedPage(rows, 0, 500, len(rows), 1)
+        return ParsedPage(rows, 0, 500, len(rows), -(-len(rows) // 500))
 class Adapter:
-    from dogopencli.collect import collect_scope
-    collector = staticmethod(collect_scope)
     def capability(self, parameters): return List()
     def scope(self, parameters): return ""
     def filter(self, rows, parameters): return rows
@@ -408,6 +410,11 @@ def test_get_only_and_unbound_list_do_not_expose_or_accept_composition(
     manifest["operations"].pop("get")
     manifest["operations"]["list"] = {"description": "List", "parameters": []}
     manifest["dataset"] = {"relation": "synthetic_details"}
+    manifest["collection"] = {
+        "provider": "general",
+        "paging": {"mode": "single", "page_sizes": [500]},
+        "primary_id": {"type": "unproven", "fields": []},
+    }
     manifest_path.write_text(json.dumps(manifest))
     path = package / "adapter.py"
     path.write_text(
@@ -415,7 +422,6 @@ def test_get_only_and_unbound_list_do_not_expose_or_accept_composition(
         "    def capability(self, parameters): pass\n"
         '    def scope(self, parameters): return ""\n'
         "    def filter(self, rows, parameters): return rows\n"
-        "    def collector(self, capability, transport, scope): pass\n"
         "adapter = Adapter()\n"
     )
     cli("plugins", "install", str(package))

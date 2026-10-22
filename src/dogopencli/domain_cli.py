@@ -1,7 +1,6 @@
 """Public offline domain management commands."""
 
 import argparse
-import json
 import sys
 
 from . import config
@@ -48,7 +47,7 @@ def main(argv: list[str]) -> int:
             value = service.set_enabled(args.domain, args.action == "enable")
         emit(
             command,
-            Result(value, text=json.dumps(value, indent=2) + "\n"),
+            Result(value),
             None,
             format,
         )

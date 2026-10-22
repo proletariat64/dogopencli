@@ -132,7 +132,6 @@ class Inquiry:
             allowed_body_keys=frozenset({"tntInstId", self.vo}),
             fixed_body_values=(("tntInstId", TENANT),),
             encoding="query",
-            single_page=True,
             json_body_contracts=(
                 (
                     self.vo,

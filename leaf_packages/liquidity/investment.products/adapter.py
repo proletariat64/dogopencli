@@ -70,7 +70,6 @@ class Inquiry:
         path="/incrementProductsPage.json",
         page_size=PAGE_SIZE,
         one_based=False,
-        single_page=True,
         allowed_body_keys=frozenset({"tntInstId", "rowStart", "pageSize"}),
         fixed_body_values=(
             ("tntInstId", TENANT),
