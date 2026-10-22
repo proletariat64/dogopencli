@@ -127,6 +127,7 @@ def test_inventory_is_offline_and_does_not_create_store(declarations, tmp_path, 
     assert domain["enabled"] is True
     assert domain["auth"] == {"outcome": "unknown", "updated_at": None}
     assert domain["leaves"][0]["last_execution"]["outcome"] == "unknown"
+    assert domain["leaves"][0]["summary"] == "Demo"
     assert domain["diagnostics"][0]["id"] == "demo.future"
     assert not (tmp_path / "config.toml.domains.sqlite3").exists()
     assert not (tmp_path / "leaf-cache.sqlite3").exists()
@@ -136,6 +137,109 @@ def test_inventory_is_offline_and_does_not_create_store(declarations, tmp_path, 
         if p.is_file()
     }
     assert after == before
+
+
+def test_inventory_does_not_read_cache_and_overview_stays_read_only(
+    declarations, tmp_path, monkeypatch
+):
+    from dogopencli.cache import Cache
+
+    service = domains.DomainService(tmp_path / "config.toml")
+    assert service.overview()[0]["leaves"][0]["saved_data"] == {"state": "empty"}
+    assert not (tmp_path / "leaf-cache.sqlite3").exists()
+    assert not service.state_path.exists()
+
+    def forbidden_current(*args):
+        raise AssertionError("command gates must not access cache metadata")
+
+    monkeypatch.setattr(Cache, "current", forbidden_current)
+    assert service.inventory()[0]["enabled"] is True
+    assert service.set_enabled("demo", False)["enabled"] is False
+    from dogopencli.errors import CliError
+
+    with pytest.raises(CliError) as failure:
+        service.select_domains(["demo"])
+    assert failure.value.code == "DOMAIN_DISABLED"
+
+
+@pytest.mark.parametrize("simulated,row_count", [(True, 2), (False, 0)])
+def test_inventory_exposes_only_saved_metadata(
+    declarations, tmp_path, monkeypatch, simulated, row_count
+):
+    from dogopencli.cache import Cache, SnapshotMeta
+    from dogopencli.leaves.runtime import cache_for
+
+    store = cache_for(tmp_path / "config.toml")
+    store.publish(
+        SnapshotMeta(
+            namespace="leaf:demo.items",
+            capability="demo.items",
+            scope="{}",
+            source_kind="snapshot",
+            snapshot_id="saved-test",
+            dataset_id=None,
+            simulated=simulated,
+            backend_complete=False,
+            dataset_complete=False,
+            fetched_at="2026-10-20T10:00:00Z",
+            loaded_at="2026-10-21T10:00:00Z",
+            row_count=row_count,
+            source_observed_from=None,
+            source_observed_to=None,
+        ),
+        [(index + 1, '{"private":"business value"}') for index in range(row_count)],
+    )
+
+    def reject_records(*args, **kwargs):
+        raise AssertionError("inventory must not read business records")
+
+    monkeypatch.setattr(Cache, "read", reject_records)
+    monkeypatch.setattr(Cache, "records", reject_records)
+    service = domains.DomainService(tmp_path / "config.toml")
+    leaf = service.overview()[0]["leaves"][0]
+    assert leaf["saved_data"] == {
+        "state": "available",
+        "row_count": row_count,
+        "fetched_at": "2026-10-20T10:00:00Z",
+        "simulated": simulated,
+    }
+    assert "business value" not in json.dumps(leaf)
+    assert not service.state_path.exists()
+
+
+@pytest.mark.parametrize("error_code", ["LOCKED", "CACHE_ERROR", "INVALID_RESPONSE"])
+def test_cache_error_keeps_inventory_and_toggles_usable(
+    declarations, tmp_path, monkeypatch, error_code
+):
+    from dogopencli.cache import Cache
+    from dogopencli.errors import CliError
+
+    folder = tmp_path / "plugins/demo/more"
+    folder.mkdir()
+    original = tmp_path / "plugins/demo/items"
+    manifest = json.loads((original / "leaf.json").read_text())
+    manifest["name"] = "more"
+    (folder / "leaf.json").write_text(json.dumps(manifest))
+    (folder / "adapter.py").write_bytes((original / "adapter.py").read_bytes())
+    calls = []
+
+    def failed_current(self, namespace):
+        calls.append(namespace)
+        raise CliError(error_code, "private cache detail")
+
+    monkeypatch.setattr(Cache, "current", failed_current)
+    service = domains.DomainService(tmp_path / "config.toml")
+    row = service.overview()[0]
+    assert len(calls) == 1
+    assert len(row["leaves"]) == 2
+    assert all(
+        leaf["saved_data"] == {"state": "unavailable", "error_code": error_code}
+        for leaf in row["leaves"]
+    )
+    assert "private cache detail" not in json.dumps(row)
+    assert service.set_enabled("demo", False)["enabled"] is False
+    assert service.overview()[0]["enabled"] is False
+    assert not (tmp_path / "leaf-cache.sqlite3").exists()
 
 
 def test_domain_toggle_survives_reopen_without_rewriting_leaf_settings(

@@ -62,6 +62,7 @@ class DomainService:
                         "enabled": True,
                         "effective_enabled": settings.get(domain.id, True),
                         "name": leaf.name,
+                        "summary": leaf.manifest["summary"],
                         "operations": list(leaf.manifest["operations"]),
                         "last_execution": executions.get(
                             (domain.id, leaf.id), _unknown_execution()
@@ -80,6 +81,39 @@ class DomainService:
             for domain in domains
             if domain_id is None or domain.id == domain_id
         ]
+
+    def overview(self) -> list[dict[str, Any]]:
+        """Enrich GUI cards without making command gates depend on cache reads."""
+        from .leaves.runtime import cache_for
+
+        inventory = self.inventory()
+        cache = cache_for(self.config_file)
+        cache_error: str | None = None
+
+        def saved_data(leaf_id: str) -> dict[str, Any]:
+            nonlocal cache_error
+            if cache_error is None:
+                try:
+                    snapshot = cache.current("leaf:" + leaf_id)
+                except CliError as error:
+                    # All leaves share one database. Avoid repeating a busy
+                    # timeout or failed read for every card in this inventory.
+                    cache_error = error.code
+                else:
+                    if snapshot is None:
+                        return {"state": "empty"}
+                    return {
+                        "state": "available",
+                        "row_count": snapshot.row_count,
+                        "fetched_at": snapshot.fetched_at,
+                        "simulated": snapshot.simulated,
+                    }
+            return {"state": "unavailable", "error_code": cache_error}
+
+        for domain in inventory:
+            for leaf in domain["leaves"]:
+                leaf["saved_data"] = saved_data(leaf["id"])
+        return inventory
 
     def _read(self) -> tuple[dict, dict, dict]:
         if not self.state_path.exists():

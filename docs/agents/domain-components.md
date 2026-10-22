@@ -68,8 +68,15 @@ launch or switch Chrome.
 
 Use `dogopencli domain list`, `domain show <id>`, `domain leaves <id>`,
 `domain enable <id>` and `domain disable <id>`. These commands and
-`dogopencli gui --config-dir <directory>` share state. The GUI displays domains,
-recorded authentication, installed leaf inventory and manifest documentation forms.
+`dogopencli gui --config-dir <directory>` share state. Inventory includes each
+leaf's declared summary. The GUI overview additionally reads metadata from the
+most recently saved snapshot: row count, capture time and whether it is simulated.
+CLI inventory and enablement checks do not read the query cache. The GUI reads only
+snapshot metadata, never business records. Missing snapshots and unavailable
+metadata are distinct; metadata presence does not validate current offline replay.
+The GUI uses domain cards for navigation and query cards for the selected domain.
+It displays recorded authentication, enabled-query counts, saved data and the last
+query outcome. Capture time and execution time remain separate observations.
 It can toggle domains and edit allowed documentation prose; technical declarations
 remain locked. It performs no login, business inquiry or background probe.
 
