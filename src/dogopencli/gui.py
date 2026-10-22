@@ -131,7 +131,7 @@ def create_server(service: Any, port: int = 0) -> ThreadingHTTPServer:
                 self.send_data(200, page, "text/html; charset=utf-8")
             elif self.path == "/api/domains":
                 try:
-                    self.json_data(200, {"domains": service.inventory()})
+                    self.json_data(200, {"domains": service.overview()})
                 except CliError as error:
                     self.error(500, error.code, error.message)
             else:

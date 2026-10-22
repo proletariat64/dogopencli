@@ -42,6 +42,9 @@ class DomainInventory:
             }
         ]
 
+    def overview(self):
+        return self.inventory()
+
     def set_enabled(self, domain_id, enabled):
         if domain_id != "payment":
             raise CliError("INVALID_ARGUMENT", "Unknown domain")

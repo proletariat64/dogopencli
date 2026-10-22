@@ -160,11 +160,15 @@ Duckdog and cache are shared host foundations, not separately installed plugins.
 dogopencli gui
 ```
 
-Open the printed localhost URL. The domain overview shows local enablement,
-authentication observations and installed leaves; search narrows the list. Choose
-**编辑文档** to open the documentation workspace: structured editing on the left,
+Open the printed localhost URL. Domain cards on the left show local enablement,
+recorded authentication and installed query counts. Select a domain to view its
+query cards on the right; search matches query names, descriptions and operations.
+Cards show saved-row counts, capture times and the last query outcome separately.
+Missing saved data and unavailable cache metadata have distinct labels; saved-row
+counts describe the last stored snapshot, not total available data or offline readiness.
+Choose **Edit documentation** to open the documentation workspace: structured editing on the left,
 reading or CLI text preview on the right. Changes update the preview without
-saving; **保存文档** validates and atomically updates the installed `leaf.json`.
+saving; **Save documentation** validates and atomically updates the installed `leaf.json`.
 Stale edits require reload, and leaving a draft asks before discarding changes.
 Technical declarations are available in a read-only disclosure. README, source
 directories and original ZIPs are independent and are not synchronized. Changes apply on later invocations. The GUI has no

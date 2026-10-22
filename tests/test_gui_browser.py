@@ -35,6 +35,41 @@ def test_gui_browser_acceptance(editor):
     payload.update(name="sample_two", summary="Second document")
     (other / "leaf.json").write_text(json.dumps(payload))
     shutil.copy(manifest.parent / "adapter.py", other / "adapter.py")
+    collection = manifest.parents[3] / "plugins/collection/sample_collection"
+    collection.mkdir(parents=True)
+    payload.update(
+        domain="collection", name="sample_collection", summary="Collection-only summary"
+    )
+    (collection / "leaf.json").write_text(json.dumps(payload))
+    shutil.copy(manifest.parent / "adapter.py", collection / "adapter.py")
+
+    from dogopencli.cache import SnapshotMeta
+    from dogopencli.domains import DomainService
+    from dogopencli.leaves.runtime import cache_for
+
+    config_file = manifest.parents[3] / "config.toml"
+    cache_for(config_file).publish(
+        SnapshotMeta(
+            namespace="leaf:payment.sample",
+            capability="payment.sample",
+            scope="{}",
+            source_kind="snapshot",
+            snapshot_id="browser-example",
+            dataset_id=None,
+            simulated=True,
+            backend_complete=False,
+            dataset_complete=False,
+            fetched_at="2026-10-21T10:00:00Z",
+            loaded_at="2026-10-21T11:00:00Z",
+            source_observed_from=None,
+            source_observed_to=None,
+            row_count=2,
+        ),
+        [(1, '{"id":"example-one"}'), (2, '{"id":"example-two"}')],
+    )
+    DomainService(config_file).record_execution(
+        "payment", "payment.sample", outcome="success", operation="get"
+    )
     result = subprocess.run(
         ["node", str(Path(__file__).parent / "browser/gui.cjs"), url, str(manifest)],
         capture_output=True,
