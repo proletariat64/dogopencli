@@ -810,6 +810,293 @@
         text-align: left;
       }
     }
+
+    .console-section {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid #dce3eb;
+    }
+    .console-section > p {
+      margin: 0 6px 10px;
+      font-size: 12px;
+      color: #64748b;
+    }
+    #system-entry {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 13px 14px;
+      border-color: #dce3eb;
+    }
+    #system-entry strong {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    #system-entry small {
+      display: block;
+      margin-top: 3px;
+      font-size: 11px;
+    }
+    #system-entry[aria-pressed="true"] {
+      background: #f3f7fd;
+      border-color: #6585b9;
+      color: #243f68;
+    }
+    #system-overview {
+      min-width: 0;
+      padding: 26px 28px 40px;
+    }
+    .system-heading {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+    .system-heading h2 {
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .system-heading p {
+      margin: 6px 0 0;
+      color: #64748b;
+      font-size: 13px;
+    }
+    #system-message {
+      min-height: 18px;
+      margin: 5px 0 0;
+      color: #64748b;
+      font-size: 12px;
+    }
+    .system-box {
+      background: white;
+      border: 1px solid #dce3eb;
+      border-radius: 6px;
+      overflow: hidden;
+      min-width: 0;
+    }
+    .system-box-heading {
+      padding: 16px 20px 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .system-box-heading h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .system-box-heading p {
+      color: #64748b;
+      font-size: 12px;
+      margin: 5px 0 0;
+    }
+    .system-metrics {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      padding: 6px 0 20px;
+    }
+    .system-metric {
+      padding: 0 20px;
+      border-right: 1px solid #e8edf3;
+    }
+    .system-metric:last-child {
+      border: 0;
+    }
+    .system-metric > small {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 7px;
+    }
+    .system-metric > strong {
+      display: block;
+      font-size: 26px;
+      font-weight: 600;
+      line-height: 1.2;
+      letter-spacing: -0.5px;
+    }
+    .system-metric > span {
+      display: block;
+      margin-top: 7px;
+      color: #64748b;
+      font-size: 11px;
+    }
+    .system-box-note {
+      margin: 0;
+      padding: 10px 20px;
+      color: #64748b;
+      font-size: 11px;
+      border-top: 1px solid #edf1f5;
+      background: #fafbfd;
+    }
+    .system-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 22px;
+      margin: 18px 1px;
+      font-size: 12px;
+    }
+    .system-links a {
+      color: #365f9e;
+      text-decoration: none;
+    }
+    .system-links a:hover {
+      text-decoration: underline;
+    }
+    .system-sections {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    .system-wide {
+      grid-column: 1/-1;
+    }
+    .system-kv {
+      margin: 0;
+      padding: 0 20px 14px;
+    }
+    .system-kv > div {
+      display: grid;
+      grid-template-columns: 125px minmax(0, 1fr);
+      gap: 12px;
+      padding: 9px 0;
+      border-bottom: 1px solid #f0f3f7;
+    }
+    .system-kv > div:last-child {
+      border: 0;
+    }
+    .system-kv dt {
+      color: #64748b;
+      font-size: 12px;
+    }
+    .system-kv dd {
+      margin: 0;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .system-storage-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 28px;
+      padding: 4px 20px 16px;
+    }
+    .system-storage-summary strong {
+      font-size: 20px;
+      font-weight: 550;
+      margin-right: 5px;
+    }
+    .system-storage-summary span {
+      color: #64748b;
+      font-size: 12px;
+    }
+    .system-storage-path {
+      margin: 0 20px 14px;
+      padding: 8px 10px;
+      border: 1px solid #e7edf3;
+      border-radius: 4px;
+      background: #fafbfd;
+    }
+    .system-storage-path code {
+      background: transparent;
+      overflow-wrap: anywhere;
+    }
+    .system-details {
+      border-top: 1px solid #e9edf2;
+    }
+    .system-details > summary {
+      padding: 11px 20px;
+      font-size: 12px;
+      color: #365f9e;
+    }
+    .system-table-tools {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 20px;
+    }
+    .system-table-tools input {
+      border: 1px solid #dce3eb;
+      border-radius: 4px;
+      padding: 5px 9px;
+      font-size: 12px;
+      max-width: 100%;
+    }
+    .system-table-scroll {
+      overflow: auto;
+    }
+    .system-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: left;
+    }
+    .system-table th {
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 500;
+      background: #fafbfd;
+      white-space: nowrap;
+    }
+    .system-table th,
+    .system-table td {
+      padding: 10px 20px;
+      border-bottom: 1px solid #edf1f5;
+    }
+    .system-table td:first-child {
+      min-width: 180px;
+      overflow-wrap: anywhere;
+    }
+    .system-table td:not(:first-child) {
+      white-space: nowrap;
+    }
+    .system-empty {
+      padding: 0 20px 18px;
+      color: #64748b;
+      font-size: 12px;
+    }
+    .system-database + .system-database {
+      border-top: 1px solid #dce3eb;
+      padding-top: 16px;
+    }
+    @media (max-width: 1100px) {
+      .system-sections {
+        grid-template-columns: 1fr;
+      }
+      .system-wide {
+        grid-column: auto;
+      }
+      .system-metric {
+        padding: 0 12px;
+      }
+      .system-metric > strong {
+        font-size: 22px;
+      }
+    }
+    @media (max-width: 760px) {
+      #system-overview {
+        padding: 22px 16px 36px;
+      }
+      .system-metrics {
+        grid-template-columns: 1fr 1fr;
+        row-gap: 20px;
+      }
+      .system-metric:nth-child(2n) {
+        border: 0;
+      }
+      .system-metric:last-child {
+        grid-column: 1/-1;
+      }
+      .system-kv > div {
+        grid-template-columns: 105px minmax(0, 1fr);
+      }
+      .console-section {
+        margin-top: 14px;
+        padding-top: 14px;
+      }
+    }
   </style>
   <header class="app-bar">
     <span class="brand">dogopencli</span>
@@ -824,6 +1111,12 @@
       </div>
       <p class="nav-hint">Select a domain to view its queries.</p>
       <nav id="domains" aria-label="Domains"></nav>
+      <section class="console-section" aria-label="Console">
+        <p>Console</p>
+        <button id="system-entry" type="button" aria-pressed="false">
+          <strong>System</strong><small>info &amp; storage</small>
+        </button>
+      </section>
     </aside>
     <section id="leaf-overview" aria-labelledby="selected-domain">
       <p class="breadcrumb">
@@ -851,6 +1144,20 @@
       <p id="no-matches" class="empty" hidden>
         No matching queries in this domain.
       </p>
+    </section>
+    <section id="system-overview" aria-labelledby="system-title" hidden>
+      <p class="breadcrumb">Console / System</p>
+      <header class="system-heading">
+        <div>
+          <h2 id="system-title">System</h2>
+          <p>Configuration, installation and saved-data information.</p>
+        </div>
+        <div>
+          <button id="system-refresh" type="button">Reload information</button>
+          <p id="system-message" role="status"></p>
+        </div>
+      </header>
+      <div id="system-content"></div>
     </section>
   </main>
   <article id="editor" hidden aria-labelledby="editor-title">
@@ -1009,15 +1316,23 @@
       return data;
     }
     let selectedDomain = null;
+    let showingSystem = false;
+    let systemGeneration = 0;
     function renderInventory() {
       if (!inventory.some((domain) => domain.id === selectedDomain))
         selectedDomain = inventory[0]?.id;
+      document.getElementById("leaf-overview").hidden = showingSystem;
+      document.getElementById("system-overview").hidden = !showingSystem;
+      document
+        .getElementById("system-entry")
+        .setAttribute("aria-pressed", String(showingSystem));
       root.replaceChildren();
       count.textContent = quantity(inventory.length, "domain");
       for (const domain of inventory) {
         const card = document.createElement("article");
         card.className =
-          "domain-card" + (domain.id === selectedDomain ? " selected" : "");
+          "domain-card" +
+          (!showingSystem && domain.id === selectedDomain ? " selected" : "");
         card.dataset.domain = domain.id;
         root.append(card);
         const select = text(card, "button", "");
@@ -1029,7 +1344,7 @@
         );
         select.setAttribute(
           "aria-pressed",
-          String(domain.id === selectedDomain),
+          String(!showingSystem && domain.id === selectedDomain),
         );
         const heading = text(select, "span", "");
         heading.className = "domain-heading";
@@ -1051,6 +1366,7 @@
             " enabled",
         ).className = "domain-counts";
         select.onclick = () => {
+          showingSystem = false;
           selectedDomain = domain.id;
           document.getElementById("leaf-search").value = "";
           renderInventory();
@@ -1102,6 +1418,356 @@
       }
       renderLeaves();
     }
+
+    function systemNumber(value) {
+      return typeof value === "number" && Number.isFinite(value)
+        ? value.toLocaleString("en-US")
+        : "—";
+    }
+    function systemBytes(value) {
+      if (typeof value !== "number") return "—";
+      if (value < 1024) return systemNumber(value) + " B";
+      if (value < 1048576) return (value / 1024).toFixed(1) + " KiB";
+      return (value / 1048576).toFixed(1) + " MiB";
+    }
+    function systemHeading(parent, title, description) {
+      const header = text(parent, "div", "");
+      header.className = "system-box-heading";
+      const copy = text(header, "div", "");
+      text(copy, "h3", title);
+      text(copy, "p", description);
+      return header;
+    }
+    function systemFacts(parent, rows) {
+      const list = text(parent, "dl", "");
+      list.className = "system-kv";
+      for (const [key, value] of rows) {
+        const row = text(list, "div", "");
+        text(row, "dt", key);
+        text(row, "dd", value ?? "—");
+      }
+    }
+    function systemStats(parent, rows) {
+      const group = text(parent, "div", "");
+      group.className = "system-storage-summary";
+      for (const [value, label] of rows) {
+        const item = text(group, "div", "");
+        text(item, "strong", value);
+        text(item, "span", label);
+      }
+    }
+    function systemSection(parent, id, title, description, wide = false) {
+      const section = text(parent, "section", "");
+      section.id = "system-" + id;
+      section.className = "system-box" + (wide ? " system-wide" : "");
+      systemHeading(section, title, description);
+      return section;
+    }
+    function systemTable(parent, title, columns, rows, options) {
+      const details = text(parent, "details", "");
+      details.className = "system-details";
+      text(details, "summary", title);
+      const tools = text(details, "div", "");
+      tools.className = "system-table-tools";
+      const select = text(tools, "select", "");
+      select.setAttribute("aria-label", title + " status");
+      for (const [value, label] of options) {
+        const option = text(select, "option", label);
+        option.value = value;
+      }
+      const search = text(tools, "input", "");
+      search.type = "search";
+      search.placeholder = "Search leaf name";
+      search.setAttribute("aria-label", title + " search");
+      const scroll = text(details, "div", "");
+      scroll.className = "system-table-scroll";
+      const table = text(scroll, "table", "");
+      table.className = "system-table";
+      table.setAttribute("aria-label", title);
+      const header = text(text(table, "thead", ""), "tr", "");
+      for (const label of columns) text(header, "th", label);
+      const body = text(table, "tbody", "");
+      function draw() {
+        body.replaceChildren();
+        const matches = rows.filter(
+          (row) =>
+            (select.value === "all" || row.status === select.value) &&
+            row.cells[0].toLowerCase().includes(search.value.toLowerCase()),
+        );
+        for (const row of matches) {
+          const tr = text(body, "tr", "");
+          for (const value of row.cells) text(tr, "td", value);
+        }
+        if (!matches.length) {
+          const td = text(text(body, "tr", ""), "td", "No matching metadata.");
+          td.colSpan = columns.length;
+        }
+      }
+      select.onchange = draw;
+      search.oninput = draw;
+      draw();
+    }
+    function renderSystem(info) {
+      const target = document.getElementById("system-content");
+      target.replaceChildren();
+      const install = info.installation,
+        configuration = info.configuration,
+        cache = info.cache,
+        duckdog = info.duckdog;
+      const summary = text(target, "section", "");
+      summary.className = "system-box";
+      summary.setAttribute("aria-label", "System statistics");
+      const summaryHeader = systemHeading(
+        summary,
+        "System overview",
+        "Current workspace · read-only",
+      );
+      timestamp(summaryHeader, info.observed_at);
+      const metrics = text(summary, "div", "");
+      metrics.className = "system-metrics";
+      const sizes = duckdog.databases.map((db) => db.size_bytes);
+      const totalSize =
+        sizes.length && sizes.every((size) => typeof size === "number")
+          ? sizes.reduce((a, b) => a + b, 0)
+          : null;
+      for (const [label, value, note] of [
+        ["CLI version", install.version, "Python " + install.python_version],
+        [
+          "Installed leaves",
+          systemNumber(info.leaf_count),
+          systemNumber(info.domain_count) + " domains",
+        ],
+        [
+          "Cache snapshots",
+          systemNumber(cache.snapshot_count),
+          cache.state === "unavailable"
+            ? "Metadata unavailable"
+            : "Latest saved Lists",
+        ],
+        [
+          "Duckdog datasets",
+          systemNumber(duckdog.dataset_count),
+          "Workspace bindings",
+        ],
+        ["Duckdog files", systemBytes(totalSize), "Database file sizes"],
+      ]) {
+        const item = text(metrics, "div", "");
+        item.className = "system-metric";
+        text(item, "small", label);
+        text(item, "strong", value);
+        text(item, "span", note);
+      }
+      text(
+        summary,
+        "p",
+        "Snapshot rows are not business totals. Cache freshness is separate from business-data freshness.",
+      ).className = "system-box-note";
+      if (info.declaration_issues)
+        text(
+          summary,
+          "p",
+          systemNumber(info.declaration_issues) +
+            " declaration issues; installed leaf totals include valid declarations only.",
+        ).className = "system-box-note";
+      const links = text(target, "nav", "");
+      links.className = "system-links";
+      links.setAttribute("aria-label", "System sections");
+      for (const [id, label] of [
+        ["configuration", "Configuration"],
+        ["installation", "Installation"],
+        ["cache", "Cache"],
+        ["duckdog", "Duckdog"],
+      ]) {
+        const link = text(links, "a", label + " ↓");
+        link.href = "#system-" + id;
+      }
+      const sections = text(target, "div", "");
+      sections.className = "system-sections";
+      const configSection = systemSection(
+        sections,
+        "configuration",
+        "Configuration",
+        "Effective configuration and browser settings.",
+      );
+      systemFacts(configSection, [
+        ["Config file", configuration.path],
+        ["Config state", readable(configuration.state)],
+        [
+          "Cache retention",
+          configuration.ttl_hours === null
+            ? null
+            : configuration.ttl_hours + " hours",
+        ],
+        ["Browser connection", configuration.cdp_url],
+        ["Browser profile", configuration.profile],
+      ]);
+      const installation = systemSection(
+        sections,
+        "installation",
+        "Installation",
+        "The running CLI and its local environment.",
+      );
+      systemFacts(installation, [
+        ["CLI version", install.version],
+        ["Python", install.python_version],
+        ["Platform", install.platform],
+        ["Python executable", install.python_executable],
+        ["Module directory", install.module_path],
+        ["Distribution", install.distribution_path],
+      ]);
+      const cacheSection = systemSection(
+        sections,
+        "cache",
+        "Cache",
+        "The latest saved snapshot for each installed List leaf.",
+        true,
+      );
+      systemStats(cacheSection, [
+        [systemNumber(cache.snapshot_count), "saved snapshots"],
+        [systemNumber(cache.row_count), "saved rows"],
+        [systemBytes(cache.size_bytes), "file size"],
+      ]);
+      text(cacheSection, "p", cache.path).className = "system-storage-path";
+      if (cache.state === "unavailable")
+        text(
+          cacheSection,
+          "p",
+          "Cache metadata cannot be read. Unknown counts are not shown as zero.",
+        ).className = "system-empty";
+      else if (!cache.snapshot_count)
+        text(
+          cacheSection,
+          "p",
+          "No List snapshots have been saved. This does not imply that the source has no business data.",
+        ).className = "system-empty";
+      if (cache.leaves.length)
+        systemTable(
+          cacheSection,
+          "Leaf snapshots",
+          ["Leaf", "State", "Saved rows", "Captured"],
+          cache.leaves.map((row) => ({
+            status: row.state === "available" ? row.freshness : row.state,
+            cells: [
+              row.leaf_id,
+              row.state === "available"
+                ? (row.freshness === "fresh"
+                    ? "Within TTL"
+                    : row.freshness === "stale"
+                      ? "Expired"
+                      : "Freshness unknown") +
+                  (row.simulated ? " · simulated" : "")
+                : readable(row.state),
+              systemNumber(row.row_count),
+              row.fetched_at || "—",
+            ],
+          })),
+          [
+            ["all", "All snapshots"],
+            ["fresh", "Within TTL"],
+            ["stale", "Expired"],
+            ["missing", "Not saved"],
+            ["unavailable", "Unavailable"],
+            ["unknown", "Freshness unknown"],
+          ],
+        );
+      text(
+        cacheSection,
+        "p",
+        "Get-only leaves do not have List cache entries. Expired snapshots may still be usable by query policy.",
+      ).className = "system-box-note";
+      const duckSection = systemSection(
+        sections,
+        "duckdog",
+        "Duckdog",
+        "Retained leaf datasets, separate from temporary query snapshots.",
+        true,
+      );
+      systemStats(duckSection, [
+        [systemNumber(duckdog.dataset_count), "bound datasets"],
+        [systemBytes(totalSize), "database files"],
+      ]);
+      if (duckdog.state === "unavailable")
+        text(
+          duckSection,
+          "p",
+          "Some database or binding metadata is unavailable. Reload after other writers finish; this panel does not repair storage.",
+        ).className = "system-empty";
+      for (const db of duckdog.databases) {
+        const database = text(duckSection, "div", "");
+        database.className = "system-database";
+        text(database, "p", db.path).className = "system-storage-path";
+        systemFacts(database, [
+          ["Database state", readable(db.state)],
+          ["File size", systemBytes(db.size_bytes)],
+        ]);
+        if (db.datasets.length)
+          systemTable(
+            database,
+            "Dataset metadata",
+            ["Leaf", "Association", "Estimated rows", "State"],
+            db.datasets.map((row) => ({
+              status: row.association,
+              cells: [
+                row.leaf_id,
+                readable(row.association),
+                systemNumber(row.estimated_rows),
+                readable(row.state),
+              ],
+            })),
+            [
+              ["all", "All datasets"],
+              ["installed", "Installed"],
+              ["retained", "Retained after uninstall"],
+              ["unavailable", "Association unavailable"],
+            ],
+          );
+        else
+          text(
+            database,
+            "p",
+            "No registered datasets in this workspace. Viewing this panel does not create the database.",
+          ).className = "system-empty";
+      }
+      text(
+        duckSection,
+        "p",
+        "Rows are catalog estimates, not exact counts. Only bound leaf datasets are listed, including retained data; business records and unrelated tables are excluded.",
+      ).className = "system-box-note";
+    }
+    async function loadSystem() {
+      const generation = ++systemGeneration;
+      const button = document.getElementById("system-refresh"),
+        message = document.getElementById("system-message");
+      button.disabled = true;
+      message.textContent = "Reading local metadata…";
+      document
+        .getElementById("system-overview")
+        .setAttribute("aria-busy", "true");
+      try {
+        const result = await request("/api/system");
+        if (generation !== systemGeneration) return;
+        renderSystem(result.system);
+        message.textContent = "Read-only · updated";
+      } catch (problem) {
+        if (generation !== systemGeneration) return;
+        message.textContent =
+          "Cannot load System information: " + problem.message;
+      } finally {
+        if (generation === systemGeneration) {
+          button.disabled = false;
+          document
+            .getElementById("system-overview")
+            .setAttribute("aria-busy", "false");
+        }
+      }
+    }
+    document.getElementById("system-entry").onclick = () => {
+      showingSystem = true;
+      renderInventory();
+      loadSystem();
+    };
+    document.getElementById("system-refresh").onclick = loadSystem;
+
     function renderLeaves() {
       const domain = inventory.find((item) => item.id === selectedDomain);
       const target = document.getElementById("leaves");
@@ -1834,6 +2500,7 @@
       dirty = false;
       editor.hidden = true;
       document.body.classList.remove("editor-open");
+      showingSystem = false;
       selectedDomain = editing.domain;
       document.getElementById("leaf-search").value = "";
       renderInventory();

@@ -80,6 +80,23 @@ query outcome. Capture time and execution time remain separate observations.
 It can toggle domains and edit allowed documentation prose; technical declarations
 remain locked. It performs no login, business inquiry or background probe.
 
+The Console section contains the read-only System information panel. Its
+configuration and installation sections expose only selected local settings,
+runtime version and paths. Cache reads one snapshot-metadata view, restricted to
+installed List leaves. TTL freshness does not establish business freshness or
+offline replay readiness. Duckdog reads registered workspace bindings and opens
+their databases read-only, including retained datasets after uninstall. It
+validates owned base-table metadata and reports catalog-estimated row counts;
+it never reads business rows, follows views, or lists unrelated tables. External
+access and extension autoloading are disabled on these connections.
+
+System reads never initialize, migrate, repair or mutate application stores,
+configuration, tables, bindings or records. SQLite may maintain its own WAL/SHM
+coordination sidecars during a read-only connection. Missing storage, busy
+databases and unavailable metadata retain explicit states; unavailable counts are
+unknown, not zero. An information reload performs another local read, not a
+business refresh. The GET endpoint accepts no file paths, SQL or query actions.
+
 The GUI binds `127.0.0.1`, prints its URL and runs in the foreground. Its default
 port is automatic; `--port` selects an explicit local port. Ctrl+C stops the server.
 Local Host/Origin validation and a page token protect writes. Failed saves must

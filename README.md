@@ -174,6 +174,13 @@ Technical declarations are available in a read-only disclosure. README, source
 directories and original ZIPs are independent and are not synchronized. Changes apply on later invocations. The GUI has no
 business-query, login, import or package-management buttons.
 
+Under **Console**, select **System** (`info & storage`) to inspect configuration,
+installation, temporary Cache snapshots and retained Duckdog datasets. The panel
+is read-only. Expand storage sections to filter or search leaf/dataset metadata;
+individual business records are excluded. Cache rows describe saved snapshots,
+while Duckdog rows are explicitly catalog estimates. Missing resources and
+unavailable metadata remain distinct; **Reload information** rereads local metadata.
+
 ## Develop and migrate
 
 Use the [development handbook](tools/leaf-dev/handbook.md) for adapter contracts

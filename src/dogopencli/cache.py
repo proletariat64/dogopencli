@@ -247,6 +247,28 @@ class Cache:
             connection.close()
 
     @_sqlite_errors
+    def snapshots(self) -> list[SnapshotMeta]:
+        """Read one consistent metadata view, without loading business records."""
+        if not self._path.exists():
+            return []
+        connection = self._connect_readonly()
+        try:
+            connection.execute("PRAGMA busy_timeout=200")
+            if (
+                connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE name='snapshots'"
+                ).fetchone()
+                is None
+            ):
+                return []
+            rows = connection.execute(
+                "SELECT " + SNAPSHOT_COLUMNS + " FROM snapshots ORDER BY namespace"
+            ).fetchall()
+        finally:
+            connection.close()
+        return [_snapshot_from_row(row) for row in rows]
+
+    @_sqlite_errors
     def current(self, namespace_name: str) -> SnapshotMeta | None:
         if not self._path.exists():
             return None
