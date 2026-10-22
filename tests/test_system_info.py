@@ -14,6 +14,8 @@ from test_leaf_editor import editor as editor
 from test_leaf_registry import install
 
 from dogopencli.cache import Cache, SnapshotMeta
+from dogopencli.config import cache_ttl_hours
+from dogopencli.errors import CliError
 from dogopencli.leaves.registry import Registry
 from dogopencli.system_info import read_system_info
 
@@ -215,6 +217,20 @@ def test_unresolvable_database_path_does_not_hide_other_sections(system_scope):
     assert result["duckdog"]["dataset_count"] is None
     assert result["installation"]["version"]
     assert result["cache"]["snapshot_count"] == 1
+
+
+def test_overflowing_ttl_is_a_configuration_error_without_hiding_sections(system_scope):
+    config, _ = system_scope
+    config.write_text("[cache]\nttl_hours = " + "9" * 400 + "\n")
+    with pytest.raises(CliError) as failure:
+        cache_ttl_hours(config)
+    assert failure.value.code == "CONFIG_ERROR"
+    result = read_system_info(config)
+    assert result["configuration"]["state"] == "unavailable"
+    assert result["configuration"]["ttl_hours"] is None
+    assert result["installation"]["version"]
+    assert result["cache"]["snapshot_count"] == 1
+    assert result["cache"]["leaves"][0]["freshness"] == "unknown"
 
 
 def test_mixed_case_owned_table_has_catalog_estimate(system_scope):

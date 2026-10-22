@@ -33,7 +33,7 @@ def cache_ttl_hours(config_file: Path) -> float:
         ):
             raise ValueError
         return float(value)
-    except (OSError, ValueError, TypeError, AttributeError) as error:
+    except (OSError, ValueError, TypeError, AttributeError, OverflowError) as error:
         raise _config_error(
             "cache.ttl_hours must be a finite nonnegative number"
         ) from error
