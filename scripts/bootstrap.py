@@ -123,8 +123,6 @@ def main() -> None:
             "--locked",
             "--extra",
             "dev",
-            "--extra",
-            "duckdog",
             "--inexact",
             "--link-mode",
             "hardlink",
