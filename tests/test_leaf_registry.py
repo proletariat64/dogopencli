@@ -22,13 +22,17 @@ def install(root, name="sample", relation="sample_rows"):
         "limitations": [],
         "examples": [],
         "dataset": {"relation": relation},
+        "collection": {
+            "provider": "general",
+            "paging": {"mode": "single", "page_sizes": [1]},
+            "primary_id": {"type": "unproven", "fields": []},
+        },
     }
     (folder / "leaf.json").write_text(json.dumps(value))
     (folder / "adapter.py").write_text(
         "class Adapter:\n"
         "    def capability(self, parameters): pass\n"
         "    def scope(self, parameters): return 'all'\n"
-        "    def collector(self, *args, **kwargs): pass\n"
         "    def filter(self, records, parameters): return records\n"
         "adapter = Adapter()\n"
     )

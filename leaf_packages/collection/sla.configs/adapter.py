@@ -45,7 +45,6 @@ class Inquiry:
         path="/api/fundInSlaConfig/search.json",
         page_size=PAGE_SIZE,
         one_based=False,
-        single_page=True,
         allowed_body_keys=frozenset({"pageNo", "pageSize"}),
         fixed_body_values=(("pageNo", 0), ("pageSize", PAGE_SIZE)),
     )

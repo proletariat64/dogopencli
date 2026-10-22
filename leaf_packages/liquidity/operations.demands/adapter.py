@@ -107,7 +107,6 @@ class Inquiry:
             path="/riskActionTaskQuery.json",
             page_size=PAGE_SIZE,
             one_based=False,
-            single_page=True,
             allowed_body_keys=frozenset({"tntInstId", "riskActionTaskQueryVO"}),
             fixed_body_values=(("tntInstId", TENANT),),
             json_body_contracts=(

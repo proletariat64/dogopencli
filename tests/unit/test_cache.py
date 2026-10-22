@@ -177,78 +177,28 @@ def test_corrupt_cache_is_not_misreported_as_locked(tmp_path):
     assert caught.value.code == "CACHE_ERROR"
 
 
-def test_existing_cache_schema_preserves_records(tmp_path):
+def test_unsupported_cache_schema_requires_recreation(tmp_path):
     import sqlite3
 
     from dogopencli.cache import SCHEMA
+    from dogopencli.errors import CliError
 
     path = tmp_path / "cache.sqlite3"
-    connection = sqlite3.connect(path)
-    connection.executescript(
-        SCHEMA.replace(",\n    source_path TEXT,\n    acquisition TEXT", "")
-    )
-    connection.execute("INSERT INTO records VALUES (?, ?, ?)", ("test", 1, "{}"))
-    connection.commit()
-    connection.close()
-
-    store = Cache(path)
-    assert store.records("test") == [(1, "{}")]
-    assert store.read("test") == (None, [(1, "{}")])
-    connection = sqlite3.connect(path)
-    assert "source_path" not in [
-        row[1] for row in connection.execute("PRAGMA table_info(snapshots)")
-    ]
-    connection.close()
-    store.publish(meta("migrated"), ROWS)
-    assert store.current("migrated").acquisition is None
-    assert store.records("test") == [(1, "{}")]
-
-
-def test_concurrent_old_schema_migration(tmp_path, monkeypatch):
-    import sqlite3
-    from concurrent.futures import ThreadPoolExecutor
-    from threading import Barrier
-
-    from dogopencli.cache import SCHEMA
-
-    path = tmp_path / "cache.sqlite3"
-    connection = sqlite3.connect(path)
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.executescript(
-        SCHEMA.replace(",\n    source_path TEXT,\n    acquisition TEXT", "")
-    )
-    connection.execute("INSERT INTO records VALUES (?, ?, ?)", ("test", 1, "{}"))
-    connection.commit()
-    connection.close()
-    barrier = Barrier(2, timeout=5)
-    connect = sqlite3.connect
-
-    class SynchronizedConnection(sqlite3.Connection):
-        checked = False
-
-        def execute(self, sql, *args, **kwargs):
-            result = super().execute(sql, *args, **kwargs)
-            if sql == "PRAGMA table_info(snapshots)" and not self.checked:
-                self.checked = True
-                rows = result.fetchall()
-                barrier.wait()
-                return rows
-            return result
-
-    def synchronized_connect(*args, **kwargs):
-        return connect(*args, factory=SynchronizedConnection, **kwargs)
-
-    monkeypatch.setattr(sqlite3, "connect", synchronized_connect)
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(
-            pool.map(
-                lambda i: Cache(path).publish(meta(f"migrated-{i}"), ROWS), range(2)
-            )
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            SCHEMA.replace(",\n    source_path TEXT,\n    acquisition TEXT", "")
         )
-    assert results == [None, None]
-    monkeypatch.setattr(sqlite3, "connect", connect)
-    assert Cache(path).records("test") == [(1, "{}")]
-    assert Cache(path).current("migrated-0").row_count == 2
+    store = Cache(path)
+    for read in (store.read, store.current):
+        with pytest.raises(CliError) as caught:
+            read("test")
+        assert caught.value.code == "CACHE_ERROR"
+    with pytest.raises(CliError) as caught:
+        store.publish(meta("test"), ROWS)
+    assert caught.value.code == "CACHE_ERROR"
+    path.unlink()
+    store.publish(meta("test"), ROWS)
+    assert store.read("test")[1] == ROWS
 
 
 def test_refresh_lock_preserves_os_error_cause(tmp_path, monkeypatch):

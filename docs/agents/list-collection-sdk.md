@@ -10,7 +10,9 @@ A single-source SDK List supplies a verified native `TransportCapability`, pure
 the host executes `collect_list`. Declared independent sources use those same
 native hooks and the flat assembly seam below, without a leaf-maintained query loop.
 
-Existing leaves without `collection` retain their current collectors and behavior while migrating. This is a bounded migration seam, not an extra permanent framework.
+Every standard List declares `collection`. Dependent or specialized inquiries
+explicitly declare custom execution and named host query tools. A List without
+either contract is invalid; adapters never receive a session or transport.
 
 ## Ownership and provider isolation
 
@@ -22,8 +24,8 @@ Existing leaves without `collection` retain their current collectors and behavio
 
 ## Leaf manifest
 
-For a List leaf, `collection` is optional during migration. When present, it is a
-closed object. Optional `latest_by`, `max_pages` and `budget_seconds` retain their
+For a standard List leaf, `collection` is a required closed object. Custom List
+and Get-only leaves omit it. Optional `latest_by`, `max_pages` and `budget_seconds` retain their
 documented defaults; omitted `paging.termination` uses `native_total`:
 
 ```json
@@ -299,10 +301,10 @@ channel 已接受使用 `short_page` 的大步长绕行策略；上述差异作�
 
 ## Host integration and quality policy
 
-- `leaves.registry.validate_manifest` validates the closed `collection` schema, provider boundary and primary-ID fields. The install path already uses the manifest validator. The Host dispatches opted-in List operations through `collect_list`, passing configuration-scoped runtime state; non-opted-in leaves keep their current collector. Fingerprint the complete current endpoint contract, collection policy and adapter source. Historical cache hashes are not preserved: no live historical data requires compatibility. All four bundled pilots use the SDK; independent batch packages retain their own active collectors until separately assigned.
+- `leaves.registry.validate_manifest` requires a standard List `collection` or explicit custom execution, and validates the closed schema, provider boundary and primary-ID fields. Static verification and installation use that same validator. The Host dispatches standard Lists through `collect_list` or `collect_sources`, and custom operations through named query tools, passing configuration-scoped runtime state. Fingerprint the complete current endpoint contract, collection policy and adapter source. There is no transport-taking adapter collector or missing-evidence compatibility path.
 - `EndpointContract` and the existing restricted `validate_request` remain authoritative. The declared allowed page widths must be supported by the endpoint allowlist (top-level or nested JSON-body allowances). No broad HTTP capability or arbitrary method.
 - Every candidate records attempt size, page count, arrivals, unique count, duplication, holes, timing, and reason codes in `AcquisitionEvidence.attempts`. Selected records are unchanged business JSON.
-- Best-effort live can show validated incomplete records plus warnings. For opted-in SDK lists, **refresh publishes only a proven-complete nonempty result** and preserves prior cache on partial/failed/empty acquisition. The bundled FX pilot also uses this gate; unproven results cannot be published. The selected runtime width is operational and must not alter cache contract identity.
+- Best-effort live can show validated incomplete records plus warnings. For every List, **refresh publishes only a proven-complete nonempty result** and preserves prior cache on partial/failed/empty acquisition. The selected runtime width is operational and must not alter cache contract identity.
 - Keep native Get and business query permissions, Duckdog publication/import, display paging and unrelated migration packages intact. Shared transport classifies HTTP 401/403 as authorization failures.
 
 ## Acceptance matrix

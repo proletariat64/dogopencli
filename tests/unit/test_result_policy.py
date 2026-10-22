@@ -93,21 +93,40 @@ def test_incomplete_source_selection_reports_raw_shortfall_and_strict_rejects():
     assert decision.error["code"] == "INCOMPLETE_RESULT"
 
 
-def test_safe_shortfall_is_usable_and_publishable_but_strictly_rejected():
+def test_safe_shortfall_is_usable_live_but_refresh_and_strict_reject():
     evidence = AcquisitionEvidence.for_collection(
         complete=False, reported_total=100, collected_total=99, arrivals=100
     )
-    decision = evaluate_result(evidence, mode="refresh")
-    assert decision.expose_data and decision.publishable
+    decision = evaluate_result(evidence, mode="live")
+    assert decision.expose_data and not decision.publishable
     assert decision.error is None and decision.exit_code == 0
     assert decision.warnings[0]["reason_codes"] == [
         "COUNT_SHORTFALL",
         "DUPLICATE_ROWS",
         "UNEXPECTED_DUPLICATE_ROWS",
     ]
-    strict = evaluate_result(evidence, mode="refresh", require_complete=True)
+    strict = evaluate_result(evidence, mode="live", require_complete=True)
     assert not strict.expose_data and not strict.publishable
     assert strict.error["code"] == "INCOMPLETE_RESULT" and strict.exit_code == 1
+    refresh = evaluate_result(evidence, mode="refresh")
+    assert not refresh.expose_data and not refresh.publishable
+    assert refresh.error["code"] == "INCOMPLETE_RESULT" and refresh.exit_code == 1
+
+
+def test_complete_empty_refresh_preserves_saved_snapshot():
+    evidence = AcquisitionEvidence.for_collection(
+        complete=True, reported_total=0, collected_total=0, arrivals=0
+    )
+    decision = evaluate_result(evidence, mode="refresh")
+    assert decision.expose_data and not decision.publishable
+    assert decision.error is None and decision.exit_code == 0
+
+
+@pytest.mark.parametrize("meta", [{}, {"complete": True}, {"complete": False}])
+def test_output_policy_requires_explicit_acquisition_evidence(meta):
+    with pytest.raises(CliError) as error:
+        prepare_result(meta)
+    assert error.value.code == "INVALID_RESPONSE"
 
 
 def test_declared_identical_overlap_can_be_complete_and_strictly_usable():

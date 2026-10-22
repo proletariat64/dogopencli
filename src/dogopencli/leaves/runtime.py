@@ -14,7 +14,6 @@ from typing import Any
 from dogopencli.cache import Cache, SnapshotMeta
 from dogopencli.collect import (
     collect_list,
-    collect_scope,
     collect_sources,
     execute_bounded,
 )
@@ -25,7 +24,6 @@ from dogopencli.jsonutil import canonical, parse
 from dogopencli.result_policy import (
     AcquisitionEvidence,
     check_complete,
-    evidence_for,
     prepare_result,
 )
 from dogopencli.temporary_query import display_options, is_stale, window_rows
@@ -340,6 +338,14 @@ def execute(
     specification = leaf.manifest["operations"].get("list", {})
     if (
         operation in {"list", "refresh"}
+        and specification.get("execution") != "custom"
+        and leaf.manifest.get("collection") is None
+    ):
+        raise CliError(
+            "INVALID_LEAF", "standard List requires a collection declaration"
+        )
+    if (
+        operation in {"list", "refresh"}
         and specification.get("entity_selector") is True
     ):
         if parameters.get("entity") == ["ANY"]:
@@ -508,7 +514,7 @@ def execute(
                         leaf_id=leaf.id,
                         state_file=config_file.parent / "collection-state.json",
                     )
-                elif collection is not None:
+                else:
                     transport = session.transport(capability)
                     collected = collect_list(
                         capability,
@@ -519,27 +525,21 @@ def execute(
                         leaf_id=leaf.id,
                         state_file=config_file.parent / "collection-state.json",
                     )
-                else:
-                    transport = session.transport(capability)
-                    collector = getattr(leaf.adapter, "collector", collect_scope)
-                    collected = collector(capability, transport, scope)
                 rows = _validate_records(
                     collected.records,
                     leaf.manifest.get("identity", []),
                     leaf.manifest.get("collection", {}).get("primary_id"),
                 )
-                evidence = evidence_for(collected)
+                evidence = collected.evidence
+                if not isinstance(evidence, AcquisitionEvidence):
+                    raise CliError(
+                        "INVALID_RESPONSE", "List acquisition evidence is missing"
+                    )
                 query = parameters
                 stale = False
                 check_complete(
                     evidence,
-                    require_complete=(
-                        args.require_complete
-                        or (
-                            operation == "refresh"
-                            and ("collection" in leaf.manifest or custom_list)
-                        )
-                    ),
+                    require_complete=(args.require_complete or operation == "refresh"),
                     mode=operation,
                 )
                 selected = (

@@ -5,7 +5,7 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 from .browser import errors as auth_errors
-from .browser.cdp import CdpTransport, make_transport, url_origin
+from .browser.cdp import CdpError, CdpTransport, make_transport, url_origin
 from .browser.coordination import acquire_browser_control
 from .browser.environment import resolve_environment
 from .browser.errors import AuthError
@@ -71,7 +71,9 @@ def inquiry_session(
             control = acquire_browser_control(environment.profile, shared=True)
             resources.callback(control.release)
             check_authentication(environment, startup_url=startup_url)
-            cdp = make_transport(environment.cdp_url)
+            cdp = make_transport(environment)
+        except CdpError as error:
+            raise CliError(BROWSER_UNAVAILABLE, str(error), retryable=True) from error
         except AuthError as error:
             mapped = _map_auth_error(error)
             if selector and mapped.code in {

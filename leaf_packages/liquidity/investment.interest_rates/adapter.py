@@ -221,7 +221,6 @@ class Detail:
         page_size=0,
         one_based=False,
         encoding="post-query",
-        single_page=True,
         allowed_body_keys=frozenset({"id", "_output_charset"}),
         fixed_body_values=(("_output_charset", "utf-8"),),
     )

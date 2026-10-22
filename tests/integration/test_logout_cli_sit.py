@@ -167,8 +167,8 @@ def test_logout_text_format_result(run_cli, logout_setup):
     logout_setup.state.href = SSO_URL
     code, out, _ = run_cli([*logout_setup.argv, "--format", "text", "logout"])
     assert code == 0
-    assert "authenticated: False" in out
-    assert "verified: True" in out
+    assert "authenticated: false" in out
+    assert "verified: true" in out
 
 
 # --- verification failures: never a claimed logout ----------------------------

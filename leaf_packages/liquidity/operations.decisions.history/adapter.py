@@ -48,7 +48,6 @@ class Inquiry:
             + ("getDetail.json" if name == "root" else "getHistory.json"),
             page_size=0,
             one_based=False,
-            single_page=True,
             allowed_body_keys=frozenset({"tntInstId", "id"}),
             fixed_body_values=(("tntInstId", TENANT),),
         )

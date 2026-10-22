@@ -98,6 +98,24 @@ def test_url_origin():
     assert cdp.url_origin("http://127.0.0.1:9222/json/list") == "http://127.0.0.1:9222"
 
 
+def test_target_creation_rejection_does_not_retry_a_legacy_get(monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    methods = []
+
+    def rejected(request, **kwargs):
+        methods.append(request.method)
+        raise urllib.error.HTTPError(
+            request.full_url, 405, "Method Not Allowed", {}, None
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", rejected)
+    with pytest.raises(cdp.CdpError):
+        cdp.HttpCdpTransport("http://127.0.0.1:9222").new_target("about:blank")
+    assert methods == ["PUT"]
+
+
 def test_browser_mode():
     assert browser_mode({"User-Agent": "HeadlessChrome/128"}) == "headless"
     assert browser_mode({"User-Agent": "Chrome/128"}) == "headed"

@@ -303,8 +303,8 @@ def _ensure_headless(environment: BrowserEnvironment) -> bool:
     """Reuse a healthy headless Chrome; launch or switch modes otherwise."""
     from .cdp import CdpError, make_transport
 
-    transport = make_transport(environment.cdp_url)
     try:
+        transport = make_transport(environment)
         version = transport.version()
     except CdpError:
         version = None

@@ -171,3 +171,59 @@ def test_business_failure_text_keeps_metadata_and_retryability(run_cli, monkeypa
 def test_empty_result_is_explicit(capsys, data, expected):
     emit(data, output_format="text")
     assert capsys.readouterr().out == expected + "\n"
+
+
+def test_auth_payload_uses_same_native_value_renderer(capsys):
+    from dogopencli.auth.output import Result
+    from dogopencli.auth.output import emit as emit_auth
+
+    payload = {
+        "probe": {"authenticated": True, "missing": None},
+        "amount": Decimal("0.123400"),
+    }
+    emit(payload, output_format="text")
+    business = capsys.readouterr()
+    emit_auth("auth.check", Result(payload), None, "text")
+    auth = capsys.readouterr()
+    assert auth.out == business.out
+    assert auth.err == business.err == ""
+    emit_auth("auth.check", Result(payload), None, "json")
+    envelope = json.loads(capsys.readouterr().out, parse_float=Decimal)
+    assert envelope == {
+        "output_version": 1,
+        "command": "auth.check",
+        "exit_code": 0,
+        "result": payload,
+        "error": None,
+    }
+
+
+def test_auth_error_keeps_stderr_and_renders_nested_partial_outcomes(capsys):
+    from dogopencli.auth.output import Result
+    from dogopencli.auth.output import emit as emit_auth
+
+    error = {
+        "code": "service_failure",
+        "message": "One domain failed",
+        "retryable": True,
+        "details": {
+            "domains": [
+                {"domain": "payment", "authenticated": True},
+                {"domain": "fx", "authenticated": False},
+            ]
+        },
+        "next": ["Retry dogopencli auth check --domain fx"],
+    }
+    emit_auth("auth.check", Result(exit_code=1), error, "text")
+    streams = capsys.readouterr()
+    assert streams.out == ""
+    assert streams.err.startswith("service_failure: One domain failed\n")
+    assert "domains:\n  -\n" in streams.err
+    assert (
+        "authenticated: true" in streams.err and "authenticated: false" in streams.err
+    )
+    assert (
+        "Next:\n" in streams.err
+        and "Retry dogopencli auth check --domain fx" in streams.err
+    )
+    assert "{'" not in streams.err

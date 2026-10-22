@@ -236,7 +236,6 @@ class Inquiry:
             path="/api/ptr/manage/query.json",
             page_size=PAGE_SIZE,
             one_based=False,
-            single_page=True,
             allowed_body_keys=frozenset(
                 {"pageNo", "pageSize", "modifiedTimeBegin", "modifiedTimeEnd"}
             ),

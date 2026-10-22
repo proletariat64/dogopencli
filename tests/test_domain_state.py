@@ -91,15 +91,15 @@ def declarations(monkeypatch, tmp_path):
         "limitations": [],
         "examples": [],
         "dataset": {"relation": "demo_items"},
+        "collection": {
+            "provider": "general",
+            "paging": {"mode": "single", "page_sizes": [100]},
+            "primary_id": {"type": "field", "fields": ["id"]},
+        },
     }
     (folder / "leaf.json").write_text(json.dumps(manifest))
     (folder / "adapter.py").write_text(
-        "class Adapter:\n"
-        " def capability(self, parameters): pass\n"
-        " def scope(self, parameters): return ''\n"
-        " def collector(self, *args, **kwargs): pass\n"
-        " def filter(self, rows, parameters): return rows\n"
-        "adapter = Adapter()\n"
+        'raise AssertionError("domain discovery must not execute adapters")\n'
     )
     broken = tmp_path / "plugins/demo/future"
     broken.mkdir()
@@ -115,6 +115,11 @@ def invoke(capsys, tmp_path, *args):
 
 
 def test_inventory_is_offline_and_does_not_create_store(declarations, tmp_path, capsys):
+    before = {
+        p.relative_to(tmp_path): p.read_bytes()
+        for p in tmp_path.rglob("*")
+        if p.is_file()
+    }
     code, body = invoke(capsys, tmp_path, "list")
     assert code == 0
     domain = body["result"][0]
@@ -125,6 +130,12 @@ def test_inventory_is_offline_and_does_not_create_store(declarations, tmp_path, 
     assert domain["diagnostics"][0]["id"] == "demo.future"
     assert not (tmp_path / "config.toml.domains.sqlite3").exists()
     assert not (tmp_path / "leaf-cache.sqlite3").exists()
+    after = {
+        p.relative_to(tmp_path): p.read_bytes()
+        for p in tmp_path.rglob("*")
+        if p.is_file()
+    }
+    assert after == before
 
 
 def test_domain_toggle_survives_reopen_without_rewriting_leaf_settings(

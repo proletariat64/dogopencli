@@ -761,7 +761,32 @@ def test_text_format_result(run_cli, auth_setup):
         [*auth_setup.argv, "--format", "text", "auth", "check", "--domain", "payment"]
     )
     assert code == 0
-    assert "authenticated: True" in out
+    assert "authenticated: true" in out
+    assert "probe:\n" in out
+    assert "  startup_url: " in out
+    assert "{'" not in out
+
+
+def test_multiple_domain_text_renders_nested_results(run_cli, auth_setup):
+    _route_all_entries(auth_setup)
+    code, out, err = run_cli(
+        [
+            *auth_setup.argv,
+            "auth",
+            "check",
+            "--domain",
+            "payment",
+            "--domain",
+            "fx",
+            "--format",
+            "text",
+        ]
+    )
+    assert (code, err) == (0, "")
+    assert "domains:\n  -\n" in out
+    assert "domain: payment" in out and "domain: fx" in out
+    assert out.count("probe:\n") == 2
+    assert "{'" not in out and "True" not in out
 
 
 def test_text_format_error_goes_to_stderr(run_cli, auth_setup):

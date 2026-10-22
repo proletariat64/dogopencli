@@ -31,7 +31,6 @@ class Inquiry:
         encoding="form",
         page_size=0,
         one_based=False,
-        single_page=True,
         total_semantics="unknown",
         allowed_body_keys=frozenset({"tntInstId", "incrementProductCode"}),
         fixed_body_values=(("tntInstId", TENANT),),

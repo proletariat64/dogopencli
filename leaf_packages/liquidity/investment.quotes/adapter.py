@@ -71,7 +71,6 @@ class Inquiry:
             path="/quotationAnalysis.json",
             page_size=PAGE_SIZE,
             one_based=False,
-            single_page=True,
             allowed_body_keys=frozenset({*values, "rowStart", "pageSize"}),
             fixed_body_values=tuple(values.items())
             + (("rowStart", 0), ("pageSize", PAGE_SIZE)),

@@ -160,8 +160,8 @@ def check_authentication(
         + (f" --domain {domain}" if domain and domain != "payment" else "")
     ]
     details = {"cdp_url": environment.cdp_url, "launch_command": guidance}
-    transport = make_transport(environment.cdp_url)
     try:
+        transport = make_transport(environment)
         version = transport.version()
     except CdpError as exc:
         raise AuthError(
@@ -267,9 +267,9 @@ def _entry_completion(
     cannot interrupt human role/MFA input. Ambiguous tabs remain untouched.
     """
     deadline = monotonic() + timeout
-    transport = make_transport(environment.cdp_url)
     session = None
     try:
+        transport = make_transport(environment)
         transport.version(timeout=max(0.001, deadline - monotonic()))
     except CdpError as exc:
         code = BROWSER_UNAVAILABLE if deadline - monotonic() >= 1.0 else SERVICE_FAILURE
@@ -377,9 +377,9 @@ def probe_login_completion(
             environment, timeout=timeout, rejected_candidates=rejected_candidates
         )
     deadline = monotonic() + timeout
-    transport = make_transport(environment.cdp_url)
     reachability_budget = deadline - monotonic()
     try:
+        transport = make_transport(environment)
         transport.version(timeout=max(0.001, reachability_budget))
     except CdpError as exc:
         if reachability_budget < 1.0:

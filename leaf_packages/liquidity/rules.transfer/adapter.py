@@ -69,7 +69,6 @@ class Inquiry:
         path="/transferRuleQuery.json",
         page_size=PAGE_SIZE,
         one_based=False,
-        single_page=True,
         allowed_body_keys=frozenset({"tntInstId", "transferRuleQueryRequest"}),
         fixed_body_values=(("tntInstId", TENANT), ("transferRuleQueryRequest", VO)),
     )

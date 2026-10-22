@@ -1,10 +1,9 @@
 """Shared transport boundary (ADR 0005).
 
 Every backend access is a structured QueryRequest validated against the
-registered endpoint contract before execution. CDP and snapshot are two
-implementations of the same QueryTransport; both return an HTTP status,
-a raw response body and independent origin metadata, and both feed the
-formal plugin parsers.
+registered endpoint contract before execution. The authenticated CDP transport
+returns an HTTP status, a raw response body and independent origin metadata
+for parsing by the installed leaf's native contracts.
 """
 
 import json

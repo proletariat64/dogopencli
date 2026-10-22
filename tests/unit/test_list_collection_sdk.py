@@ -148,6 +148,32 @@ def test_example_manifest_opts_in_without_a_collector():
     assert error.value.code == "INVALID_LEAF"
 
 
+@pytest.mark.parametrize("operation", ["list", "refresh"])
+@pytest.mark.parametrize("explicit_null", [False, True])
+def test_runtime_rejects_undeclared_collection_before_acquisition_or_cache(
+    tmp_path, monkeypatch, operation, explicit_null
+):
+    from dogopencli.leaves import runtime
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("invalid List must fail before acquiring owned state")
+
+    monkeypatch.setattr(runtime, "cache_for", unexpected)
+    monkeypatch.setattr(runtime, "inquiry_session", unexpected)
+    leaf = Leaf(
+        domain="payment",
+        name="invalid",
+        path=tmp_path,
+        adapter=object(),
+        manifest={"operations": {"list": {"parameters": []}}},
+    )
+    if explicit_null:
+        leaf.manifest["collection"] = None
+    with pytest.raises(CliError, match="standard List requires a collection") as error:
+        runtime.execute(leaf, operation, {}, Namespace(), tmp_path / "config.toml")
+    assert error.value.code == "INVALID_LEAF"
+
+
 @pytest.mark.parametrize(
     "bad",
     [
@@ -234,6 +260,28 @@ def test_numbered_and_single_page_modes():
     )
     assert single.complete is False
     assert "SINGLE_PAGE_CAPACITY" in single.evidence.reasons
+
+
+@pytest.mark.parametrize(
+    "identities,total", [([], 2), (["one"], 1001), (["one"] * 2, 1)]
+)
+def test_single_request_retains_valid_partial_records_and_arrival_evidence(
+    identities, total
+):
+    rows = [
+        {"id": identity, "native": [None, False, "2.00"]} for identity in identities
+    ]
+    stream = Script(numbered(rows, total, 0, 1000))
+    result = collect(
+        Native(sizes=(1000,), mode="single"),
+        stream,
+        config((1000,), mode="single"),
+    )
+    assert result.complete is False
+    assert result.records == rows[: len(set(identities))]
+    assert result.evidence.arrivals == len(rows)
+    assert result.evidence.unique_count == len(set(identities))
+    assert result.pages == len(stream.requests) == 1
 
 
 def test_hash_identity_is_type_sensitive_and_does_not_mutate_native_rows():
@@ -338,6 +386,29 @@ def test_fallbacks_share_one_global_logical_page_budget():
     assert complete.complete and complete.records == rows
     assert len(permitted.requests) == 3
     assert sum(attempt["pages"] for attempt in complete.evidence.attempts) == 3
+
+
+def test_width_fallback_preserves_one_deadline_and_independent_candidates(monkeypatch):
+    from dogopencli import collect as collection
+
+    clock = [0.0]
+    monkeypatch.setattr(collection, "_monotonic", lambda: clock[0])
+    timeouts = []
+
+    class TimedScript(Script):
+        def execute(self, request, *, timeout):
+            timeouts.append(timeout)
+            clock[0] += 2
+            return super().execute(request, timeout=timeout)
+
+    rows = [{"id": "chosen-one"}, {"id": "chosen-two"}]
+    stream = TimedScript(offset([{"id": "discarded"}], 2), offset(rows, 2))
+    result = collect(Native(), stream, config())
+    assert result.complete and result.rebuilt
+    assert result.records == rows
+    assert result.deadline == 10
+    assert timeouts == [5, 8]
+    assert [request["rowStart"] for request in stream.requests] == [0, 0]
 
 
 def test_preference_writes_skip_busy_lock_and_remain_best_effort(tmp_path):
@@ -457,8 +528,9 @@ def test_real_entity_pilot_contract_can_run_through_generic_offset_engine(monkey
     assert json.loads(stream.requests[0]["entityMaintQueryVO"])["pageSize"] == 5000
 
 
-def test_opted_in_refresh_rejects_partial_and_preserves_saved_rows(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("failure", ["partial", "missing_evidence"])
+def test_refresh_rejects_unpublishable_acquisition_and_preserves_saved_rows(
+    tmp_path, monkeypatch, failure
 ):
     from dogopencli.leaves import runtime
 
@@ -518,9 +590,21 @@ def test_opted_in_refresh_rejects_partial_and_preserves_saved_rows(
     runtime.execute(leaf, "refresh", {}, args, config_file)
     before, meta = runtime.execute(leaf, "list", {}, args, config_file)
     assert [r["id"] for r in before] == ["saved", "kept"]
+    if failure == "missing_evidence":
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(
+            runtime,
+            "collect_list",
+            lambda *args, **kwargs: SimpleNamespace(
+                records=[{"id": "unproven"}], evidence=None
+            ),
+        )
     with pytest.raises(CliError) as error:
         runtime.execute(leaf, "refresh", {}, args, config_file)
-    assert error.value.code == INCOMPLETE_RESULT
+    assert error.value.code == (
+        INVALID_RESPONSE if failure == "missing_evidence" else INCOMPLETE_RESULT
+    )
     after, current_meta = runtime.execute(leaf, "list", {}, args, config_file)
     assert after == before
     assert current_meta["fetched_at"] == meta["fetched_at"]

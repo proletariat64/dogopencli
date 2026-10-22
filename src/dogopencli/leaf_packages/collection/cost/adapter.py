@@ -27,7 +27,6 @@ class CostInquiry:
         one_based=False,
         allowed_body_keys=frozenset({"costTypeCode", "pageNo", "pageSize"}),
         scope_field="itemType",
-        single_page=True,
         fixed_body_values=(
             ("costTypeCode", COST_TYPE),
             ("pageNo", 0),
@@ -39,9 +38,6 @@ class CostInquiry:
         if scope != COST_TYPE or page_num != 0 or page_size != PAGE_SIZE:
             raise CliError(REQUEST_NOT_ALLOWED, "unverified collection cost request")
         return dict(self.contract.fixed_body_values)
-
-    def identity_key(self, record: dict[str, Any]) -> str:
-        return record["itemId"]
 
     def parse_page(self, body: bytes) -> ParsedPage:
         try:

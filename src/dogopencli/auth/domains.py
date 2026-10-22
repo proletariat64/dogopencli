@@ -128,7 +128,7 @@ def authenticate_domains(
                         unavailable = (
                             remaining <= 0
                             or browser_mode(
-                                make_transport(environment.cdp_url).version(
+                                make_transport(environment).version(
                                     timeout=min(1.0, remaining)
                                 )
                             )

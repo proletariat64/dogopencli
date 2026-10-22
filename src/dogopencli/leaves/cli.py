@@ -10,6 +10,7 @@ from dogopencli.domain_contracts import domain_declarations
 from dogopencli.domains import DomainService
 from dogopencli.errors import CliError
 from dogopencli.jsonutil import canonical
+from dogopencli.rendering import render_text
 
 from .registry import Leaf, Registry
 from .runtime import execute
@@ -27,33 +28,12 @@ def emit(
     else:
         sections = []
         if data is not None or error is None:
-            sections.append(_text(data))
+            sections.append(render_text(data))
         if meta is not None:
-            sections.append("Metadata:\n" + _text(meta, 1))
+            sections.append("Metadata:\n" + render_text(meta, 1))
         if error is not None:
-            sections.append("Error:\n" + _text(error, 1))
+            sections.append("Error:\n" + render_text(error, 1))
         print("\n\n".join(sections))
-
-
-def _text(value: Any, depth: int = 0) -> str:
-    """Render labeled fields and bullet lists without changing native values."""
-    padding = "  " * depth
-    if isinstance(value, (dict, list)):
-        if not value:
-            kind = "object" if isinstance(value, dict) else "list"
-            return padding + f"(empty {kind})"
-        items = value.items() if isinstance(value, dict) else ((None, v) for v in value)
-        lines = []
-        for key, item in items:
-            label = f"{key}:" if key is not None else "-"
-            rendered = _text(item, depth + 1)
-            if isinstance(item, (dict, list)) or "\n" in rendered:
-                lines.append(padding + label + "\n" + rendered)
-            else:
-                lines.append(padding + label + " " + rendered[len(padding) + 2 :])
-        return "\n".join(lines)
-    scalar = value if isinstance(value, str) and value else canonical(value)
-    return "\n".join(padding + line for line in scalar.split("\n"))
 
 
 def _record_execution(
@@ -213,12 +193,12 @@ def main(argv: list[str]) -> int:
                 raise CliError(
                     "INVALID_ARGUMENT", "numeric parameters must be finite", exit_code=2
                 )
-        registry = Registry(config_file).scan()
-        leaf = registry.get(domain, name)
-        service = DomainService(config_file, registry=registry)
+        service = DomainService(config_file, registry=invocation.registry)
         domain_row = service.inventory(domain)[0]
         if operation != "prune" and not domain_row["enabled"]:
             raise CliError("DOMAIN_DISABLED", f"Domain is disabled: {domain}")
+        registry = Registry(config_file).scan()
+        leaf = registry.get(domain, name)
         started = True
         data, meta = execute(leaf, operation, parameters, args, config_file)
         _record_execution(

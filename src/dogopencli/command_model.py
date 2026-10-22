@@ -15,6 +15,7 @@ from typing import NoReturn
 from . import config
 from .errors import CliError
 from .helpspec import NO_EFFECTS, BizNode, OptionSpec, add_options, opt
+from .leaves.documentation import composition_guidance, detail_guidance
 from .leaves.operation_rules import known_errors
 from .leaves.registry import Leaf, Registry
 
@@ -28,7 +29,7 @@ COMMON = (
     opt("config_dir", "Shared configuration directory."),
     opt("format", "Output format.", default="json", choices=("json", "text")),
     OptionSpec(
-        "help", "--help", "Show current command help.", "bool", legacy_flags=("-h",)
+        "help", "--help", "Show current command help.", "bool", short_flags=("-h",)
     ),
     opt("version", "Show version.", "bool"),
 )
@@ -195,7 +196,7 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                 choices=tuple(domain.id for domain in domain_declarations())
                 if a.name == "domain"
                 else a.choices,
-                legacy_flags=a.flags[1:],
+                short_flags=a.flags[1:],
                 value_type="positive" if a.kind == "positive" else None,
             )
             for a in (*spec.options, *GLOBALS)
@@ -350,8 +351,11 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                         for path in result_identity["paths"]
                     ]
                 shape = detail.get("result_shape", "object")
+                root_kind = (
+                    "declared" if detail.get("execution") == "custom" else "native"
+                )
                 detail_constraints = (
-                    f"Live-only native root {shape}; "
+                    f"Live-only {root_kind} root {shape}; "
                     + (
                         "request context identity: "
                         if "request_fields" in result_identity
@@ -360,24 +364,12 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                     + ", ".join(identity_names)
                     + ". "
                     + result_identity["description"],
-                    "Separate histories, logs and child pages are not acquired; "
-                    "a root response does not establish their completeness.",
+                    detail_guidance(detail),
                 )
-                if shape == "array":
-                    detail_constraints += (
-                        "A qualified successful empty array stays empty. --fields "
-                        "projects each member; returned_count is the actual member "
-                        "count. No List paging or --with-detail binding applies.",
-                    )
             elif operation == "list" and binding:
                 detail_constraints = (
-                    "--with-detail requires --live. Local filtering and offset/limit "
-                    "select the output window before detail inquiries; limit 0 means "
-                    "all remaining rows. Empty windows make no detail inquiries.",
-                    "Each entry is {record, detail}; --fields projects only record. "
-                    "Any detail or binding failure fails the whole command. "
-                    "List coverage is retained; separate histories, logs and child "
-                    "pages are not acquired. No combined result is cached or imported.",
+                    "--with-detail requires --live.",
+                    composition_guidance(detail),
                     "Lookup "
                     + detail["lookup"]["name"]
                     + " comes from List field "

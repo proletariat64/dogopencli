@@ -16,6 +16,8 @@ from collections.abc import Callable, Mapping
 from typing import Any
 from urllib.parse import urlparse
 
+from .environment import BrowserEnvironment
+
 
 def url_origin(url: str) -> str:
     """scheme://netloc of a URL (``ParseResult.origin`` is Python 3.13+)."""
@@ -181,7 +183,6 @@ class HttpCdpTransport(CdpTransport):
         return data
 
     def new_target(self, url: str, *, timeout: float | None = None) -> dict[str, Any]:
-        import urllib.error
         import urllib.parse
         import urllib.request
 
@@ -195,18 +196,6 @@ class HttpCdpTransport(CdpTransport):
                 req, timeout=max(0.001, deadline - time.monotonic())
             ) as resp:
                 data = json.loads(resp.read())
-        except urllib.error.HTTPError:
-            # Older Chrome exposes /json/new as GET.
-            req = urllib.request.Request(
-                f"{self._base}/json/new?{quoted}", method="GET"
-            )
-            try:
-                with urllib.request.urlopen(
-                    req, timeout=max(0.001, deadline - time.monotonic())
-                ) as resp:
-                    data = json.loads(resp.read())
-            except (OSError, ValueError) as exc:
-                raise CdpError(f"cannot create target: {exc}") from exc
         except (OSError, ValueError) as exc:
             raise CdpError(f"cannot create target: {exc}") from exc
         if not isinstance(data, dict) or "id" not in data:
@@ -246,11 +235,22 @@ def set_transport_factory(factory: Callable[[str], CdpTransport] | None) -> None
     _TRANSPORT_FACTORY = factory
 
 
-def make_transport(cdp_url: str) -> CdpTransport:
-    """Build the transport for the dedicated browser endpoint."""
+def make_transport(environment: BrowserEnvironment) -> CdpTransport:
+    """Verify the dedicated profile before attaching to a real CDP endpoint.
+
+    The explicit injected factory is the offline test seam. Production callers
+    supply the whole environment so the configured profile cannot be silently
+    replaced by whichever browser happens to answer on its CDP port.
+    """
     if _TRANSPORT_FACTORY is not None:
-        return _TRANSPORT_FACTORY(cdp_url)
-    return HttpCdpTransport(cdp_url)
+        return _TRANSPORT_FACTORY(environment.cdp_url)
+    from .launcher import LauncherError, require_profile
+
+    try:
+        require_profile(environment)
+    except LauncherError as exc:
+        raise CdpError(str(exc)) from exc
+    return HttpCdpTransport(environment.cdp_url)
 
 
 def _remaining_timeout(deadline: float) -> float:

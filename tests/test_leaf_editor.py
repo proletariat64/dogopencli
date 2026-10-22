@@ -13,7 +13,14 @@ from dogopencli.gui import create_server
 
 
 @pytest.fixture
-def editor(tmp_path):
+def editor(tmp_path, monkeypatch):
+    from dogopencli.leaves.registry import Registry
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("documentation editing must not activate runtime")
+
+    monkeypatch.setattr(Registry, "scan", forbidden)
+    monkeypatch.setattr(Registry, "_load", forbidden)
     folder = tmp_path / "plugins/payment/sample"
     folder.mkdir(parents=True)
     manifest = {
@@ -38,10 +45,7 @@ def editor(tmp_path):
     }
     (folder / "leaf.json").write_text(json.dumps(manifest))
     (folder / "adapter.py").write_text(
-        "class Adapter:\n"
-        "    def capability(self, parameters): return None\n"
-        "    def detail_capability(self, *args): return None\n"
-        "adapter=Adapter()\n"
+        'raise AssertionError("documentation editing must not execute adapters")\n'
     )
     server = create_server(DomainService(tmp_path / "config.toml"))
     thread = threading.Thread(target=server.serve_forever, daemon=True)

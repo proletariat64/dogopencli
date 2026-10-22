@@ -47,7 +47,6 @@ class Inquiry:
         path="/ivostro/api/cardTemplate/pageList.json",
         page_size=PAGE_SIZE,
         one_based=True,
-        single_page=True,
         allowed_body_keys=frozenset({"pageNo", "pageSize"}),
         fixed_body_values=(("pageNo", 1), ("pageSize", PAGE_SIZE)),
     )

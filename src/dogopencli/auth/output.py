@@ -7,11 +7,12 @@ Ported from DI ``src/di/cli/output.py`` at baseline commit
 protocol.
 """
 
-import json
 import sys
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
+
+from ..jsonutil import canonical
+from ..rendering import render_text
 
 OUTPUT_VERSION = 1
 
@@ -20,7 +21,6 @@ OUTPUT_VERSION = 1
 class Result:
     value: Any = None
     exit_code: int = 0
-    text: str | None = None
 
 
 def emit(
@@ -34,24 +34,13 @@ def emit(
         "error": error,
     }
     if format == "json":
-        sys.stdout.write(json.dumps(envelope, ensure_ascii=False) + "\n")
+        sys.stdout.write(canonical(envelope) + "\n")
     elif error:
         sys.stderr.write(f"{error['code']}: {error['message']}\n")
-        for key, value in sorted(error.get("details", {}).items()):
-            rendered = (
-                value
-                if isinstance(value, str)
-                else json.dumps(value, ensure_ascii=False)
-            )
-            sys.stderr.write(f"{key}: {rendered}\n")
+        if error.get("details"):
+            sys.stderr.write(render_text(dict(sorted(error["details"].items()))) + "\n")
         if error.get("next"):
             sys.stderr.write("Next:\n")
-            for step in error["next"]:
-                sys.stderr.write(f"  {step}\n")
-    elif result.text is not None:
-        sys.stdout.write(result.text)
-    elif isinstance(result.value, Mapping):
-        for key, value in result.value.items():
-            sys.stdout.write(f"{key}: {value}\n")
+            sys.stderr.write(render_text(error["next"], 1) + "\n")
     elif result.value is not None:
-        sys.stdout.write(json.dumps(result.value, ensure_ascii=False, indent=2) + "\n")
+        sys.stdout.write(render_text(result.value) + "\n")

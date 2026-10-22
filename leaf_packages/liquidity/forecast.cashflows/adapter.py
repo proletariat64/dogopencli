@@ -84,7 +84,6 @@ class Inquiry:
         path="/queryCashFlowData.json",
         page_size=0,
         one_based=False,
-        single_page=True,
         encoding="query",
         total_semantics="unknown",
         allowed_body_keys=frozenset({"tntInstId", VO}),
