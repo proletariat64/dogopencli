@@ -1,5 +1,6 @@
 """Shared configuration location and explicit Duckdog selector configuration."""
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +16,27 @@ CONFIG_ENV = "DOGOPENCLI_CONFIG"
 CONFIG_DIR_ENV = "DOGOPENCLI_CONFIG_DIR"
 DEFAULT_CONFIG = Path.home() / ".config" / "dogopencli" / "config.toml"
 DEFAULT_TTL_HOURS = 72.0
+
+
+def cache_ttl_hours(config_file: Path) -> float:
+    """Resolve the shared cache retention policy without creating configuration."""
+    try:
+        document = (
+            tomllib.loads(config_file.read_text()) if config_file.exists() else {}
+        )
+        value = document.get("cache", {}).get("ttl_hours", DEFAULT_TTL_HOURS)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+        ):
+            raise ValueError
+        return float(value)
+    except (OSError, ValueError, TypeError, AttributeError, OverflowError) as error:
+        raise _config_error(
+            "cache.ttl_hours must be a finite nonnegative number"
+        ) from error
 
 
 def _config_error(message: str) -> CliError:

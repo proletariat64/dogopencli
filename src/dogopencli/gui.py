@@ -134,6 +134,10 @@ def create_server(service: Any, port: int = 0) -> ThreadingHTTPServer:
                     self.json_data(200, {"domains": service.overview()})
                 except CliError as error:
                     self.error(500, error.code, error.message)
+            elif self.path == "/api/system" and hasattr(service, "config_file"):
+                from .system_info import read_system_info
+
+                self.json_data(200, {"system": read_system_info(service.config_file)})
             else:
                 self.error(404, "NOT_FOUND", "Unknown GUI resource")
 

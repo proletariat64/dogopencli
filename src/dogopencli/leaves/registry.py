@@ -613,7 +613,7 @@ class Registry:
             }
         )
 
-    def _database(self) -> Path:
+    def database_path(self) -> Path:
         document = {}
         if self.config_file.exists():
             try:
@@ -786,7 +786,7 @@ class Registry:
             if publish is not None:
                 publish()
             return
-        database = self._database()
+        database = self.database_path()
         relation = leaf.manifest["dataset"]["relation"]
         if relation.lower().startswith("_dogopencli"):
             raise _invalid("dataset relation uses a reserved host name")

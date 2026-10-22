@@ -17,7 +17,7 @@ from dogopencli.collect import (
     collect_sources,
     execute_bounded,
 )
-from dogopencli.config import DEFAULT_TTL_HOURS, tomllib
+from dogopencli.config import cache_ttl_hours
 from dogopencli.errors import CliError
 from dogopencli.inquiry import inquiry_session
 from dogopencli.jsonutil import canonical, parse
@@ -40,28 +40,6 @@ from .registry import Leaf
 
 def cache_for(config_file: Path) -> Cache:
     return Cache(config_file.parent / "leaf-cache.sqlite3")
-
-
-def _ttl(config_file: Path) -> float:
-    try:
-        document = (
-            tomllib.loads(config_file.read_text()) if config_file.exists() else {}
-        )
-        value = document.get("cache", {}).get("ttl_hours", DEFAULT_TTL_HOURS)
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not math.isfinite(value)
-            or value < 0
-        ):
-            raise ValueError
-        return float(value)
-    except (OSError, ValueError, TypeError, AttributeError) as exc:
-        raise CliError(
-            "CONFIG_ERROR",
-            "cache.ttl_hours must be a finite nonnegative number",
-            exit_code=2,
-        ) from exc
 
 
 def _validate_records(
@@ -446,7 +424,7 @@ def execute(
         if definition.get("local_field")
     }
     live = operation == "refresh" or args.live
-    ttl = _ttl(config_file)
+    ttl = cache_ttl_hours(config_file)
     with store.refresh_lock() if operation == "refresh" else nullcontext():
         if operation == "refresh" and leaf.installation_token is not None:
             try:
