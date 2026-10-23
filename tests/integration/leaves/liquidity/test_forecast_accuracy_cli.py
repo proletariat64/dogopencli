@@ -2,13 +2,13 @@
 
 import json
 import shutil
-import sqlite3
 from decimal import Decimal
 from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
 from fake_cdp import FakeBrowser
+from forecast_prior import copy_cache, write_prior_forecast
 
 from dogopencli.browser import cdp
 from dogopencli.jsonutil import parse
@@ -517,39 +517,26 @@ def test_changed_composition_cannot_replay_previous_contract(
     installed, run_cli, tmp_path
 ):
     cli, browser, config = installed
-    source = tmp_path / "prior-contract"
-    shutil.copytree(SOURCE, source)
-    path = source / "adapter.py"
-    # Model a separately accepted old contract, without retaining legacy source.
-    previous = path.read_text().replace("complete=not rows,", "complete=True,")
-    previous = previous.replace(
-        '"cashflow_details": detail["dataValue"]',
-        '"prior_details": detail["dataValue"]',
-    )
-    path.write_text(previous)
+    source = write_prior_forecast(tmp_path / "prior-contract", "forecast.accuracy")
     code, output, error = run_cli(
         ["plugins", "uninstall", "liquidity.forecast.accuracy"]
     )
     assert code == 0, output + error
     code, output, error = run_cli(["plugins", "install", str(source)])
     assert code == 0, output + error
-    browser.business_script.extend([base([row()]), metric(), details([])])
+    browser.business_script.append(base([row()]))
     saved = cli("refresh", *FLAGS)
     assert saved["meta"]["published"] is True
     # Preserve the prior capture across public uninstall, which deletes cache rows.
     backup = tmp_path / "saved-cache.sqlite3"
-    with sqlite3.connect(config / "leaf-cache.sqlite3") as original:
-        with sqlite3.connect(backup) as snapshot:
-            original.backup(snapshot)
+    copy_cache(config / "leaf-cache.sqlite3", backup)
     code, output, error = run_cli(
         ["plugins", "uninstall", "liquidity.forecast.accuracy"]
     )
     assert code == 0, output + error
     code, output, error = run_cli(["plugins", "install", str(SOURCE)])
     assert code == 0, output + error
-    with sqlite3.connect(backup) as snapshot:
-        with sqlite3.connect(config / "leaf-cache.sqlite3") as restored:
-            snapshot.backup(restored)
+    copy_cache(backup, config / "leaf-cache.sqlite3")
     count = len(browser.business_requests)
     browser.running = False
     result = cli("list", code=1)
@@ -584,3 +571,69 @@ def test_maximum_client_parent_scope_gets_every_required_child(installed):
     assert result["data"][0]["id"] == "99"
     assert len(browser.business_requests) == 201
     assert result["meta"]["acquisition"]["attempts"][0]["occurrence_succeeded"] == 100
+
+
+@pytest.mark.parametrize(
+    "source", ["metric_outer", "metric_result", "metric_native", "occurrence_outer"]
+)
+def test_child_tenant_echoes_must_match_fixed_transport_tenant(installed, source):
+    cli, browser, _ = installed
+    summary = metric()
+    occurrences = details([])
+    if source == "metric_outer":
+        summary["body"]["tntInstId"] = "OTHER"
+    elif source == "metric_result":
+        summary["body"]["result"]["tntInstId"] = "OTHER"
+    elif source == "metric_native":
+        summary["body"]["result"]["bankAccountDetailDayVO"]["tntInstId"] = "OTHER"
+    else:
+        occurrences["body"]["tntInstId"] = "OTHER"
+    browser.business_script.extend([base([row()]), summary, occurrences])
+    result = cli("list", "--live", *FLAGS, code=1)
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+    assert result["data"] is None
+
+
+@pytest.mark.parametrize("failed_source", ["metric", "occurrences"])
+def test_later_failure_retains_exact_bindings_and_earlier_associations(
+    installed, failed_source
+):
+    cli, browser, _ = installed
+    failure = {"status": 200, "body": {"resultFlag": False}}
+    script = [base([row(1), row(2, gmtCreate=None)]), metric(), details([])]
+    script += [failure] if failed_source == "metric" else [metric(), failure]
+    browser.business_script.extend(script)
+    result = cli("list", "--live", *FLAGS, code=1)
+    assert result["error"]["code"] == "BUSINESS_QUERY_FAILED"
+    association = result["meta"]["accuracy_composition"]
+    assert association["metric_requests"][0]["status"] == "succeeded"
+    assert association["occurrence_requests"][0]["status"] == "succeeded"
+    assert (
+        association["occurrence_responses"][0]["request_binding"]["forecastRecordId"]
+        == "1"
+    )
+    failed = result["meta"][
+        "metric_binding" if failed_source == "metric" else "occurrence_binding"
+    ]
+    assert failed["tntInstId"] == "GUAPW3SG"
+    assert failed[METRIC_VO]["forecastRecordId"] == "2"
+    assert failed[METRIC_VO]["accountNo"] == "NUMBER"
+    assert failed[METRIC_VO]["valueDate"] == "20260309"
+    if failed_source == "metric":
+        assert failed[METRIC_VO]["forecastBalance"] == "0"
+    else:
+        assert failed[METRIC_VO]["gmtCreate"] is None
+
+
+def test_success_evidence_retains_exact_normalized_metric_request(installed):
+    cli, browser, _ = installed
+    browser.business_script.extend([base([row()]), metric(), details([])])
+    result = cli("list", "--live", *FLAGS)
+    binding = result["meta"]["acquisition"]["attempts"][0]["metric_requests"][0]
+    assert binding["status"] == "succeeded"
+    assert binding["request_binding"] == {
+        "tntInstId": "GUAPW3SG",
+        METRIC_VO: parse(browser.business_requests[1][METRIC_VO]),
+    }
+    assert binding["request_binding"][METRIC_VO]["forecastBalance"] == "0"
+    assert result["data"][0]["forecastBalance"] == "0.00"

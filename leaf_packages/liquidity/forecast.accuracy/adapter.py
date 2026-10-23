@@ -221,13 +221,15 @@ class Inquiry:
             fail("invalid inner success marker")
         if not result["success"]:
             fail("native inquiry failed", "BUSINESS_QUERY_FAILED")
+        binding = {**parameters, "tntInstId": TENANT}
         if self.metric or self.occurrences:
-            validate_context(result, parameters)
+            validate_context(document, binding)
+            validate_context(result, binding)
         if self.metric:
             metric = result.get("bankAccountDetailDayVO")
             if not isinstance(metric, dict):
                 fail("metric response must be an object")
-            validate_context(metric, parameters)
+            validate_context(metric, binding)
             return result
         rows, total = result.get("dataValue"), result.get("count")
         if (
@@ -238,7 +240,7 @@ class Inquiry:
             fail("invalid base records/count")
         if self.occurrences:
             for row in rows:
-                validate_context(row, parameters, occurrence=True)
+                validate_context(row, binding, occurrence=True)
                 for field, native_type in (
                     ("cashFlowAmount", dict),
                     ("detailAmount", str),
@@ -292,16 +294,47 @@ class Adapter:
         ]
         records = []
         responses = []
+        metric_requests = []
+        occurrence_requests = []
+
+        def inquire(name: str, context: dict, requests: list, stage: str) -> dict:
+            binding = {"tntInstId": TENANT, METRIC_VO: dict(context)}
+            attempt = {"request_binding": binding, "status": "attempted"}
+            requests.append(attempt)
+            try:
+                result = tools.inquire(name, context)
+            except CliError as error:
+                attempt["status"] = "failed"
+                attempt["error_code"] = error.code
+                error.meta = {
+                    **(error.meta or {}),
+                    stage + "_binding": binding,
+                    "accuracy_composition": {
+                        "base_arrivals": len(rows),
+                        "base_reported_total": total,
+                        "metric_requests": metric_requests,
+                        "occurrence_requests": occurrence_requests,
+                        "occurrence_responses": responses,
+                    },
+                }
+                raise
+            attempt["status"] = "succeeded"
+            return result
+
         for row, context, detail_context in zip(
             rows, contexts, occurrence_contexts, strict=True
         ):
-            metric = tools.inquire("metric", context)["bankAccountDetailDayVO"]
+            metric = inquire("metric", context, metric_requests, "metric")[
+                "bankAccountDetailDayVO"
+            ]
             detail_name = (
                 "occurrences"
                 if "gmtCreate" in detail_context
                 else "occurrences_without_create"
             )
-            detail = tools.inquire(detail_name, detail_context)
+            detail = inquire(
+                detail_name, detail_context, occurrence_requests, "occurrence"
+            )
             records.append(
                 {**project(row, metric), "cashflow_details": detail["dataValue"]}
             )
@@ -331,12 +364,14 @@ class Adapter:
                     "metric_succeeded": len(records),
                     "metric_required": len(rows),
                     "metric_attempted": len(records),
+                    "metric_requests": metric_requests,
                     "occurrence_required": len(rows),
                     "occurrence_attempted": len(responses),
                     "occurrence_succeeded": len(responses),
                     "occurrence_arrivals": sum(item["arrivals"] for item in responses),
                     "occurrence_reported_total": None,
                     "occurrence_responses": responses,
+                    "occurrence_requests": occurrence_requests,
                     "client_base_limit": 100,
                     "backend_metric_echo": "not-required",
                 },

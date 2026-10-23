@@ -9,6 +9,7 @@ from zipfile import ZipFile
 
 import pytest
 from fake_cdp import FakeBrowser
+from forecast_prior import copy_cache, write_prior_forecast
 
 from dogopencli.browser import cdp
 from dogopencli.jsonutil import parse
@@ -638,38 +639,25 @@ def test_curve_deadline_covers_all_children(installed, monkeypatch):
 def test_base_only_capture_cannot_replay_as_composed_contract(
     installed, run_cli, tmp_path
 ):
-    cli, browser, _ = installed
+    cli, browser, config = installed
     code, output, error = run_cli(["plugins", "uninstall", "liquidity." + LEAF])
     assert code == 0, output + error
-    source = tmp_path / "base-only"
-    shutil.copytree(SOURCE, source)
-    manifest_path = source / "leaf.json"
-    manifest = json.loads(manifest_path.read_text())
-    manifest["fields"] = [
-        field for field in manifest["fields"] if field["name"] != "cashflow_curve"
-    ]
-    manifest_path.write_text(json.dumps(manifest))
-    adapter_path = source / "adapter.py"
-    text = adapter_path.read_text()
-    assert 'records.append({**row, "cashflow_curve": curve})' in text
-    adapter_path.write_text(
-        text.replace(
-            'records.append({**row, "cashflow_curve": curve})',
-            "records.append(dict(row))",
-        )
-    )
+    source = write_prior_forecast(tmp_path / "base-only", LEAF)
     code, output, error = run_cli(["plugins", "install", str(source)])
     assert code == 0, output + error
     browser.business_script.append(page([row()]))
     cli("refresh", *FLAGS, "--require-complete")
     assert cli("list")["data"] == [row()]
+    backup = tmp_path / "saved-cache.sqlite3"
+    copy_cache(config / "leaf-cache.sqlite3", backup)
     code, output, error = run_cli(["plugins", "uninstall", "liquidity." + LEAF])
     assert code == 0, output + error
     code, output, error = run_cli(["plugins", "install", str(SOURCE)])
     assert code == 0, output + error
+    copy_cache(backup, config / "leaf-cache.sqlite3")
     before = len(browser.business_requests)
     result = cli("list", "--require-complete", code=1)
-    assert result["error"]["code"] == "CACHE_MISS"
+    assert result["error"]["code"] == "CACHE_CONTRACT_CHANGED"
     assert len(browser.business_requests) == before
     browser.business_script.append(page([row()]))
     cli("refresh", *FLAGS, "--require-complete")
