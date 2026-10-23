@@ -1,0 +1,167 @@
+{
+  "domain": "liquidity",
+  "name": "risk.account_outflow",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native account-outflow risk observations for explicit warning instants.",
+      "parameters": [
+        {
+          "name": "warning-from",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive warning start instant: ISO8601 timestamp with explicit offset, at most millisecond precision."
+        },
+        {
+          "name": "warning-to",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive warning end instant: ISO8601 timestamp with explicit offset, at most millisecond precision."
+        },
+        {
+          "name": "entity",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "description": "Exact native instId selector sent as entitys array; repeat for OR within entity, AND with bank. This changes native acquisition scope."
+        },
+        {
+          "name": "bank-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "description": "Exact native bankId selector sent as bankIds array; repeat for OR within bank, AND with entity. This changes native acquisition scope."
+        }
+      ]
+    }
+  },
+  "summary": "Account-outflow risk observations.",
+  "purpose": "Inspect native EXPECTED_BAL_NOT_ENOUGH warnings without changing notification or risk state.",
+  "fields": [
+    {
+      "name": "monitorNo",
+      "type": "string",
+      "meaning": "Native warning observation identifier."
+    },
+    {
+      "name": "warningTime",
+      "type": "native",
+      "meaning": "Native service warning time; preserved independently of account-local warningLocalTime and capture time."
+    },
+    {
+      "name": "instId",
+      "type": "native",
+      "meaning": "Native entity identifier; no ownership inference."
+    },
+    {
+      "name": "aliasName",
+      "type": "native",
+      "meaning": "Native account alias; not warning observation identity."
+    },
+    {
+      "name": "bankId",
+      "type": "native",
+      "meaning": "Native bank identifier."
+    },
+    {
+      "name": "currencyPairs",
+      "type": "native",
+      "meaning": "Native currency context, retained without deriving currency codes or units."
+    },
+    {
+      "name": "currentBal",
+      "type": "native",
+      "meaning": "Native current balance, without display scaling or recalculation."
+    },
+    {
+      "name": "currentAvlIOD",
+      "type": "native",
+      "meaning": "Native current available IOD."
+    },
+    {
+      "name": "expAvlIOD",
+      "type": "native",
+      "meaning": "Native expected available IOD."
+    },
+    {
+      "name": "expDaytimeOutflow",
+      "type": "native",
+      "meaning": "Native expected daytime outflow."
+    },
+    {
+      "name": "expDayendOutflow",
+      "type": "native",
+      "meaning": "Native expected day-end outflow."
+    },
+    {
+      "name": "expDaytimeBalResource",
+      "type": "native",
+      "meaning": "Native daytime balance resource."
+    },
+    {
+      "name": "daytimeBuffer",
+      "type": "native",
+      "meaning": "Native warning buffer, not a locally computed classification."
+    },
+    {
+      "name": "totalIOD",
+      "type": "native",
+      "meaning": "Native total IOD."
+    },
+    {
+      "name": "warningLocalTime",
+      "type": "native",
+      "meaning": "Native account-local warning time; never reinterpreted as an absolute instant."
+    },
+    {
+      "name": "timezone",
+      "type": "native",
+      "meaning": "Native account timezone context."
+    },
+    {
+      "name": "updateTime",
+      "type": "native",
+      "meaning": "Native update time, separate from warning time and capture time."
+    }
+  ],
+  "identity": [
+    "monitorNo"
+  ],
+  "identity_description": "Native monitorNo identifies one warning observation in the exact bounded source scope.",
+  "limitations": [
+    "Fixed GUAPW3SG tenant and EXPECTED_BAL_NOT_ENOUGH warning reason. Only the verified account-outflow query is used.",
+    "Warning bounds require explicit offsets and normalize to UTC milliseconds. Native warningTime, warningLocalTime, timezone and updateTime remain unchanged.",
+    "Width 1000 is qualified for complete acquisition, not a backend maximum. Native row totals govern offset paging; short-page recovery is not enabled.",
+    "Full native rows, unknown fields, nested values, nulls, blanks, zeros, precision and response order remain unchanged. No amount scaling, risk classification, account-capacity join, notification change or Duckdog import.",
+    "Native entitys and bankIds arrays define the saved source scope; returned rows must match supplied exact values. No ownership resolution or offline widening.",
+    "Native aliasNames can silently broaden an unknown alias to all rows; that selector is excluded. Currency selector mapping remains unqualified and is excluded.",
+    "Native warningTime uses the qualified service clock +08:00 for bound validation. Account-local warningLocalTime is preserved separately, without output conversion.",
+    "A native total below observed arrivals is an explicit SDK contradiction failure, never an empty success or a corrected count. Failed, incomplete and successful-empty refreshes preserve the prior saved capture."
+  ],
+  "examples": [
+    {
+      "title": "Read bounded account-outflow warnings",
+      "command": "dogopencli liquidity list risk.account_outflow --live --warning-from 2026-10-23T00:00:00Z --warning-to 2026-10-24T23:59:59.999Z --require-complete"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_risk_account_outflow"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        1000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "monitorNo"
+      ]
+    },
+    "max_pages": 100,
+    "budget_seconds": 300
+  }
+}
