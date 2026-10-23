@@ -328,7 +328,7 @@ Prefer small edits to `collect.py`, `contracts.py`, the first-party manifest/reg
 | payment.sla.baselines | Native zero-based pages, 10000 then 5000 | Native `id`; filters stay in the native request; get retains its own endpoint. |
 | collection.cost | Single fixed request, 1000 | Native `itemId`, fixed `FUND_IN_CHANNEL_TRANS_FEE`; no invented second page. |
 | liquidity.reference.entities | Native rowStart offsets, 5000 | Native `instId`; tenant and nested inquiry fields are allowlisted. |
-| fx.trade | Native zero-based pages, 50; 100 pages / 120 seconds | Native transaction number `uniqueId`; compare unique rows to `totalCount`. Broad queries may fail; use a qualified BCode/scene/symbol/type/fulfilled/date scope. |
+| fx.trade | Native zero-based pages, 1000; 100 pages / 120 seconds | Native transaction number `uniqueId`; compare unique rows to `totalCount`. Broad queries may fail; use a qualified BCode/scene/symbol/type/fulfilled/date scope. |
 
 Only existing endpoint-qualified widths are declared. Neither this table nor fake
 transport acceptance qualifies production ordering or snapshot consistency.

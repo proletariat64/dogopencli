@@ -119,7 +119,7 @@ class TradeInquiry:
         method="POST",
         host="app-ipay-qk.alipay.com",
         path="/ifxriskweb/api/function/RiskStandardTradeAdviceQueryFacade$14c56/pageQueryRiskStandardTradeAdvice",
-        page_size=50,
+        page_size=1000,
         one_based=False,
         allowed_body_keys=frozenset({"queryRequest", "pageSize", "pageNo"}),
         encoding="json-array",

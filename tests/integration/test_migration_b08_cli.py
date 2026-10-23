@@ -18,7 +18,7 @@ from dogopencli.transport import QueryRequest, validate_request
 
 ROOT = Path(__file__).resolve().parents[2]
 CASES = ("asset_trades", "forwards", "prefunds", "demands", "transfers", "swaps")
-SIZES = {case: 5000 if case == "demands" else 10 for case in CASES}
+SIZES = {case: 5000 if case == "demands" else 1000 for case in CASES}
 IDS = {
     "asset_trades": "orderNo",
     "forwards": "orderNo",
@@ -305,16 +305,16 @@ def test_native_lifecycle_and_full_records(installed):
 )
 def test_offset_collection_precedes_display_limit(installed):
     case, cli, browser, _ = installed
-    rows = [record(case, i) for i in range(11)]
+    rows = [record(case, i) for i in range(1001)]
     browser.business_script.extend(
-        [page(case, rows[:10], 11), page(case, rows[10:], 11)]
+        [page(case, rows[:1000], 1001), page(case, rows[1000:], 1001)]
     )
     result = cli("list", "--live", "--require-complete", "--limit", "1")
     assert result["data"] == rows[:1]
-    assert result["meta"]["collected_total"] == 11
+    assert result["meta"]["collected_total"] == 1001
     assert [decoded_request(case, body) for body in browser.business_requests] == [
         expected_request(case),
-        expected_request(case, 10),
+        expected_request(case, 1000),
     ]
 
 
@@ -473,8 +473,8 @@ def test_offset_incomplete_or_changed_pages_preserve_cache(installed, failure):
     original = [record(case)]
     browser.business_script.append(page(case, original))
     saved = cli("refresh", "--require-complete")
-    rows = [record(case, i) for i in range(11)]
-    first, last = rows[:10], rows[10:]
+    rows = [record(case, i) for i in range(1001)]
+    first, last = rows[:1000], rows[1000:]
     if failure == "empty":
         first = []
     elif failure == "short":
@@ -485,8 +485,8 @@ def test_offset_incomplete_or_changed_pages_preserve_cache(installed, failure):
         last = [{**first[0], "unknown": "CHANGED"}]
     browser.business_script.extend(
         [
-            page(case, first, 11),
-            page(case, last, 12 if failure == "changed_total" else 11),
+            page(case, first, 1001),
+            page(case, last, 1002 if failure == "changed_total" else 1001),
         ]
     )
     rejected = cli("refresh", "--require-complete", code=1)

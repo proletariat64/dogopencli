@@ -69,7 +69,7 @@
   "limitations": [
     "Fixed GUAPW3SG tenant. POST form /transferOrderQuery.json contains a serialized transferOrderQueryRequestVO with fixed empty debitEntity/creditEntity arrays and blank debit/credit date bounds.",
     "Required ISO Transaction Date bounds expand to native 00:00:00 and 23:59:59. Native source timezone and the relationship to displayed gmtCreate remain unproven; no local date-membership filtering.",
-    "Absolute rowStart offsets use pageSize=10. Top-level count must equal result.count; records are result.data. Other native filters are unsupported.",
+    "Absolute rowStart offsets use pageSize=1000. Top-level count must equal result.count; records are result.data. Other native filters are unsupported.",
     "Preserve full native rows, nested logs, unknown fields and nullable monetary strings. orderStatus, receiptStatus and executeResult remain separate raw states; no bank-success inference or detail enrichment.",
     "The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima.",
     "Native baseResult.data transfer root; no account enrichment, HTML unescaping, status interpretation or additional log inquiry.",
@@ -97,7 +97,7 @@
     "paging": {
       "mode": "offset",
       "page_sizes": [
-        10
+        1000
       ]
     },
     "primary_id": {

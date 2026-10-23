@@ -52,7 +52,7 @@
   "limitations": [
     "Fixed GUAPW3SG tenant. POST form /swapOrderQuery.json contains a serialized swapOrderQueryVO with fixed empty near-leg entity arrays and blank near/far leg date bounds.",
     "Required ISO trade-date bounds map to inclusive native YYYYMMDD bounds. Unbounded acquisition and other filters are unsupported. No source timezone is inferred.",
-    "Absolute rowStart offsets use pageSize=10; records are result.swapOrderVOList and native total is result.count. Near/far dates are independent fields, not extra queries or computed tenors.",
+    "Absolute rowStart offsets use pageSize=1000; records are result.swapOrderVOList and native total is result.count. Near/far dates are independent fields, not extra queries or computed tenors.",
     "Preserve complete native JSON, nested values, unknown fields, nullable/grouped decimal strings, native integers and boolean flags. No leg join, rate conversion or detail enrichment.",
     "The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima."
   ],
@@ -70,7 +70,7 @@
     "paging": {
       "mode": "offset",
       "page_sizes": [
-        10
+        1000
       ]
     },
     "primary_id": {

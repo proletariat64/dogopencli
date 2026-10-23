@@ -108,7 +108,7 @@ def test_live_refresh_offline_preserve_full_native_records_and_integer_ids(insta
     assert len(browser.business_requests) == count
     assert (
         browser.business_requests
-        == [{"tntInstId": "GUAPW3SG", "rowStart": 0, "pageSize": 10}] * 2
+        == [{"tntInstId": "GUAPW3SG", "rowStart": 0, "pageSize": 1000}] * 2
     )
     expressions = [
         e for t in browser.transports for e in t.expressions if "fetch(" in e
@@ -124,14 +124,14 @@ def test_live_refresh_offline_preserve_full_native_records_and_integer_ids(insta
 
 def test_offset_paging_precedes_display_limit(installed):
     cli, browser, _ = installed
-    rows = [record(i - 1) for i in range(11)]
-    browser.business_script.extend([page(rows[:10], 11), page(rows[10:], 11)])
+    rows = [record(i - 1) for i in range(1001)]
+    browser.business_script.extend([page(rows[:1000], 1001), page(rows[1000:], 1001)])
     result = cli("list", "--live", "--require-complete", "--limit", "1")
     assert result["data"] == rows[:1]
-    assert result["meta"]["collected_total"] == 11
+    assert result["meta"]["collected_total"] == 1001
     assert browser.business_requests == [
-        {"tntInstId": "GUAPW3SG", "rowStart": offset, "pageSize": 10}
-        for offset in (0, 10)
+        {"tntInstId": "GUAPW3SG", "rowStart": offset, "pageSize": 1000}
+        for offset in (0, 1000)
     ]
 
 
@@ -227,7 +227,7 @@ def test_shared_transport_rejects_unqualified_request(installed, change):
     _, browser, config = installed
     adapter = Registry(config / "config.toml").scan().get("liquidity", LEAF).adapter
     capability = adapter.capability({})
-    body = capability.page_body("", 0, 10)
+    body = capability.page_body("", 0, 1000)
     request = QueryRequest(
         capability.name,
         capability.contract.method,
@@ -259,10 +259,10 @@ def test_shared_transport_rejects_unqualified_request(installed, change):
 @pytest.mark.parametrize(
     "scope,offset,width",
     [
-        ("OTHER", 0, 10),
-        ("", True, 10),
-        ("", -1, 10),
-        ("", 1, 10),
+        ("OTHER", 0, 1000),
+        ("", True, 1000),
+        ("", -1, 1000),
+        ("", 1, 1000),
         ("", 0, True),
         ("", 0, 100),
     ],
@@ -299,8 +299,8 @@ def test_offset_incomplete_or_changed_total_preserves_previous_cache(
     original = [record()]
     browser.business_script.append(page(original))
     saved = cli("refresh", "--require-complete")
-    rows = [record(i) for i in range(11)]
-    first, last = rows[:10], rows[10:]
+    rows = [record(i) for i in range(1001)]
+    first, last = rows[:1000], rows[1000:]
     if failure == "empty":
         first = []
     elif failure == "short":
@@ -310,7 +310,7 @@ def test_offset_incomplete_or_changed_total_preserves_previous_cache(
     elif failure == "conflict":
         last = [{**first[0], "unknown": "CHANGED"}]
     browser.business_script.extend(
-        [page(first, 11), page(last, 12 if failure == "changed_total" else 11)]
+        [page(first, 1001), page(last, 1002 if failure == "changed_total" else 1001)]
     )
     result = cli("refresh", "--require-complete", code=1)
     assert result["error"]["code"] == (
@@ -323,7 +323,7 @@ def test_offset_incomplete_or_changed_total_preserves_previous_cache(
 
 def test_page_exceeding_requested_width_is_rejected(installed):
     cli, browser, _ = installed
-    browser.business_script.append(page([record(i) for i in range(11)]))
+    browser.business_script.append(page([record(i) for i in range(1001)]))
     assert cli("list", "--live", code=1)["error"]["code"] == "INVALID_RESPONSE"
 
 

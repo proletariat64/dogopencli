@@ -17,7 +17,7 @@ from dogopencli.jsonutil import canonical, parse
 
 TENANT = "GUAPW3SG"
 MODE = "RISK_ALERT"
-PAGE_SIZE = 50
+PAGE_SIZE = 1000
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S（GMT+08）"
 TIME_FIELDS = (
     "gmtCreate",

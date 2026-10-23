@@ -7,7 +7,7 @@ dogopencli liquidity list operations.prefunds --live --require-complete --status
 ```
 
 - Full native fields, types, exact decimals, nested values and unknown fields are retained. Ordinary List performs no Get or additional inquiry.
-- Qualified width10 is based on historical successful requests, not a measured backend maximum. SDK collection owns loops, deadlines, retries, quality and cache publication.
+- Width 1000 is qualified for complete acquisition, not a measured backend maximum. SDK collection owns loops, deadlines, retries, quality and cache publication.
 - Duplicates, count gaps and short interior pages remain incomplete. Conflicts keep the last arrival; strict refresh rejects incomplete data and preserves the prior saved capture.
 - Fixed outer and inner tenant GUAPW3SG; exact outer timezone GMt+8. Mandatory qualified status views are separately acquired and canonicalized to frontend ordering.
 - Native id identifies the row; prefundingBizNo is a distinct business reference and version is preserved without selecting latest versions. APPROVED_FINAL history and drawdown assembly are excluded.

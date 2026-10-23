@@ -84,7 +84,7 @@
     "paging": {
       "mode": "offset",
       "page_sizes": [
-        10
+        1000
       ]
     },
     "primary_id": {

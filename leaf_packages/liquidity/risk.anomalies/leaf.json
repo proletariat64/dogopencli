@@ -53,7 +53,7 @@
   "identity_description": "Native id identifies rows within this leaf and acquisition scope.",
   "limitations": [
     "Inquiry-only native JSON and unknown nested fields are retained without projection. Native zero values remain unchanged.",
-    "Width50 is qualified by the current frontend and accepted native two-page scope; it is not a measured backend maximum and width10 is not a fallback. SDK quality reports duplicate identities, count shortfall and page gaps; strict refresh publishes complete acquisitions only.",
+    "Width 1000 is qualified for complete acquisition; it is not a measured backend maximum. No smaller fallback width is declared. SDK quality reports duplicate identities, count shortfall and page gaps; strict refresh publishes complete acquisitions only.",
     "Conflicts keep the last arrival and remain incomplete. Rejected refresh preserves the prior saved capture.",
     "Fixed tenant GUAPW3SG, riskMode=RISK_ALERT, timeZone=GMT+08. Adjacent YYYYMMDD CLI bounds map to native YYYY-MM-DD; unbounded acquisition is unsupported.",
     "Native Risk Time gmtCreate and other GMT+08 source times are retained. Server boundary clock and inclusivity remain unproven; no local date membership or anomaly classification is inferred.",
@@ -84,7 +84,7 @@
     "paging": {
       "mode": "offset",
       "page_sizes": [
-        50
+        1000
       ]
     },
     "primary_id": {

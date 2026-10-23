@@ -59,7 +59,7 @@
   ],
   "identity_description": "Native benchmarkId identifies each record; no synthetic identity is created.",
   "limitations": [
-    "Fixed native pageSize=10; rowStart offsets start at zero.",
+    "Fixed native pageSize=1000; rowStart offsets start at zero.",
     "Native endpoint has no page echoes. Completeness requires fixed total, arrival and unique identity agreement.",
     "Unknown fields, native JSON types and exact decimal values are retained.",
     "Pinned v0.4.3 provides contract provenance; current production qualification is recorded separately.",
@@ -94,7 +94,7 @@
     "paging": {
       "mode": "offset",
       "page_sizes": [
-        10
+        1000
       ]
     },
     "primary_id": {

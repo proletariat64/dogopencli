@@ -14,7 +14,7 @@ Fixed GUAPW3SG tenant. POST form /transferOrderQuery.json contains a serialized 
 
 Required ISO Transaction Date bounds expand to native 00:00:00 and 23:59:59. Native source timezone and the relationship to displayed gmtCreate remain unproven; no local date-membership filtering.
 
-Absolute rowStart offsets use pageSize=10. Top-level count must equal result.count; records are result.data. Other native filters are unsupported.
+Absolute rowStart offsets use pageSize=1000. Top-level count must equal result.count; records are result.data. Other native filters are unsupported.
 
 Preserve full native rows, nested logs, unknown fields and nullable monetary strings. orderStatus, receiptStatus and executeResult remain separate raw states; no bank-success inference or detail enrichment.
 

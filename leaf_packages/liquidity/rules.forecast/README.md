@@ -8,7 +8,7 @@ lifecycle. No getter, user scope, entity expansion or date filter is registered.
 The inquiry is GET `/bankCashForecastRuleQuery.json` on `iliquidity.alipay.com`.
 The top-level `tntInstId` is `GUAPW3SG`. `bankCashForecastRuleQueryVO` is a JSON
 string containing that tenant, fixed `instId=["Z21"]`, zero-based `rowStart` and
-`pageSize=10`. Collection reads every native offset independently of display limit.
+`pageSize=1000`. Collection reads every native offset independently of display limit.
 Boolean `resultFlag` establishes envelope success; records are `result.dataValue`
 and the nonnegative integer total is `result.count`. `ruleId` is the native identity.
 All native fields and JSON types are preserved, including null, empty strings,

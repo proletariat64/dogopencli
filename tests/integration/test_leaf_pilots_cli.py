@@ -77,7 +77,7 @@ def fx_page(rows, number=0, total=None):
                     "items": rows,
                     "totalCount": len(rows) if total is None else total,
                     "currentPage": number,
-                    "pageSize": 50,
+                    "pageSize": 1000,
                 },
             },
         },
@@ -88,9 +88,11 @@ def test_fx_native_transaction_numbers_complete_across_pages(run_cli, pilots):
     from dogopencli.domain_contracts import FX_STARTUP_URL
 
     pilots.href = FX_STARTUP_URL
-    rows = [{"uniqueId": str(i), "amount": "0.1234567890123456789"} for i in range(52)]
+    rows = [
+        {"uniqueId": str(i), "amount": "0.1234567890123456789"} for i in range(1002)
+    ]
     pilots.business_script.extend(
-        [fx_page(rows[:50], total=52), fx_page(rows[50:], number=1, total=52)]
+        [fx_page(rows[:1000], total=1002), fx_page(rows[1000:], number=1, total=1002)]
     )
     code, out, err = run_cli(
         ["fx", "list", "trade", "--live", "--trade-id", "TEST", "--limit", "1"]
@@ -98,9 +100,9 @@ def test_fx_native_transaction_numbers_complete_across_pages(run_cli, pilots):
     value = json.loads(out)
     assert code == 0
     assert value["data"] == rows[:1]
-    assert value["meta"]["collected_total"] == 52
+    assert value["meta"]["collected_total"] == 1002
     assert value["meta"]["complete"] is True
-    assert value["meta"]["unique_count"] == 52
+    assert value["meta"]["unique_count"] == 1002
     assert value["meta"]["total_semantics"] == "unique_objects"
     assert value["meta"]["acquisition"]["reasons"] == []
     assert "INCOMPLETE_RESULT" not in err
@@ -600,7 +602,7 @@ def test_each_pilot_native_types_and_cache_publication(run_cli, pilots, domain, 
                         "items": [],
                         "totalCount": True,
                         "currentPage": 0,
-                        "pageSize": 50,
+                        "pageSize": 1000,
                     },
                 },
             },
@@ -616,7 +618,7 @@ def test_each_pilot_native_types_and_cache_publication(run_cli, pilots, domain, 
                         "items": [{}],
                         "totalCount": 1,
                         "currentPage": 0,
-                        "pageSize": 50,
+                        "pageSize": 1000,
                     },
                 },
             },
@@ -632,7 +634,7 @@ def test_each_pilot_native_types_and_cache_publication(run_cli, pilots, domain, 
                         "items": [],
                         "totalCount": 0,
                         "currentPage": 1,
-                        "pageSize": 50,
+                        "pageSize": 1000,
                     },
                 },
             },
@@ -833,8 +835,8 @@ def test_fx_rpc_transport_uses_one_element_json_array(run_cli, pilots):
 def test_sdk_rejects_changed_native_total(run_cli, pilots, domain, leaf):
     select_application(pilots, domain)
     if domain == "fx":
-        first = fx_page([{"uniqueId": str(i)} for i in range(50)], total=51)
-        second = fx_page([{"uniqueId": "last"}], number=1, total=52)
+        first = fx_page([{"uniqueId": str(i)} for i in range(1000)], total=1001)
+        second = fx_page([{"uniqueId": "last"}], number=1, total=1002)
     else:
         first = {
             "status": 200,
@@ -915,7 +917,7 @@ def test_fx_conflicting_transaction_number_preserves_complete_cache(run_cli, pil
     saved = json.loads(out)
     assert code == 0 and saved["data"] == saved_rows
 
-    first = [{"uniqueId": f"TRADE-{i}", "amount": "1.0000"} for i in range(50)]
+    first = [{"uniqueId": f"TRADE-{i}", "amount": "1.0000"} for i in range(1000)]
     changed = {"uniqueId": "TRADE-0", "amount": "2.0000", "unknown": {"keep": True}}
     for command in (
         ["list", "trade", "--live", "--limit", "0"],
@@ -923,15 +925,15 @@ def test_fx_conflicting_transaction_number_preserves_complete_cache(run_cli, pil
         ["refresh", "trade"],
     ):
         pilots.business_script.extend(
-            [fx_page(first, total=51), fx_page([changed], number=1, total=51)]
+            [fx_page(first, total=1001), fx_page([changed], number=1, total=1001)]
         )
         code, out, _ = run_cli(["fx", *command])
         value = json.loads(out)
         if command == ["list", "trade", "--live", "--limit", "0"]:
             assert code == 0 and value["data"] == [changed, *first[1:]], out
             assert value["meta"]["complete"] is False
-            assert value["meta"]["unique_count"] == 50
-            assert value["meta"]["acquisition"]["arrivals"] == 51
+            assert value["meta"]["unique_count"] == 1000
+            assert value["meta"]["acquisition"]["arrivals"] == 1001
         else:
             assert code == 1 and value["error"]["code"] == "INCOMPLETE_RESULT", out
             assert value["data"] is None
