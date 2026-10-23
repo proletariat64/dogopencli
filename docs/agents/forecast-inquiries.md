@@ -69,12 +69,19 @@ row paging metadata can accompany nonempty data and cannot prove totals,
 pagination or source absence. Preserve native count as an observation, effective
 reported total as unknown, and actual occurrences separately.
 
-Until the exact endpoint's returned-set boundary has a qualified witness,
-successful nonempty and empty occurrence arrays remain usable incomplete
-results. Strict reads reject them; refresh cannot publish them. No invented
-offset, terminal-empty probe or count derived from arrivals qualifies coverage.
-Authentication, transport, business, binding and malformed-response failures
-remain hard failures.
+The qualified boundary is the complete native occurrence array for the exact
+parent request. Successful nonempty and empty arrays have
+`coverage_basis=qualified_single_response`; effective occurrence total remains
+unknown. Required base, metric and occurrence inquiries must all pass before the
+composition is complete. Native count zero does not invalidate returned rows or
+substitute for their observed count.
+
+The endpoint ignores diagnostic `pageSize=100` and `rowStart=0/100/200`, whether
+inside the query VO or outside it. These are not supported page controls and are
+not sent by the leaf. The frontend display slice is not an API page boundary.
+This contract does not establish unlimited backend capacity, other histories or
+source atomicity. Authentication, transport, business, binding and malformed
+responses remain hard failures; no invented paging or total is introduced.
 
 ## Publication and evidence
 

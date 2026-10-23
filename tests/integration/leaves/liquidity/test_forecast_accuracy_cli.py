@@ -87,7 +87,7 @@ def details(rows, count=0):
     }
 
 
-def test_occurrences_keep_duplicates_money_and_unknown_coverage(installed):
+def test_occurrences_keep_duplicates_money_and_unknown_total(installed):
     cli, browser, config = installed
     occurrence = {
         "cashFlowAmount": {
@@ -111,8 +111,8 @@ def test_occurrences_keep_duplicates_money_and_unknown_coverage(installed):
     )
     result = cli("list", "--live", *FLAGS, "--limit", "0")
     assert result["data"][0]["cashflow_details"] == [occurrence] * 101
-    assert result["meta"]["dataset_complete"] is False
-    assert result["meta"]["warnings"][0]["code"] == "INCOMPLETE_RESULT"
+    assert result["meta"]["dataset_complete"] is True
+    assert not result["meta"].get("warnings")
     assert not (config / "leaf-cache.sqlite3").exists()
     detail_context = parse(browser.business_requests[-1][METRIC_VO])
     assert detail_context == {
@@ -235,15 +235,20 @@ def test_bound_native_projection_and_composed_scope(installed):
             else original["forecastBalance"],
         }
     assert all(record["cashflow_details"] == [] for record in rows)
-    assert live["meta"]["complete"] is False
+    assert live["meta"]["complete"] is True
     assert live["meta"]["acquisition"]["attempts"][0]["occurrence_succeeded"] == 2
     browser.business_script.extend(
         [base(native), metric(), details([]), metric(realizedBalance=None), details([])]
     )
-    incomplete = cli("refresh", *FLAGS, code=1)
-    assert incomplete["error"]["code"] == "INCOMPLETE_RESULT"
-    assert incomplete["meta"]["published"] is False
-    assert not (config / "leaf-cache.sqlite3").exists()
+    saved = cli("refresh", *FLAGS, "--require-complete")
+    assert saved["meta"]["published"] is True
+    assert (config / "leaf-cache.sqlite3").exists()
+    count = len(browser.business_requests)
+    browser.running = False
+    offline = cli("list", "--limit", "0", "--require-complete")
+    assert offline["data"] == rows
+    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+    assert len(browser.business_requests) == count
 
 
 @pytest.mark.parametrize(
@@ -339,8 +344,17 @@ def test_empty_metric_is_preserved_as_unknown_projected_values(installed):
 
 def test_empty_refresh_does_not_publish(installed):
     cli, browser, _ = installed
+    browser.business_script.extend([base([row()]), metric(), details([])])
+    saved = cli("refresh", *FLAGS, "--require-complete")
+    before = cli("list", "--require-complete")
     browser.business_script.append(base([]))
     assert cli("refresh", *FLAGS, "--require-complete")["meta"]["published"] is False
+    count = len(browser.business_requests)
+    browser.running = False
+    after = cli("list", "--require-complete")
+    assert after["data"] == before["data"]
+    assert after["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+    assert len(browser.business_requests) == count
 
 
 def test_undeclared_metric_payload_rejected_before_fetch(installed, run_cli, tmp_path):
@@ -440,14 +454,31 @@ def test_display_limit_never_truncates_acquisition_or_occurrences(installed):
 
 
 @pytest.mark.parametrize("mode", ["strict", "refresh"])
-def test_unknown_occurrence_boundary_rejects_strict_and_refresh(installed, mode):
+def test_qualified_occurrence_boundary_allows_strict_and_refresh(installed, mode):
     cli, browser, config = installed
     browser.business_script.extend([base([row()]), metric(), details([])])
     args = ["--live", "--require-complete"] if mode == "strict" else []
-    result = cli("list" if mode == "strict" else "refresh", *args, *FLAGS, code=1)
-    assert result["error"]["code"] == "INCOMPLETE_RESULT"
-    assert not result.get("data")
-    assert not (config / "leaf-cache.sqlite3").exists()
+    result = cli("list" if mode == "strict" else "refresh", *args, *FLAGS)
+    assert result["meta"]["complete"] is True
+    evidence = result["meta"]["acquisition"]["attempts"][0]
+    assert evidence["occurrence_reported_total"] is None
+    assert evidence["occurrence_responses"][0]["coverage_complete"] is True
+    assert (
+        evidence["occurrence_responses"][0]["coverage_basis"]
+        == "qualified_single_response"
+    )
+    if mode == "strict":
+        assert result["data"][0]["cashflow_details"] == []
+        assert not (config / "leaf-cache.sqlite3").exists()
+    else:
+        assert result["meta"]["published"] is True
+        count = len(browser.business_requests)
+        browser.running = False
+        offline = cli("list", "--require-complete", "--limit", "0")
+        assert offline["data"][0]["cashflow_details"] == []
+        assert offline["meta"]["fetched_at"] == result["meta"]["fetched_at"]
+        assert offline["meta"]["scope"] == result["meta"]["scope"]
+        assert len(browser.business_requests) == count
 
 
 @pytest.mark.parametrize("failure", ["business", "auth", "shape", "outer", "inner"])
@@ -599,6 +630,11 @@ def test_later_failure_retains_exact_bindings_and_earlier_associations(
     installed, failed_source
 ):
     cli, browser, _ = installed
+    browser.business_script.extend(
+        [base([row()]), metric(), details([{"match": False, "detailAmount": "0.00"}])]
+    )
+    saved = cli("refresh", *FLAGS, "--require-complete")
+    before = cli("list", "--require-complete")
     failure = {"status": 200, "body": {"resultFlag": False}}
     script = [base([row(1), row(2, gmtCreate=None)]), metric(), details([])]
     script += [failure] if failed_source == "metric" else [metric(), failure]
@@ -623,6 +659,12 @@ def test_later_failure_retains_exact_bindings_and_earlier_associations(
         assert failed[METRIC_VO]["forecastBalance"] == "0"
     else:
         assert failed[METRIC_VO]["gmtCreate"] is None
+    count = len(browser.business_requests)
+    browser.running = False
+    after = cli("list", "--require-complete")
+    assert after["data"] == before["data"]
+    assert after["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+    assert len(browser.business_requests) == count
 
 
 def test_success_evidence_retains_exact_normalized_metric_request(installed):

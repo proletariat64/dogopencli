@@ -346,15 +346,15 @@ class Adapter:
                     "reported_total": None,
                     "arrivals": len(detail["dataValue"]),
                     "total_semantics": "source_row_occurrences",
-                    "coverage_complete": False,
+                    "coverage_complete": True,
+                    "coverage_basis": "qualified_single_response",
                 }
             )
         evidence = AcquisitionEvidence.for_collection(
-            complete=not rows,
+            complete=True,
             reported_total=total,
             collected_total=len(records),
             arrivals=len(rows),
-            reasons=("OCCURRENCE_COVERAGE_UNPROVEN",) if rows else (),
             attempts=(
                 {
                     "composition": "native-request-binding",
@@ -370,6 +370,7 @@ class Adapter:
                     "occurrence_succeeded": len(responses),
                     "occurrence_arrivals": sum(item["arrivals"] for item in responses),
                     "occurrence_reported_total": None,
+                    "occurrence_coverage_basis": "qualified_single_response",
                     "occurrence_responses": responses,
                     "occurrence_requests": occurrence_requests,
                     "client_base_limit": 100,
