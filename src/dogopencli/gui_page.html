@@ -1911,6 +1911,13 @@
         details.className = "leaf-details";
         text(details, "summary", "Technical details");
         text(details, "p", "Query: " + leaf.id);
+        for (const [operation, sdk] of Object.entries(leaf.sdks))
+          text(
+            details,
+            "p",
+            "SDK (" + operation + "): " + sdk.name +
+              (sdk.provider ? " · provider: " + sdk.provider : ""),
+          );
         if (last.operation)
           text(details, "p", "Last operation: " + last.operation);
         if (last.error_code)
