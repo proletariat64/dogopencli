@@ -1,7 +1,7 @@
-"""Native dated forecast records through the offset List SDK."""
+"""Native forecast records with their request-bound intraday curves."""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -16,6 +16,7 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
+from dogopencli.leaves.query import CustomListResult
 
 TENANT = "GUAPW3SG"
 PAGE_SIZE = 5000
@@ -265,10 +266,162 @@ class Inquiry:
                 )
 
 
+CURVE_VO = "bankCashForecastRecordCashFlowVo"
+CURVE_FIELDS = ("allDate", "expectBalance", "expectInflow", "expectOutFlow")
+CURVE_BINDINGS = {
+    "tntInstId",
+    "forecastRecordId",
+    "baseBalance",
+    "currency",
+    "valueDate",
+}
+
+
+def curve_context(row: dict[str, Any]) -> dict[str, Any]:
+    if "cashflow_curve" in row:
+        raise CliError(INVALID_RESPONSE, "forecast cashflow_curve namespace collision")
+    if not isinstance(row.get("currency"), str) or not row["currency"].strip():
+        raise CliError(INVALID_RESPONSE, "forecast curve requires native currency")
+    balance = row.get("openBalance")
+    if (
+        balance is None
+        or isinstance(balance, bool)
+        or not (
+            type(balance) is int
+            or isinstance(balance, Decimal)
+            and balance.is_finite()
+            or isinstance(balance, str)
+            and balance.strip()
+        )
+    ):
+        raise CliError(
+            INVALID_RESPONSE, "forecast curve requires qualified openBalance"
+        )
+    return {
+        "tntInstId": TENANT,
+        "forecastRecordId": row["id"],
+        "baseBalance": balance,
+        "currency": row["currency"],
+        "valueDate": row["valueDate"],
+    }
+
+
+class CurveInquiry:
+    name = "liquidity.forecast.results.curve"
+    page_url = LIQUIDITY_STARTUP_URL
+    contract = EndpointContract(
+        method="GET",
+        host="iliquidity.alipay.com",
+        path="/bankCashForecastRecordCashFlowQuery.json",
+        page_size=0,
+        one_based=False,
+        encoding="query",
+        allowed_body_keys=frozenset({"tntInstId", CURVE_VO}),
+        fixed_body_values=(("tntInstId", TENANT),),
+        json_body_contracts=(
+            (
+                CURVE_VO,
+                frozenset(CURVE_BINDINGS),
+                (("tntInstId", TENANT),),
+                frozenset(),
+            ),
+        ),
+    )
+
+    def request_body(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        if set(parameters) != CURVE_BINDINGS or parameters.get("tntInstId") != TENANT:
+            raise CliError(REQUEST_NOT_ALLOWED, "unverified forecast curve binding")
+        return {"tntInstId": TENANT, CURVE_VO: canonical(parameters)}
+
+    def parse_inquiry(self, body: bytes, parameters: dict[str, Any]) -> dict[str, Any]:
+        try:
+            document = parse(body)
+        except (ValueError, UnicodeError) as error:
+            raise CliError(
+                INVALID_RESPONSE, "curve response is not valid JSON"
+            ) from error
+        if (
+            not isinstance(document, dict)
+            or type(document.get("resultFlag")) is not bool
+        ):
+            raise CliError(INVALID_RESPONSE, "curve resultFlag must be boolean")
+        if not document["resultFlag"]:
+            raise CliError(BUSINESS_QUERY_FAILED, "backend rejected forecast curve")
+        result = document.get("result")
+        if not isinstance(result, dict) or type(result.get("success")) is not bool:
+            raise CliError(INVALID_RESPONSE, "curve inner success must be boolean")
+        if not result["success"]:
+            raise CliError(BUSINESS_QUERY_FAILED, "backend rejected forecast curve")
+        curve = result.get("alias")
+        if not isinstance(curve, dict) or any(
+            not isinstance(curve.get(field), list)
+            or any(not isinstance(value, str) for value in curve[field])
+            for field in CURVE_FIELDS
+        ):
+            raise CliError(INVALID_RESPONSE, "curve requires four native string arrays")
+        if len({len(curve[field]) for field in CURVE_FIELDS}) != 1:
+            raise CliError(INVALID_RESPONSE, "curve array lengths disagree")
+        for source in (document, result, curve):
+            if any(
+                field in source and canonical(source[field]) != canonical(value)
+                for field, value in parameters.items()
+            ):
+                raise CliError(
+                    INVALID_RESPONSE, "curve native context contradicts parent"
+                )
+        return curve
+
+
 class Adapter:
-    def capability(self, parameters: dict[str, Any]) -> Inquiry:
+    def query_capability(
+        self, operation: str, name: str, parameters: dict[str, Any]
+    ) -> Inquiry | CurveInquiry:
         values = selection(parameters, required=True)
-        return Inquiry(with_alias="aliasName" in values)
+        if operation != "list" or name not in {"base", "curve"}:
+            raise CliError(REQUEST_NOT_ALLOWED, "undeclared forecast inquiry")
+        return (
+            Inquiry(with_alias="aliasName" in values)
+            if name == "base"
+            else CurveInquiry()
+        )
+
+    def query_list(self, parameters: dict[str, Any], tools: Any) -> CustomListResult:
+        base = tools.collect("base", self.scope(parameters))
+        contexts = [curve_context(row) for row in base.records]
+        records = []
+        bindings = []
+        for row, context in zip(base.records, contexts, strict=True):
+            try:
+                curve = tools.inquire("curve", context)
+            except CliError as error:
+                error.meta = {**(error.meta or {}), "curve_binding": context}
+                raise
+            records.append({**row, "cashflow_curve": curve})
+            bindings.append(
+                {
+                    "request": context,
+                    "reported_total": None,
+                    "points": len(curve["allDate"]),
+                    "coverage": "validated-request-scoped-native-series",
+                }
+            )
+        evidence = replace(
+            base.evidence,
+            attempts=(
+                *base.evidence.attempts,
+                {
+                    "composition": "native-request-binding",
+                    "base": base.evidence.record(),
+                    "curve_required": len(base.records),
+                    "curve_attempted": len(records),
+                    "curve_succeeded": len(records),
+                    "curve_reported_total": None,
+                    "bindings": bindings,
+                    "source_atomicity": "not-provided",
+                },
+            ),
+        )
+        return CustomListResult(records, evidence)
 
     def scope(self, parameters: dict[str, Any]) -> str:
         return canonical(selection(parameters, required=True))

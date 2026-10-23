@@ -4,7 +4,7 @@
   "adapter": "adapter.py:adapter",
   "operations": {
     "list": {
-      "description": "List native forecast records for inclusive value dates and optional creation-time/account scope.",
+      "description": "List native forecast records and their record-bound intraday curves for inclusive value dates and optional creation-time/account scope.",
       "parameters": [
         {
           "name": "from-date",
@@ -42,11 +42,38 @@
           "description": "Exact native account alias; repeated values use OR. Commas and * are literal.",
           "multiple": true
         }
-      ]
+      ],
+      "execution": "custom",
+      "max_requests": 10000,
+      "budget_seconds": 1800,
+      "queries": {
+        "base": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                5000
+              ]
+            },
+            "primary_id": {
+              "type": "field",
+              "fields": [
+                "id"
+              ]
+            }
+          }
+        },
+        "curve": {
+          "kind": "inquiry",
+          "result_shape": "object"
+        }
+      }
     }
   },
-  "summary": "Native dated cash forecast records.",
-  "purpose": "Read forecast records without calculating accuracy or joining other sources.",
+  "summary": "Native dated cash forecast records with intraday curves.",
+  "purpose": "Read each original forecast record with its native intraday curve under a shared bounded acquisition.",
   "fields": [
     {
       "name": "id",
@@ -72,6 +99,11 @@
       "name": "forecastBalance",
       "type": "string",
       "meaning": "Native unscaled forecast amount; null, empty and zero remain distinct."
+    },
+    {
+      "name": "cashflow_curve",
+      "type": "object",
+      "meaning": "Entire native result.alias curve object, preserving series order, strings and unknown fields."
     }
   ],
   "identity": [
@@ -82,9 +114,14 @@
     "GET /bankCashForecastRecordQuery.json with fixed tenant GUAPW3SG and restricted JSON-string query VO; six native amount bounds stay null.",
     "Qualified offset width 5000 covered 1332 native records; maximum backend capacity is not established. Native total is result.count.",
     "Both inclusive value-date bounds are required for acquisition. Full-day creation times default to 000000/235959; no source timezone or epoch conversion is inferred.",
-    "Complete native objects, unknown fields, nulls, precision and arrival order are preserved. No accuracy metric, cashflow, Get or related-source calls.",
+    "Native parent objects and curve result.alias objects retain unknown fields, nulls, precision and array order. Each acquired parent requires one allowlisted record-bound curve inquiry before display pagination.",
     "Bare offline List replays the saved acquisition. Explicit local selection cannot prove a changed native scope; strict reads reject unproved coverage.",
-    "Historical broad-scope backend count drift does not permit silent total correction, deduplication or incomplete cache publication."
+    "Historical broad-scope backend count drift does not permit silent total correction, deduplication or incomplete cache publication.",
+    "GET /bankCashForecastRecordCashFlowQuery.json binds forecastRecordId=id, baseBalance=openBalance, currency and valueDate from the same native parent. Missing, blank or null openBalance is unqualified and rejected; raw numeric zero is retained.",
+    "Curves require equal-length allDate, expectBalance, expectInflow and expectOutFlow string arrays; successful empty arrays remain empty. Sample length 49 establishes neither fixed length nor cadence.",
+    "Curve totals remain unknown. Coverage applies only to the validated native series for that exact request, without invented identity echoes, forecast history coverage or source atomicity.",
+    "The Custom query SDK shares at most 10000 physical requests and 1800 seconds across base pages, curve inquiries, retries and probes. Narrow native scope to fit the budget.",
+    "Base-only saved captures are incompatible with this composed contract and require fresh acquisition."
   ],
   "examples": [
     {
@@ -98,20 +135,5 @@
   ],
   "dataset": {
     "relation": "liquidity_forecast_results"
-  },
-  "collection": {
-    "provider": "general",
-    "paging": {
-      "mode": "offset",
-      "page_sizes": [
-        5000
-      ]
-    },
-    "primary_id": {
-      "type": "field",
-      "fields": [
-        "id"
-      ]
-    }
   }
 }
