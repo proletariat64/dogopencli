@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-xdist>=3.6",
     "ruff>=0.6",
 ]
 
@@ -27,6 +28,7 @@ dogopencli = "dogopencli.cli:main"
 where = ["src"]
 
 [tool.pytest.ini_options]
+addopts = "-n 8"
 pythonpath = ["src"]
 testpaths = ["tests"]
 
