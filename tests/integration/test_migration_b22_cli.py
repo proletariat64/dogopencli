@@ -108,7 +108,7 @@ def test_full_native_arrival_order_detached_install_and_saved_scope(installed):
     cli("describe")
     assert not browser.transports
     rows = [row(8), row(2, forecastDate="20261020")]
-    browser.business_script.append(page(rows, pageSize=10, rowStart=0))
+    browser.business_script.append(page(rows, pageSize=1000, rowStart=0))
     assert (
         cli("list", "--live", *FLAGS, "--limit", "0", "--require-complete")["data"]
         == rows
@@ -127,7 +127,7 @@ def test_full_native_arrival_order_detached_install_and_saved_scope(installed):
                 "startDate": "20261019",
                 "endDate": "20261020",
                 "rowStart": 0,
-                "pageSize": 10,
+                "pageSize": 1000,
             }
         ]
         * 2
@@ -259,7 +259,10 @@ def test_completeness_never_replaces_saved_capture(installed, mode):
         browser.business_script.append(page([row(1)], total=2))
     else:
         browser.business_script.extend(
-            [page([row(i) for i in range(10)], total=11), page([row(10)], total=12)]
+            [
+                page([row(i) for i in range(1000)], total=1001),
+                page([row(1000)], total=1002),
+            ]
         )
     assert cli("refresh", *FLAGS, "--require-complete", code=1)["error"]["code"] == (
         "INVALID_RESPONSE" if mode == "changed_total" else "INCOMPLETE_RESULT"
@@ -270,16 +273,23 @@ def test_completeness_never_replaces_saved_capture(installed, mode):
 
 def test_offset_stride_no_terminal_probe_and_display_window(installed):
     cli, browser, _ = installed
-    rows = [row(i) for i in range(11)]
+    rows = [row(i) for i in range(1001)]
     browser.business_script.extend(
-        [page(rows[:10], total=11), page(rows[10:], total=11)]
+        [page(rows[:1000], total=1001), page(rows[1000:], total=1001)]
     )
     result = cli(
-        "list", "--live", *FLAGS, "--offset", "10", "--limit", "1", "--require-complete"
+        "list",
+        "--live",
+        *FLAGS,
+        "--offset",
+        "1000",
+        "--limit",
+        "1",
+        "--require-complete",
     )
-    assert result["data"] == rows[10:]
-    assert [v["rowStart"] for v in browser.business_requests] == [0, 10]
-    assert all(v["pageSize"] == 10 for v in browser.business_requests)
+    assert result["data"] == rows[1000:]
+    assert [v["rowStart"] for v in browser.business_requests] == [0, 1000]
+    assert all(v["pageSize"] == 1000 for v in browser.business_requests)
 
 
 def test_closed_transport_rejects_extra_context(installed, run_cli, tmp_path):

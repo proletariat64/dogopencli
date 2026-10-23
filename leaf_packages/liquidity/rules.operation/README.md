@@ -11,7 +11,7 @@ when the candidate passes host quality policy. Refresh never imports into Duckdo
 use the explicit importer separately.
 
 Native list: `GET /riskActionRuleListQuery.json`, `rowStart` offsets,
-`pageSize=10`. Inquiry is encoded in the JSON string `riskActionRuleListQueryVO` with the fixed GUAPW3SG tenant both inside and outside the inquiry.
+`pageSize=1000`. Inquiry is encoded in the JSON string `riskActionRuleListQueryVO` with the fixed GUAPW3SG tenant both inside and outside the inquiry.
 Native `ruleId` is retained with its original JSON type. Full records retain
 unknown fields and exact decimals. No page echoes exist; completeness requires a
 stable total and agreement of arrival and unique identity counts.

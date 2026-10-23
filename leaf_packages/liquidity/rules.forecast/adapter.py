@@ -1,4 +1,4 @@
-"""Cash forecast rule configuration: fixed Z21 scope and ten-row native pages."""
+"""Cash forecast rule configuration: fixed Z21 scope and 1000-row native pages."""
 
 import json
 from dataclasses import dataclass
@@ -14,7 +14,7 @@ from dogopencli.errors import (
 )
 from dogopencli.jsonutil import parse
 
-PAGE_SIZE = 10
+PAGE_SIZE = 1000
 TENANT = "GUAPW3SG"
 
 

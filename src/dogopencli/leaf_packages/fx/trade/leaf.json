@@ -248,7 +248,7 @@
     "paging": {
       "mode": "page_number",
       "page_sizes": [
-        50
+        1000
       ]
     },
     "primary_id": {

@@ -13,7 +13,7 @@ from dogopencli.errors import (
 )
 from dogopencli.jsonutil import parse
 
-PAGE_SIZE = 10
+PAGE_SIZE = 1000
 TENANT = "GUAPW3SG"
 
 

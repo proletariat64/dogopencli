@@ -17,15 +17,15 @@ LEAVES = {
     "risk.thresholds": (
         "/api/risk/benchmark/riskEventBenchmarkQuery.json",
         None,
-        10,
+        1000,
         "benchmarkId",
         None,
     ),
-    "rules.realtime": ("/api/realtime/rule/getAll.json", None, 10, "id", None),
+    "rules.realtime": ("/api/realtime/rule/getAll.json", None, 1000, "id", None),
     "rules.operation": (
         "/riskActionRuleListQuery.json",
         "riskActionRuleListQueryVO",
-        10,
+        1000,
         "ruleId",
         ("status", "ACTIVE", "INACTIVE"),
     ),
@@ -46,7 +46,7 @@ LEAVES = {
     "rules.action_mapping": (
         "/clientAgreementConfigQuery.json",
         "clientAgreementConfigQueryVO",
-        10,
+        1000,
         "id",
         None,
     ),

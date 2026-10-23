@@ -7,13 +7,13 @@ dogopencli liquidity list risk.anomalies --live --require-complete --from-date 2
 ```
 
 - Inquiry-only native JSON and unknown nested fields are retained without projection. Native zero values remain unchanged.
-- Width50 is qualified by the current frontend and accepted native two-page scope; it is not a measured backend maximum and width10 is not a fallback. SDK quality reports duplicate identities, count shortfall and page gaps; strict refresh publishes complete acquisitions only.
+- Width 1000 is qualified for complete acquisition; it is not a measured backend maximum. No smaller fallback width is declared. SDK quality reports duplicate identities, count shortfall and page gaps; strict refresh publishes complete acquisitions only.
 - Conflicts keep the last arrival and remain incomplete. Rejected refresh preserves the prior saved capture.
 - Fixed tenant GUAPW3SG, riskMode=RISK_ALERT, timeZone=GMT+08. Adjacent YYYYMMDD CLI bounds map to native YYYY-MM-DD; unbounded acquisition is unsupported.
 - Native Risk Time gmtCreate and other GMT+08 source times are retained. Server boundary clock and inclusivity remain unproven; no local date membership or anomaly classification is inferred.
 - List acquisition does not query Detail, sub-events or treatment histories.
 
-POST `/api/risk/event/getAll.json` with absolute rowStart offsets and pageSize=50; records `data.data`, native total `data.totalCount`, identity `id`. Every record must match the fixed risk mode and retain validated native times and integer durations/counters.
+POST `/api/risk/event/getAll.json` with absolute rowStart offsets and pageSize=1000; records `data.data`, native total `data.totalCount`, identity `id`. Every record must match the fixed risk mode and retain validated native times and integer durations/counters.
 
 The host SDK owns collection loops, retries, quality evidence and cache publication. Ordinary List reads are offline; `--live` acquires without publishing. Use `refresh --require-complete` with the same acquisition parameters to save a complete capture.
 

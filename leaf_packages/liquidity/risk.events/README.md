@@ -13,7 +13,7 @@ dogopencli liquidity list risk.events --live --require-complete --from-date 2026
 - Native Risk Time gmtCreate and other GMT+08 source times are retained. Server boundary clock and inclusivity remain unproven; no local date membership or anomaly classification is inferred.
 - List acquisition does not query Detail, sub-events or treatment histories.
 
-POST `/api/risk/event/getAll.json` with absolute rowStart offsets and pageSize=10; records `data.data`, native total `data.totalCount`, identity `id`. Every record must match the fixed risk mode and retain validated native times and integer durations/counters.
+POST `/api/risk/event/getAll.json` with absolute rowStart offsets and pageSize=1000; records `data.data`, native total `data.totalCount`, identity `id`. Every record must match the fixed risk mode and retain validated native times and integer durations/counters.
 
 The host SDK owns collection loops, retries, quality evidence and cache publication. Ordinary List reads are offline; `--live` acquires without publishing. Use `refresh --require-complete` with the same acquisition parameters to save a complete capture.
 

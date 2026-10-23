@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CASES = ("events", "anomalies", "sla")
 WINDOW = ("--from-date", "20260925", "--to-date", "20260926")
 MODE = {"events": "RISK_EVENT", "anomalies": "RISK_ALERT"}
-SIZES = {"events": 10, "anomalies": 50, "sla": 5000}
+SIZES = {"events": 1000, "anomalies": 1000, "sla": 5000}
 
 
 def flags(case):
@@ -177,8 +177,8 @@ def test_native_lifecycle_and_full_records(installed):
 @pytest.mark.parametrize("installed", ["events", "anomalies"], indirect=True)
 def test_offset_collection_precedes_display_limit(installed):
     case, cli, browser, _ = installed
-    count = 95 if case == "anomalies" else 11
     width = SIZES[case]
+    count = width + 1
     rows = [record(case, i) for i in range(count)]
     browser.business_script.extend(
         [page(rows[:width], count), page(rows[width:], count)]
@@ -482,8 +482,10 @@ def test_anomalies_native_two_page_quality_failure_preserves_cache(installed, fa
     previous = [record(case)]
     browser.business_script.append(page(previous))
     saved = cli("refresh", "--require-complete")
-    records = [record(case, i) for i in range(95)]
-    first, final = records[:50], records[50:]
+    width = SIZES[case]
+    count = width + 1
+    records = [record(case, i) for i in range(count)]
+    first, final = records[:width], records[width:]
     if failure == "duplicate":
         final[-1] = first[0]
     elif failure == "short_first":
@@ -491,7 +493,10 @@ def test_anomalies_native_two_page_quality_failure_preserves_cache(installed, fa
     elif failure == "short_final":
         final = final[:-1]
     browser.business_script.extend(
-        [page(first, 95), page(final, 96 if failure == "changed_total" else 95)]
+        [
+            page(first, count),
+            page(final, count + 1 if failure == "changed_total" else count),
+        ]
     )
     result = cli("refresh", "--require-complete", code=1)
     assert result["error"]["code"] == (
@@ -499,7 +504,7 @@ def test_anomalies_native_two_page_quality_failure_preserves_cache(installed, fa
     )
     assert result["meta"]["published"] is False
     assert all(
-        "riskEventId" not in request and request["pageSize"] == 50
+        "riskEventId" not in request and request["pageSize"] == width
         for request in browser.business_requests
     )
     after = cli("list", "--limit", "0")

@@ -14,7 +14,7 @@ Fixed GUAPW3SG tenant. POST form /swapOrderQuery.json contains a serialized swap
 
 Required ISO trade-date bounds map to inclusive native YYYYMMDD bounds. Unbounded acquisition and other filters are unsupported. No source timezone is inferred.
 
-Absolute rowStart offsets use pageSize=10; records are result.swapOrderVOList and native total is result.count. Near/far dates are independent fields, not extra queries or computed tenors.
+Absolute rowStart offsets use pageSize=1000; records are result.swapOrderVOList and native total is result.count. Near/far dates are independent fields, not extra queries or computed tenors.
 
 Preserve complete native JSON, nested values, unknown fields, nullable/grouped decimal strings, native integers and boolean flags. No leg join, rate conversion or detail enrichment.
 

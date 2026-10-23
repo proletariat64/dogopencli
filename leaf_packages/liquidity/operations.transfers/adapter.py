@@ -18,7 +18,7 @@ from dogopencli.errors import (
 from dogopencli.jsonutil import canonical, parse
 
 TENANT = "GUAPW3SG"
-PAGE_SIZE = 10
+PAGE_SIZE = 1000
 STRING_FIELDS = (
     "orderNo",
     "orderId",

@@ -49,10 +49,10 @@
   ],
   "identity_description": "Native integer id identifies one account capability record within the fixed tenant scope.",
   "limitations": [
-    "POST JSON /serviceInfoQuery.json with only fixed tenant GUAPW3SG, absolute rowStart offsets and pageSize=10. Acquisition is the tenant scope; no date partition or local filter is inferred.",
+    "POST JSON /serviceInfoQuery.json with only fixed tenant GUAPW3SG, absolute rowStart offsets and pageSize=1000. Acquisition is the tenant scope; no date partition or local filter is inferred.",
     "Native id is an integer row identity, including zero or negative integers; booleans and string coercion are excluded. aliasName, ruleId and other business references do not replace id.",
     "All native fields, value types, exact decimals, nested values, unknown fields and raw states are retained without projection or interpretation.",
-    "Historical successful acquisitions support width10 as a starting value, not a measured backend maximum. SDK collection owns loops, retries, quality and cache publication.",
+    "Width 1000 is qualified for complete acquisition, not a measured backend maximum. SDK collection owns loops, retries, quality and cache publication.",
     "Duplicates, count shortfall and interior page gaps remain incomplete. Conflicts keep the last arrival and remain incomplete; strict refresh rejects incomplete acquisition and preserves prior cache.",
     "Native account capability root; comma strings, exact native numbers, arrays and unknown fields remain unchanged. No rule lookup or UI transformations.",
     "Get and supported List --live --with-detail preserve native types, nesting and unknown fields, perform no implicit history/child inquiries, and write no cache or Duckdog data."
@@ -83,7 +83,7 @@
     "paging": {
       "mode": "offset",
       "page_sizes": [
-        10
+        1000
       ]
     },
     "primary_id": {

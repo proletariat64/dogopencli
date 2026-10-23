@@ -25,7 +25,7 @@ ROWS = [
         "amount": Decimal("0.1234567890123456789"),
         "timestamp": "2026-10-17T11:00:00+08:00",
     }
-    for i in range(11)
+    for i in range(1001)
 ]
 
 
@@ -75,7 +75,7 @@ def forecast(request, run_cli, tmp_path, monkeypatch):
 
 
 def queue_full(browser):
-    browser.business_script.extend([page(ROWS[:10], 11), page(ROWS[10:], 11)])
+    browser.business_script.extend([page(ROWS[:1000], 1001), page(ROWS[1000:], 1001)])
 
 
 def test_forecast_native_scope_pages_and_snapshot(forecast):
@@ -88,7 +88,7 @@ def test_forecast_native_scope_pages_and_snapshot(forecast):
     assert live["data"] == ROWS
     assert live["meta"]["complete"] is True
     assert len(browser.business_requests) == 2
-    for offset, request in zip((0, 10), browser.business_requests, strict=True):
+    for offset, request in zip((0, 1000), browser.business_requests, strict=True):
         assert request == {
             "tntInstId": "GUAPW3SG",
             "bankCashForecastRuleQueryVO": json.dumps(
@@ -96,7 +96,7 @@ def test_forecast_native_scope_pages_and_snapshot(forecast):
                     "tntInstId": "GUAPW3SG",
                     "instId": ["Z21"],
                     "rowStart": offset,
-                    "pageSize": 10,
+                    "pageSize": 1000,
                 }
             ),
         }
@@ -106,7 +106,7 @@ def test_forecast_native_scope_pages_and_snapshot(forecast):
     )
     queue_full(browser)
     refreshed = cli("liquidity", "refresh", "rules.forecast", "--limit", "1")
-    assert refreshed["data"]["row_count"] == 11
+    assert refreshed["data"]["row_count"] == 1001
     before = len(browser.business_requests)
     assert cli("liquidity", "list", "rules.forecast", "--limit", "0")["data"] == ROWS
     assert len(browser.business_requests) == before
@@ -170,12 +170,12 @@ def test_forecast_refresh_failure_preserves_cache(forecast, failure):
             "TIMEOUT",
         )
     elif failure == "total":
-        responses = [page(ROWS[:10], 11), page(ROWS[10:], 12)]
+        responses = [page(ROWS[:1000], 1001), page(ROWS[1000:], 1002)]
     elif failure == "early-empty":
-        responses = [page(ROWS[:10], 11), page([], 11)]
+        responses = [page(ROWS[:1000], 1001), page([], 1001)]
         expected = "INCOMPLETE_RESULT"
     elif failure == "over-page":
-        responses = [page(ROWS, 11)]
+        responses = [page(ROWS, 1001)]
     elif failure == "conflict":
         responses = [page([ROWS[0], {**ROWS[0], "empty": "changed"}], 2)]
         expected = "INCOMPLETE_RESULT"
@@ -246,7 +246,7 @@ def test_forecast_nested_request_boundary(forecast, tmp_path, mutation):
 
 def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(forecast):
     cli, browser = forecast[:2]
-    first = [{"ruleId": str(i), "value": "original"} for i in range(10)]
+    first = [{"ruleId": str(i), "value": "original"} for i in range(1000)]
     original = dict(first[0])
     changed = {**original, "value": "changed"}
     browser.business_script.append(page([original]))
@@ -254,7 +254,7 @@ def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(forecast):
     before = cli("liquidity", "list", "rules.forecast", "--limit", "0")
 
     def queue_conflict():
-        browser.business_script.extend([page(first, 11), page([changed], 11)])
+        browser.business_script.extend([page(first, 1001), page([changed], 1001)])
 
     queue_conflict()
     result = cli("liquidity", "list", "rules.forecast", "--live", "--limit", "0")
@@ -268,7 +268,7 @@ def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(forecast):
     assert [
         json.loads(request["bankCashForecastRuleQueryVO"])["rowStart"]
         for request in browser.business_requests[-2:]
-    ] == [0, 10]
+    ] == [0, 1000]
     queue_conflict()
     refused = cli("liquidity", "refresh", "rules.forecast", code=1)
     assert refused["error"]["code"] == "INCOMPLETE_RESULT"
