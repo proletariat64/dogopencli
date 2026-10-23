@@ -2,11 +2,11 @@
   "domain": "liquidity",
   "name": "forecast.accuracy",
   "adapter": "adapter.py:adapter",
-  "summary": "Native forecast records with request-bound accuracy metrics.",
-  "purpose": "Inspect one account and creation-query day, retaining the approved legacy accuracy projection without recalculating metrics.",
+  "summary": "Native forecast accuracy metrics and record-bound cashflow occurrences.",
+  "purpose": "Inspect one account and creation-query day with the approved accuracy summary and native cashflow-to-statement comparisons.",
   "operations": {
     "list": {
-      "description": "Read complete bounded base records and all required native accuracy metrics.",
+      "description": "Read bounded base records, all native accuracy metrics, and record-bound cashflow occurrences.",
       "parameters": [
         {
           "name": "account-alias",
@@ -31,6 +31,14 @@
         "metric": {
           "kind": "inquiry",
           "result_shape": "object"
+        },
+        "occurrences": {
+          "kind": "inquiry",
+          "result_shape": "object"
+        },
+        "occurrences_without_create": {
+          "kind": "inquiry",
+          "result_shape": "object"
         }
       },
       "max_requests": 303,
@@ -51,6 +59,11 @@
       "name": "accuracy",
       "type": "object",
       "meaning": "Approved native metric fields, unscaled, bound by this record in the metric request."
+    },
+    {
+      "name": "cashflow_details",
+      "type": "array",
+      "meaning": "Entire native occurrence array in source order, preserving repeats, Money objects and unknown fields."
     }
   ],
   "dataset": {
@@ -58,17 +71,20 @@
   },
   "limitations": [
     "One explicit account and one native creation-query day. Full creation-time range 000000 through 235959; source timezone remains unknown.",
-    "GET /bankCashForecastRecordAccuracyQuery.json once with fixed width5000; require arrivals=unique native id=result.count and at most100 base rows before metric calls. The100 limit is a client budget, not a backend capacity statement.",
-    "GET /cashFlowDetailDay.json once per base row, bound to native id/valueDate/accountNo/instId/currency/bankId/forecastBalance and selected alias. Metric roots do not echo record id; association is the exact request binding.",
-    "Preserve the pinned legacy 12 base fields plus11 scalar metric fields under accuracy; excluded base context, unknown fields and other UI sections are not added to the public projection. Missing projected fields remain null, native empty strings and raw ratios remain unchanged.",
-    "Native zero-balance strings0.0/0.00 use request value0 only, matching frontend binding; output forecastBalance is unchanged.",
-    "Every required query shares host transport, retry, request allowance and deadline. Business/auth/schema/binding failures abort without publishing partial output. No new Get, detail cache, Duckdog import or legacy runtime dependency.",
-    "Live does not publish. Complete nonempty refresh and offline replay preserve the same composed records; empty/failed refresh preserves the previous capture. Record-date denotes the original query and is not a local filter over valueDate."
+    "GET /bankCashForecastRecordAccuracyQuery.json once with fixed width 5000; require arrivals = unique native id = result.count and at most 100 base rows before dependent calls. The 100 limit is a client budget, not a backend capacity statement.",
+    "GET /cashFlowDetailDay.json once per base row, bound to native id/valueDate/accountNo/instId/currency/bankId/forecastBalance and selected alias. Existing 12 base and 11 scalar accuracy fields remain unchanged; absent projected values remain null.",
+    "GET /cashFlowDetail.json once per raw parent with native valueDate/accountNo/instId/tntInstId/currency/bankId/id and selected alias. gmtCreate retains a native integer or explicit null when present, and is omitted when absent, matching the frontend JSON serialization.",
+    "Cashflow occurrence arrays preserve order, identical repeated rows, unknown fields, Money components and amount strings. No invented identity, matching, rescaling, paging, total or 5000-row UI truncation is applied.",
+    "The complete native occurrence array is the qualified single-response boundary for the exact parent request. Native result.count and per-row zero paging fields are observations, not totals; effective occurrence reported_total remains unknown. No paging fields are sent and no backend capacity or atomic snapshot is inferred.",
+    "Each native child retains its exact request association in acquisition evidence; absent native identity echoes remain absent, and contradictory provided context fails. Child success and occurrence arrivals do not replace base coverage or prove source atomicity.",
+    "Native zero-balance strings 0.0/0.00 use request value 0 for metrics only, matching the existing binding; output forecastBalance is unchanged.",
+    "All required inquiries share the existing 303-physical-request and 300-second operation budgets, including retries. Business/auth/transport/schema/binding failures abort without a successful prefix or publication.",
+    "Live never publishes. Incomplete, failed and successful-empty refreshes preserve the previous compatible capture under host policy. Changed adapter contracts reject old summary-only captures; no cache migration or child fallback is provided. No public Get, new leaf, task execution or Duckdog import is introduced."
   ],
   "examples": [
     {
       "title": "Read one bounded accuracy scope",
-      "command": "dogopencli liquidity list forecast.accuracy --live --account-alias ACCOUNT --record-date 2026-10-21 --require-complete --limit 0"
+      "command": "dogopencli liquidity list forecast.accuracy --live --account-alias ACCOUNT --record-date 2026-10-21 --limit 0"
     }
   ]
 }
