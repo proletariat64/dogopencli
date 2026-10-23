@@ -162,7 +162,7 @@ class Inquiry:
                     or not value.isdigit()
                 ):
                     raise ValueError
-                native_day = date.fromisoformat(value)
+                native_day = date(int(value[:4]), int(value[4:6]), int(value[6:8]))
                 if (
                     not self.values["valueDateStart"]
                     <= native_day.isoformat()
