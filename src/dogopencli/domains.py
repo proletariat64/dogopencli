@@ -30,6 +30,22 @@ def _unknown_execution() -> dict[str, Any]:
     }
 
 
+def _sdk_info(manifest: dict[str, Any]) -> dict[str, dict[str, str]]:
+    """Describe the host SDK selected by each statically validated operation."""
+    result = {}
+    for operation, specification in manifest["operations"].items():
+        if specification.get("execution") == "custom":
+            result[operation] = {"name": "Custom query SDK"}
+        elif operation == "list":
+            result[operation] = {
+                "name": "List SDK",
+                "provider": manifest["collection"]["provider"],
+            }
+        else:
+            result[operation] = {"name": "Get SDK"}
+    return result
+
+
 class DomainService:
     """Application boundary shared by CLI, auth orchestration and localhost GUI."""
 
@@ -64,6 +80,7 @@ class DomainService:
                         "name": leaf.name,
                         "summary": leaf.manifest["summary"],
                         "operations": list(leaf.manifest["operations"]),
+                        "sdks": _sdk_info(leaf.manifest),
                         "last_execution": executions.get(
                             (domain.id, leaf.id), _unknown_execution()
                         ),

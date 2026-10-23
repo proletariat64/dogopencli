@@ -31,6 +31,11 @@ const [url, manifestPath] = process.argv.slice(2);
     assert.ok((await sampleCard.innerText()).includes("2 · simulated"));
     assert.ok((await sampleCard.innerText()).includes("Success"));
     assert.ok((await sampleCard.innerText()).includes("Captured"));
+    const technical = sampleCard.locator(".leaf-details");
+    assert.equal(await technical.getAttribute("open"), null);
+    await technical.getByText("Technical details", { exact: true }).click();
+    assert.ok((await technical.innerText()).includes("SDK (get): Get SDK"));
+    assert.ok(!(await technical.innerText()).includes("SDK (list)"));
     assert.ok(
       (await page.locator("#result-summary").innerText()).includes(
         "1 successful",

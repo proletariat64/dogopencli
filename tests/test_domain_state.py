@@ -128,6 +128,9 @@ def test_inventory_is_offline_and_does_not_create_store(declarations, tmp_path, 
     assert domain["auth"] == {"outcome": "unknown", "updated_at": None}
     assert domain["leaves"][0]["last_execution"]["outcome"] == "unknown"
     assert domain["leaves"][0]["summary"] == "Demo"
+    assert domain["leaves"][0]["sdks"] == {
+        "list": {"name": "List SDK", "provider": "general"}
+    }
     assert domain["diagnostics"][0]["id"] == "demo.future"
     assert not (tmp_path / "config.toml.domains.sqlite3").exists()
     assert not (tmp_path / "leaf-cache.sqlite3").exists()
@@ -137,6 +140,52 @@ def test_inventory_is_offline_and_does_not_create_store(declarations, tmp_path, 
         if p.is_file()
     }
     assert after == before
+
+
+@pytest.mark.parametrize(
+    "operations,collection,expected",
+    [
+        (
+            {"list": {}, "get": {"execution": "standard"}},
+            {"provider": "payment.collection"},
+            {
+                "list": {"name": "List SDK", "provider": "payment.collection"},
+                "get": {"name": "Get SDK"},
+            },
+        ),
+        ({"get": {}}, None, {"get": {"name": "Get SDK"}}),
+        (
+            {"list": {"execution": "custom"}, "get": {"execution": "custom"}},
+            None,
+            {
+                "list": {"name": "Custom query SDK"},
+                "get": {"name": "Custom query SDK"},
+            },
+        ),
+        (
+            {"list": {}, "get": {"execution": "custom"}},
+            {"provider": "general"},
+            {
+                "list": {"name": "List SDK", "provider": "general"},
+                "get": {"name": "Custom query SDK"},
+            },
+        ),
+    ],
+)
+def test_inventory_reports_sdk_per_operation(
+    tmp_path, operations, collection, expected
+):
+    manifest = {"summary": "SDK sample", "operations": operations}
+    if collection is not None:
+        manifest["collection"] = collection
+    leaf = SimpleNamespace(
+        id="payment.sample", domain="payment", name="sample", manifest=manifest
+    )
+    registry = SimpleNamespace(leaves={leaf.id: leaf}, diagnostics=[])
+    service = domains.DomainService(tmp_path / "config.toml", registry=registry)
+    payment = service.inventory("payment")[0]
+    assert payment["leaves"][0]["sdks"] == expected
+    assert not service.state_path.exists()
 
 
 def test_inventory_does_not_read_cache_and_overview_stays_read_only(
