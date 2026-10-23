@@ -1,8 +1,8 @@
 {
   "parent_issue": 218,
   "tools_issue": 261,
-  "expected_packages": 80,
-  "expected_actions": 107,
+  "expected_packages": 79,
+  "expected_actions": 106,
   "reference_commit": "a7e5c5ead675487646eb9a53d73ec9e0aeb944f9",
   "batches": [
     {
@@ -687,13 +687,6 @@
           "operations": [
             "list",
             "get"
-          ],
-          "status": "delivered"
-        },
-        {
-          "identity": "liquidity.investment.products.history",
-          "operations": [
-            "list"
           ],
           "status": "delivered"
         }

@@ -1,5 +1,6 @@
-"""Installed native product List/Get and selected-window SDK composition."""
+"""Installed product List and dependent detail/history Get composition."""
 
+import json
 import shutil
 from decimal import Decimal
 from pathlib import Path
@@ -67,6 +68,10 @@ def detail(identity="PHYSICAL-1", **values):
             ),
         },
     }
+
+
+def history(rows=()):
+    return {"status": 200, "body": {"success": True, "data": list(rows)}}
 
 
 def cache_bytes(config):
@@ -300,23 +305,29 @@ def test_failed_list_never_replaces_saved_capture(installed, failure):
 @pytest.mark.parametrize("installed", ["directory", "zip"], indirect=True)
 def test_get_before_list_full_root_form_and_no_cache(installed):
     cli, browser, config = installed
-    browser.business_script.append(detail())
-    got = cli("get", "PHYSICAL-1", "--fields", "incrementProductId,detailOnly")
-    assert got["data"] == {
-        key: detail()["body"]["data"][key]
-        for key in ("incrementProductId", "detailOnly")
-    }
+    versions = [row("OLDER-2", version=2), row("OLDER-1", version=1)]
+    browser.business_script.extend([detail(), history(versions)])
+    got = cli("get", "PHYSICAL-1")
+    assert got["data"] == {"detail": detail()["body"]["data"], "history": versions}
     assert browser.business_requests == [
-        {"tntInstId": "GUAPW3SG", "incrementProductId": "PHYSICAL-1"}
+        {"tntInstId": "GUAPW3SG", "incrementProductId": "PHYSICAL-1"},
+        {"tntInstId": "GUAPW3SG", "incrementProductCode": "BUSINESS-CODE"},
     ]
+    coverage = got["meta"]["query_evidence"]["coverage"]
+    history_coverage = coverage["attempts"][0]["components"]["history"]
+    assert history_coverage["reported_total"] is None
+    assert history_coverage["coverage_basis"] == "qualified_single_response"
+    assert history_coverage["collected_total"] == 2
+    assert got["meta"]["query_evidence"]["request_count"] == 2
     assert not (config / "leaf-cache.sqlite3").exists()
     expressions = [
         e for t in browser.transports for e in t.expressions if "fetch(" in e
     ]
-    assert expressions and all(
-        "/incrementProductDetail.json" in e
-        and 'method: "POST"' in e
-        and "application/x-www-form-urlencoded" in e
+    assert len(expressions) == 2
+    assert "/incrementProductDetail.json" in expressions[0]
+    assert "/incrementProductHistoryQuery.json" in expressions[1]
+    assert all(
+        'method: "POST"' in e and "application/x-www-form-urlencoded" in e
         for e in expressions
     )
 
@@ -327,7 +338,10 @@ def test_selected_filter_window_detail_projection_and_saved_bytes(installed):
     browser.business_script.append(page(rows))
     saved = cli("refresh", "--require-complete")
     before = cache_bytes(config)
-    browser.business_script.extend([page(rows), detail("3", version=99)])
+    versions = [row("OLD-3", version=1)]
+    browser.business_script.extend(
+        [page(rows), detail("3", version=99), history(versions)]
+    )
     result = cli(
         "list",
         "--live",
@@ -345,20 +359,24 @@ def test_selected_filter_window_detail_projection_and_saved_bytes(installed):
     assert result["data"] == [
         {
             "record": {"incrementProductId": "3"},
-            "detail": detail("3", version=99)["body"]["data"],
+            "detail": {
+                "detail": detail("3", version=99)["body"]["data"],
+                "history": versions,
+            },
         }
     ]
     assert browser.business_requests == [
         LIST_BODY,
         LIST_BODY,
         {"tntInstId": "GUAPW3SG", "incrementProductId": "3"},
+        {"tntInstId": "GUAPW3SG", "incrementProductCode": "BUSINESS-CODE"},
     ]
     assert cache_bytes(config) == before
     assert cli("list", "--limit", "0")["data"] == rows
     assert cli("list")["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
     browser.business_script.append(page(rows))
     assert cli("list", "--live", "--with-detail", "--offset", "99")["data"] == []
-    assert len(browser.business_requests) == 4
+    assert len(browser.business_requests) == 5
 
 
 @pytest.mark.parametrize(
@@ -410,13 +428,14 @@ def test_detail_failure_and_second_composed_failure_are_atomic(installed, failur
         root["incrementProductId"] = "OTHER"
     browser.business_script.append(reply)
     assert cli("get", "2", code=1)["error"]["code"] == expected
-    browser.business_script.extend([page(rows), detail("1"), reply])
+    browser.business_script.extend([page(rows), detail("1"), history(), reply])
     failed = cli("list", "--live", "--with-detail", "--limit", "0", code=1)
     assert failed["data"] is None
     assert failed["error"]["code"] == expected
-    assert browser.business_requests[-3:] == [
+    assert browser.business_requests[-4:] == [
         LIST_BODY,
         {"tntInstId": "GUAPW3SG", "incrementProductId": "1"},
+        {"tntInstId": "GUAPW3SG", "incrementProductCode": "BUSINESS-CODE"},
         {"tntInstId": "GUAPW3SG", "incrementProductId": "2"},
     ]
     assert cache_bytes(config) == before
@@ -505,5 +524,198 @@ def test_optional_native_tenant_retains_null_blank_and_correct_values(
     native = row(tntInstId=tenant)
     browser.business_script.append(page([native]))
     assert cli("list", "--live", "--require-complete")["data"] == [native]
-    browser.business_script.append(detail(tntInstId=tenant))
-    assert cli("get", "PHYSICAL-1")["data"] == detail(tntInstId=tenant)["body"]["data"]
+    browser.business_script.extend([detail(tntInstId=tenant), history()])
+    assert cli("get", "PHYSICAL-1")["data"] == {
+        "detail": detail(tntInstId=tenant)["body"]["data"],
+        "history": [],
+    }
+
+
+@pytest.mark.parametrize("installed", ["directory", "zip"], indirect=True)
+def test_history_uses_detail_code_and_preserves_independent_same_id_values(installed):
+    cli, browser, _ = installed
+    native = detail(incrementProductCode="DETAIL-CODE", version=9)
+    versions = [row(incrementProductCode="DETAIL-CODE", version=1, unknown=None)]
+    browser.business_script.extend([native, history(versions)])
+    got = cli("get", "PHYSICAL-1")
+    assert got["data"] == {"detail": native["body"]["data"], "history": versions}
+    assert browser.business_requests[-1] == {
+        "tntInstId": "GUAPW3SG",
+        "incrementProductCode": "DETAIL-CODE",
+    }
+
+
+def test_empty_history_is_successful_and_projection_does_not_skip_acquisition(
+    installed,
+):
+    cli, browser, _ = installed
+    browser.business_script.extend([detail(), history()])
+    got = cli("get", "PHYSICAL-1", "--fields", "history")
+    assert got["data"] == {"history": []}
+    assert len(browser.business_requests) == 2
+    assert got["meta"]["query_evidence"]["coverage"]["scope_complete"] is True
+
+
+@pytest.mark.parametrize("code", [None, "", " ", True, 1, [], {}])
+def test_missing_detail_product_code_fails_without_history_request(installed, code):
+    cli, browser, _ = installed
+    browser.business_script.append(detail(incrementProductCode=code))
+    got = cli("get", "PHYSICAL-1", code=1)
+    assert got["data"] is None
+    assert got["error"]["code"] == "INVALID_RESPONSE"
+    assert len(browser.business_requests) == 1
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "auth",
+        "business",
+        "marker",
+        "null",
+        "object",
+        "member",
+        "missing_id",
+        "blank_id",
+        "boolean_id",
+        "tenant",
+        "code",
+        "duplicate",
+        "conflict",
+    ],
+)
+def test_history_failure_is_atomic_and_preserves_saved_list(installed, failure):
+    cli, browser, config = installed
+    browser.business_script.append(page([row()]))
+    saved = cli("refresh", "--require-complete")
+    before = cache_bytes(config)
+    reply = history([row("OLDER")])
+    body = reply["body"]
+    expected = "INVALID_RESPONSE"
+    if failure == "auth":
+        reply = {"status": 401, "body": {}}
+        expected = "AUTH_REQUIRED"
+    elif failure == "business":
+        body["success"] = False
+        expected = "BUSINESS_QUERY_FAILED"
+    elif failure == "marker":
+        body["success"] = 1
+    elif failure == "null":
+        body["data"] = None
+    elif failure == "object":
+        body["data"] = {}
+    elif failure == "member":
+        body["data"] = [None]
+    elif failure == "missing_id":
+        body["data"][0].pop("incrementProductId")
+    elif failure == "blank_id":
+        body["data"][0]["incrementProductId"] = " "
+    elif failure == "boolean_id":
+        body["data"][0]["incrementProductId"] = True
+    elif failure == "tenant":
+        body["data"][0]["tntInstId"] = "OTHER"
+    elif failure == "code":
+        body["data"][0]["incrementProductCode"] = "OTHER"
+    else:
+        body["data"] = [
+            row("DUP"),
+            row("DUP", version=3 if failure == "conflict" else 2),
+        ]
+    browser.business_script.extend([detail(), reply])
+    got = cli("get", "PHYSICAL-1", code=1)
+    assert got["data"] is None
+    assert got["error"]["code"] == expected
+    assert got["meta"]["query_evidence"]["queries"]["detail"]["succeeded"] == 1
+    assert cache_bytes(config) == before
+    assert cli("list")["data"] == [row()]
+    assert cli("list")["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+def test_second_composed_history_failure_discards_the_entire_window(installed):
+    cli, browser, config = installed
+    rows = [row("1"), row("2")]
+    browser.business_script.append(page(rows))
+    cli("refresh", "--require-complete")
+    before = cache_bytes(config)
+    browser.business_script.extend(
+        [
+            page(rows),
+            detail("1"),
+            history(),
+            detail("2"),
+            {"status": 200, "body": {"success": False}},
+        ]
+    )
+    got = cli("list", "--live", "--with-detail", "--limit", "0", code=1)
+    assert got["data"] is None
+    assert got["error"]["code"] == "BUSINESS_QUERY_FAILED"
+    assert cache_bytes(config) == before
+
+
+def test_retired_history_leaf_is_not_discovered(installed, run_cli):
+    _, _, _ = installed
+    status, output, _ = run_cli(
+        ["liquidity", "list", "investment.products.history", "--help"]
+    )
+    assert status == 2
+    assert parse(output)["error"]["code"] == "INVALID_ARGUMENT"
+
+
+def test_composed_get_shares_request_budget_across_selected_rows(
+    installed, run_cli, tmp_path
+):
+    cli, browser, _ = installed
+    source = tmp_path / "bounded-products"
+    shutil.copytree(SOURCE, source)
+    manifest_file = source / "leaf.json"
+    manifest = json.loads(manifest_file.read_text())
+    manifest["operations"]["get"]["max_requests"] = 3
+    manifest_file.write_text(json.dumps(manifest))
+    status, output, error = run_cli(["plugins", "uninstall", "liquidity." + LEAF])
+    assert status == 0, output + error
+    status, output, error = run_cli(["plugins", "install", str(source)])
+    assert status == 0, output + error
+    browser.business_script.extend(
+        [
+            page([row("1"), row("2")]),
+            detail("1"),
+            history(),
+            detail("2"),
+            history(),
+        ]
+    )
+    got = cli("list", "--live", "--with-detail", "--limit", "0", code=1)
+    assert got["data"] is None
+    assert got["error"]["code"] == "TIMEOUT"
+    assert got["meta"]["query_evidence"]["request_count"] == 3
+    assert len(browser.business_requests) == 4  # List plus three Get inquiries.
+
+
+def test_history_request_extra_field_is_rejected_before_transport(
+    installed, run_cli, tmp_path
+):
+    cli, browser, _ = installed
+    source = tmp_path / "unapproved-history-request"
+    shutil.copytree(SOURCE, source)
+    adapter_file = source / "adapter.py"
+    adapter_file.write_text(
+        adapter_file.read_text().replace(
+            "return context", 'return {**context, "extra": "unapproved"}'
+        )
+    )
+    status, output, error = run_cli(["plugins", "uninstall", "liquidity." + LEAF])
+    assert status == 0, output + error
+    status, output, error = run_cli(["plugins", "install", str(source)])
+    assert status == 0, output + error
+    browser.business_script.append(detail())
+    got = cli("get", "PHYSICAL-1", code=1)
+    assert got["error"]["code"] == "REQUEST_NOT_ALLOWED"
+    assert len(browser.business_requests) == 1
+
+
+@pytest.mark.parametrize("tenant", [None, "", " ", "GUAPW3SG"])
+def test_history_retains_native_optional_tenant_values(installed, tenant):
+    cli, browser, _ = installed
+    versions = [row("OLD", tntInstId=tenant)]
+    browser.business_script.extend([detail(), history(versions)])
+    assert cli("get", "PHYSICAL-1")["data"]["history"] == versions

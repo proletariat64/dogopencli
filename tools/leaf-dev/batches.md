@@ -2,8 +2,8 @@
 
 [机器清单](batches.json)定义批次成员和原始 list/get 范围；[流程](workflow.md)定义开发与验收。
 清单随已验收的 SDK 实现合并，未合并的历史 WIP 不计交付。
-四个 bundled pilots 单独统计。原始基线为 **79 packages / 106 actions**；
-经数据负责人确认，B07 的 `risk.metrics` 拆为两个独立 List，当前清单为 **80 packages / 107 actions**。
+四个 bundled pilots 单独统计，当前清单为 **79 packages / 106 actions**。
+B07 的两个风险指标各自保留独立 List；B24 产品历史属于 products Get，不单独计为 leaf/action。
 
 ## 基础能力
 
@@ -34,7 +34,7 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 
 - **39/39 Lists、23/23 Gets**，合计 **62/62 actions**；**42/42 leaves** 全操作完成。
 - 整批完成 B01、B02、B03、B05、B06、B07、B08、B09、B10；当前范围无 HOLD。
-- 全局逐 leaf/action 累计为 **80/80 完整 leaves、107/107 actions**；当前清单无未完成 leaf 或 action。
+- 全局逐 leaf/action 累计为 **79/79 完整 leaves、106/106 actions**；当前清单无未完成 leaf 或 action。
 - 进度工具按完整 leaf 累计；部分完成批次仍保留 HOLD 范围。
 
 | Batch | SDK List / 原范围 | SDK Get / 原范围 | 全操作完成 leaves | 范围依据 |
@@ -87,7 +87,7 @@ B11–B20 累计交付 25 leaves / 29 actions；原有 #332 范围全部完成�
 - B21/#280：两个账户 List 完成。alias 和日期必填，保留显式上下文约束及 Duckdog→cache→live 补齐顺序、来源质量与 provenance，不默认 ANY 全库查询。
 - B22/#281：两个 List 完成。T3 保留原生八字段身份；intraday 沿用账户解析，单账户单日，非空需 96 个原生 15 分钟时隙标签，不补零。
 - B23/#282：三个 List 完成。results 保留原生查询范围；cashflows 以包括 gmtCreate 的 13 字段组合作内部身份，空 gmtCreate 点保留且不推定已有有效预测；accuracy 按每条基础记录的原生请求绑定取得指标，所需查询失败整次失败，保留确认的 legacy 字段投影。
-- B24/#283：三个 leaf / 五项 actions 完成。products List/Get 保留原生身份；interest_rates 保留 market、bank、expectation-rule、expection 四来源及 expection Get，银行以报价日期组分页而非行数；products.history 仅返回同产品的原生历史版本数组。
+- B24/#283：两个 leaf / 四项 actions。products List 保留原生记录；Get 按物理 ID 获取原生 detail，再按该 detail 的产品代码获取 history，返回 `{detail, history}`，保留原生历史数组及未知 total，不追加当前版本。关联实现见 [#352](https://github.com/proletariat64/dogopencli/issues/352)。interest_rates 保留 market、bank、expectation-rule、expection 四来源及 expection Get，银行以报价日期组分页而非行数。
 - B25/#284：三个 leaf / 四项 actions 完成。decisions List/Get、rule_status List 保留原契约；decisions.history 核对当前查询和 report/group/tenant 关系，仅返回原生历史数组。
 
 
@@ -129,7 +129,7 @@ rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf.py batches
 | B21 | [#280](https://github.com/proletariat64/dogopencli/issues/280) | `liquidity.forecast.account_cashflows` L; `liquidity.forecast.account_demands` L | 2/2 | delivered |
 | B22 | [#281](https://github.com/proletariat64/dogopencli/issues/281) | `liquidity.forecast.account_t3` L; `liquidity.forecast.account_demands_intraday` L | 2/2 | delivered |
 | B23 | [#282](https://github.com/proletariat64/dogopencli/issues/282) | `liquidity.forecast.results` L; `liquidity.forecast.cashflows` L; `liquidity.forecast.accuracy` L | 3/3 | delivered |
-| B24 | [#283](https://github.com/proletariat64/dogopencli/issues/283) | `liquidity.investment.interest_rates` LG; `liquidity.investment.products` LG; `liquidity.investment.products.history` L | 3/5 | delivered |
+| B24 | [#283](https://github.com/proletariat64/dogopencli/issues/283) | `liquidity.investment.interest_rates` LG; `liquidity.investment.products` LG（含产品历史） | 2/4 | delivered |
 | B25 | [#284](https://github.com/proletariat64/dogopencli/issues/284) | `liquidity.operations.decisions` LG; `liquidity.operations.decisions.history` L; `liquidity.operations.rule_status` L | 3/4 | delivered |
 
 ## 历史非 SDK 实现

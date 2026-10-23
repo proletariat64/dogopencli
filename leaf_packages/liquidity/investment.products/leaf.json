@@ -33,25 +33,60 @@
       ]
     },
     "get": {
-      "description": "Read one independent native product definition root by physical ID.",
+      "description": "Read the complete native product detail and its business-code-scoped history.",
       "parameters": [],
       "lookup": {
         "name": "incrementProductId",
         "description": "Native physical incrementProductId from List, not incrementProductCode."
       },
       "result_identity": {
-        "fields": [
-          "incrementProductId"
+        "paths": [
+          [
+            "detail",
+            "incrementProductId"
+          ]
         ],
-        "description": "Exact nonblank string echo of the physical product lookup."
+        "description": "The complete native detail retains the exact physical product lookup."
       },
       "list_binding": {
         "identity_field": "incrementProductId"
-      }
+      },
+      "execution": "custom",
+      "queries": {
+        "detail": {
+          "kind": "detail",
+          "result_identity": {
+            "fields": [
+              "incrementProductId"
+            ],
+            "description": "Exact native physical product ID matching the lookup."
+          }
+        },
+        "history": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "single_response",
+              "page_sizes": [
+                0
+              ]
+            },
+            "primary_id": {
+              "type": "field",
+              "fields": [
+                "incrementProductId"
+              ]
+            }
+          }
+        }
+      },
+      "max_requests": 10000,
+      "budget_seconds": 300
     }
   },
   "summary": "Native investment product definitions and details.",
-  "purpose": "Inspect complete native product roots, configured rules and returned versions without history expansion.",
+  "purpose": "Inspect complete native product definitions, detail and historical versions without changing them.",
   "fields": [
     {
       "name": "incrementProductId",
@@ -67,6 +102,16 @@
       "name": "incrementRateRules",
       "type": "native JSON value",
       "meaning": "Native nested configured rules, unchanged."
+    },
+    {
+      "name": "detail",
+      "type": "object",
+      "meaning": "Get: unchanged native product detail root, including all nested rules and accounts."
+    },
+    {
+      "name": "history",
+      "type": "array",
+      "meaning": "Get: unchanged historical product roots for the detail business code, in native order; the current detail is not appended."
     }
   ],
   "identity": [
@@ -77,9 +122,11 @@
     "List POST JSON /incrementProductsPage.json sends only tenant GUAPW3SG, rowStart 0 and qualified pageSize 5000; native total completeness is required. Width is not a demonstrated maximum.",
     "List retains all native fields, nested arrays/objects, nulls, precise values, returned versions and arrival order. No latest reducer, upstream filters or extra terminal query.",
     "Currency, bank and status are exact local repeatable filters, usable offline. Bare offline List replays its saved acquisition.",
-    "Get POST form /incrementProductDetail.json sends only tenant and physical incrementProductId; it preserves the complete native data root with exact identity echo.",
-    "Get and selected-window live --with-detail do not publish cache or Duckdog data. Separately queried product history and rate-source groups remain outside this leaf.",
-    "Returned nonblank tenant must match GUAPW3SG; missing, null and blank native tenant values remain unchanged."
+    "Get first sends POST form /incrementProductDetail.json with tenant and physical incrementProductId, then POST form /incrementProductHistoryQuery.json with tenant and that detail's incrementProductCode. It returns {detail, history}, retaining both native roots and validating historical lineage.",
+    "Get and selected-window live --with-detail use the Custom SDK, share at most 10000 requests and 300 seconds, and never publish cache or Duckdog data. Any required inquiry failure aborts the entire query; rate-source groups remain outside this leaf.",
+    "List/detail preserve missing, null and empty-string tenants. History also preserves whitespace-only tenant strings. Every returned nonblank tenant must match GUAPW3SG.",
+    "History completion covers the qualified native response array, including empty arrays, with unknown backend total. No current-row append, latest-version selection, source sorting or proof of invisible backend versions.",
+    "Detail and history are sequential independent reads, without an atomic snapshot guarantee or cross-source same-ID value equality. Coverage and component evidence remain in query_evidence."
   ],
   "examples": [
     {
@@ -87,7 +134,7 @@
       "command": "dogopencli liquidity list investment.products --live --limit 0 --require-complete"
     },
     {
-      "title": "Read independent native detail",
+      "title": "Read native detail and product history",
       "command": "dogopencli liquidity get investment.products PHYSICAL_ID"
     },
     {
