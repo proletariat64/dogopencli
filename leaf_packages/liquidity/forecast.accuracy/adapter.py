@@ -100,16 +100,42 @@ def project(row: dict, metric: dict) -> dict:
     }
 
 
+def occurrence_context(row: dict, alias: str) -> dict:
+    context = metric_context(row, alias)
+    context.pop("forecastBalance")
+    if row.get("tntInstId") != TENANT:
+        fail("missing or contradictory native occurrence tenant")
+    context["tntInstId"] = row["tntInstId"]
+    if "gmtCreate" in row:
+        if row["gmtCreate"] is not None and type(row["gmtCreate"]) is not int:
+            fail("unverified native gmtCreate binding")
+        context["gmtCreate"] = row["gmtCreate"]
+    return context
+
+
+def validate_context(source: dict, context: dict, *, occurrence: bool = False) -> None:
+    # Occurrence timestamps describe the occurrence, not the parent acquisition.
+    fields = {*BINDINGS, "forecastRecordId", "aliasName", "tntInstId"}
+    if not occurrence:
+        fields |= {"forecastBalance", "gmtCreate"}
+    for field in fields & source.keys() & context.keys():
+        if source[field] != context[field]:
+            fail("native response contradicts request binding: " + field)
+
+
 class Inquiry:
     page_url = "https://iliquidity.alipay.com/GUAPW3SG/menu/PortfolioMgmt"
 
     def __init__(self, name: str):
         self.metric = name == "metric"
+        self.occurrences = name in {"occurrences", "occurrences_without_create"}
         self.name = "liquidity.forecast.accuracy." + name
-        self.vo = METRIC_VO if self.metric else BASE_VO
+        self.vo = METRIC_VO if self.metric or self.occurrences else BASE_VO
         fields = (
             {*BINDINGS, "forecastRecordId", "aliasName", "forecastBalance"}
             if self.metric
+            else {*BINDINGS, "forecastRecordId", "aliasName", "tntInstId", "gmtCreate"}
+            if self.occurrences
             else {
                 "tntInstId",
                 "recordStartTime",
@@ -121,11 +147,15 @@ class Inquiry:
                 "valueEndDay",
             }
         )
+        if name == "occurrences_without_create":
+            fields.remove("gmtCreate")
         self.contract = EndpointContract(
             method="GET",
             host="iliquidity.alipay.com",
             path="/cashFlowDetailDay.json"
             if self.metric
+            else "/cashFlowDetail.json"
+            if self.occurrences
             else "/bankCashForecastRecordAccuracyQuery.json",
             page_size=0,
             one_based=False,
@@ -138,6 +168,8 @@ class Inquiry:
                     frozenset(fields),
                     ()
                     if self.metric
+                    else (("tntInstId", TENANT),)
+                    if self.occurrences
                     else (
                         ("tntInstId", TENANT),
                         ("recordStartTime", "000000"),
@@ -145,16 +177,20 @@ class Inquiry:
                         ("rowStart", 0),
                         ("pageSize", 5000),
                     ),
-                    frozenset() if self.metric else frozenset({5000}),
+                    frozenset()
+                    if self.metric or self.occurrences
+                    else frozenset({5000}),
                 ),
             ),
         )
 
     def request_body(self, parameters: dict) -> dict:
-        if self.metric:
-            fields = {*BINDINGS, "forecastRecordId", "aliasName", "forecastBalance"}
-            if set(parameters) != fields:
-                fail("invalid metric request context", "REQUEST_NOT_ALLOWED")
+        if self.metric or self.occurrences:
+            fields = {*BINDINGS, "forecastRecordId", "aliasName"}
+            fields |= {"forecastBalance"} if self.metric else {"tntInstId"}
+            required = set(parameters) - ({"gmtCreate"} if self.occurrences else set())
+            if required != fields:
+                fail("invalid dependent request context", "REQUEST_NOT_ALLOWED")
             inner = dict(parameters)
         else:
             scope = values(parameters)
@@ -185,26 +221,46 @@ class Inquiry:
             fail("invalid inner success marker")
         if not result["success"]:
             fail("native inquiry failed", "BUSINESS_QUERY_FAILED")
+        if self.metric or self.occurrences:
+            validate_context(result, parameters)
         if self.metric:
             metric = result.get("bankAccountDetailDayVO")
             if not isinstance(metric, dict):
                 fail("metric response must be an object")
+            validate_context(metric, parameters)
             return result
         rows, total = result.get("dataValue"), result.get("count")
         if (
             not isinstance(rows, list)
             or any(not isinstance(row, dict) for row in rows)
-            or type(total) is not int
-            or total < 0
+            or (not self.occurrences and (type(total) is not int or total < 0))
         ):
             fail("invalid base records/count")
+        if self.occurrences:
+            for row in rows:
+                validate_context(row, parameters, occurrence=True)
+                for field, native_type in (
+                    ("cashFlowAmount", dict),
+                    ("detailAmount", str),
+                    ("match", bool),
+                ):
+                    if (
+                        row.get(field) is not None
+                        and type(row[field]) is not native_type
+                    ):
+                        fail("unverified occurrence field type: " + field)
         return result
 
 
 class Adapter:
     def query_capability(self, operation: str, name: str, parameters: dict) -> Inquiry:
         values(parameters)
-        if operation != "list" or name not in {"base", "metric"}:
+        if operation != "list" or name not in {
+            "base",
+            "metric",
+            "occurrences",
+            "occurrences_without_create",
+        }:
             fail("undeclared inquiry", "REQUEST_NOT_ALLOWED")
         return Inquiry(name)
 
@@ -217,6 +273,8 @@ class Adapter:
         rows, total = base["dataValue"], base["count"]
         identities = []
         for row in rows:
+            if {"accuracy", "cashflow_details"} & row.keys():
+                fail("reserved composition namespace already exists in native base")
             identity = row.get("id")
             if not isinstance(identity, str) or not identity.strip():
                 fail("base id must be a nonempty native string")
@@ -229,15 +287,41 @@ class Adapter:
                 "INCOMPLETE_RESULT",
             )
         contexts = [metric_context(row, scope["account_alias"]) for row in rows]
-        records = [
-            project(row, tools.inquire("metric", context)["bankAccountDetailDayVO"])
-            for row, context in zip(rows, contexts, strict=True)
+        occurrence_contexts = [
+            occurrence_context(row, scope["account_alias"]) for row in rows
         ]
+        records = []
+        responses = []
+        for row, context, detail_context in zip(
+            rows, contexts, occurrence_contexts, strict=True
+        ):
+            metric = tools.inquire("metric", context)["bankAccountDetailDayVO"]
+            detail_name = (
+                "occurrences"
+                if "gmtCreate" in detail_context
+                else "occurrences_without_create"
+            )
+            detail = tools.inquire(detail_name, detail_context)
+            records.append(
+                {**project(row, metric), "cashflow_details": detail["dataValue"]}
+            )
+            responses.append(
+                {
+                    "request_binding": detail_context,
+                    "native_count": detail.get("count"),
+                    "native_count_present": "count" in detail,
+                    "reported_total": None,
+                    "arrivals": len(detail["dataValue"]),
+                    "total_semantics": "source_row_occurrences",
+                    "coverage_complete": False,
+                }
+            )
         evidence = AcquisitionEvidence.for_collection(
-            complete=True,
+            complete=not rows,
             reported_total=total,
             collected_total=len(records),
             arrivals=len(rows),
+            reasons=("OCCURRENCE_COVERAGE_UNPROVEN",) if rows else (),
             attempts=(
                 {
                     "composition": "native-request-binding",
@@ -245,6 +329,14 @@ class Adapter:
                     "base_unique": len(identities),
                     "base_reported_total": total,
                     "metric_succeeded": len(records),
+                    "metric_required": len(rows),
+                    "metric_attempted": len(records),
+                    "occurrence_required": len(rows),
+                    "occurrence_attempted": len(responses),
+                    "occurrence_succeeded": len(responses),
+                    "occurrence_arrivals": sum(item["arrivals"] for item in responses),
+                    "occurrence_reported_total": None,
+                    "occurrence_responses": responses,
                     "client_base_limit": 100,
                     "backend_metric_echo": "not-required",
                 },
