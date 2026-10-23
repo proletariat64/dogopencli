@@ -6,7 +6,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
-from integration import test_migration_b08_cli as b08
+from integration.leaves.liquidity import test_operations_cli as b08
 
 from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 from dogopencli.errors import CliError
