@@ -1,0 +1,116 @@
+{
+  "domain": "liquidity",
+  "name": "cash.sweeping_reports",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native sweeping agreement report rows without business operations.",
+      "parameters": [
+        {
+          "name": "start-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive source value-date start, YYYY-MM-DD."
+        },
+        {
+          "name": "end-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive source value-date end, YYYY-MM-DD; earlier than one calendar month after start."
+        },
+        {
+          "name": "timezone",
+          "type": "string",
+          "required": true,
+          "choices": [
+            "GMT+08"
+          ],
+          "description": "Explicit native source timezone; currently qualified GMT+08."
+        }
+      ]
+    }
+  },
+  "summary": "Native sweeping agreement operating report records.",
+  "purpose": "Inspect recorded sweeping agreement activity for an explicit value-date and source timezone scope.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native report record identity."
+    },
+    {
+      "name": "cashPoolType",
+      "type": "string",
+      "meaning": "Native row field, retained even when empty; request scope fixes Sweeping_Agreement."
+    },
+    {
+      "name": "valueDate",
+      "type": "string",
+      "meaning": "Native report value date in source format and selected timezone."
+    },
+    {
+      "name": "transDate",
+      "type": "string",
+      "meaning": "Native transaction date, distinct from value date."
+    },
+    {
+      "name": "transTime",
+      "type": "string",
+      "meaning": "Native transaction time."
+    },
+    {
+      "name": "amount",
+      "type": "string",
+      "meaning": "Native decimal amount text; currency and direction remain separate."
+    },
+    {
+      "name": "closingBalance",
+      "type": "string",
+      "meaning": "Native recorded closing balance text; not current available cash."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native row currency."
+    },
+    {
+      "name": "direction",
+      "type": "string",
+      "meaning": "Native transaction direction."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies one source report record; pool type, date range and timezone remain explicit acquisition scope.",
+  "limitations": [
+    "Only Sweeping_Agreement; dates and source timezone are explicit per acquisition.",
+    "List only; no pool configuration, report edits, per-row details or other business actions.",
+    "Source totalAmount metadata is preserved per page with its native scope; never recalculated or relabeled as cash balance."
+  ],
+  "examples": [
+    {
+      "title": "Read sweeping agreement reports",
+      "command": "dogopencli liquidity list cash.sweeping_reports --start-date 2026-10-17 --end-date 2026-10-23 --timezone GMT+08 --live --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_cash_sweeping_reports"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        1000,
+        100
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}
