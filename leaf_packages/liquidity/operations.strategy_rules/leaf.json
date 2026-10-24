@@ -1,0 +1,122 @@
+{
+  "domain": "liquidity",
+  "name": "operations.strategy_rules",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native main or sub strategy rule records in one explicit category.",
+      "parameters": [
+        {
+          "name": "category",
+          "type": "string",
+          "required": true,
+          "choices": [
+            "MAIN_DECISION_STRATEGY",
+            "SUB_STRATEGY"
+          ],
+          "description": "Native strategy category; each acquisition covers one category."
+        },
+        {
+          "name": "strategy-type",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "choices": [
+            "PRINCIPAL_PLANNING",
+            "INVESTMENT_PORTFOLIO",
+            "INVESTMENT_PREFERENCE"
+          ],
+          "description": "Sub strategy type; repeat to select types. Omission selects the three UI types. Invalid with main category."
+        }
+      ]
+    }
+  },
+  "summary": "Native main and sub strategy rule records.",
+  "purpose": "Inspect native strategy configuration records and versions without editing or resolving referenced rules.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native physical rule record ID."
+    },
+    {
+      "name": "strategyRuleId",
+      "type": "string",
+      "meaning": "Logical strategy rule ID; distinct versions may share this value."
+    },
+    {
+      "name": "version",
+      "type": "string",
+      "meaning": "Native source version."
+    },
+    {
+      "name": "strategyRuleContent",
+      "type": "string",
+      "meaning": "Native strategy content, retained without parsing or joining referenced IDs."
+    },
+    {
+      "name": "strategyCategory",
+      "type": "string",
+      "meaning": "Explicit native main or sub category."
+    },
+    {
+      "name": "strategyType",
+      "type": "string",
+      "meaning": "Native sub strategy type; selected independently of category."
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "meaning": "Native rule state, distinct from approval/process state."
+    },
+    {
+      "name": "processStatus",
+      "type": "string",
+      "meaning": "Native approval/process state."
+    },
+    {
+      "name": "gmtCreate",
+      "type": "number",
+      "meaning": "Native creation timestamp, unchanged."
+    },
+    {
+      "name": "gmtModified",
+      "type": "number",
+      "meaning": "Native modification timestamp, unchanged."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native physical id identifies each returned rule record; logical rule IDs and versions remain separate.",
+  "limitations": [
+    "One explicit category per acquisition.",
+    "List only; no independent detail/history, referenced-rule joins or business actions.",
+    "Native strategyRuleContent remains unchanged, including source string encoding."
+  ],
+  "examples": [
+    {
+      "title": "Read main strategy rule records",
+      "command": "dogopencli liquidity list operations.strategy_rules --category MAIN_DECISION_STRATEGY --live --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_strategy_rules"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        50,
+        10
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}
