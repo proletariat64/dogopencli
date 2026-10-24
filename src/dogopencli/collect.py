@@ -318,6 +318,11 @@ def _short_page_candidate(
                         and callable(terminal)
                         and terminal(page, position) is True
                     ):
+                        metadata = _native_page_metadata(
+                            capability, response.body, position, width
+                        )
+                        if metadata is not None:
+                            native_metadata.append(metadata)
                         raise TerminalPage(
                             {
                                 "kind": "repeated_short_page",

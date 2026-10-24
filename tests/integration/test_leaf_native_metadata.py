@@ -63,10 +63,22 @@ def metadata_cli(
     manifest["collection"]["paging"] = {"mode": "offset", "page_sizes": [2, 1]}
     if paging_mode == "short_page":
         manifest["collection"]["paging"]["termination"] = "short_page"
+    elif paging_mode == "clamped":
+        manifest["collection"]["paging"] = {
+            "mode": "page_number",
+            "page_sizes": [2, 1],
+            "termination": "short_page",
+        }
     elif paging_mode != "offset":
         manifest["collection"]["paging"] = {"mode": paging_mode, "page_sizes": [2]}
     (source / "leaf.json").write_text(json.dumps(manifest))
     adapter = ADAPTER
+    if paging_mode == "clamped":
+        adapter = adapter.replace("one_based=False", "one_based=True").replace(
+            "class Adapter:",
+            "    def pagination_terminal(self, page, requested):\n"
+            "        return True\n\nclass Adapter:",
+        )
     if paging_mode == "single_response":
         adapter = adapter.replace(
             'return value["rows"], value["total"]', 'return value["rows"], None'
@@ -135,6 +147,77 @@ def response(rows, total, metadata, position=0, page_size=2):
             "page_size": page_size,
         },
     }
+
+
+def clamped_responses(*, invalid_terminal=None):
+    return [
+        response(
+            [{"id": "one"}, {"id": "two"}], 3, {"totalAmount": "first"}, position=1
+        ),
+        response([{"id": "three"}], 3, {"totalAmount": "last"}, position=2),
+        response(
+            [{"id": "three"}],
+            3,
+            []
+            if invalid_terminal == 3
+            else {"amount": Decimal("3.123456789012345678901")},
+            position=2,
+        ),
+        response(
+            [{"id": "three"}],
+            3,
+            [] if invalid_terminal == 4 else {"native": [None, False, "4.00"]},
+            position=2,
+        ),
+    ]
+
+
+@pytest.mark.parametrize("paging_mode", ["clamped"], indirect=True)
+def test_numbered_clamped_terminal_metadata_is_kept_with_requested_positions(
+    metadata_cli,
+):
+    cli, browser = metadata_cli
+    browser.business_script.extend(clamped_responses())
+    refreshed = cli("collection", "refresh", "sample.records")
+    assert [body["rowStart"] for body in browser.business_requests] == [1, 2, 3, 4]
+    expected = [
+        {"position": 1, "page_size": 2, "metadata": {"totalAmount": "first"}},
+        {"position": 2, "page_size": 2, "metadata": {"totalAmount": "last"}},
+        {
+            "position": 3,
+            "page_size": 2,
+            "metadata": {"amount": Decimal("3.123456789012345678901")},
+        },
+        {"position": 4, "page_size": 2, "metadata": {"native": [None, False, "4.00"]}},
+    ]
+    assert refreshed["meta"]["acquisition"]["native_metadata"] == expected
+    assert refreshed["meta"]["complete"] is True
+    assert (
+        refreshed["meta"]["acquisition"]["attempts"][-1]["termination_reason"]
+        == "two_clamped_batches"
+    )
+    saved = cli("collection", "list", "sample.records", "--limit", "0")
+    assert saved["data"] == [{"id": "one"}, {"id": "two"}, {"id": "three"}]
+    assert saved["meta"]["source_acquisition"]["native_metadata"] == expected
+    assert saved["meta"]["acquisition"]["native_metadata"] == expected
+
+
+@pytest.mark.parametrize("paging_mode", ["clamped"], indirect=True)
+@pytest.mark.parametrize("invalid_terminal", [3, 4])
+def test_invalid_clamped_terminal_metadata_preserves_previous_capture(
+    metadata_cli, invalid_terminal
+):
+    cli, browser = metadata_cli
+    browser.business_script.extend(clamped_responses())
+    cli("collection", "refresh", "sample.records")
+    before = cli("collection", "list", "sample.records", "--limit", "0")
+    browser.business_script.extend(clamped_responses(invalid_terminal=invalid_terminal))
+    rejected = cli("collection", "refresh", "sample.records", code=1)
+    assert rejected["error"]["code"] == "INVALID_RESPONSE"
+    after = cli("collection", "list", "sample.records", "--limit", "0")
+    assert after["data"] == before["data"]
+    assert after["meta"]["source_acquisition"] == before["meta"]["source_acquisition"]
+    assert after["meta"]["fetched_at"] == before["meta"]["fetched_at"]
 
 
 def test_live_retains_native_metadata_for_each_page(metadata_cli):
