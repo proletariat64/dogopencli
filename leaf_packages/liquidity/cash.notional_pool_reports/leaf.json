@@ -1,0 +1,134 @@
+{
+  "domain": "liquidity",
+  "name": "cash.notional_pool_reports",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native notional cash pool report rows without business operations.",
+      "parameters": [
+        {
+          "name": "start-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive source value-date start, YYYY-MM-DD."
+        },
+        {
+          "name": "end-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive source value-date end, YYYY-MM-DD; earlier than one calendar month after start."
+        },
+        {
+          "name": "timezone",
+          "type": "string",
+          "required": true,
+          "choices": [
+            "GMT+08"
+          ],
+          "description": "Explicit native source timezone; currently qualified GMT+08."
+        }
+      ]
+    }
+  },
+  "summary": "Native notional cash pool closing-balance report records.",
+  "purpose": "Inspect recorded notional pool/account/currency/value-date balances for an explicit date and timezone scope.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native source id, retained even when blank; not the primary identity."
+    },
+    {
+      "name": "cashPoolName",
+      "type": "string",
+      "meaning": "Native named cash pool membership dimension; distinct pools remain separate records."
+    },
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native account-alias identity dimension within the selected pool/currency/value date."
+    },
+    {
+      "name": "cashPoolType",
+      "type": "string",
+      "meaning": "Native row field retained even when blank; request scope fixes Notional_Cash_Pool."
+    },
+    {
+      "name": "valueDate",
+      "type": "string",
+      "meaning": "Native report value date in source format and selected timezone."
+    },
+    {
+      "name": "transDate",
+      "type": "string",
+      "meaning": "Native transaction date, distinct from value date."
+    },
+    {
+      "name": "transTime",
+      "type": "string",
+      "meaning": "Native transaction time."
+    },
+    {
+      "name": "amount",
+      "type": "string",
+      "meaning": "Native decimal amount text; currency and direction remain separate."
+    },
+    {
+      "name": "closingBalance",
+      "type": "string",
+      "meaning": "Native recorded closing balance text; not current available cash."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native row currency."
+    },
+    {
+      "name": "direction",
+      "type": "string",
+      "meaning": "Native transaction direction."
+    }
+  ],
+  "identity": [
+    "cashPoolName",
+    "aliasName",
+    "currency",
+    "valueDate"
+  ],
+  "identity_description": "Reviewed native pool/account-alias/currency/value-date tuple identifies one notional balance observation; balance updates retain identity. Native id is retained even when blank.",
+  "limitations": [
+    "Only Notional_Cash_Pool; dates and qualified GMT+08 source timezone are explicit per acquisition.",
+    "List only; no pool configuration, report edits, per-row details or other business actions.",
+    "Source totalAmount metadata is preserved per page with its native scope; never recalculated or relabeled as cash balance.",
+    "Existing SDK composite identity uses exactly cashPoolName, aliasName, currency and valueDate without adding a synthetic field or using mutable balance values. This identity is not shared with Physical/Sweeping transaction reports.",
+    "Native report rows are request-range dependent; a wide saved capture does not establish all daily observations or reproduce a narrower native query through local date filtering."
+  ],
+  "examples": [
+    {
+      "title": "Read notional cash pool reports",
+      "command": "dogopencli liquidity list cash.notional_pool_reports --start-date 2026-10-17 --end-date 2026-10-23 --timezone GMT+08 --live --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_cash_notional_pool_reports"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        1000,
+        100
+      ]
+    },
+    "primary_id": {
+      "type": "hash",
+      "fields": [
+        "cashPoolName",
+        "aliasName",
+        "currency",
+        "valueDate"
+      ]
+    }
+  }
+}
