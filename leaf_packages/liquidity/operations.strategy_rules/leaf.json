@@ -92,7 +92,8 @@
   "limitations": [
     "One explicit category per acquisition.",
     "List only; no independent detail/history, referenced-rule joins or business actions.",
-    "Native strategyRuleContent remains unchanged, including source string encoding."
+    "Native strategyRuleContent remains unchanged, including source string encoding.",
+    "Native main records may carry strategyCategory SUB_STRATEGY with an empty strategyType; request-defined capture scope remains MAIN_DECISION_STRATEGY and source fields are preserved."
   ],
   "examples": [
     {
