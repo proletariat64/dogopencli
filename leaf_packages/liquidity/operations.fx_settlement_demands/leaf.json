@@ -1,0 +1,164 @@
+{
+  "domain": "liquidity",
+  "name": "operations.fx_settlement_demands",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native FX settlement demands within explicit value dates.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Native value-date lower bound, YYYY-MM-DD."
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Native value-date upper bound, YYYY-MM-DD; ordered date difference must not exceed 31 days."
+        },
+        {
+          "name": "inst-id",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "instId",
+          "description": "Native entity identifier, without ownership inference; exact local filter after complete acquisition; OR within this selector, AND across selectors."
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "currency",
+          "description": "Native currency string; exact local filter after complete acquisition; OR within this selector, AND across selectors."
+        },
+        {
+          "name": "account-alias",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "aliasName",
+          "description": "Native settlement account alias; exact local filter after complete acquisition; OR within this selector, AND across selectors."
+        },
+        {
+          "name": "counterparty",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "counterParty",
+          "description": "Native counterparty string; exact local filter after complete acquisition; OR within this selector, AND across selectors."
+        },
+        {
+          "name": "sub-biz-type",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "local_field": "subBizType",
+          "description": "Native sub-business type; exact local filter after complete acquisition; OR within this selector, AND across selectors."
+        }
+      ]
+    }
+  },
+  "summary": "FX settlement demands for explicit value dates.",
+  "purpose": "Inspect native settlement demands, amounts, directions and settlement references without executing settlement.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "integer",
+      "meaning": "Native settlement-demand record identity."
+    },
+    {
+      "name": "valueDate",
+      "type": "string",
+      "meaning": "Native YYYYMMDD value date, preserved unchanged."
+    },
+    {
+      "name": "amount",
+      "type": "string",
+      "meaning": "Native amount, without scaling or inferred sign."
+    },
+    {
+      "name": "transNo",
+      "type": "string",
+      "meaning": "Native settlement reference; not an FX trade identity."
+    },
+    {
+      "name": "instId",
+      "type": "string",
+      "meaning": "Native entity identifier, without ownership inference."
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "meaning": "Native currency string."
+    },
+    {
+      "name": "aliasName",
+      "type": "string",
+      "meaning": "Native settlement account alias."
+    },
+    {
+      "name": "counterParty",
+      "type": "string",
+      "meaning": "Native counterparty string."
+    },
+    {
+      "name": "subBizType",
+      "type": "string",
+      "meaning": "Native sub-business type."
+    },
+    {
+      "name": "bizType",
+      "type": "string",
+      "meaning": "Native settlement business type."
+    },
+    {
+      "name": "direction",
+      "type": "string",
+      "meaning": "Native debit/credit indicator; does not imply a locally calculated amount sign."
+    },
+    {
+      "name": "memo",
+      "type": "string",
+      "meaning": "Native settlement memo, with blanks preserved."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native positive integer settlement-demand id, independently qualified from transNo.",
+  "limitations": [
+    "Inquiry-only GET /queryFxSettlementReportList.json; fixed tenant GUAPW3SG.",
+    "Explicit ordered YYYY-MM-DD value dates; date difference at most 31 days.",
+    "Only one width-5000 response is qualified. Scopes requiring another page fail the existing SDK request budget; no truncation or guessed pagination recovery.",
+    "Native ordering can vary across acquisitions. Preserve each response order, all native fields and exact amounts; no trade/rule lookup, sign inference or amount scaling."
+  ],
+  "examples": [
+    {
+      "title": "Read one value-date scope",
+      "command": "dogopencli liquidity list operations.fx_settlement_demands --live --from-date 2026-10-23 --to-date 2026-10-23 --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_fx_settlement_demands"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    },
+    "max_pages": 1,
+    "budget_seconds": 120
+  }
+}
