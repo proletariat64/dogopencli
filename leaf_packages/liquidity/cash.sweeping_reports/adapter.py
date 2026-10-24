@@ -1,7 +1,7 @@
 """Native cash pool operating reports through the host List SDK."""
 
 from calendar import monthrange
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from dogopencli.contracts import EndpointContract
@@ -122,7 +122,7 @@ class Inquiry:
                 )
             value_date = row.get("valueDate")
             try:
-                parsed_date = date.fromisoformat(value_date)
+                parsed_date = datetime.strptime(value_date, "%Y%m%d").date()
                 if parsed_date.isoformat().replace("-", "") != value_date:
                     raise ValueError
             except (ValueError, TypeError) as error:
