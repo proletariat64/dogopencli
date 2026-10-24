@@ -1,0 +1,120 @@
+{
+  "domain": "liquidity",
+  "name": "operations.automatic_tasks",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Read native automatic-operation tasks within an explicit created-time scope.",
+      "parameters": [
+        {
+          "name": "created-from",
+          "type": "string",
+          "required": true,
+          "description": "Native GMT+8 created-time lower bound YYYY-MM-DDTHH:mm:ss, without offset."
+        },
+        {
+          "name": "created-to",
+          "type": "string",
+          "required": true,
+          "description": "Native GMT+8 created-time upper bound YYYY-MM-DDTHH:mm:ss, without offset; fewer than 31 elapsed days after created-from."
+        }
+      ]
+    }
+  },
+  "summary": "Native automatic-operation task records.",
+  "purpose": "Inspect automatic-operation tasks without executing, confirming or editing them.",
+  "fields": [
+    {
+      "name": "taskId",
+      "type": "string",
+      "meaning": "Native task record identity."
+    },
+    {
+      "name": "gmtCreate",
+      "type": "string",
+      "meaning": "Native creation time, shown in GMT+8 by the frontend; distinct from modification/end/capture time."
+    },
+    {
+      "name": "lastModifiedTime",
+      "type": "string",
+      "meaning": "Native modification time; may be later than the queried creation-time bounds."
+    },
+    {
+      "name": "endTime",
+      "type": "string",
+      "meaning": "Native task end time, retained independently from creation and modification times."
+    },
+    {
+      "name": "decisionStatus",
+      "type": "string",
+      "meaning": "Native decision stage status; not collapsed into operation/completion status."
+    },
+    {
+      "name": "operationStatus",
+      "type": "string",
+      "meaning": "Native operation stage status."
+    },
+    {
+      "name": "completionStatus",
+      "type": "string",
+      "meaning": "Native completion stage status."
+    },
+    {
+      "name": "successfulDecisionAmount",
+      "type": "string",
+      "meaning": "Native successful decision amount text, preserved without numeric conversion."
+    },
+    {
+      "name": "successfulOperationAmount",
+      "type": "string",
+      "meaning": "Native successful operation amount text, separate from decision amount."
+    },
+    {
+      "name": "operationStrategyName",
+      "type": "string",
+      "meaning": "Native operation strategy name; no lookup or strategy join is performed."
+    },
+    {
+      "name": "subStrategyName",
+      "type": "string",
+      "meaning": "Native sub-strategy name retained separately from the operation strategy name."
+    }
+  ],
+  "identity": [
+    "taskId"
+  ],
+  "identity_description": "Native string taskId identifies a returned automatic-operation task within the exact created-time scope.",
+  "limitations": [
+    "Only POST JSON /riskActionTask/listQuery.json; fixed GUAPW3SG tenant. This is distinct from funding-demand queries.",
+    "Dates are required native GMT+8 wall clocks with second precision. No local-time conversion or machine-today default.",
+    "Standard offset List acquisition uses rowStart/pageSize and native data.totalCount. Unknown native fields, amounts, statuses, nesting and order are retained.",
+    "Inquiry only: no Get, per-task detail, execution, confirmation, edit, history or joined strategy records.",
+    "The frontend date picker rejects a truncated elapsed-day difference greater than 30; ordered second-precision bounds therefore must be fewer than 31 elapsed days apart.",
+    "Large scopes can exhaust the shared request or time budget; narrow created-time bounds. No automatic date partitioning or alternate endpoint.",
+    "Live inquiry does not publish. Only complete nonempty explicit refresh replaces the saved capture; empty/error/incomplete refresh preserves prior rows and capture time. No Duckdog import."
+  ],
+  "examples": [
+    {
+      "title": "Read automatic-operation tasks",
+      "command": "dogopencli liquidity list operations.automatic_tasks --live --created-from 2026-10-23T00:00:00 --created-to 2026-10-23T23:59:59 --limit 0 --require-complete"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_operations_automatic_tasks"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        10
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "taskId"
+      ]
+    }
+  }
+}
