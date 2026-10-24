@@ -96,7 +96,16 @@ class Inquiry:
                 raise CliError(
                     INVALID_RESPONSE, "strategy id must be a nonempty native string"
                 )
-            if row.get("strategyCategory") != self.values["strategyCategory"]:
+            # The native main List consistently labels its main rows SUB_STRATEGY
+            # with an empty type. Main/sub scopes are request-defined and disjoint;
+            # preserve that source value but reject actual sub-type leakage.
+            category = self.values["strategyCategory"]
+            qualified_main_echo = (
+                category == "MAIN_DECISION_STRATEGY"
+                and row.get("strategyCategory") == "SUB_STRATEGY"
+                and row.get("strategyType") == ""
+            )
+            if row.get("strategyCategory") != category and not qualified_main_echo:
                 raise CliError(
                     INVALID_RESPONSE, "strategy category contradicts requested scope"
                 )

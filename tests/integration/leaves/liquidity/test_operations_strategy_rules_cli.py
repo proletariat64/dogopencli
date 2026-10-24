@@ -318,3 +318,39 @@ def test_live_category_change_does_not_replace_saved_sub_scope(installed):
     after = cli("liquidity", "list", LEAF, "--limit", "0")
     assert after["data"] == before["data"] == sub
     assert after["meta"]["fetched_at"] == before["meta"]["fetched_at"]
+
+
+def test_main_request_preserves_qualified_native_category_mismatch(installed):
+    cli, browser = installed
+    row = {
+        "id": "main-physical",
+        "strategyRuleId": "main-rule",
+        "strategyCategory": "SUB_STRATEGY",
+        "strategyType": "",
+        "strategyRuleContent": "",
+    }
+    browser.business_script.append(native([row]))
+    assert cli(
+        "liquidity",
+        "list",
+        LEAF,
+        "--category",
+        "MAIN_DECISION_STRATEGY",
+        "--live",
+        "--require-complete",
+    )["data"] == [row]
+    assert browser.business_requests[-1]["strategyCategory"] == "MAIN_DECISION_STRATEGY"
+    browser.business_script.append(
+        native([{**row, "strategyType": "PRINCIPAL_PLANNING"}])
+    )
+    result = cli(
+        "liquidity",
+        "list",
+        LEAF,
+        "--category",
+        "MAIN_DECISION_STRATEGY",
+        "--live",
+        "--require-complete",
+        code=1,
+    )
+    assert result["error"]["code"] == "INVALID_RESPONSE"

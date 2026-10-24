@@ -15,6 +15,13 @@ selects the UI's three types: `PRINCIPAL_PLANNING`, `INVESTMENT_PORTFOLIO` and
 `INVESTMENT_PREFERENCE`. A type is invalid with `MAIN_DECISION_STRATEGY`.
 The native request contains no tenant field.
 
+The native main List currently returns `strategyCategory: "SUB_STRATEGY"` with
+an empty `strategyType`, despite the explicit `MAIN_DECISION_STRATEGY` request.
+Complete cross-width acquisitions establish separate main/sub scopes; the
+returned field is preserved unchanged. This qualified main echo is accepted
+only with the empty native type; a main response carrying a selected sub type
+is rejected. Interpret capture scope from the request, not that source label.
+
 `id` identifies the physical source record. `strategyRuleId` and `version`
 retain their separate meanings; records sharing a logical rule ID are not merged.
 All source fields, timestamps, statuses, nested values and unknown fields remain
