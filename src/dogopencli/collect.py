@@ -211,6 +211,26 @@ def _list_allowed_sizes(capability: TransportCapability) -> set[int]:
     return sizes
 
 
+def _native_page_metadata(
+    capability: Any, body: bytes, position: int, page_size: int
+) -> dict[str, Any] | None:
+    parser = getattr(capability, "parse_metadata", None)
+    if parser is None:
+        return None
+    if not callable(parser):
+        raise CliError(INVALID_RESPONSE, "native metadata parser is not callable")
+    metadata = parser(body)
+    try:
+        if not isinstance(metadata, dict):
+            raise ValueError
+        canonical(metadata)
+    except (TypeError, ValueError) as error:
+        raise CliError(
+            INVALID_RESPONSE, "native metadata is not a JSON object"
+        ) from error
+    return {"position": position, "page_size": page_size, "metadata": metadata}
+
+
 @dataclass
 class _PageBudget:
     remaining: int
@@ -265,6 +285,7 @@ def _short_page_candidate(
     pages = 0
     hashes: dict[str, str] = {}
     short_pages: dict[int, ParsedPage] = {}
+    native_metadata: list[dict[str, Any]] = []
 
     def read(start: int, width: int) -> list[dict]:
         nonlocal pages
@@ -340,6 +361,9 @@ def _short_page_candidate(
         validator = getattr(capability, "validate_rows_scope", None)
         if validator is not None:
             validator(rows, scope)
+        metadata = _native_page_metadata(capability, response.body, position, width)
+        if metadata is not None:
+            native_metadata.append(metadata)
         if mode == "page_number":
             if 0 < len(rows) < width:
                 short_pages[width] = page
@@ -407,6 +431,7 @@ def _short_page_candidate(
     )
     evidence = replace(
         evidence,
+        native_metadata=tuple(native_metadata) if native_metadata else None,
         attempts=(
             {
                 "page_size": size,
@@ -486,6 +511,7 @@ def _list_candidate(
         problems.append("TOTAL_SEMANTICS_UNPROVEN")
     pages = 0
 
+    native_metadata: list[dict[str, Any]] = []
     for index in range(page_budget.remaining):
         remaining_seconds(deadline)
         position = index * size if mode == "offset" else first_number + index
@@ -543,6 +569,10 @@ def _list_candidate(
         scope_validator = getattr(capability, "validate_rows_scope", None)
         if scope_validator is not None:
             scope_validator(rows, scope)
+
+        metadata = _native_page_metadata(capability, response.body, position, size)
+        if metadata is not None:
+            native_metadata.append(metadata)
 
         expected_rows = (
             min(size, max(0, reported - index * size)) if reported is not None else None
@@ -614,6 +644,7 @@ def _list_candidate(
     )
     evidence = replace(
         evidence,
+        native_metadata=tuple(native_metadata) if native_metadata else None,
         attempts=(
             {
                 "page_size": size,

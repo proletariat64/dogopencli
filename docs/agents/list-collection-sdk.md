@@ -14,6 +14,30 @@ Every standard List declares `collection`. Dependent or specialized inquiries
 explicitly declare custom execution and named host query tools. A List without
 either contract is invalid; adapters never receive a session or transport.
 
+## Native page metadata
+
+A capability may supply the pure optional hook `parse_metadata(body) -> dict`
+to retain source aggregates or other response metadata separately from native
+records. The hook receives the same successful response bytes as the row parser;
+the leaf owns its native meaning and validates the returned JSON object. It must
+not make inquiries, recalculate aggregates, or insert metadata into every row.
+
+The host retains each validated response in acquisition order as
+`{position, page_size, metadata}` under `acquisition.native_metadata`. Position is
+the requested page number or offset. Short-page acquisitions also retain their
+successful probe and terminal responses with their actual positions and widths.
+The host preserves native values, types, nesting and array order. It does not
+merge page aggregates or assume that they cover the same scope. Display windows,
+projections and local filters do not reinterpret source aggregates.
+
+Only the selected width candidate's metadata accompanies its records; rebuilding
+at another width discards the rejected candidate's metadata. Complete nonempty
+refresh saves rows and metadata together through the existing atomic snapshot;
+offline replay retains it in both `acquisition` and `source_acquisition`. Live
+does not publish, and empty, failed or incomplete refresh preserves the previous
+capture. Leaves without the hook omit `native_metadata` and keep their existing
+envelope. No cache table or separate metadata store is added.
+
 ## Ownership and provider isolation
 
 - **Leaf chooses provider.** `leaf.json` declares a `collection.provider`. Domain declarations remain unchanged and do not register SDKs.

@@ -120,6 +120,7 @@ For SDK List, the capability supplies:
 | `page_body(scope, position, page_size)` | Build one native allowlisted request. Position is a page number or absolute offset according to `paging.mode`. |
 | `parse_page(body)` | Numbered/single paging: validate native business status, rows and page metadata; return host `ParsedPage`. |
 | `parse_rows(body)` | Offset paging returns `(rows, native_total)`; qualified `single_response` returns `(rows, None)`. Validate native business status and shape in both. |
+| `parse_metadata(body)` | Optional pure hook returning a native JSON object separate from rows; see [native page metadata](../../docs/agents/list-collection-sdk.md#native-page-metadata) for page association and cache semantics. |
 | `validate_rows_scope(rows, scope)` | Optional native scope validation beyond a fixed `contract.scope_field`. |
 
 Use neutral contracts from `dogopencli.contracts`. Primary identity comes from

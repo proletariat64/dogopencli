@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
+from .jsonutil import canonical
 
 SOURCE_ROW_OCCURRENCES = "source_row_occurrences"
 
@@ -29,6 +30,7 @@ class AcquisitionEvidence:
     resolved_count: int | None = None
     coverage_basis: str | None = None
     sources: dict[str, dict[str, Any]] | None = None
+    native_metadata: tuple[dict[str, Any], ...] | None = None
 
     @classmethod
     def for_collection(
@@ -120,6 +122,8 @@ class AcquisitionEvidence:
             record["coverage_basis"] = self.coverage_basis
         if self.sources is not None:
             record["sources"] = self.sources
+        if self.native_metadata is not None:
+            record["native_metadata"] = list(self.native_metadata)
         return record
 
     @classmethod
@@ -149,6 +153,25 @@ class AcquisitionEvidence:
         attempts = record.get("attempts", [])
         coverage_basis = record.get("coverage_basis")
         sources = record.get("sources")
+        native_metadata = record.get("native_metadata")
+        if native_metadata is not None:
+            if not isinstance(native_metadata, list) or any(
+                not isinstance(page, dict)
+                or set(page) != {"position", "page_size", "metadata"}
+                or type(page["position"]) is not int
+                or page["position"] < 0
+                or type(page["page_size"]) is not int
+                or page["page_size"] < 0
+                or not isinstance(page["metadata"], dict)
+                for page in native_metadata
+            ):
+                raise CliError(INVALID_RESPONSE, "native page metadata is invalid")
+            try:
+                canonical(native_metadata)
+            except (TypeError, ValueError) as error:
+                raise CliError(
+                    INVALID_RESPONSE, "native page metadata is not JSON"
+                ) from error
         if (
             not isinstance(reasons, list)
             or any(not isinstance(code, str) for code in reasons)
@@ -180,6 +203,9 @@ class AcquisitionEvidence:
             resolved_count=record.get("resolved_count"),
             coverage_basis=coverage_basis,
             sources=sources,
+            native_metadata=tuple(native_metadata)
+            if native_metadata is not None
+            else None,
         )
         if coverage_basis in {
             "qualified_single_response",
