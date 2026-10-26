@@ -96,7 +96,7 @@ remain failures.
 Direct Get is action-first and inherently live:
 
 ```bash
-dogopencli collection get sample.records one
+dogopencli collection get sample.records one --require-complete
 dogopencli collection get sample.detail REF-one --account account-one
 ```
 
@@ -109,8 +109,23 @@ records `query.identity` separately from `query.parameters`, `source`, `leaf`,
 `operation`, `fetched_at`, `returned_count` (one object or actual array length),
 `detail_scope: native_root` and
 `detail_coverage`. Success proves acquisition of that native response, not complete
-business-object expansion. Separate histories, logs and child pages are unqueried;
-Get does not report List totals or unconditional dataset completeness.
+business-object expansion. Separate histories, logs and child pages are unqueried.
+
+Every Get, including object, array, Get-only and custom operations, exposes
+`--require-complete` and shared acquisition evidence. The standard SDK proves the
+validated declared native root with `coverage_basis: qualified_single_response`;
+unknown native totals remain null. `complete` and `dataset_complete` describe
+this Get's promised scope, never all related history or a List dataset.
+
+Custom Get returns explicit scoped `CustomGetResult` evidence, including required
+components, supplementary gaps and applicability; see [Custom SDK](custom-query-sdk.md).
+A latest-five promise covers those five records, not lifetime history. Missing
+required coverage cannot pass either mode. Qualified usable incomplete coverage
+returns data and warnings by default; `--require-complete` returns
+`INCOMPLETE_RESULT`, no candidate data and exit 1. Complete results with recovery
+warnings pass strict mode. Strictness changes neither acquisition scope nor
+freshness, endpoints or retry budgets. [Result policy](result-policy.md) defines
+the shared diagnostic and outcome metadata.
 
 Supported Lists expose only the singular `--with-detail`, requiring `--live`:
 
@@ -131,8 +146,11 @@ Each member preserves its own native view. `--fields` selects native fields insi
 `record` after binding; `detail` stays complete as returned. Neither object is
 flattened or overwritten. Invalid binding, any detail failure or budget exhaustion
 fails the whole query with affected-row context and no successful partial array.
-Successful Gets preserve List acquisition evidence; they cannot upgrade an
-incomplete List or prove coverage of unqueried children. Direct Get and composition
+Successful Gets preserve List acquisition evidence and each selected Get
+coverage verdict under `source_acquisition` and `detail_acquisition`; they cannot
+upgrade an incomplete List or prove coverage of unqueried children. A qualified usable incomplete selected Get keeps the
+composition incomplete, and strict mode rejects the whole candidate. A hard
+selected Get failure still fails the whole query. Direct Get and composition
 publish no temporary query cache or Duckdog dataset and preserve saved Lists.
 Default/cached List, refresh, direct Get and unsupported leaves reject
 `--with-detail` before business queries. Ordinary List behavior is unchanged.
@@ -154,7 +172,7 @@ using the exact installed host and leaf ZIPs. Reuse `leaf.py` and plugin-helper;
 there is no separate SDK distribution or packer.
 
 For arrays, cover nonempty/empty roots, invalid members, duplicate native identity,
-projection and unchanged cache. For nested identities, cover missing paths,
+projection, strict/default scoped coverage and unchanged cache. For nested identities, cover missing paths,
 non-object parents, null/boolean/non-scalar values, literal dotted keys and
 preservation of every sibling. Help/describe must expose shape and identity paths
 without activating adapters or querying business data.
