@@ -263,3 +263,21 @@ def test_auth_error_keeps_stderr_and_renders_nested_partial_outcomes(capsys):
         and "Retry dogopencli auth check --domain fx" in streams.err
     )
     assert "{'" not in streams.err
+
+
+@pytest.mark.parametrize("malformed", [None, "", "   ", 7, []])
+def test_malformed_leaf_error_code_cannot_exit_success(run_cli, monkeypatch, malformed):
+    from dogopencli.errors import CliError
+    from dogopencli.leaves import cli
+
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
+
+    def fail(*args):
+        raise CliError(malformed, "adapter error", exit_code=0)
+
+    monkeypatch.setattr(cli, "execute", fail)
+    code, output, _ = run_cli(["payment", "list", "sla.baselines", "--live"])
+    result = json.loads(output)
+    assert code == 1 and result["data"] is None
+    assert result["error"]["code"] == "INTERNAL_ERROR"
+    assert result["meta"]["outcome"] == "failed"

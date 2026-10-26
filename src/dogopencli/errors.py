@@ -193,7 +193,7 @@ class CliError(Exception):
         command_path: tuple[str, ...] | None = None,
     ) -> None:
         super().__init__(message)
-        self.code = code
+        self.code = code if isinstance(code, str) and code.strip() else "INTERNAL_ERROR"
         self.message = message
         self.retryable = retryable
         self.exit_code = exit_code
