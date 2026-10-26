@@ -617,6 +617,10 @@ def test_custom_get_without_coverage_cannot_satisfy_acceptance(
 ):
     cli, browser, _ = detail_cli
     root = supplementary_package(tmp_path)
+    manifest_path = root / "leaf.json"
+    manifest = json.loads(manifest_path.read_text())
+    del manifest["operations"]["get"]["queries"]["extra"]
+    manifest_path.write_text(json.dumps(manifest))
     with (root / "adapter.py").open("a") as source:
         source.write("""
 class Bare(Custom):
