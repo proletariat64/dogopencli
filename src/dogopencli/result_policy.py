@@ -89,6 +89,9 @@ class AcquisitionEvidence:
                 )
         if not complete and not codes:
             codes.append("COVERAGE_UNPROVEN")
+        if "IDENTITY_CONTENT_CONFLICT" in codes:
+            complete = False
+            usable_incomplete = False
         return cls(
             scope_complete=complete,
             dataset_complete=complete,
@@ -520,14 +523,41 @@ class ResultDecision:
         }
 
 
+def _has_identity_conflict(record: dict[str, Any]) -> bool:
+    """Inspect SDK provenance only; native metadata is not coverage evidence."""
+    if "IDENTITY_CONTENT_CONFLICT" in record.get("reasons", ()) or (
+        type(record.get("conflict_count")) is int and record["conflict_count"] > 0
+    ):
+        return True
+    children = list(record.get("attempts", ()))
+    sources = record.get("sources")
+    if isinstance(sources, dict):
+        children.extend(sources.values())
+    if isinstance(record.get("acquisition"), dict):
+        children.append(record["acquisition"])
+    queries = record.get("queries")
+    if isinstance(queries, dict):
+        for query in queries.values():
+            if isinstance(query, dict):
+                children.extend(query.get("collections", ()))
+    return any(
+        _has_identity_conflict(child) for child in children if isinstance(child, dict)
+    )
+
+
 def evaluate_result(
     evidence: AcquisitionEvidence,
     *,
     mode: str,
     require_complete: bool = False,
 ) -> ResultDecision:
-    incomplete = not (evidence.scope_complete and evidence.dataset_complete)
+    identity_conflict = _has_identity_conflict(evidence.record())
+    incomplete = identity_conflict or not (
+        evidence.scope_complete and evidence.dataset_complete
+    )
     reasons = list(evidence.reasons)
+    if identity_conflict and "IDENTITY_CONTENT_CONFLICT" not in reasons:
+        reasons.append("IDENTITY_CONTENT_CONFLICT")
     if incomplete and not reasons:
         reasons = ["COVERAGE_UNPROVEN"]
     warnings: tuple[dict[str, Any], ...] = ()
@@ -582,7 +612,9 @@ def evaluate_result(
                 reason_codes=reasons,
             ),
         )
-    rejected = incomplete and (require_complete or not evidence.usable_incomplete)
+    rejected = identity_conflict or (
+        incomplete and (require_complete or not evidence.usable_incomplete)
+    )
     error = (
         diagnostic(
             INCOMPLETE_RESULT,
@@ -592,7 +624,9 @@ def evaluate_result(
             stage="coverage",
             consequence="candidate data is withheld; no replacement is published",
             action=(
-                "Use default mode only if the documented gaps are acceptable."
+                "Resolve conflicting source identities and retry."
+                if identity_conflict
+                else "Use default mode only if the documented gaps are acceptable."
                 if evidence.usable_incomplete
                 else "Qualify incomplete-result usability or restore required coverage."
             ),
