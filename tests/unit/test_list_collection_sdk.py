@@ -529,7 +529,7 @@ def test_real_entity_pilot_contract_can_run_through_generic_offset_engine(monkey
 
 
 @pytest.mark.parametrize("failure", ["partial", "missing_evidence"])
-def test_refresh_rejects_unpublishable_acquisition_and_preserves_saved_rows(
+def test_strict_refresh_rejects_unpublishable_acquisition_and_preserves_saved_rows(
     tmp_path, monkeypatch, failure
 ):
     from dogopencli.leaves import runtime
@@ -580,7 +580,7 @@ def test_refresh_rejects_unpublishable_acquisition_and_preserves_saved_rows(
         limit=100,
         offset=0,
         fields=None,
-        require_complete=False,
+        require_complete=True,
         require_fresh=False,
         live=False,
         with_detail=False,

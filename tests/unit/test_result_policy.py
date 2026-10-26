@@ -13,6 +13,7 @@ from dogopencli.result_policy import (
 
 def source_selection_evidence():
     return AcquisitionEvidence(
+        usable_incomplete=True,
         scope_complete=True,
         dataset_complete=True,
         reported_total=3,
@@ -93,7 +94,7 @@ def test_incomplete_source_selection_reports_raw_shortfall_and_strict_rejects():
     assert decision.error["code"] == "INCOMPLETE_RESULT"
 
 
-def test_safe_shortfall_is_usable_live_but_refresh_and_strict_reject():
+def test_safe_shortfall_is_usable_live_and_refresh_but_strict_rejects():
     evidence = AcquisitionEvidence.for_collection(
         complete=False, reported_total=100, collected_total=99, arrivals=100
     )
@@ -109,8 +110,8 @@ def test_safe_shortfall_is_usable_live_but_refresh_and_strict_reject():
     assert not strict.expose_data and not strict.publishable
     assert strict.error["code"] == "INCOMPLETE_RESULT" and strict.exit_code == 1
     refresh = evaluate_result(evidence, mode="refresh")
-    assert not refresh.expose_data and not refresh.publishable
-    assert refresh.error["code"] == "INCOMPLETE_RESULT" and refresh.exit_code == 1
+    assert refresh.expose_data and refresh.publishable
+    assert refresh.error is None and refresh.exit_code == 0
 
 
 def test_complete_empty_refresh_preserves_saved_snapshot():
@@ -120,6 +121,68 @@ def test_complete_empty_refresh_preserves_saved_snapshot():
     decision = evaluate_result(evidence, mode="refresh")
     assert decision.expose_data and not decision.publishable
     assert decision.error is None and decision.exit_code == 0
+
+
+@pytest.mark.parametrize("mode", ["live", "refresh", "cache"])
+def test_incomplete_evidence_needs_explicit_usability_qualification(mode):
+    evidence = AcquisitionEvidence(
+        scope_complete=False,
+        dataset_complete=False,
+        collected_total=1,
+        reasons=("SUPPLEMENT_UNAVAILABLE",),
+    )
+    decision = evaluate_result(evidence, mode=mode)
+    assert decision.expose_data is False
+    assert decision.publishable is False
+    assert decision.error["code"] == "INCOMPLETE_RESULT"
+    assert decision.exit_code == 1
+
+
+def test_incomplete_qualification_survives_evidence_roundtrip():
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False, reported_total=2, collected_total=1, arrivals=1
+    )
+    retained = AcquisitionEvidence.from_record(evidence.record())
+    assert retained.usable_incomplete is True
+    assert evaluate_result(retained, mode="cache").expose_data is True
+    record = evidence.record()
+    record["usable_incomplete"] = "yes"
+    with pytest.raises(CliError):
+        AcquisitionEvidence.from_record(record)
+
+
+def test_decision_keeps_outcome_quality_and_actual_publication_separate():
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False, reported_total=2, collected_total=1, arrivals=1
+    )
+    decision = evaluate_result(evidence, mode="refresh")
+    assert decision.meta(mode="refresh", published=True) == {
+        "outcome": "warning",
+        "data_quality": "incomplete",
+        "publication": {"status": "published", "reason": "accepted"},
+    }
+    assert decision.meta(mode="cache")["publication"] == {
+        "status": "not_requested",
+        "reason": None,
+    }
+    strict = evaluate_result(evidence, mode="refresh", require_complete=True)
+    assert strict.meta(mode="refresh") == {
+        "outcome": "failed",
+        "data_quality": "incomplete",
+        "publication": {"status": "unchanged", "reason": "rejected"},
+    }
+
+
+def test_complete_warning_retains_its_reason_instead_of_inventing_duplicates():
+    evidence = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=1,
+        collected_total=1,
+        reasons=("SOURCE_BOUNDARY_CONFIRMED",),
+    )
+    decision = evaluate_result(evidence, mode="live", require_complete=True)
+    assert decision.warnings[0]["code"] == "SOURCE_BOUNDARY_CONFIRMED"
+    assert "duplicate" not in decision.warnings[0]["message"]
 
 
 @pytest.mark.parametrize("meta", [{}, {"complete": True}, {"complete": False}])
