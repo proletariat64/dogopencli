@@ -95,7 +95,12 @@
             ],
             "description": "Native detail aliasName must equal the baseline alias requested."
           },
-          "result_shape": "object"
+          "result_shape": "object",
+          "supplementary": true,
+          "retained_errors": [
+            "failed",
+            "refused"
+          ]
         }
       },
       "max_requests": 10000,

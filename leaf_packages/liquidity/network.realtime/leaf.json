@@ -33,11 +33,13 @@
         },
         "history": {
           "kind": "inquiry",
-          "result_shape": "array"
+          "result_shape": "array",
+          "supplementary": true
         },
         "route": {
           "kind": "inquiry",
-          "result_shape": "object"
+          "result_shape": "object",
+          "supplementary": true
         }
       },
       "max_requests": 9,

@@ -252,8 +252,12 @@ def test_caught_hard_failure_cannot_be_converted_to_partial_success(response, co
 
 
 def test_only_qualified_refusal_can_be_retained_and_never_as_complete():
-    script = Script({"refused": True})
-    tools, _, _ = setup(script)
+    script = Script({"rows": [{"id": "one"}], "total": 1}, {"refused": True})
+    tools, leaf, _ = setup(script)
+    tools.collect("source")
+    leaf.manifest["operations"]["list"]["queries"]["detail"].update(
+        supplementary=True, retained_errors=["refused"]
+    )
     with pytest.raises(QueryRefused):
         tools.detail("detail", "one")
     with pytest.raises(CliError, match="coverage contradicts"):
@@ -265,7 +269,10 @@ def test_only_qualified_refusal_can_be_retained_and_never_as_complete():
 
 def test_retained_detail_failure_allows_later_queries_but_never_complete_output():
     script = Script({"failed": True, "secret": "native-secret"}, {"id": "two"})
-    tools, _, _ = setup(script)
+    tools, leaf, _ = setup(script)
+    leaf.manifest["operations"]["list"]["queries"]["detail"].update(
+        supplementary=True, retained_errors=["failed"]
+    )
     with pytest.raises(QueryFailed) as caught:
         tools.detail("detail", "private-lookup")
     assert caught.value.meta == {"native_code": "999"}
@@ -377,6 +384,7 @@ def test_shared_get_budget_cannot_reset_for_each_selected_row():
     tools, leaf, capabilities = setup(script)
     specification = leaf.manifest["operations"]["list"]
     specification["result_identity"] = {"fields": ["id"]}
+    del specification["queries"]["source"]
     budget = QueryBudget(collect._monotonic() + 60, 1)
     first = QueryTools(
         leaf, "list", {}, capabilities, lambda cap: script, budget=budget
@@ -471,12 +479,14 @@ def test_aggregate_capability_hooks_are_checked_before_transport():
 
 
 def test_request_identity_validates_context_without_changing_native_root():
-    tools, leaf, _ = aggregate_tools(Script())
+    native = {"dynamicQuotas": [], "staticQuotas": []}
+    tools, leaf, _ = aggregate_tools(Script(native))
     spec = leaf.manifest["operations"]["list"]
+    spec["queries"] = {"aggregate": spec["queries"]["aggregate"]}
     spec["lookup"] = {"name": "route"}
     spec["result_identity"] = {"request_fields": ["route", "account", "tenant"]}
     tools._parameters = {"account": "account-a", "tenant": "tenant-a"}
-    native = {"dynamicQuotas": [], "staticQuotas": []}
+    native = tools.inquire("aggregate", {"account": "account-a"})
     assert tools.finish_get(native, "route-a") is native
     assert native == {"dynamicQuotas": [], "staticQuotas": []}
     tools._parameters["account"] = ""
@@ -507,9 +517,14 @@ def test_opted_in_local_absence_never_initializes_cache_or_duckdog(tmp_path):
 def test_custom_get_retains_unproven_relationship_coverage_in_metadata():
     from dogopencli.leaves.query import CustomGetResult
 
-    tools, leaf, _ = setup(Script())
-    leaf.manifest["operations"]["list"]["result_identity"] = {"fields": ["id"]}
-    native = {"id": "private-root-identity", "history": [{"id": "old", "version": 1}]}
+    tools, leaf, _ = setup(Script({"id": "private-root-identity"}))
+    declaration = leaf.manifest["operations"]["list"]
+    declaration["result_identity"] = {"fields": ["id"]}
+    declaration["queries"]["source"]["supplementary"] = True
+    native = tools.detail("detail", "private-root-identity")
+    tools.record_applicability(
+        "source", applicable=None, reason="HISTORY_COVERAGE_UNPROVEN", based_on="detail"
+    )
     evidence = AcquisitionEvidence.for_collection(
         complete=False,
         reported_total=None,
@@ -559,7 +574,10 @@ def test_custom_get_accepts_only_declared_supplementary_retained_error(
     from dogopencli.leaves.query import CustomGetResult
     from dogopencli.result_policy import check_complete
 
-    tools, leaf, _ = setup(Script({status: True}))
+    tools, leaf, _ = setup(
+        Script({"rows": [{"id": "root"}], "total": 1}, {status: True})
+    )
+    tools.collect("source")
     declaration = leaf.manifest["operations"]["list"]
     declaration["result_identity"] = {"fields": ["id"]}
     declaration["queries"]["detail"].update(
@@ -621,7 +639,10 @@ def test_supplementary_get_cannot_hide_caught_hard_failure(failure):
 def test_supplementary_get_cannot_claim_complete_after_refusal():
     from dogopencli.leaves.query import CustomGetResult
 
-    tools, leaf, _ = setup(Script({"refused": True}))
+    tools, leaf, _ = setup(
+        Script({"rows": [{"id": "root"}], "total": 1}, {"refused": True})
+    )
+    tools.collect("source")
     declaration = leaf.manifest["operations"]["list"]
     declaration["result_identity"] = {"fields": ["id"]}
     declaration["queries"]["detail"].update(
@@ -642,7 +663,10 @@ def test_supplementary_get_cannot_claim_complete_after_refusal():
 def test_custom_get_traversal_gap_requires_supplementary_qualification(supplementary):
     from dogopencli.leaves.query import CustomGetResult
 
-    tools, leaf, _ = setup(Script({"rows": [{"id": "old"}], "total": 2}))
+    tools, leaf, _ = setup(
+        Script({"id": "root"}, {"rows": [{"id": "old"}], "total": 2})
+    )
+    tools.detail("detail", "root")
     declaration = leaf.manifest["operations"]["list"]
     declaration["result_identity"] = {"fields": ["id"]}
     declaration["queries"]["source"]["supplementary"] = supplementary
@@ -661,3 +685,149 @@ def test_custom_get_traversal_gap_requires_supplementary_qualification(supplemen
     else:
         with pytest.raises(CliError, match="incomplete required queries"):
             tools.finish_get(candidate)
+
+
+def test_custom_get_rejects_fabricated_complete_result_without_query_witness():
+    from dogopencli.leaves.query import CustomGetResult
+
+    tools, leaf, _ = setup(Script())
+    leaf.manifest["operations"]["list"]["result_identity"] = {"fields": ["id"]}
+    evidence = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=None,
+        collected_total=1,
+    )
+    with pytest.raises(CliError, match="required query evidence"):
+        tools.finish_get(CustomGetResult({"id": "fabricated"}, evidence))
+
+
+def test_custom_get_requires_coverage_for_unattempted_permitted_query():
+    from dogopencli.leaves.query import CustomGetResult
+
+    tools, leaf, _ = setup(Script({"id": "root"}))
+    leaf.manifest["operations"]["list"]["result_identity"] = {"fields": ["id"]}
+    root = tools.detail("detail", "root")
+    evidence = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=None,
+        collected_total=1,
+    )
+    with pytest.raises(CliError, match="required query evidence"):
+        tools.finish_get(CustomGetResult(root, evidence))
+
+
+@pytest.mark.parametrize("applicable", [False, None])
+def test_custom_get_records_conditional_query_applicability(applicable):
+    from dogopencli.leaves.query import CustomGetResult
+    from dogopencli.result_policy import check_complete
+
+    tools, leaf, _ = setup(Script({"id": "root", "has_history": False}))
+    declaration = leaf.manifest["operations"]["list"]
+    declaration["result_identity"] = {"fields": ["id"]}
+    declaration["queries"]["source"]["supplementary"] = True
+    root = tools.detail("detail", "root")
+    tools.record_applicability(
+        "source",
+        applicable=applicable,
+        reason="HISTORY_CONTEXT_VERIFIED",
+        based_on="detail",
+    )
+    evidence = AcquisitionEvidence.for_collection(
+        complete=applicable is False,
+        reported_total=None,
+        collected_total=1,
+        reasons=() if applicable is False else ("HISTORY_COVERAGE_UNPROVEN",),
+    )
+    assert tools.finish_get(CustomGetResult(root, evidence)) == root
+    retained = AcquisitionEvidence.from_record(tools.evidence()["coverage"])
+    assert retained.scope_complete is (applicable is False)
+    assert len(root) == 2 and tools.evidence()["request_count"] == 1
+    assert retained.attempts[-1]["queries"]["source"]["applicability"] == {
+        "status": "inapplicable" if applicable is False else "unverified",
+        "reason": "HISTORY_CONTEXT_VERIFIED",
+        "based_on": "detail",
+    }
+    if applicable is False:
+        assert check_complete(retained, mode="get", require_complete=True).expose_data
+    else:
+        with pytest.raises(CliError) as caught:
+            check_complete(retained, mode="get", require_complete=True)
+        assert caught.value.code == "INCOMPLETE_RESULT"
+
+
+@pytest.mark.parametrize(
+    "status,error_type", [("failed", QueryFailed), ("refused", QueryRefused)]
+)
+def test_required_list_detail_failure_cannot_be_published(status, error_type):
+    tools, _, _ = setup(Script({status: True}))
+    with pytest.raises(error_type) as observed:
+        tools.detail("detail", "one")
+    with pytest.raises(error_type) as finished:
+        tools.finish_list(result([{"id": "one"}], complete=False))
+    assert finished.value is observed.value
+
+
+@pytest.mark.parametrize("complete", [False, True])
+def test_custom_list_rejects_fabricated_result_without_source_witness(complete):
+    tools, _, _ = setup(Script())
+    with pytest.raises(CliError, match="source evidence"):
+        tools.finish_list(result([{"id": "fabricated"}], complete=complete))
+
+
+@pytest.mark.parametrize("basis", ["missing", "detail"])
+def test_applicability_cannot_replace_missing_native_witness(basis):
+    tools, _, _ = setup(Script())
+    with pytest.raises(CliError, match="applicability evidence"):
+        tools.record_applicability(
+            "source",
+            applicable=False,
+            reason="NO_HISTORY",
+            based_on=basis,
+        )
+    with pytest.raises(CliError, match="applicability evidence"):
+        tools.finish_list(result())
+
+
+def test_applicability_cannot_erase_an_observed_required_failure():
+    tools, _, _ = setup(
+        Script({"rows": [{"id": "root"}], "total": 1}, {"failed": True})
+    )
+    tools.collect("source")
+    with pytest.raises(QueryFailed):
+        tools.detail("detail", "root")
+    with pytest.raises(CliError, match="applicability evidence"):
+        tools.record_applicability(
+            "detail",
+            applicable=False,
+            reason="NO_DETAIL",
+            based_on="source",
+        )
+    with pytest.raises(CliError, match="applicability evidence"):
+        tools.finish_list(result([{"id": "root"}], complete=False))
+
+
+def test_qualified_partial_primary_list_remains_usable_and_strict_rejects():
+    from dogopencli.result_policy import check_complete
+
+    tools, _, _ = setup(Script({"rows": [{"id": "one"}], "total": 2}))
+    source = tools.collect("source")
+    candidate = tools.finish_list(CustomListResult(source.records, source.evidence))
+    assert check_complete(
+        candidate.evidence, mode="refresh", require_complete=False
+    ).publishable
+    with pytest.raises(CliError) as caught:
+        check_complete(candidate.evidence, mode="refresh", require_complete=True)
+    assert caught.value.code == "INCOMPLETE_RESULT"
+
+
+def test_verified_empty_local_selector_is_a_custom_list_source(tmp_path, monkeypatch):
+    from dogopencli import duckdog
+
+    monkeypatch.setattr(duckdog, "resolve_selector", lambda *args, **kwargs: [])
+    tools, leaf, _ = setup(Script())
+    leaf.manifest["operations"]["list"]["entity_selector"] = True
+    tools._config_file = tmp_path / "config.toml"
+    assert tools.entity_selector() == []
+    candidate = tools.finish_list(result())
+    assert candidate.complete and candidate.records == []
+    assert candidate.evidence.attempts[-1]["request_count"] == 0
