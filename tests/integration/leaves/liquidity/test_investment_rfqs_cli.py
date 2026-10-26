@@ -336,15 +336,16 @@ def test_capability_has_no_offset_or_width_fallback(installed, scope, position, 
     assert not browser.business_requests
 
 
-def test_conflict_keeps_last_arrival_without_claiming_completeness(installed):
+def test_conflict_rejects_inconsistent_rows(installed):
     cli, browser, _ = installed
     first, other = record(), record(1)
     last = {**first, "unknown": "CHANGED"}
     browser.business_script.append(page([first, last, other], 3))
-    result = cli("list", "--live", "--limit", "0")
-    assert result["data"] == [last, other]
+    result = cli("list", "--live", "--limit", "0", code=1)
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert result["meta"]["complete"] is False
-    assert result["meta"]["duplicate_count"] == 1
+    assert result["meta"]["acquisition"]["duplicate_count"] == 1
 
 
 def test_single_acquisition_precedes_display_limit(installed):

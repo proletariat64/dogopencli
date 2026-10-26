@@ -731,7 +731,7 @@ def test_invalid_statement_scope_rejects_before_business_fetch(
         leaf,
         "--live",
         *flags,
-        code=2 if flag == "--timezone" else 1,
+        code=2,
     )
     assert result["error"]["code"] == "INVALID_ARGUMENT"
     assert not browser.business_requests
@@ -811,7 +811,7 @@ def test_short_nonfinal_page_preserves_cache(installed, leaf):
     browser.business_script.extend(
         [page(leaf, [record], LEAVES[leaf][0] + 1), page(leaf, [], LEAVES[leaf][0] + 1)]
     )
-    result = cli("liquidity", "refresh", leaf, *flags, code=1)
+    result = cli("liquidity", "refresh", leaf, *flags, "--require-complete", code=1)
     assert result["error"]["code"] == "INCOMPLETE_RESULT"
     after = cli("liquidity", "list", leaf, "--limit", "0")
     assert after["data"] == before["data"]
@@ -819,19 +819,18 @@ def test_short_nonfinal_page_preserves_cache(installed, leaf):
 
 
 @pytest.mark.parametrize("leaf", LEAVES)
-def test_sdk_conflicts_keep_last_arrival_with_explicit_incomplete_evidence(
-    installed, leaf
-):
+def test_sdk_conflicts_reject_inconsistent_rows(installed, leaf):
     cli, browser = installed(leaf)
     first = native_row(leaf)
     changed = {**first, "unknown": {"changed": True}}
     browser.business_script.append(page(leaf, [first, changed]))
     result = cli(
-        "liquidity", "list", leaf, "--live", "--limit", "0", *scope_flags(leaf)
+        "liquidity", "list", leaf, "--live", "--limit", "0", *scope_flags(leaf), code=1
     )
-    assert result["data"] == [changed]
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert result["meta"]["complete"] is False
-    assert result["meta"]["duplicate_count"] == 1
+    assert result["meta"]["acquisition"]["duplicate_count"] == 1
     reasons = result["meta"]["acquisition"]["reasons"]
     assert "IDENTITY_CONTENT_CONFLICT" in reasons
     assert "LAST_ARRIVAL_WINS" in reasons

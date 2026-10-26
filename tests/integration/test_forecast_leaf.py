@@ -185,6 +185,8 @@ def test_forecast_refresh_failure_preserves_cache(forecast, failure):
             "INCOMPLETE_RESULT",
             ["--require-complete"],
         )
+    if failure == "early-empty":
+        flags = ["--require-complete"]
     browser.business_script.extend(responses)
     result = cli(
         "liquidity", "refresh", "rules.forecast", *flags, code=1 if expected else 0
@@ -244,7 +246,9 @@ def test_forecast_nested_request_boundary(forecast, tmp_path, mutation):
     assert not browser.business_requests
 
 
-def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(forecast):
+def test_sdk_cross_page_conflict_rejects_inconsistent_rows_and_preserves_cache(
+    forecast,
+):
     cli, browser = forecast[:2]
     first = [{"ruleId": str(i), "value": "original"} for i in range(1000)]
     original = dict(first[0])
@@ -257,10 +261,13 @@ def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(forecast):
         browser.business_script.extend([page(first, 1001), page([changed], 1001)])
 
     queue_conflict()
-    result = cli("liquidity", "list", "rules.forecast", "--live", "--limit", "0")
-    assert result["data"] == [changed, *first[1:]]
+    result = cli(
+        "liquidity", "list", "rules.forecast", "--live", "--limit", "0", code=1
+    )
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert result["meta"]["complete"] is False
-    assert result["meta"]["duplicate_count"] == 1
+    assert result["meta"]["acquisition"]["duplicate_count"] == 1
     attempt = result["meta"]["acquisition"]["attempts"][0]
     assert attempt["conflict_count"] == 1
     assert attempt["pages"] == 2

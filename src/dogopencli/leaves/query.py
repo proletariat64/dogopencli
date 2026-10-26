@@ -280,6 +280,11 @@ class QueryTools:
         trace = self._queries.setdefault(
             name, {"kind": kind, "calls": 0, "requests": 0, "succeeded": 0}
         )
+        if "applicability" in trace:
+            self._fatal = CliError(
+                INVALID_RESPONSE, "query contradicts recorded applicability"
+            )
+            raise self._fatal
         trace["calls"] += 1
         return self._capabilities[name], declaration, trace
 
@@ -524,6 +529,11 @@ class QueryTools:
 
         if self._fatal is not None:
             raise self._fatal
+        if not isinstance(name, str) or not isinstance(based_on, str):
+            self._fatal = CliError(
+                INVALID_RESPONSE, "invalid query applicability evidence"
+            )
+            raise self._fatal
         declaration = self._declarations["queries"].get(name)
         basis = self._queries.get(based_on, {})
         if (
@@ -591,8 +601,29 @@ class QueryTools:
             or not isinstance(result.evidence, AcquisitionEvidence)
         ):
             raise CliError(INVALID_RESPONSE, "invalid custom List result")
-        if not any(trace.get("succeeded", 0) for trace in self._queries.values()):
+        native_witness = any(
+            trace.get("succeeded", 0)
+            for name, trace in self._queries.items()
+            if name in self._declarations["queries"]
+        )
+        selector = self._queries.get("entity_selector", {})
+        empty_universe = (
+            selector.get("succeeded", 0)
+            and selector.get("selected_count") == 0
+            and not result.records
+            and result.evidence.collected_total == 0
+        )
+        if not (native_witness or empty_universe):
             raise CliError(INVALID_RESPONSE, "custom List lacks source evidence")
+        if any(
+            trace.get("applicability", {}).get("status") == "unverified"
+            and self._declarations["queries"][name].get("supplementary") is not True
+            for name, trace in self._queries.items()
+            if name in self._declarations["queries"]
+        ):
+            raise CliError(
+                INVALID_RESPONSE, "custom List has unverified required queries"
+            )
         evidence = AcquisitionEvidence.from_record(result.evidence.record())
         if evidence.collected_total != len(result.records) or (
             self._incomplete and (evidence.scope_complete or evidence.dataset_complete)

@@ -261,6 +261,8 @@ def test_rejected_acquisition_preserves_saved_records_and_metadata(installed, fa
         expected, flags = "INCOMPLETE_RESULT", ("--require-complete",)
     elif failure == "auth":
         response, expected = {"status": 401, "body": {}}, "AUTH_REQUIRED"
+    if failure == "early-empty":
+        flags = ["--require-complete"]
     browser.business_script.append(response)
     result = cli("refresh", *flags, code=1 if expected else 0)
     if expected:
@@ -418,13 +420,14 @@ def test_shared_transport_rejects_unverified_native_request(
     assert not browser.business_requests
 
 
-def test_sdk_conflict_keeps_last_arrival_and_reports_incomplete(installed):
+def test_sdk_conflict_rejects_inconsistent_rows(installed):
     case, cli, browser, _ = installed
     first = record(case)
     last = {**first, "amount": "last-arrival"}
     browser.business_script.append(page([first, last]))
-    result = cli("list", "--live", "--limit", "0")
-    assert result["data"] == [last]
+    result = cli("list", "--live", "--limit", "0", code=1)
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert result["meta"]["complete"] is False
     assert "IDENTITY_CONTENT_CONFLICT" in result["meta"]["acquisition"]["reasons"]
 

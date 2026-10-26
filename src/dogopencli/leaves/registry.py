@@ -417,7 +417,11 @@ def _validate_custom_queries(domain: str, operation: dict) -> None:
         ):
             raise _invalid("retained errors require a supplementary detail query")
         if query["kind"] == "list":
-            if set(query) - {"kind", "collection", "supplementary"}:
+            if "collection" not in query or set(query) - {
+                "kind",
+                "collection",
+                "supplementary",
+            }:
                 raise _invalid("custom List query requires only kind and collection")
             collection = query["collection"]
             try:
@@ -426,7 +430,11 @@ def _validate_custom_queries(domain: str, operation: dict) -> None:
                 raise _invalid(error.message) from error
             _validate_paging(collection)
         elif query["kind"] == "inquiry":
-            if set(query) - {"kind", "result_shape", "supplementary"}:
+            if "result_shape" not in query or set(query) - {
+                "kind",
+                "result_shape",
+                "supplementary",
+            }:
                 raise _invalid("custom inquiry requires only kind and result_shape")
         else:
             if "result_identity" not in query or "collection" in query:

@@ -7,7 +7,7 @@ or converted to partial success here; publishing remains a host transaction.
 from dataclasses import dataclass
 from typing import Any
 
-from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError, diagnostic
+from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, TIMEOUT, CliError, diagnostic
 from .jsonutil import canonical
 
 SOURCE_ROW_OCCURRENCES = "source_row_occurrences"
@@ -545,12 +545,53 @@ def _has_identity_conflict(record: dict[str, Any]) -> bool:
     )
 
 
+def _has_unrecovered_timeout(record: dict[str, Any]) -> bool:
+    """Completed fallback acquisitions may retain earlier timeout provenance."""
+    if record.get("scope_complete") is True and record.get("dataset_complete") is True:
+        return False
+    if record.get("error") == TIMEOUT or "PAGE_BUDGET_EXHAUSTED" in record.get(
+        "reasons", ()
+    ):
+        return True
+    children = list(record.get("attempts", ()))
+    for key in ("acquisition", "source_acquisition"):
+        if isinstance(record.get(key), dict):
+            children.append(record[key])
+    children.extend(record.get("detail_acquisition", ()))
+    if isinstance(record.get("sources"), dict):
+        children.extend(record["sources"].values())
+    if isinstance(record.get("queries"), dict):
+        for query in record["queries"].values():
+            if isinstance(query, dict):
+                children.extend(query.get("collections", ()))
+    return any(
+        _has_unrecovered_timeout(child) for child in children if isinstance(child, dict)
+    )
+
+
 def evaluate_result(
     evidence: AcquisitionEvidence,
     *,
     mode: str,
     require_complete: bool = False,
 ) -> ResultDecision:
+    if _has_unrecovered_timeout(evidence.record()):
+        return ResultDecision(
+            expose_data=False,
+            publishable=False,
+            warnings=(),
+            error=diagnostic(
+                TIMEOUT,
+                "acquisition did not recover from its timeout or exhausted budget",
+                retryable=True,
+                origin="sdk",
+                stage="acquisition",
+                consequence="candidate data is withheld; no replacement is published",
+            ),
+            exit_code=1,
+            data_quality="unusable",
+            empty=evidence.collected_total == 0,
+        )
     identity_conflict = _has_identity_conflict(evidence.record())
     incomplete = identity_conflict or not (
         evidence.scope_complete and evidence.dataset_complete
@@ -657,7 +698,12 @@ def check_complete(
         meta["diagnostic"] = decision.error
         if mode == "refresh":
             meta["published"] = False
-        raise CliError(INCOMPLETE_RESULT, decision.error["message"], meta=meta)
+        raise CliError(
+            decision.error["code"],
+            decision.error["message"],
+            retryable=decision.error["retryable"],
+            meta=meta,
+        )
     return decision
 
 

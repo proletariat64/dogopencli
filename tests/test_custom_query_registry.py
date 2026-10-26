@@ -257,3 +257,18 @@ def test_request_identity_only_allows_declared_context_custom_object_get(mode):
         get["queries"]["detail"]["result_identity"] = get["result_identity"]
     with pytest.raises(CliError):
         validate_manifest(value)
+
+
+@pytest.mark.parametrize("query", [{"kind": "list"}, {"kind": "inquiry"}])
+def test_custom_query_missing_required_kind_fields_rejected_before_import(
+    tmp_path, query
+):
+    value = manifest()
+    value["operations"]["list"]["queries"] = {"native": query}
+    folder = write_leaf(
+        tmp_path, value, source="raise AssertionError('adapter imported')"
+    )
+    with pytest.raises(CliError) as caught:
+        with prepare_package(folder):
+            pass
+    assert caught.value.code == "INVALID_LEAF"

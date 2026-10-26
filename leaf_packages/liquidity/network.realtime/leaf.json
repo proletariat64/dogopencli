@@ -220,7 +220,7 @@
     "Applicable route quota GET /queryWhaleRouteDetail.json uses root routeId/debitAliasName and fixed GUAPW3SG; missing context remains unverified, explicit null/empty routeId is inapplicable. No optional drop of applicable associations.",
     "Keep route quota arrays, nested native values and blank/repeated child quotaId. Nonempty returned context must match; request context is not fabricated in native output.",
     "Get returns assembled root plus operationHistory and routeDetails; query_evidence coverage retains separate component status and sequential-read limitations. Any actual required inquiry failure aborts. Get never publishes or imports.",
-    "List live does not publish; complete nonempty refresh publishes the settings source only. Incomplete/failed/empty refresh preserves the saved List. No new Duckdog import or list-with-detail binding."
+    "List live does not publish; accepted nonempty Refresh publishes the settings source only. Qualified incomplete acquisition may publish by default; --require-complete rejects it. Failed, strict-rejected and empty Refresh preserve the saved List. No new Duckdog import or list-with-detail binding."
   ],
   "examples": [
     {

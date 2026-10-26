@@ -203,6 +203,8 @@ def test_benchmark_failed_refresh_preserves_snapshot(benchmark, failure, monkeyp
     else:
         monkeypatch.setattr("dogopencli.collect._sleep", lambda _: None)
         responses, expected = [{"status": 503, "body": {}}] * 3, "BUSINESS_QUERY_FAILED"
+    if failure == "early-empty":
+        flags = ["--require-complete"]
     browser.business_script.extend(responses)
     result = cli(
         "liquidity",
@@ -241,7 +243,9 @@ def test_benchmark_unverified_request_is_blocked(benchmark, tmp_path, mutation):
     assert browser.business_requests == []
 
 
-def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(benchmark):
+def test_sdk_cross_page_conflict_rejects_inconsistent_rows_and_preserves_cache(
+    benchmark,
+):
     cli, browser = benchmark[:2]
     first = [{"id": str(i), "value": "original"} for i in range(5000)]
     original = dict(first[0])
@@ -254,10 +258,13 @@ def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(benchmark):
         browser.business_script.extend([page(first, 5001), page([changed], 5001)])
 
     queue_conflict()
-    result = cli("liquidity", "list", "investment.benchmarks", "--live", "--limit", "0")
-    assert result["data"] == [changed, *first[1:]]
+    result = cli(
+        "liquidity", "list", "investment.benchmarks", "--live", "--limit", "0", code=1
+    )
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert result["meta"]["complete"] is False
-    assert result["meta"]["duplicate_count"] == 1
+    assert result["meta"]["acquisition"]["duplicate_count"] == 1
     attempt = result["meta"]["acquisition"]["attempts"][0]
     assert attempt["conflict_count"] == 1
     assert attempt["pages"] == 2

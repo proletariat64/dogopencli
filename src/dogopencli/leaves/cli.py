@@ -73,7 +73,9 @@ def _failure_meta(meta: dict | None, operation: str | None) -> dict:
         **(meta or {}),
         "outcome": "failed",
         "data_quality": (
-            "incomplete"
+            meta["data_quality"]
+            if meta and meta.get("data_quality") in {"incomplete", "unusable"}
+            else "incomplete"
             if meta
             and any(meta.get(key) is False for key in ("complete", "dataset_complete"))
             else "unusable"
