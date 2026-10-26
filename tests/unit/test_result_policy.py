@@ -1,5 +1,7 @@
 """Public result-policy contracts for usable but incomplete acquisitions."""
 
+from dataclasses import replace
+
 import pytest
 
 from dogopencli.errors import CliError
@@ -183,6 +185,85 @@ def test_complete_warning_retains_its_reason_instead_of_inventing_duplicates():
     decision = evaluate_result(evidence, mode="live", require_complete=True)
     assert decision.warnings[0]["code"] == "SOURCE_BOUNDARY_CONFIRMED"
     assert "duplicate" not in decision.warnings[0]["message"]
+
+
+@pytest.mark.parametrize("latest_by", [False, True])
+def test_conflicting_identity_is_not_qualified_by_a_partial_usability_witness(
+    latest_by,
+):
+    reasons = ("IDENTITY_CONTENT_CONFLICT",)
+    if not latest_by:
+        reasons += ("LAST_ARRIVAL_WINS",)
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=2,
+        collected_total=1,
+        arrivals=2,
+        usable_incomplete=True,
+        reasons=reasons,
+    )
+    assert evidence.usable_incomplete is False
+    for mode in ("live", "refresh", "cache"):
+        decision = evaluate_result(replace(evidence, usable_incomplete=True), mode=mode)
+        assert decision.expose_data is False
+        assert decision.publishable is False
+        assert "IDENTITY_CONTENT_CONFLICT" in decision.error["reason_codes"]
+
+
+@pytest.mark.parametrize("trace", [False, True])
+def test_explicit_usability_cannot_mask_observed_source_identity_conflicts(trace):
+    conflicting = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=2,
+        collected_total=1,
+        arrivals=2,
+        reasons=("IDENTITY_CONTENT_CONFLICT",),
+    ).record()
+    source = {"acquisition": conflicting, "scope": "requested"}
+    evidence = AcquisitionEvidence(
+        scope_complete=False,
+        dataset_complete=False,
+        collected_total=1,
+        usable_incomplete=True,
+        attempts=(
+            {
+                "kind": "custom_query",
+                "queries": {"root": {"collections": [source]}},
+            },
+        )
+        if trace
+        else (),
+        sources=None if trace else {"root": conflicting},
+    )
+    decision = evaluate_result(evidence, mode="refresh")
+    assert decision.expose_data is False
+    assert decision.publishable is False
+    assert "IDENTITY_CONTENT_CONFLICT" in decision.error["reason_codes"]
+
+
+def test_native_diagnostics_do_not_override_qualified_acquisition_evidence():
+    evidence = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=1,
+        collected_total=1,
+        attempts=({"kind": "account_context", "sources": [{"source": "cache"}]},),
+    )
+    evidence = replace(
+        evidence,
+        native_metadata=(
+            {
+                "position": 0,
+                "page_size": 1,
+                "metadata": {
+                    "conflict_count": 1,
+                    "reasons": ["IDENTITY_CONTENT_CONFLICT"],
+                },
+            },
+        ),
+    )
+    decision = evaluate_result(evidence, mode="live", require_complete=True)
+    assert decision.expose_data is True
+    assert decision.error is None
 
 
 @pytest.mark.parametrize("meta", [{}, {"complete": True}, {"complete": False}])
