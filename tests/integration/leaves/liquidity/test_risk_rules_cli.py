@@ -255,6 +255,8 @@ def test_rejected_refresh_preserves_records_and_capture(
         monkeypatch.setattr("dogopencli.collect._sleep", lambda _: None)
         browser.business_script.extend([{"status": 503, "body": {}}] * 2)
         response, expected = {"status": 503, "body": {}}, "BUSINESS_QUERY_FAILED"
+    if failure == "early-empty":
+        flags = ["--require-complete"]
     browser.business_script.append(response)
     result = cli("liquidity", "refresh", leaf, *flags, code=1 if expected else 0)
     if expected:
@@ -275,7 +277,9 @@ def test_identical_duplicates_remain_incomplete(installed):
     assert result["meta"]["complete"] is False
 
 
-def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(installed):
+def test_sdk_cross_page_conflict_rejects_inconsistent_rows_and_preserves_cache(
+    installed,
+):
     leaf, cli, browser, _ = installed
     _, vo, size, identity, _ = LEAVES[leaf]
     first = [{identity: n, "value": "original"} for n in range(size)]
@@ -290,10 +294,11 @@ def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(installed):
         )
 
     queue_conflict()
-    partial = cli("liquidity", "list", leaf, "--live", "--limit", "0")
-    assert partial["data"] == [changed, *first[1:]]
+    partial = cli("liquidity", "list", leaf, "--live", "--limit", "0", code=1)
+    assert partial["data"] is None
+    assert partial["error"]["code"] == "INCOMPLETE_RESULT"
     assert partial["meta"]["complete"] is False
-    assert partial["meta"]["duplicate_count"] == 1
+    assert partial["meta"]["acquisition"]["duplicate_count"] == 1
     attempt = partial["meta"]["acquisition"]["attempts"][0]
     assert attempt["conflict_count"] == 1 and attempt["pages"] == 2
     assert "LAST_ARRIVAL_WINS" in attempt["reasons"]

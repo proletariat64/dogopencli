@@ -831,3 +831,74 @@ def test_verified_empty_local_selector_is_a_custom_list_source(tmp_path, monkeyp
     candidate = tools.finish_list(result())
     assert candidate.complete and candidate.records == []
     assert candidate.evidence.attempts[-1]["request_count"] == 0
+
+
+def test_unverified_required_list_component_cannot_be_published():
+    tools, _, _ = setup(Script({"rows": [{"id": "root"}], "total": 1}))
+    source = tools.collect("source")
+    tools.record_applicability(
+        "detail",
+        applicable=None,
+        reason="DETAIL_CONTEXT_UNVERIFIED",
+        based_on="source",
+    )
+    with pytest.raises(CliError, match="unverified required queries"):
+        tools.finish_list(result(source.records, complete=False))
+
+
+@pytest.mark.parametrize(
+    "selected,records",
+    [
+        ([], [{"id": "fabricated"}]),
+        (["entity"], [{"id": "fabricated"}]),
+        (["entity"], []),
+    ],
+)
+def test_local_selector_without_empty_universe_cannot_witness_list(
+    tmp_path, monkeypatch, selected, records
+):
+    from dogopencli import duckdog
+
+    monkeypatch.setattr(duckdog, "resolve_selector", lambda *args, **kwargs: selected)
+    tools, leaf, _ = setup(Script())
+    leaf.manifest["operations"]["list"]["entity_selector"] = True
+    tools._config_file = tmp_path / "config.toml"
+    assert tools.entity_selector() == selected
+    with pytest.raises(CliError, match="source evidence"):
+        tools.finish_list(result(records))
+
+
+def test_missing_account_directory_cannot_witness_complete_list(tmp_path, monkeypatch):
+    from dogopencli.leaves import account_sources
+
+    monkeypatch.setattr(account_sources, "read_account_directory", lambda *args: None)
+    tools, leaf, _ = setup(Script())
+    leaf.manifest["operations"]["list"]["account_directory"] = True
+    tools._config_file = tmp_path / "config.toml"
+    assert tools.account_directory("cache") is None
+    with pytest.raises(CliError, match="source evidence"):
+        tools.finish_list(result())
+
+
+@pytest.mark.parametrize("name,basis", [([], "detail"), ("source", [])])
+def test_applicability_rejects_invalid_names_as_structured_failures(name, basis):
+    tools, _, _ = setup(Script({"id": "root"}))
+    tools.detail("detail", "root")
+    with pytest.raises(CliError, match="applicability evidence"):
+        tools.record_applicability(
+            name, applicable=False, reason="NO_HISTORY", based_on=basis
+        )
+    with pytest.raises(CliError, match="applicability evidence"):
+        tools.finish_list(result())
+
+
+def test_query_cannot_execute_after_unqueried_applicability_is_recorded():
+    tools, _, _ = setup(Script({"id": "root"}, {"rows": [], "total": 0}))
+    tools.detail("detail", "root")
+    tools.record_applicability(
+        "source", applicable=False, reason="NO_HISTORY", based_on="detail"
+    )
+    with pytest.raises(CliError, match="applicability"):
+        tools.collect("source")
+    with pytest.raises(CliError, match="applicability"):
+        tools.finish_list(result())

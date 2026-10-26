@@ -38,7 +38,9 @@ details have separate coverage counts.
 Other outer failures, authentication, transport errors, malformed responses and
 identity disagreement abort the operation. Qualified failed/refused details and
 unmatched source rows produce usable incomplete live output with warnings.
-Strict queries and refresh reject that incomplete coverage; refresh preserves
+Queries and Refresh with `--require-complete` reject that incomplete coverage;
+default Refresh may publish a qualified nonempty incomplete candidate. Rejected,
+failed and successful empty Refresh preserve
 the prior complete cache. Local currency, bank, status, account number and alias
 filters run after full acquisition.
 

@@ -22,6 +22,7 @@ from dogopencli.errors import CliError
 from dogopencli.inquiry import inquiry_session
 from dogopencli.jsonutil import canonical, parse
 from dogopencli.result_policy import (
+    SOURCE_ROW_OCCURRENCES,
     AcquisitionEvidence,
     check_complete,
     prepare_result,
@@ -548,8 +549,21 @@ def execute(
                     details, detail_acquisitions = _compose_details(
                         leaf, session, window, fields, collected.deadline, offset
                     )
+                    source_occurrences = (
+                        evidence.total_semantics == SOURCE_ROW_OCCURRENCES
+                    )
                     evidence = replace(
                         evidence,
+                        reported_total=None
+                        if source_occurrences
+                        else evidence.reported_total,
+                        arrivals=None if source_occurrences else evidence.arrivals,
+                        unique_count=None
+                        if source_occurrences
+                        else evidence.unique_count,
+                        duplicate_count=None
+                        if source_occurrences
+                        else evidence.duplicate_count,
                         scope_complete=evidence.scope_complete
                         and all(item.scope_complete for item in detail_acquisitions),
                         dataset_complete=evidence.dataset_complete
@@ -570,7 +584,8 @@ def execute(
                         sources=None,
                         total_semantics=(
                             "unknown"
-                            if evidence.total_semantics == "assembled_roots"
+                            if evidence.total_semantics
+                            in {"assembled_roots", SOURCE_ROW_OCCURRENCES}
                             else evidence.total_semantics
                         ),
                         attempts=(

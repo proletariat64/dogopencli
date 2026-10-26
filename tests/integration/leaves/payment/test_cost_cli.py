@@ -220,7 +220,7 @@ def test_failure_or_empty_refresh_keeps_prior_capture(installed, failure, error)
     else:
         response = reply([])
     browser.business_script.append(response)
-    result = cli("refresh", code=1 if error else 0)
+    result = cli("refresh", "--require-complete", code=1 if error else 0)
     assert result["meta"]["published"] is False
     if error:
         assert result["error"]["code"] == error

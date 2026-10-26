@@ -293,15 +293,16 @@ def test_transport_default_deny(installed, change):
     assert error.value.code == "REQUEST_NOT_ALLOWED"
 
 
-def test_sdk_conflict_keeps_last_arrival_and_reports_incomplete(installed):
+def test_sdk_conflict_rejects_inconsistent_rows(installed):
     leaf, cli, browser, _ = installed
     rows = native_rows(leaf)
     changed = {**rows[0], "currency": "JPY"}
     browser.business_script.append(page(leaf, [rows[0], changed, rows[1]], total=3))
-    result = cli("liquidity", "list", leaf, "--live", "--limit", "0")
-    assert result["data"] == [changed, rows[1]]
+    result = cli("liquidity", "list", leaf, "--live", "--limit", "0", code=1)
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert result["meta"]["complete"] is False
-    assert result["meta"]["duplicate_count"] == 1
+    assert result["meta"]["acquisition"]["duplicate_count"] == 1
 
 
 @pytest.mark.parametrize("identity", [None, "", " ", True, [], {}])

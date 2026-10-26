@@ -371,6 +371,14 @@ def test_fallbacks_share_one_global_logical_page_budget():
     ]
     assert sum(attempt["pages"] for attempt in partial.evidence.attempts) == 2
     assert partial.evidence.attempts[-1]["error"] == "TIMEOUT"
+    from dogopencli.result_policy import check_complete, evaluate_result
+
+    decision = evaluate_result(partial.evidence, mode="refresh")
+    assert not decision.expose_data and not decision.publishable
+    assert decision.error["code"] == "TIMEOUT"
+    with pytest.raises(CliError) as rejected:
+        check_complete(partial.evidence, mode="refresh", require_complete=False)
+    assert rejected.value.code == "TIMEOUT"
 
     permitted = Script(offset(rows[:3], 4), offset(rows[:2], 4), offset(rows[2:], 4))
     complete = collect_list(

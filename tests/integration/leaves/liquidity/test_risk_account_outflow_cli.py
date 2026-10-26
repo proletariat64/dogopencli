@@ -380,8 +380,14 @@ def test_valid_incomplete_arrivals_remain_visible_without_strict_mode(installed,
         records = [row(), row(currentBal="NATIVE_CHANGED")]
         expected = records[-1:]
     browser.business_script.append(page(records, 2))
-    result = cli("list", "--live", *FLAGS, "--limit", "0")
-    assert result["data"] == expected
+    result = cli(
+        "list", "--live", *FLAGS, "--limit", "0", code=1 if kind == "conflict" else 0
+    )
+    if kind == "conflict":
+        assert result["data"] is None
+        assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    else:
+        assert result["data"] == expected
     assert result["meta"]["complete"] is False
 
 

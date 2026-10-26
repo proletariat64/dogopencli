@@ -353,3 +353,58 @@ def test_inconsistent_explicit_scope_counters_are_invalid(counts):
     with pytest.raises(CliError) as error:
         AcquisitionEvidence.from_record(record)
     assert error.value.code == "INVALID_RESPONSE"
+
+
+@pytest.mark.parametrize("complete", [False, True])
+def test_timeout_attempt_is_recovered_only_by_completed_acquisition(complete):
+    from dogopencli.result_policy import check_complete
+
+    evidence = AcquisitionEvidence.for_collection(
+        complete=complete,
+        reported_total=1,
+        collected_total=1,
+        arrivals=1,
+        attempts=({"complete": False, "error": "TIMEOUT"}, {"complete": complete}),
+    )
+    decision = evaluate_result(evidence, mode="refresh")
+    if complete:
+        assert decision.expose_data and decision.publishable
+        assert check_complete(
+            evidence, mode="refresh", require_complete=True
+        ).publishable
+    else:
+        assert not decision.expose_data and not decision.publishable
+        assert decision.error["code"] == "TIMEOUT"
+        assert decision.error["retryable"] is True
+
+
+def test_completed_source_timeout_history_does_not_poison_unrelated_supplementary_gap():
+    completed = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=1,
+        collected_total=1,
+        arrivals=1,
+        attempts=({"complete": False, "error": "TIMEOUT"}, {"complete": True}),
+    )
+    composite = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=None,
+        collected_total=1,
+        arrivals=1,
+        reasons=("SUPPLEMENTARY_COVERAGE_UNPROVEN",),
+        attempts=({"kind": "composition", "source_acquisition": completed.record()},),
+    )
+    assert evaluate_result(composite, mode="refresh").publishable
+
+
+def test_exhausted_page_budget_is_not_a_qualified_publishable_gap():
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=None,
+        collected_total=2,
+        arrivals=2,
+        reasons=("PAGE_BUDGET_EXHAUSTED",),
+    )
+    decision = evaluate_result(evidence, mode="refresh")
+    assert not decision.expose_data and not decision.publishable
+    assert decision.error["code"] == "TIMEOUT"

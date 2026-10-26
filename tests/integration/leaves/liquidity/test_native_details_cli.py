@@ -217,7 +217,11 @@ def test_native_get_preserves_full_root_and_qualified_request(installed):
     assert result["data"] == native
     assert result["meta"]["query"] == {"identity": "one", "parameters": {}}
     assert result["meta"]["detail_scope"] == "native_root"
-    assert not {"complete", "reported_total", "acquisition"} & result["meta"].keys()
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["data_quality"] == "complete"
+    assert (
+        result["meta"]["acquisition"]["coverage_basis"] == "qualified_single_response"
+    )
     assert browser.business_requests == [expected_request(leaf, "one")]
     expression = next(
         expression

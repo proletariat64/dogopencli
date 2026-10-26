@@ -39,16 +39,15 @@ native query. `applicable=None` records unresolved coverage; only a declared
 supplementary component can retain that gap with qualified incomplete evidence.
 The method cannot overwrite attempts or failures. Successful query counts alone do
 not prove relationship coverage; leaves still declare per-record attempts and scope.
-A required component failure remains fatal. A supplementary component may be
-optional for usability while remaining part of the completeness promise. Verified
-inapplicability creates no gap; unknown or unattempted coverage is not absence.
+A supplementary component may be optional for usability while remaining part of
+the completeness promise. Verified inapplicability creates no gap; unknown or unattempted coverage is not absence.
 
 Only explicitly qualified retained refusal/failure categories may be gaps.
 Custom operations declare supplementary queries and permitted retained categories
 for retained detail failures. Existing custom List traversal qualification remains
 independent: valid primary rows with incomplete scope may be usable, while a failed
-required detail remains fatal. Authentication/permission loss, transport, timeout, budget exhaustion,
-malformed response, scope violation, identity conflict, corrupt configured sources
+required detail remains fatal. Authentication/permission loss, transport, timeout,
+budget exhaustion, malformed response, scope violation, identity conflict, corrupt configured sources
 and unknown business errors remain failures, even when an adapter catches them.
 The host has no native-code allowlist, failure percentage threshold or stale-data
 filling policy. Native paging and recovery qualification remain authoritative.
@@ -104,6 +103,9 @@ and its original capture time. Empty Refresh explains that no replacement occurr
 Offline List retains acquisition gaps, warnings and timestamps; strict offline List
 rejects incomplete coverage. Get and live List do not publish. List with Detail
 combines List evidence with each selected Get's promised coverage; hard selected
-Get failure fails the whole composition. Neither Get nor composition writes cache
+Get failure fails the whole composition. A source selection's native occurrence
+counts and selection witness stay in `source_acquisition`; composite coverage uses
+separate unknown count semantics when those source counts do not describe roots.
+Neither Get nor composition writes cache
 or Duckdog. This policy adds no history, last-complete archive, merged captures,
 automatic imports or relaxation of [Duckdog qualification](../../tools/leaf-dev/duckdog-import.md).

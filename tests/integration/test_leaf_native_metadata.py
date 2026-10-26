@@ -392,7 +392,9 @@ def test_rejected_refresh_preserves_rows_metadata_and_capture_time(
         else:
             browser.business_script.append(response([{"id": "bad"}], 1, []))
             expected = "INVALID_RESPONSE"
-        rejected = cli("collection", "refresh", "sample.records", code=1)
+        rejected = cli(
+            "collection", "refresh", "sample.records", "--require-complete", code=1
+        )
         assert rejected["error"]["code"] == expected
     after = cli("collection", "list", "sample.records", "--limit", "0")
     assert after["data"] == saved["data"]

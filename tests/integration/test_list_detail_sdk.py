@@ -609,3 +609,181 @@ def test_unexpected_detail_failure_still_identifies_row_and_emits_no_partial_dat
     assert result["data"] is None
     assert result["error"]["code"] == "INTERNAL_ERROR"
     assert result["meta"]["detail_row"] == 2
+
+
+def source_selection_package(tmp_path):
+    package = context_package(tmp_path)
+    path = package / "leaf.json"
+    manifest = json.loads(path.read_text())
+    collection = manifest.pop("collection")
+    collection["primary_id"]["fields"] = ["rowId"]
+    manifest["operations"]["list"].update(
+        execution="custom",
+        queries={"native": {"kind": "list", "collection": collection}},
+        max_requests=10,
+        budget_seconds=60,
+    )
+    path.write_text(json.dumps(manifest))
+    path = package / "adapter.py"
+    source = path.read_text().replace(
+        "adapter = Adapter()",
+        """
+    def query_capability(self, operation, name, parameters):
+        return List() if operation == "list" else Detail()
+    def query_list(self, parameters, tools):
+        from dogopencli.leaves.query import CustomListResult
+        from dogopencli.result_policy import AcquisitionEvidence, SOURCE_ROW_OCCURRENCES
+        source = tools.collect("native")
+        rows = list({row["reference"]: row for row in source.records}.values())
+        return CustomListResult(rows, AcquisitionEvidence(
+            scope_complete=True, dataset_complete=True, usable_incomplete=True,
+            reported_total=3, arrivals=3, collected_total=2, unique_count=2,
+            duplicate_count=1, total_semantics=SOURCE_ROW_OCCURRENCES,
+            reasons=("SOURCE_ROWS_SELECTED",), attempts=({
+                "kind": "source_selection", "selection_fields": ["reference"],
+                "selection_order": ["rowId"], "raw_rows": 3,
+                "selected_records": 2, "raw_coverage_complete": True,
+            },),
+        ))
+adapter = Adapter()
+""",
+    )
+    path.write_text(source)
+    return package
+
+
+@pytest.mark.parametrize(
+    "detail_gap,strict", [(False, True), (True, False), (True, True)]
+)
+def test_with_detail_preserves_source_selection_witness_and_counts(
+    detail_cli, tmp_path, detail_gap, strict
+):
+    cli, browser, config = detail_cli
+    package = source_selection_package(tmp_path)
+    if detail_gap:
+        from integration.test_custom_query_sdk import custom_get
+
+        custom_get(package)
+        path = package / "leaf.json"
+        manifest = json.loads(path.read_text())
+        get = manifest["operations"]["get"]
+        get["queries"]["supplement"] = {
+            **get["queries"]["native"],
+            "supplementary": True,
+        }
+        path.write_text(json.dumps(manifest))
+        path = package / "adapter.py"
+        path.write_text(
+            path.read_text()
+            .replace(
+                "data = query.detail('native', identity)",
+                "data = query.detail('native', identity)\n"
+                "        query.record_applicability('supplement', applicable=None, "
+                "reason='SUPPLEMENT_UNVERIFIED', based_on='native')",
+            )
+            .replace(
+                "complete=True, reported_total=None, collected_total=1,",
+                "complete=False, reported_total=None, collected_total=1,",
+            )
+            .replace(
+                "coverage_basis='qualified_single_response',",
+                "reasons=('SUPPLEMENT_UNVERIFIED',), usable_incomplete=True,",
+            )
+        )
+    cli("plugins", "install", str(package))
+    rows = [
+        {"rowId": 1, "reference": "REF-1", "account": "ACCOUNT"},
+        {"rowId": 2, "reference": "REF-1", "account": "ACCOUNT"},
+        {"rowId": 3, "reference": "REF-2", "account": "ACCOUNT"},
+    ]
+    detail = {"nativeId": 9, "reference": "REF-1", "account": "ACCOUNT"}
+    browser.business_script.extend(
+        [
+            {"status": 200, "body": {"rows": rows}},
+            {"status": 200, "body": detail},
+        ]
+    )
+    flags = ("--require-complete",) if strict else ()
+    rejected = detail_gap and strict
+    result = cli(
+        "payment",
+        "list",
+        "synthetic.detail",
+        "--live",
+        "--with-detail",
+        "--limit",
+        "1",
+        *flags,
+        code=1 if rejected else 0,
+    )
+    if rejected:
+        assert result["data"] is None
+        assert result["error"]["code"] == "INCOMPLETE_RESULT"
+        source = result["meta"]["source_acquisition"]
+    else:
+        assert result["data"] == [{"record": rows[1], "detail": detail}]
+        source = result["meta"]["acquisition"]["attempts"][0]["source_acquisition"]
+    assert result["meta"]["complete"] is (not detail_gap)
+    assert source["total_semantics"] == "source_row_occurrences"
+    assert (
+        source["arrivals"],
+        source["collected_total"],
+        source["duplicate_count"],
+    ) == (3, 2, 1)
+    assert source["attempts"][0]["kind"] == "source_selection"
+    assert source["attempts"][0]["raw_coverage_complete"] is True
+    assert len(browser.business_requests) == 2
+    assert not (config / "leaf-cache.sqlite3").exists()
+
+
+def test_refresh_terminal_fallback_timeout_preserves_previous_capture(
+    detail_cli, tmp_path
+):
+    cli, browser, config = detail_cli
+    package = context_package(tmp_path)
+    path = package / "leaf.json"
+    manifest = json.loads(path.read_text())
+    manifest["collection"]["paging"] = {"mode": "offset", "page_sizes": [500, 100]}
+    manifest["collection"]["max_pages"] = 2
+    path.write_text(json.dumps(manifest))
+    path = package / "adapter.py"
+    path.write_text(
+        path.read_text()
+        .replace(
+            'path="/api/synthetic/list", page_size=500, one_based=False,',
+            'path="/api/synthetic/list", page_size=500, one_based=False, '
+            "allowed_page_sizes=(500, 100),",
+        )
+        .replace(
+            "class Adapter:",
+            "    def parse_rows(self, body):\n"
+            "        value = parse(body)\n"
+            '        return value["rows"], value["total"]\nclass Adapter:',
+        )
+    )
+    cli("plugins", "install", str(package))
+    saved = {"reference": "saved", "account": "ACCOUNT"}
+    browser.business_script.append(
+        {"status": 200, "body": {"rows": [saved], "total": 1}}
+    )
+    cli("payment", "refresh", "synthetic.detail")
+    before = cli("payment", "list", "synthetic.detail")
+    candidate = [
+        {"reference": str(index), "account": "ACCOUNT"} for index in range(101)
+    ]
+    browser.business_script.extend(
+        [
+            {"status": 200, "body": {"rows": candidate[:3], "total": 101}},
+            {"status": 200, "body": {"rows": candidate[:100], "total": 101}},
+        ]
+    )
+    rejected = cli("payment", "refresh", "synthetic.detail", code=1)
+    assert rejected["data"] is None
+    assert rejected["error"]["code"] == "TIMEOUT"
+    assert rejected["error"]["retryable"] is True
+    assert rejected["meta"]["published"] is False
+    assert rejected["meta"]["data_quality"] == "unusable"
+    assert len(browser.business_requests) == 3
+    after = cli("payment", "list", "synthetic.detail")
+    assert after["data"] == before["data"] == [saved]
+    assert after["meta"]["fetched_at"] == before["meta"]["fetched_at"]
