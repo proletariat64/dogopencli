@@ -1875,6 +1875,25 @@
           savedCount.title =
             "Last saved query only; this is not the total available data.";
           timestamp(fact(facts, "Captured"), saved.fetched_at);
+          const coverage = fact(facts, "Saved coverage");
+          const complete = saved.complete === true && saved.dataset_complete === true;
+          coverage.textContent = complete
+            ? "Complete for saved scope"
+            : "Incomplete or unproven";
+          if (!complete) coverage.className = "status-warning";
+          const warnings = saved.warnings || [];
+          if (warnings.length) {
+            const warningCount = warnings.reduce(
+              (total, warning) => total + (warning.count || 1),
+              0,
+            );
+            const warningFact = fact(facts, "Saved warnings");
+            warningFact.textContent = warningCount.toLocaleString("en-US");
+            warningFact.className = "status-warning";
+            warningFact.title = warnings
+              .map((warning) => warning.code + ": " + warning.message)
+              .join("\n");
+          }
         } else {
           savedCount.textContent =
             saved.state === "unavailable" ? "Unavailable" : "No saved data";

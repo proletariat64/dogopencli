@@ -115,6 +115,72 @@ def diagnostic(
     return result
 
 
+def normalize_warnings(warnings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep warning facts and aggregate repeated reasons per affected component."""
+    grouped: dict[tuple, dict[str, Any]] = {}
+    for warning in warnings:
+        if (
+            not isinstance(warning, dict)
+            or not isinstance(warning.get("code"), str)
+            or not isinstance(warning.get("message"), str)
+        ):
+            raise CliError(INVALID_RESPONSE, "invalid result warning")
+        reasons = warning.get("reason_codes")
+        if reasons is not None and (
+            not isinstance(reasons, (list, tuple))
+            or any(not isinstance(reason, str) for reason in reasons)
+        ):
+            raise CliError(INVALID_RESPONSE, "invalid warning reasons")
+        count = warning.get("count", 1)
+        if type(count) is not int or count < 1:
+            raise CliError(INVALID_RESPONSE, "invalid warning count")
+        facts = {
+            key: warning[key]
+            for key in (
+                "retryable",
+                "origin",
+                "stage",
+                "component",
+                "scope",
+                "native_code",
+                "consequence",
+                "action",
+            )
+            if key in warning
+        }
+        for field, value in facts.items():
+            if field == "native_code":
+                continue
+            if field == "retryable":
+                valid = value is None or isinstance(value, bool)
+            else:
+                valid = value is None or isinstance(value, str)
+            if not valid:
+                raise CliError(INVALID_RESPONSE, "invalid warning context")
+        value = diagnostic(
+            warning["code"],
+            warning["message"],
+            severity="warning",
+            reason_codes=reasons,
+            count=count,
+            **facts,
+        )
+        key = (
+            value["code"],
+            value["origin"],
+            value["stage"],
+            value["component"],
+            value["scope"],
+            value["native_code"],
+            tuple(value.get("reason_codes", ())),
+        )
+        if key in grouped:
+            grouped[key]["count"] += count
+        else:
+            grouped[key] = value
+    return list(grouped.values())
+
+
 class CliError(Exception):
     def __init__(
         self,
@@ -133,3 +199,36 @@ class CliError(Exception):
         self.exit_code = exit_code
         self.meta = meta
         self.command_path = command_path
+
+    def diagnostic(self, *, component: str | None = None) -> dict[str, Any]:
+        """Expose qualified safe cause facts without copying arbitrary metadata."""
+        facts = self.meta or {}
+        supplied = facts.get("diagnostic", {})
+        context = (
+            {
+                key: value
+                for key, value in supplied.items()
+                if key
+                in {"origin", "stage", "component", "scope", "consequence", "action"}
+                and isinstance(value, str)
+            }
+            if isinstance(supplied, dict)
+            else {}
+        )
+        context.setdefault("component", component)
+        context.setdefault("consequence", "The requested result was not accepted.")
+        reasons = supplied.get("reason_codes") if isinstance(supplied, dict) else None
+        if isinstance(reasons, (list, tuple)) and all(
+            isinstance(reason, str) for reason in reasons
+        ):
+            context["reason_codes"] = reasons
+        native_code = facts.get("native_code")
+        if native_code is None and isinstance(supplied, dict):
+            native_code = supplied.get("native_code")
+        return diagnostic(
+            self.code,
+            self.message,
+            retryable=self.retryable,
+            native_code=native_code,
+            **context,
+        )

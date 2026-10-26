@@ -2,7 +2,7 @@
 
 import pytest
 
-from dogopencli.errors import diagnostic, error_exit_code
+from dogopencli.errors import CliError, diagnostic, error_exit_code, normalize_warnings
 
 
 @pytest.mark.parametrize(
@@ -50,6 +50,30 @@ def test_diagnostic_rejects_sensitive_native_context():
     assert error["native_code"] is None
 
 
+@pytest.mark.parametrize("native_code", ["099", 0])
+def test_sdk_error_preserves_qualified_component_facts_without_raw_metadata(
+    native_code,
+):
+    error = CliError(
+        "BUSINESS_QUERY_FAILED",
+        "History refused",
+        meta={
+            "native_code": native_code,
+            "diagnostic": {
+                "component": "history",
+                "stage": "detail",
+                "consequence": "The promised history is unavailable",
+            },
+            "raw_response": {"credential": "must stay private"},
+        },
+    ).diagnostic(component="sample.items")
+    assert error["component"] == "history"
+    assert error["stage"] == "detail"
+    assert error["native_code"] == native_code
+    assert error["consequence"] == "The promised history is unavailable"
+    assert "raw_response" not in error
+
+
 def test_warning_keeps_coverage_reasons_without_becoming_fatal():
     warning = diagnostic(
         "INCOMPLETE_RESULT",
@@ -63,3 +87,36 @@ def test_warning_keeps_coverage_reasons_without_becoming_fatal():
     assert warning["reason_codes"] == ["HISTORY_COVERAGE_UNPROVEN"]
     assert warning["count"] == 2
     assert warning["action"] == "Inspect coverage reasons or use --require-complete."
+
+
+def test_shared_warning_normalization_groups_repeated_component_failures():
+    warnings = normalize_warnings(
+        [
+            {
+                "code": "INCOMPLETE_RESULT",
+                "message": "History unavailable",
+                "component": "history",
+                "reason_codes": ["HISTORY_UNAVAILABLE"],
+                "native_code": "099",
+            },
+            {
+                "code": "INCOMPLETE_RESULT",
+                "message": "Another history unavailable",
+                "component": "history",
+                "reason_codes": ["HISTORY_UNAVAILABLE"],
+                "native_code": "099",
+            },
+            {
+                "code": "INCOMPLETE_RESULT",
+                "message": "Route unavailable",
+                "component": "route",
+                "reason_codes": ["ROUTE_UNAVAILABLE"],
+            },
+        ]
+    )
+    assert len(warnings) == 2
+    assert warnings[0]["component"] == "history"
+    assert warnings[0]["count"] == 2
+    assert warnings[0]["native_code"] == "099"
+    assert warnings[1]["component"] == "route"
+    assert warnings[1]["count"] == 1

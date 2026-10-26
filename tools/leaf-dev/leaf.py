@@ -16,7 +16,7 @@ import zipfile
 from pathlib import Path
 
 import dogopencli
-from dogopencli.errors import CliError
+from dogopencli.errors import CliError, error_exit_code
 from dogopencli.jsonutil import parse
 from dogopencli.leaves.package import _download, validate_package
 
@@ -28,6 +28,15 @@ else:
 
 class HelperError(ValueError):
     """A failed helper check, without business response values."""
+
+
+class CaptureQueryError(HelperError):
+    """Retain the public query diagnostic separately from capture failure."""
+
+    def __init__(self, error: dict) -> None:
+        super().__init__(error["message"])
+        self.diagnostic = error
+        self.code = error["code"]
 
 
 def sha(data: bytes) -> str:
@@ -317,9 +326,9 @@ def capture(directory: Path, config: Path, arguments: list[str]) -> dict:
         (directory / "requests.json").write_text(canonical(calls))
         value = parse(output.getvalue())
         if code:
-            raise HelperError(
-                f"Inquiry failed: {(value.get('error') or {}).get('code')}"
-            )
+            if isinstance(value.get("error"), dict):
+                raise CaptureQueryError(value["error"])
+            raise HelperError("Inquiry failed without a public diagnostic.")
         data, meta = value["data"], value.get("meta") or {}
         return {
             "state": "captured",
@@ -529,16 +538,16 @@ def main() -> int:
             or (args.action in ("verify", "pack") and isinstance(error, CliError))
             else type(error).__name__
         )
-        print(
-            json.dumps(
-                {
-                    "state": "failed",
-                    "error": getattr(error, "code", "HELPER_FAILED"),
-                    "message": message,
-                }
-            )
-        )
-        return 1
+        summary = {
+            "state": "failed",
+            "error": getattr(error, "code", "HELPER_FAILED"),
+            "message": message,
+        }
+        if isinstance(error, CaptureQueryError):
+            summary["wrapper_error"] = "CAPTURE_QUERY_FAILED"
+            summary["diagnostic"] = error.diagnostic
+        print(json.dumps(summary))
+        return error_exit_code(getattr(error, "code", "HELPER_FAILED"))
     print(json.dumps(result))
     return 0
 

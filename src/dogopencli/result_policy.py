@@ -4,7 +4,6 @@ Only validated candidates reach this policy. Domain failures are never caught
 or converted to partial success here; publishing remains a host transaction.
 """
 
-import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -621,6 +620,7 @@ def check_complete(
         meta = evidence.meta()
         meta.update(decision.meta(mode=mode))
         meta["warnings"] = list(decision.warnings)
+        meta["diagnostic"] = decision.error
         if mode == "refresh":
             meta["published"] = False
         raise CliError(INCOMPLETE_RESULT, decision.error["message"], meta=meta)
@@ -642,6 +642,4 @@ def prepare_result(
     output.update(decision.meta(mode=mode, published=meta.get("published") is True))
     if decision.warnings:
         output["warnings"] = list(decision.warnings)
-        for warning in decision.warnings:
-            print(f"warning: {warning['code']}: {warning['message']}", file=sys.stderr)
     return output
