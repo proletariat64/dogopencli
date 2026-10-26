@@ -178,3 +178,16 @@ List installation initializes empty storage or validates retained bindings;
 Get-only initializes no List storage. Static verify/pack and help
 are declaration-only. Uninstall retains Duckdog data; query/refresh do not import
 it. A valid ZIP is not evidence of working runtime methods or production data.
+
+### Conditional custom queries
+
+A query declaration permits a native request; conditional Python branches need not
+invoke every permission unconditionally. Custom Get must nevertheless account for
+every declaration: call it, or record `tools.record_applicability(name,
+applicable=False, reason="SAFE_REASON_CODE", based_on="root")` after a successful
+native root proves that branch inapplicable. Use `applicable=None` for unverified
+coverage, declare that component supplementary, and return explicitly qualified
+incomplete evidence. The SDK rejects missing evidence, fabricated data-only results,
+contradictory complete claims, and attempts to erase observed failures. Required
+failures cannot be retained by List or Get. Qualified partial primary List traversal
+continues to use the collection SDK's existing usable-incomplete policy.

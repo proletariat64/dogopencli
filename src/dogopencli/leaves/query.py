@@ -512,6 +512,50 @@ class QueryTools:
             self._fatal = failure
             raise failure from error
 
+    def record_applicability(
+        self, name: str, *, applicable: bool | None, reason: str, based_on: str
+    ) -> None:
+        """Record an unqueried conditional branch, grounded in a native result.
+
+        False means verified inapplicable; None means unresolved coverage. Reasons
+        are safe stable codes, never native fields, identities or response text.
+        """
+        import re
+
+        if self._fatal is not None:
+            raise self._fatal
+        declaration = self._declarations["queries"].get(name)
+        basis = self._queries.get(based_on, {})
+        if (
+            declaration is None
+            or name in self._queries
+            or applicable is not False
+            and applicable is not None
+            or not isinstance(reason, str)
+            or re.fullmatch(r"[A-Z][A-Z0-9_]{0,79}", reason) is None
+            or based_on not in self._declarations["queries"]
+            or not basis.get("succeeded")
+        ):
+            self._fatal = CliError(
+                INVALID_RESPONSE, "invalid query applicability evidence"
+            )
+            raise self._fatal
+        collection.remaining_seconds(self.deadline)
+        self._queries[name] = {
+            "kind": declaration["kind"],
+            "calls": 0,
+            "requests": 0,
+            "succeeded": 0,
+            "applicability": {
+                "status": "inapplicable" if applicable is False else "unverified",
+                "reason": reason,
+                "based_on": based_on,
+            },
+        }
+        if applicable is None:
+            self._incomplete = True
+            self._required_incomplete |= declaration.get("supplementary") is not True
+
     def evidence(self) -> dict:
         """Return query facts without lookup identities, rows, or auth material."""
         from copy import deepcopy
@@ -538,6 +582,8 @@ class QueryTools:
 
     def finish_list(self, result: CustomListResult) -> collection.CollectedScope:
         self._finish()
+        if self._required_failure is not None:
+            raise self._required_failure
         if (
             not isinstance(result, CustomListResult)
             or not isinstance(result.records, list)
@@ -545,6 +591,8 @@ class QueryTools:
             or not isinstance(result.evidence, AcquisitionEvidence)
         ):
             raise CliError(INVALID_RESPONSE, "invalid custom List result")
+        if not any(trace.get("succeeded", 0) for trace in self._queries.values()):
+            raise CliError(INVALID_RESPONSE, "custom List lacks source evidence")
         evidence = AcquisitionEvidence.from_record(result.evidence.record())
         if evidence.collected_total != len(result.records) or (
             self._incomplete and (evidence.scope_complete or evidence.dataset_complete)
@@ -570,6 +618,14 @@ class QueryTools:
             raise CliError(
                 INVALID_RESPONSE, "custom Get has incomplete required queries"
             )
+        if not any(
+            trace.get("succeeded", 0)
+            for name, trace in self._queries.items()
+            if name in self._declarations["queries"]
+        ):
+            raise CliError(INVALID_RESPONSE, "custom Get lacks required query evidence")
+        if any(name not in self._queries for name in self._declarations["queries"]):
+            raise CliError(INVALID_RESPONSE, "custom Get lacks required query evidence")
         if isinstance(result, CustomGetResult):
             if not isinstance(result.evidence, AcquisitionEvidence):
                 raise CliError(INVALID_RESPONSE, "custom Get coverage is invalid")

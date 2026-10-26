@@ -29,13 +29,25 @@ counts, native total semantics, attempts and reasons. Its `usable_incomplete`
 boolean is persisted and defaults to false in direct construction. The collection
 SDK supplies its qualified traversal policy. Custom operations must explicitly
 qualify useful partial candidates and retain component attempts and applicability.
+A required component failure remains fatal. Custom results need an observed SDK
+source witness; Custom Get must account for every permitted query through an attempt
+or explicit applicability. A successful native root is required for Get. A verified
+empty local selector may witness an empty custom List without a native request.
+`tools.record_applicability(name, applicable=False, reason="SAFE_REASON_CODE",
+based_on="root")` records verified inapplicability grounded in an already successful
+native query. `applicable=None` records unresolved coverage; only a declared
+supplementary component can retain that gap with qualified incomplete evidence.
+The method cannot overwrite attempts or failures. Successful query counts alone do
+not prove relationship coverage; leaves still declare per-record attempts and scope.
 A required component failure remains fatal. A supplementary component may be
 optional for usability while remaining part of the completeness promise. Verified
 inapplicability creates no gap; unknown or unattempted coverage is not absence.
 
 Only explicitly qualified retained refusal/failure categories may be gaps.
-Custom Get additionally declares supplementary queries and permitted retained
-categories; existing custom List policies retain their independent qualification. Authentication/permission loss, transport, timeout, budget exhaustion,
+Custom operations declare supplementary queries and permitted retained categories
+for retained detail failures. Existing custom List traversal qualification remains
+independent: valid primary rows with incomplete scope may be usable, while a failed
+required detail remains fatal. Authentication/permission loss, transport, timeout, budget exhaustion,
 malformed response, scope violation, identity conflict, corrupt configured sources
 and unknown business errors remain failures, even when an adapter catches them.
 The host has no native-code allowlist, failure percentage threshold or stale-data

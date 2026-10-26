@@ -323,6 +323,13 @@ class Adapter:
                 "request_scope": HistoryInquiry().request_body(context),
                 "reasons": [],
             }
+        else:
+            tools.record_applicability(
+                "history",
+                applicable=None,
+                reason="HISTORY_CONTEXT_UNVERIFIED",
+                based_on="root",
+            )
         components["operationHistory"] = history_component
         route = None
         route_component = {
@@ -331,6 +338,9 @@ class Adapter:
             "reasons": ["ROUTE_ASSOCIATION_UNVERIFIED"],
         }
         if "routeId" in root and root["routeId"] in (None, ""):
+            tools.record_applicability(
+                "route", applicable=False, reason="ROOT_HAS_NO_ROUTE", based_on="root"
+            )
             route_component = {
                 "status": "inapplicable",
                 "complete": True,
@@ -350,6 +360,13 @@ class Adapter:
                 },
                 "reported_count_unit": "unknown",
             }
+        else:
+            tools.record_applicability(
+                "route",
+                applicable=None,
+                reason="ROUTE_ASSOCIATION_UNVERIFIED",
+                based_on="root",
+            )
         components["routeDetails"] = route_component
         reasons = tuple(
             reason
