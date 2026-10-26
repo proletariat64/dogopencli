@@ -259,6 +259,7 @@ class Adapter:
             }
         )
         evidence = AcquisitionEvidence(
+            usable_incomplete=True,
             scope_complete=coverage,
             dataset_complete=coverage,
             reported_total=expected,

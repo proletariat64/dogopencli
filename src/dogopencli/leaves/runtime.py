@@ -100,6 +100,7 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
         for name, operation in leaf.manifest["operations"].items()
     }
     context = {
+        "acquisition_schema": 2,
         "identity": leaf.manifest["identity"],
         "operations": operations,
         "adapter_binding": leaf.manifest["adapter"],
@@ -515,9 +516,9 @@ def execute(
                     )
                 query = parameters
                 stale = False
-                check_complete(
+                decision = check_complete(
                     evidence,
-                    require_complete=(args.require_complete or operation == "refresh"),
+                    require_complete=args.require_complete,
                     mode=operation,
                 )
                 selected = (
@@ -538,7 +539,7 @@ def execute(
                     details = _compose_details(
                         leaf, session, window, fields, collected.deadline, offset
                     )
-            published = operation == "refresh" and bool(rows)
+            published = decision.publishable
             if published:
                 snapshot = SnapshotMeta(
                     namespace=namespace,

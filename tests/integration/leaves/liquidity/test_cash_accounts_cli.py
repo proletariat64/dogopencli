@@ -351,11 +351,43 @@ def test_incomplete_live_strict_and_refresh_preserve_complete_cache(installed, f
         ]
         == "INCOMPLETE_RESULT"
     )
-    rejected = cli("liquidity", "refresh", LEAF, code=1)
+    rejected = cli("liquidity", "refresh", LEAF, "--require-complete", code=1)
     assert rejected["meta"]["published"] is False
     offline = cli("liquidity", "list", LEAF, "--limit", "0")
     assert offline["data"] == saved["data"]
     assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+def test_qualified_detail_gap_refresh_replaces_cache_and_replays_its_quality(installed):
+    cli, browser, _ = installed
+    rows = [account("A"), account("B")]
+    scripted(browser, rows, rows)
+    cli("liquidity", "refresh", LEAF, "--require-complete")
+    scripted(browser, rows, rows, refusal="B")
+    refreshed = cli("liquidity", "refresh", LEAF)
+    assert refreshed["meta"]["published"] is True
+    assert refreshed["meta"]["complete"] is False
+    assert refreshed["meta"]["outcome"] == "warning"
+    assert refreshed["meta"]["data_quality"] == "incomplete"
+    assert refreshed["meta"]["publication"] == {
+        "status": "published",
+        "reason": "accepted",
+    }
+    assert refreshed["meta"]["acquisition"]["usable_incomplete"] is True
+    replayed = cli("liquidity", "list", LEAF, "--limit", "0")
+    assert replayed["data"][1]["detail_state"] == "refused"
+    assert replayed["meta"]["acquisition"] == refreshed["meta"]["acquisition"]
+    assert replayed["meta"]["warnings"] == refreshed["meta"]["warnings"]
+    assert replayed["meta"]["fetched_at"] == refreshed["meta"]["fetched_at"]
+    assert replayed["meta"]["publication"]["status"] == "not_requested"
+    rejected = cli("liquidity", "list", LEAF, "--require-complete", code=1)
+    assert rejected["data"] is None
+    assert rejected["error"]["code"] == "INCOMPLETE_RESULT"
+    rejected = cli("liquidity", "refresh", LEAF, "--require-complete", code=1)
+    assert rejected["meta"]["published"] is False
+    preserved = cli("liquidity", "list", LEAF, "--limit", "0")
+    assert preserved["data"] == replayed["data"]
+    assert preserved["meta"]["fetched_at"] == replayed["meta"]["fetched_at"]
 
 
 def failed_detail(native_code="999"):
@@ -443,7 +475,7 @@ def test_failed_detail_continues_all_accounts_and_preserves_complete_cache(
     assert trace.get("refused", 0) == int(with_refusal)
     for operation, flags in (
         ("list", ("--live", "--require-complete")),
-        ("refresh", ()),
+        ("refresh", ("--require-complete",)),
     ):
         start = len(browser.business_requests)
         rejected = cli("liquidity", operation, LEAF, *flags, code=1)
