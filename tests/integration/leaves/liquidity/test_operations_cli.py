@@ -451,15 +451,16 @@ def test_unsupported_get_never_queries(installed):
     assert not browser.business_requests
 
 
-def test_conflict_keeps_last_arrival_and_marks_incomplete(installed):
+def test_conflict_rejects_inconsistent_rows(installed):
     case, cli, browser, _ = installed
     rows = [record(case, i) for i in range(2)]
     last = {**rows[0], "unknown": "CHANGED"}
     browser.business_script.append(page(case, [rows[0], last, rows[1]], 3))
-    result = cli("list", "--live", "--limit", "0")
-    assert result["data"] == [last, rows[1]]
+    result = cli("list", "--live", "--limit", "0", code=1)
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert result["meta"]["complete"] is False
-    assert result["meta"]["duplicate_count"] == 1
+    assert result["meta"]["acquisition"]["duplicate_count"] == 1
 
 
 @pytest.mark.parametrize(

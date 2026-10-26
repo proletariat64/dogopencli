@@ -34,8 +34,9 @@ Only the selected width candidate's metadata accompanies its records; rebuilding
 at another width discards the rejected candidate's metadata. Complete nonempty
 refresh saves rows and metadata together through the existing atomic snapshot;
 offline replay retains it in both `acquisition` and `source_acquisition`. Live
-does not publish, and empty, failed or incomplete refresh preserves the previous
-capture. Leaves without the hook omit `native_metadata` and keep their existing
+does not publish. Refresh publishes an accepted nonempty candidate, including
+qualified usable incomplete results with their warnings. Empty, failed or
+strict-rejected Refresh preserves the previous capture. Leaves without the hook omit `native_metadata` and keep their existing
 envelope. No cache table or separate metadata store is added.
 
 ## Ownership and provider isolation
@@ -76,7 +77,8 @@ individually endpoint-qualified and descending. `single` and `single_response`
 have exactly one size. Offset position is absolute zero-based `rowStart`;
 numbered pages start at `contract.one_based ? 1 : 0`.
 A field identity has exactly one native field; `hash` uses a reviewed tuple.
-Optional `latest_by` chooses a conflicting row while leaving coverage incomplete.
+Optional `latest_by` resolves a conflicting candidate row for evidence; an
+identity/content conflict remains a hard failure without accepted data or publication.
 Unproven identity requires empty manifest `identity` and forbids `latest_by`.
 Optional `max_pages` (1–1000) and `budget_seconds` (1–900) narrow host bounds.
 Get-only omits `collection`; no version negotiation is added.
@@ -103,8 +105,9 @@ Evidence keeps `reported_total=null`, `total_semantics="unknown"` and
 `coverage_basis="qualified_single_response"`; arrivals, unique count and duplicate
 count remain separate observations. Completeness follows the accepted response
 contract, never a fabricated total. A source ignoring requested pageSize is not
-rejected solely for returning more rows. Duplicate/conflict and native failures
-still prevent strict success/publication. Empty refresh preserves prior cache.
+rejected solely for returning more rows. Duplicate coverage gaps prevent strict success; only qualified usable incomplete
+candidates may publish by default. Identity/content conflicts and native failures
+remain hard failures. Empty refresh preserves prior cache.
 Native-total termination still requires native totals; a missing total alone does
 not qualify this mode. See
 [the executable sample](../../tools/leaf-dev/example-single-response/).
@@ -170,7 +173,9 @@ permissions, schema failures and unclassified business errors never become holes
 Every read, neighbor check, local subdivision and history validation consumes the
 same global page/deadline budget as ordinary collection and fallback. Different
 large-width fallback candidates still restart at zero and never mix their output.
-By default duplicates or identity/content conflicts still prevent strict success and refresh.
+Duplicate coverage gaps prevent strict success. Default Refresh can publish only
+a validated, explicitly qualified usable incomplete candidate. Identity/content
+conflicts, malformed identity and schema remain hard failures.
 The explicitly accepted channel contract sets `EndpointContract.duplicate_policy`
 to `allow_identical_overlap`: identical repeats are deduplicated without requiring
 a native-total or business-wide completeness proof. Evidence uses
@@ -249,9 +254,9 @@ Raw source scopes never enter the preference file; its existing hashed keys appl
 ## Identity, duplicates, holes and coverage
 
 - Identity must be selected by the leaf developer at design time and reviewed by a human (HIL) against business semantics. A hash cannot make non-unique columns unique. `hash` uses `sha256(canonical([typed_field_values,...]))` in declared field order, so numbers and strings cannot collide by string concatenation. Missing/null/non-scalar key parts are invalid. Collision of a 256-bit digest with different native tuples is a hard error. Do not mutate native row JSON or generate a synthetic source field.
-- Maintain a first-seen position per identity; collapse identical cross-page duplicates. On different content for the same identity, retain the row with the greatest parsed `latest_by` value when configured, breaking equal timestamps with last arrival; otherwise the **last loaded row wins**. Preserve explicit diagnostic reasons and counts, including conflicts. For an unverified ordering, last arrival is not a proof that the row is globally newest.
+- Maintain a first-seen position per identity; collapse identical cross-page duplicates. On different content for the same identity, retain the row with the greatest parsed `latest_by` value when configured, breaking equal timestamps with last arrival; otherwise the **last loaded row wins**. Preserve explicit diagnostic reasons and counts, including conflicts; identity/content conflicts fail acceptance in every mode. For an unverified ordering, last arrival is not a proof that the row is globally newest.
 - A duplicate or conflict is *not* automatically proof of complete coverage: a repeated row can conceal an omitted row. Report arrivals, unique count, duplicate count, conflicting count, reported total, and `scope_complete=false` on page overlaps or unverified holes. Qualified short-page recovery records verified bypasses separately.
-- For a reported fixed unique-object total, require `unique_count == reported_total` and **no anomalous gaps/duplicates** to claim complete. Reject changing totals or invalid response envelopes; do not guess other total semantics. An unproven identity uses `primary_id: {"type":"unproven","fields":[]}` and `contract.has_identity=False`. Preserve every native arrival without deduplication; exact repeated JSON is diagnostic only. Unknown totals require a separately qualified `single_response` or short-page contract to establish completeness; count equality does not prove it. Stop an unproven read on overlap, a short page or the logical-page cap, retaining validated arrivals with explicit incomplete evidence; strict modes and refresh reject it. No synthetic ID or hash is justified.
+- For a reported fixed unique-object total, require `unique_count == reported_total` and **no anomalous gaps/duplicates** to claim complete. Reject changing totals or invalid response envelopes; do not guess other total semantics. An unproven identity uses `primary_id: {"type":"unproven","fields":[]}` and `contract.has_identity=False`. Preserve every native arrival without deduplication; exact repeated JSON is diagnostic only. Unknown totals require a separately qualified `single_response` or short-page contract to establish completeness; count equality does not prove it. Stop an unproven read on overlap, a short page or the logical-page cap, retaining validated arrivals with explicit incomplete evidence; strict mode rejects it; default Refresh may publish a qualified usable nonempty candidate. No synthetic ID or hash is justified.
 - Detect short pages before the expected end, empty interior pages and final unique/count shortfall. Advance by the requested page stride (not returned row count), so following valid ranges can still be read and exposed as explicitly partial. Never fill missing data or change effective reported total. A bounded fallback must **restart from position zero** using the next declared width, without mixing candidates.
 - If all declared widths fail to prove coverage, return the last validated *partial* candidate for live display with incomplete evidence where possible; strict modes reject it. An unavailable or malformed page producing a hard business/authorization/schema error never becomes partial success. Unsupported request widths are never guessed.
 
@@ -328,7 +333,7 @@ channel 已接受使用 `short_page` 的大步长绕行策略；上述差异作�
 - `leaves.registry.validate_manifest` requires a standard List `collection` or explicit custom execution, and validates the closed schema, provider boundary and primary-ID fields. Static verification and installation use that same validator. The Host dispatches standard Lists through `collect_list` or `collect_sources`, and custom operations through named query tools, passing configuration-scoped runtime state. Fingerprint the complete current endpoint contract, collection policy and adapter source. There is no transport-taking adapter collector or missing-evidence compatibility path.
 - `EndpointContract` and the existing restricted `validate_request` remain authoritative. The declared allowed page widths must be supported by the endpoint allowlist (top-level or nested JSON-body allowances). No broad HTTP capability or arbitrary method.
 - Every candidate records attempt size, page count, arrivals, unique count, duplication, holes, timing, and reason codes in `AcquisitionEvidence.attempts`. Selected records are unchanged business JSON.
-- Best-effort live can show validated incomplete records plus warnings. For every List, **refresh publishes only a proven-complete nonempty result** and preserves prior cache on partial/failed/empty acquisition. The selected runtime width is operational and must not alter cache contract identity.
+- Best-effort live can show validated incomplete records plus warnings. For every List, **Refresh publishes an accepted nonempty result**, including explicitly qualified usable incomplete candidates with their original evidence and warnings. Strict rejection, hard failure and empty acquisition preserve prior cache. The selected runtime width is operational and must not alter cache contract identity.
 - Keep native Get and business query permissions, Duckdog publication/import, display paging and unrelated migration packages intact. Shared transport classifies HTTP 401/403 as authorization failures.
 
 ## Acceptance matrix
@@ -337,7 +342,7 @@ channel 已接受使用 `short_page` 的大步长绕行策略；上述差异作�
 2. Both field and SHA-256 tuple identity are stable and type-aware. Missing identity fails, hash is *internal*, same-key duplicates use timestamp/latest or last-arrival and keep conflicts visible.
 3. Offset and numbered paging validate total/echo and make exactly qualified requests. Same-width duplicate, short/empty interior page and count mismatch yield `complete=false`, not silent success. Changing totals, schema failure and authorization are hard failures.
 4. Page-size fallback restarts from zero; attempts are never merged; unknown widths fail at restricted transport. Global deadline and total logical-page cap terminate; fallback cannot reuse another candidate's allowance.
-5. A complete candidate persists a preferred width when its optional state lock is available; separate run loads it; corrupt/busy state is harmless. Partial/failure does not change preference or cached business snapshot. Current-contract snapshots replay offline; no historical-hash fallback exists.
+5. A complete candidate persists a preferred width when its optional state lock is available; separate run loads it; corrupt/busy state is harmless. Partial/failure does not change width preference. Qualified nonempty partial Refresh may replace the business snapshot; strict rejection and failure preserve it. Current-contract snapshots replay offline; no historical-hash fallback exists.
 6. All four bundled pilots execute via the SDK with no leaf-owned collector. Exercise native values, scope, normal/strict live, refresh/offline, portable install and declaration-only help. The FX pilot uses the native transaction number `uniqueId` and compares unique rows with native `totalCount`; complete acquisitions support refresh/offline, while duplicate/conflicting/short candidates are rejected by strict modes. Production migration needs independent acceptance.
 7. Test with fake transport and local Python checks. No production CDP/SSO/network mutation, migration completion count, release or automatic PR merge.
 
@@ -356,3 +361,11 @@ Prefer small edits to `collect.py`, `contracts.py`, the first-party manifest/reg
 
 Only existing endpoint-qualified widths are declared. Neither this table nor fake
 transport acceptance qualifies production ordering or snapshot consistency.
+
+## Shared acceptance and diagnostics
+
+[Result policy](result-policy.md) defines List/Get/Refresh acceptance, the common
+`--require-complete` flag, diagnostic fields, process statuses and publication
+metadata. The collector supplies qualified evidence; it does not independently
+choose public status or publish. Projection and display limits never improve
+acquisition quality or reduce a Refresh candidate.

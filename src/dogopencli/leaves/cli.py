@@ -8,7 +8,7 @@ from dogopencli import __version__, config
 from dogopencli.command_model import Parser
 from dogopencli.domain_contracts import domain_declarations
 from dogopencli.domains import DomainService
-from dogopencli.errors import CliError
+from dogopencli.errors import CliError, diagnostic, error_exit_code, normalize_warnings
 from dogopencli.jsonutil import canonical
 from dogopencli.rendering import render_text
 
@@ -22,6 +22,10 @@ def emit(
     error: dict | None = None,
     output_format: str = "json",
 ) -> None:
+    if meta is not None and meta.get("warnings"):
+        meta = {**meta, "warnings": normalize_warnings(meta["warnings"])}
+        for warning in meta["warnings"]:
+            print(f"warning: {warning['code']}: {warning['message']}", file=sys.stderr)
     envelope = {"data": data, "meta": meta, "error": error}
     if output_format == "json":
         print(canonical(envelope))
@@ -62,6 +66,26 @@ def _record_execution(
         )
     except CliError:
         print("warning: execution observation was not saved", file=sys.stderr)
+
+
+def _failure_meta(meta: dict | None, operation: str | None) -> dict:
+    return {
+        **(meta or {}),
+        "outcome": "failed",
+        "data_quality": (
+            meta["data_quality"]
+            if meta and meta.get("data_quality") in {"incomplete", "unusable"}
+            else "incomplete"
+            if meta
+            and any(meta.get(key) is False for key in ("complete", "dataset_complete"))
+            else "unusable"
+        ),
+        "publication": {
+            "status": "unchanged" if operation == "refresh" else "not_requested",
+            "reason": "rejected" if operation == "refresh" else None,
+        },
+        **({"published": False} if operation == "refresh" else {}),
+    }
 
 
 def main(argv: list[str]) -> int:
@@ -214,34 +238,47 @@ def main(argv: list[str]) -> int:
         _record_execution(
             service, leaf, operation, started=started, error_code=exc.code
         )
-        meta = exc.meta
-        if operation == "refresh":
-            meta = {**(meta or {}), "published": False}
         emit(
             None,
-            meta,
-            {"code": exc.code, "message": exc.message, "retryable": exc.retryable},
+            _failure_meta(exc.meta, operation),
+            exc.diagnostic(component=leaf.id if leaf else None),
             output_format,
         )
-        return exc.exit_code
+        return error_exit_code(exc.code)
     except KeyboardInterrupt:
         _record_execution(
             service, leaf, operation, started=started, error_code="INTERRUPTED"
         )
         print("interrupted", file=sys.stderr)
-        return 130
+        emit(
+            None,
+            _failure_meta(None, operation),
+            diagnostic(
+                "INTERRUPTED",
+                "Inquiry interrupted",
+                retryable=True,
+                component=leaf.id if leaf else None,
+                consequence="No result was accepted; the previous cache is preserved.",
+            ),
+            output_format,
+        )
+        return error_exit_code("INTERRUPTED")
     except Exception:
         _record_execution(
             service, leaf, operation, started=started, error_code="INTERNAL_ERROR"
         )
         emit(
             None,
-            {"published": False} if operation == "refresh" else None,
-            {
-                "code": "INTERNAL_ERROR",
-                "message": "unexpected command failure",
-                "retryable": False,
-            },
+            _failure_meta(None, operation),
+            diagnostic(
+                "INTERNAL_ERROR",
+                "unexpected command failure",
+                retryable=False,
+                origin="host",
+                stage="execution",
+                component=leaf.id if leaf else None,
+                consequence="The requested result was not accepted.",
+            ),
             output_format,
         )
-        return 1
+        return error_exit_code("INTERNAL_ERROR")

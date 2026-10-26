@@ -195,12 +195,12 @@ def test_native_get_missing_declared_identity_is_rejected(run_cli, pilots):
     assert json.loads(out)["error"]["code"] == "INVALID_RESPONSE"
 
 
-def test_partial_refresh_preserves_complete_capture(run_cli, pilots):
+def test_qualified_partial_refresh_replaces_capture_unless_strict(run_cli, pilots):
     from test_leaf_pilots_cli import native_page, native_row
 
     saved_row = native_row("collection", "saved")
     pilots.business_script.append(native_page("collection", [saved_row]))
-    code, out, _ = run_cli(["collection", "refresh", "cost"])
+    code, out, _ = run_cli(["collection", "refresh", "cost", "--require-complete"])
     assert code == 0 and json.loads(out)["meta"]["published"] is True
     _, out, _ = run_cli(["collection", "list", "cost"])
     saved = json.loads(out)
@@ -211,12 +211,22 @@ def test_partial_refresh_preserves_complete_capture(run_cli, pilots):
     assert code == 0 and "INCOMPLETE_RESULT" in err
     assert json.loads(out)["meta"]["complete"] is False
     pilots.business_script.append(partial)
-    code, out, _ = run_cli(["collection", "refresh", "cost"])
+    code, out, _ = run_cli(["collection", "refresh", "cost", "--require-complete"])
     assert code == 1 and json.loads(out)["error"]["code"] == "INCOMPLETE_RESULT"
     assert json.loads(out)["meta"]["published"] is False
     _, out, _ = run_cli(["collection", "list", "cost"])
     assert json.loads(out)["data"] == saved["data"]
     assert json.loads(out)["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+    pilots.business_script.append(partial)
+    code, out, _ = run_cli(["collection", "refresh", "cost"])
+    refreshed = json.loads(out)
+    assert code == 0 and refreshed["meta"]["published"] is True
+    assert refreshed["meta"]["complete"] is False
+    _, out, _ = run_cli(["collection", "list", "cost"])
+    replay = json.loads(out)
+    assert replay["data"] == [native_row("collection", "partial")]
+    assert replay["meta"]["acquisition"] == refreshed["meta"]["acquisition"]
+    assert replay["meta"]["warnings"] == refreshed["meta"]["warnings"]
 
 
 def test_display_formats_preserve_native_decimal_and_string_types(run_cli, pilots):
@@ -347,7 +357,11 @@ def test_interrupted_query_records_failed_execution_and_preserves_cache(
 
     pilots.business_handler = interrupted
     code, out, err = run_cli(["payment", "refresh", "sla.baselines"])
-    assert code == 130 and out == "" and "interrupted" in err
+    assert code == 130 and "interrupted" in err
+    rejected = json.loads(out)
+    assert rejected["data"] is None
+    assert rejected["error"]["code"] == "INTERRUPTED"
+    assert rejected["meta"]["published"] is False
     pilots.business_handler = None
     _, out, _ = run_cli(["domain", "leaves", "payment"])
     observation = json.loads(out)["result"][0]["last_execution"]

@@ -113,8 +113,12 @@ Business output uses `data`, `meta`, `error`; formats are `json` (default) and
 `--fields` projects native fields. These display options do not truncate acquisition
 or cache publication. Native values and unknown fields are retained.
 
-Valid incomplete results remain usable with warnings. `--require-complete` rejects
-incomplete acquisitions; unknown identity or total semantics remain unknown.
+Explicitly qualified usable incomplete results return with warnings and exit 0. `--require-complete` is available on every List, Get and Refresh and rejects
+incomplete acquisitions without candidate data. It does not expand scope or
+change freshness. Unknown identity or total semantics remain unknown. Default
+Refresh may publish qualified nonempty incomplete results with their gaps;
+[shared result policy](docs/agents/result-policy.md) defines diagnostics, process
+statuses and publication metadata.
 `--require-fresh` rejects stale cache; otherwise stale records remain readable and
 marked. Supported offline filters select saved rows and do not establish backend
 absence or extend the captured scope. FX uses the native transaction number

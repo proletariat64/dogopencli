@@ -22,6 +22,7 @@ from dogopencli.errors import CliError
 from dogopencli.inquiry import inquiry_session
 from dogopencli.jsonutil import canonical, parse
 from dogopencli.result_policy import (
+    SOURCE_ROW_OCCURRENCES,
     AcquisitionEvidence,
     check_complete,
     prepare_result,
@@ -29,6 +30,7 @@ from dogopencli.result_policy import (
 from dogopencli.temporary_query import display_options, is_stale, window_rows
 
 from .query import (
+    CustomGetResult,
     QueryBudget,
     QueryTools,
     query_capabilities,
@@ -100,6 +102,7 @@ def _contract_id(leaf: Leaf, capability: Any) -> str:
         for name, operation in leaf.manifest["operations"].items()
     }
     context = {
+        "acquisition_schema": 2,
         "identity": leaf.manifest["identity"],
         "operations": operations,
         "adapter_binding": leaf.manifest["adapter"],
@@ -164,7 +167,7 @@ def get_detail(
     deadline: float | None = None,
     query_tools: QueryTools | None = None,
     query_budget: QueryBudget | None = None,
-) -> dict | list[dict]:
+) -> CustomGetResult:
     """Acquire one validated native root through the restricted host transport."""
     validate_detail_lookup(identity)
     if leaf.manifest["operations"]["get"].get("execution") == "custom":
@@ -178,8 +181,11 @@ def get_detail(
             budget=query_budget,
         )
         with tools:
-            return tools.finish_get(
+            data = tools.finish_get(
                 leaf.adapter.query_get(parameters, identity, tools), identity
+            )
+            return CustomGetResult(
+                data, AcquisitionEvidence.from_record(tools.evidence()["coverage"])
             )
     capability = capability or leaf.adapter.detail_capability(parameters)
     for name, arguments in (
@@ -205,7 +211,20 @@ def get_detail(
         transport.close()
     result = capability.parse_detail(response.body, parameters, identity)
     validate_detail_result(result, leaf.manifest["operations"]["get"])
-    return result
+    return CustomGetResult(
+        result,
+        AcquisitionEvidence.for_collection(
+            complete=True,
+            reported_total=None,
+            collected_total=len(result) if isinstance(result, list) else 1,
+            arrivals=len(result) if isinstance(result, list) else 1,
+            total_semantics="unknown",
+            coverage_basis="qualified_single_response",
+            attempts=(
+                {"component": "native_root", "status": "succeeded", "complete": True},
+            ),
+        ),
+    )
 
 
 def _compose_details(
@@ -215,11 +234,12 @@ def _compose_details(
     fields: list[str] | None,
     deadline: float,
     offset: int,
-) -> list[dict]:
+) -> tuple[list[dict], list[AcquisitionEvidence]]:
     if leaf.manifest["operations"]["get"].get("result_shape", "object") != "object":
         raise CliError("INVALID_LEAF", "array Get cannot bind to List records")
     binding = leaf.manifest["operations"]["get"]["list_binding"]
     combined = []
+    acquisitions = []
     query_budget = None
     get_specification = leaf.manifest["operations"]["get"]
     if get_specification.get("execution") == "custom":
@@ -287,7 +307,11 @@ def _compose_details(
                 deadline=deadline,
                 query_budget=query_budget,
             )
-            combined.append({"record": _project([row], fields)[0], "detail": record})
+            check_complete(record.evidence, require_complete=False, mode="get")
+            acquisitions.append(record.evidence)
+            combined.append(
+                {"record": _project([row], fields)[0], "detail": record.data}
+            )
         except CliError as error:
             raise CliError(
                 error.code,
@@ -302,7 +326,7 @@ def _compose_details(
                 f"Detail for output row {index}: unexpected detail failure",
                 meta={"detail_row": index},
             ) from error
-    return combined
+    return combined, acquisitions
 
 
 def execute(
@@ -314,6 +338,7 @@ def execute(
         return datetime.now(timezone.utc)
 
     specification = leaf.manifest["operations"].get("list", {})
+    resolved_entities: list[str] | None = None
     if (
         operation in {"list", "refresh"}
         and specification.get("execution") != "custom"
@@ -329,12 +354,10 @@ def execute(
         if parameters.get("entity") == ["ANY"]:
             from dogopencli.duckdog import resolve_selector
 
-            parameters = {
-                **parameters,
-                "_resolved_entities": resolve_selector(
-                    "liquidity/reference/entities", "instId", config_file=config_file
-                ),
-            }
+            resolved_entities = resolve_selector(
+                "liquidity/reference/entities", "instId", config_file=config_file
+            )
+            parameters = {**parameters, "_resolved_entities": resolved_entities}
 
     store = cache_for(config_file)
     namespace = "leaf:" + leaf.id
@@ -373,13 +396,14 @@ def execute(
                 capability=capability,
                 query_tools=tools,
             )
-        if tools is not None and "coverage" in tools.evidence():
-            coverage = AcquisitionEvidence.from_record(tools.evidence()["coverage"])
-            check_complete(
-                coverage, require_complete=getattr(args, "require_complete", False)
-            )
+        coverage = record.evidence
+        decision = check_complete(
+            coverage,
+            require_complete=getattr(args, "require_complete", False),
+            mode="get",
+        )
         is_array = leaf.manifest["operations"]["get"].get("result_shape") == "array"
-        rows = record if is_array else [record]
+        rows = record.data if is_array else [record.data]
         projected = _project(rows, fields)
         data = projected if is_array else projected[0]
         return data, {
@@ -398,24 +422,9 @@ def execute(
                 "child pages are not acquired."
             ),
             **({"query_evidence": tools.evidence()} if tools is not None else {}),
-            **(
-                {
-                    "complete": coverage.scope_complete,
-                    "dataset_complete": coverage.dataset_complete,
-                    "warnings": [
-                        {
-                            "code": "INCOMPLETE_RESULT",
-                            "message": "custom Get relationship coverage is incomplete",
-                            "reason_codes": list(coverage.reasons),
-                            "retryable": False,
-                        }
-                    ]
-                    if not (coverage.scope_complete and coverage.dataset_complete)
-                    else [],
-                }
-                if tools is not None and "coverage" in tools.evidence()
-                else {}
-            ),
+            **coverage.meta(),
+            **decision.meta(mode="get"),
+            "warnings": list(decision.warnings),
         }
     definitions = leaf.manifest["operations"]["list"].get("parameters", [])
     local_parameters = {
@@ -477,6 +486,7 @@ def execute(
                         session.transport,
                         state_file=config_file.parent / "collection-state.json",
                         config_file=config_file,
+                        resolved_entities=resolved_entities,
                     ) as tools:
                         collected = tools.finish_list(
                             leaf.adapter.query_list(parameters, tools)
@@ -515,9 +525,9 @@ def execute(
                     )
                 query = parameters
                 stale = False
-                check_complete(
+                decision = check_complete(
                     evidence,
-                    require_complete=(args.require_complete or operation == "refresh"),
+                    require_complete=args.require_complete,
                     mode=operation,
                 )
                 selected = (
@@ -535,10 +545,85 @@ def execute(
                 window = window_rows(selected, limit, offset)
                 _project(window, fields)
                 if args.with_detail:
-                    details = _compose_details(
+                    source_list_acquisition = evidence.record()
+                    details, detail_acquisitions = _compose_details(
                         leaf, session, window, fields, collected.deadline, offset
                     )
-            published = operation == "refresh" and bool(rows)
+                    source_occurrences = (
+                        evidence.total_semantics == SOURCE_ROW_OCCURRENCES
+                    )
+                    evidence = replace(
+                        evidence,
+                        reported_total=None
+                        if source_occurrences
+                        else evidence.reported_total,
+                        arrivals=None if source_occurrences else evidence.arrivals,
+                        unique_count=None
+                        if source_occurrences
+                        else evidence.unique_count,
+                        duplicate_count=None
+                        if source_occurrences
+                        else evidence.duplicate_count,
+                        scope_complete=evidence.scope_complete
+                        and all(item.scope_complete for item in detail_acquisitions),
+                        dataset_complete=evidence.dataset_complete
+                        and all(item.dataset_complete for item in detail_acquisitions),
+                        reasons=tuple(
+                            dict.fromkeys(
+                                (
+                                    *evidence.reasons,
+                                    *(
+                                        reason
+                                        for item in detail_acquisitions
+                                        for reason in item.reasons
+                                    ),
+                                )
+                            )
+                        ),
+                        coverage_basis=None,
+                        sources=None,
+                        total_semantics=(
+                            "unknown"
+                            if evidence.total_semantics
+                            in {"assembled_roots", SOURCE_ROW_OCCURRENCES}
+                            else evidence.total_semantics
+                        ),
+                        attempts=(
+                            {
+                                "kind": "composition",
+                                "source_acquisition": source_list_acquisition,
+                                "detail_acquisition": [
+                                    item.record() for item in detail_acquisitions
+                                ],
+                            },
+                        ),
+                        usable_incomplete=(
+                            (evidence.scope_complete and evidence.dataset_complete)
+                            or evidence.usable_incomplete
+                        )
+                        and all(
+                            (item.scope_complete and item.dataset_complete)
+                            or item.usable_incomplete
+                            for item in detail_acquisitions
+                        ),
+                    )
+                    try:
+                        decision = check_complete(
+                            evidence,
+                            require_complete=args.require_complete,
+                            mode="live",
+                        )
+                    except CliError as error:
+                        error.meta = {
+                            **(error.meta or {}),
+                            "source_acquisition": source_list_acquisition,
+                            "detail_acquisition": [
+                                item.record() for item in detail_acquisitions
+                            ],
+                        }
+                        raise
+
+            published = decision.publishable
             if published:
                 snapshot = SnapshotMeta(
                     namespace=namespace,
@@ -705,6 +790,10 @@ def execute(
             )
             meta.update(
                 {
+                    "source_acquisition": source_list_acquisition,
+                    "detail_acquisition": [
+                        item.record() for item in detail_acquisitions
+                    ],
                     "with_detail": True,
                     "detail_scope": "custom" if custom_detail else "native_root",
                     "detail_count": len(displayed),

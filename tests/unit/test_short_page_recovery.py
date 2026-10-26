@@ -408,7 +408,8 @@ def test_refresh_offline_replays_successful_hole_notice(tmp_path, monkeypatch, c
     assert offline == [row for row in data.rows if row is not None]
     assert refreshed["row_count"] == len(offline) and len(data.requests) == calls
     assert canonical(replay["acquisition"]) == canonical(meta["acquisition"])
-    assert "PAGINATION_HOLES_BYPASSED" in capsys.readouterr().err
+    assert replay["warnings"][0]["code"] == "PAGINATION_HOLES_BYPASSED"
+    assert capsys.readouterr().err == ""
 
 
 def test_mixed_terminal_kinds_do_not_combine_into_one_end_proof():

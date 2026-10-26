@@ -290,7 +290,7 @@ def test_required_child_failure_aborts_whole_get_without_changing_saved_list(
         ("empty", None),
     ],
 )
-def test_invalid_or_empty_source_preserves_snapshot(installed, failure, error):
+def test_rejected_or_empty_refresh_preserves_snapshot(installed, failure, error):
     cli, browser, config = installed
     browser.business_script.append(source([row()]))
     cli("refresh")
@@ -317,7 +317,8 @@ def test_invalid_or_empty_source_preserves_snapshot(installed, failure, error):
     else:
         response = source([])
     browser.business_script.append(response)
-    result = cli("refresh", code=1 if error else 0)
+    flags = ("--require-complete",) if failure in {"duplicate", "gap"} else ()
+    result = cli("refresh", *flags, code=1 if error else 0)
     if error:
         assert result["error"]["code"] == error
     assert result["meta"]["published"] is False

@@ -371,6 +371,14 @@ def test_fallbacks_share_one_global_logical_page_budget():
     ]
     assert sum(attempt["pages"] for attempt in partial.evidence.attempts) == 2
     assert partial.evidence.attempts[-1]["error"] == "TIMEOUT"
+    from dogopencli.result_policy import check_complete, evaluate_result
+
+    decision = evaluate_result(partial.evidence, mode="refresh")
+    assert not decision.expose_data and not decision.publishable
+    assert decision.error["code"] == "TIMEOUT"
+    with pytest.raises(CliError) as rejected:
+        check_complete(partial.evidence, mode="refresh", require_complete=False)
+    assert rejected.value.code == "TIMEOUT"
 
     permitted = Script(offset(rows[:3], 4), offset(rows[:2], 4), offset(rows[2:], 4))
     complete = collect_list(
@@ -529,7 +537,7 @@ def test_real_entity_pilot_contract_can_run_through_generic_offset_engine(monkey
 
 
 @pytest.mark.parametrize("failure", ["partial", "missing_evidence"])
-def test_refresh_rejects_unpublishable_acquisition_and_preserves_saved_rows(
+def test_strict_refresh_rejects_unpublishable_acquisition_and_preserves_saved_rows(
     tmp_path, monkeypatch, failure
 ):
     from dogopencli.leaves import runtime
@@ -580,7 +588,7 @@ def test_refresh_rejects_unpublishable_acquisition_and_preserves_saved_rows(
         limit=100,
         offset=0,
         fields=None,
-        require_complete=False,
+        require_complete=True,
         require_fresh=False,
         live=False,
         with_detail=False,

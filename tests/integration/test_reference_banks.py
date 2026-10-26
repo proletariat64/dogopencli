@@ -220,6 +220,8 @@ def test_banks_failed_refresh_preserves_native_snapshot(banks, failure):
     else:
         response, expected = {"error": "fetch failed"}, "TIMEOUT"
         browser.business_handler = lambda *_: response
+    if failure == "early-empty":
+        flags = ["--require-complete"]
     browser.business_script.extend([*responses, response])
     result = cli(
         "liquidity", "refresh", "reference.banks", *flags, code=1 if expected else 0
@@ -242,13 +244,14 @@ def test_banks_duplicate_identity_is_truthfully_incomplete(banks):
     assert result["meta"]["complete"] is False
 
 
-def test_banks_conflicting_identity_retains_last_arrival_as_incomplete(banks):
+def test_banks_conflicting_identity_is_rejected(banks):
     cli, browser, _ = banks
     changed = {"bankId": "a", "cityCode": "US"}
     response = page([ROWS[0], changed])
     browser.business_script.append(response)
-    result = cli("liquidity", "list", "reference.banks", "--live")
-    assert result["data"] == [changed]
+    result = cli("liquidity", "list", "reference.banks", "--live", code=1)
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert result["meta"]["complete"] is False
     assert "LAST_ARRIVAL_WINS" in result["meta"]["acquisition"]["reasons"]
     browser.business_script.extend([response, response])
@@ -318,7 +321,7 @@ def test_banks_nested_request_boundary(banks, tmp_path, mutation):
     assert not browser.business_requests
 
 
-def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(banks):
+def test_sdk_cross_page_conflict_rejects_inconsistent_rows_and_preserves_cache(banks):
     cli, browser = banks[:2]
     first = [{"bankId": str(i), "value": "original"} for i in range(5000)]
     original = dict(first[0])
@@ -333,10 +336,13 @@ def test_sdk_cross_page_conflict_keeps_last_arrival_and_prior_cache(banks):
         )
 
     queue_conflict()
-    result = cli("liquidity", "list", "reference.banks", "--live", "--limit", "0")
-    assert result["data"] == [changed, *first[1:]]
+    result = cli(
+        "liquidity", "list", "reference.banks", "--live", "--limit", "0", code=1
+    )
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert result["meta"]["complete"] is False
-    assert result["meta"]["duplicate_count"] == 1
+    assert result["meta"]["acquisition"]["duplicate_count"] == 1
     attempt = result["meta"]["acquisition"]["attempts"][0]
     assert attempt["conflict_count"] == 1
     assert attempt["pages"] == 2

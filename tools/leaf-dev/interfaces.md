@@ -47,8 +47,8 @@ omit pagination fields from the native request; zero is not a capacity limit.
 Other modes require positive widths. Use
 [its sample](example-single-response/). A field identity
 has one native column; `hash` needs reviewed native columns and preserves native
-JSON. Optional `latest_by` selects the newest conflicting row; conflicts still
-leave coverage incomplete. Optional `max_pages` and `budget_seconds` narrow host
+JSON. Optional `latest_by` selects a conflicting candidate row for evidence;
+identity/content conflicts remain hard failures without accepted data or publication. Optional `max_pages` and `budget_seconds` narrow host
 bounds. Provider `general` works in any domain; `<domain>.collection` is private
 to its owner. Domain declarations do not register SDKs.
 
@@ -87,7 +87,8 @@ identity rules, unknown semantics, fallback and quality evidence.
 Parameters require `name`, `type`, `required`, `description`. Types are string,
 integer, number or boolean; optional defaults, choices and multiple values follow
 the validator. CLI names use kebab-case; adapter keys use underscores. Host flags
-are reserved. `required` governs acquisition; replay uses the saved scope.
+are reserved. Every List, Get and Refresh provides `--require-complete`; no leaf
+parameter or custom execution switch is needed. `required` governs acquisition; replay uses the saved scope.
 `local_field` permits an explicit offline filter only when `filter` implements its
 verified mapping; it does not filter automatically or extend saved coverage.
 
@@ -109,7 +110,7 @@ The [runtime](../../src/dogopencli/leaves/runtime.py) invokes these methods:
 | `detail_capability(parameters)` | For standard Get: independent endpoint and pure native request/parser hooks. No inquiry. |
 | `query_capability(operation, name, parameters)` | Custom operation: pure capability for one declared named inquiry. |
 | `query_list(parameters, tools)` | Custom List: Python orchestration returning `CustomListResult` with records and business coverage. |
-| `query_get(parameters, identity, tools)` | Custom Get: Python orchestration returning its declared public root. |
+| `query_get(parameters, identity, tools)` | Custom Get: Python orchestration returning `CustomGetResult(data, evidence)` for its declared public root and promised coverage. |
 
 For SDK List, the capability supplies:
 
@@ -153,6 +154,17 @@ semantics still require scoped qualification before implementation. Every standa
 List requires `collection`; custom List declares named host tools instead.
 Transport-taking adapter collectors are unsupported.
 
+## Result and evidence
+
+The shared [result policy](../../docs/agents/result-policy.md) owns acceptance,
+diagnostics, process status and publication. `AcquisitionEvidence` separates
+scope coverage, dataset coverage, native totals, returned root count and reasons.
+Its explicit `usable_incomplete` boolean defaults to false; collection SDK
+constructors supply qualified traversal policy. Custom operations must qualify
+retained gaps and report attempts, required components and applicability.
+`check_complete` returns the authoritative `ResultDecision` or raises a shared
+failure. Consumers use its metadata; leaves neither publish nor choose process exits.
+
 ## Package
 
 Package root contains `leaf.json`, its declared root adapter and optional ordinary
@@ -166,3 +178,21 @@ List installation initializes empty storage or validates retained bindings;
 Get-only initializes no List storage. Static verify/pack and help
 are declaration-only. Uninstall retains Duckdog data; query/refresh do not import
 it. A valid ZIP is not evidence of working runtime methods or production data.
+
+### Conditional custom queries
+
+A query declaration permits a native request; conditional Python branches need not
+invoke every permission unconditionally. Custom Get must nevertheless account for
+every declaration: call it, or record `tools.record_applicability(name,
+applicable=False, reason="SAFE_REASON_CODE", based_on="root")` after a successful
+native root proves that branch inapplicable. Use `applicable=None` for unverified
+coverage, declare that component supplementary, and return explicitly qualified
+incomplete evidence. The SDK rejects missing evidence, fabricated data-only results,
+contradictory complete claims, and attempts to erase observed failures. Required
+failures cannot be retained by List or Get. Qualified partial primary List traversal
+continues to use the collection SDK's existing usable-incomplete policy.
+
+The host can pass `resolved_entities` to `QueryTools` after resolving and freezing
+the registered entity selector. This retains its source witness, including a
+verified empty universe, and `entity_selector()` replays the frozen value without
+reading the selector again. Ordinary query parameters do not create this proof.

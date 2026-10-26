@@ -135,7 +135,8 @@ def test_fx_authorization_failure_requires_login_without_publishing(
     if command[0] == "refresh":
         assert value["meta"]["published"] is False
     else:
-        assert value["meta"] is None
+        assert value["meta"]["outcome"] == "failed"
+        assert value["meta"]["publication"]["status"] == "not_requested"
     code, out, _ = run_cli(["fx", "list", "trade"])
     assert code == 1 and json.loads(out)["error"]["code"] == "CACHE_MISS", out
 
@@ -695,7 +696,7 @@ def test_fx_invalid_scope_rejected_before_business_request(run_cli, pilots, flag
 
 
 @pytest.mark.parametrize("domain,leaf", PILOT_LEAVES[:3])
-def test_native_identity_conflicts_select_last_arrival_with_incomplete_evidence(
+def test_native_identity_conflicts_are_rejected_with_evidence(
     run_cli, pilots, domain, leaf
 ):
     select_application(pilots, domain)
@@ -709,7 +710,8 @@ def test_native_identity_conflicts_select_last_arrival_with_incomplete_evidence(
         pilots.business_script.append(fallback)
     code, out, _ = run_cli([domain, "list", leaf, "--live"])
     value = json.loads(out)
-    assert code == 0 and value["data"] == [{**first, "different": True}], out
+    assert code == 1 and value["data"] is None, out
+    assert value["error"]["code"] == "INCOMPLETE_RESULT"
     assert value["meta"]["complete"] is False
     assert "IDENTITY_CONTENT_CONFLICT" in value["meta"]["acquisition"]["reasons"]
 
@@ -930,9 +932,10 @@ def test_fx_conflicting_transaction_number_preserves_complete_cache(run_cli, pil
         code, out, _ = run_cli(["fx", *command])
         value = json.loads(out)
         if command == ["list", "trade", "--live", "--limit", "0"]:
-            assert code == 0 and value["data"] == [changed, *first[1:]], out
+            assert code == 1 and value["data"] is None, out
+            assert value["error"]["code"] == "INCOMPLETE_RESULT"
             assert value["meta"]["complete"] is False
-            assert value["meta"]["unique_count"] == 1000
+            assert value["meta"]["acquisition"]["unique_count"] == 1000
             assert value["meta"]["acquisition"]["arrivals"] == 1001
         else:
             assert code == 1 and value["error"]["code"] == "INCOMPLETE_RESULT", out
@@ -961,5 +964,7 @@ def test_entity_empty_hole_is_partial_live_and_rejected_by_refresh(run_cli, pilo
     assert value["meta"]["complete"] is False
     assert "EMPTY_INTERIOR_PAGE" in value["meta"]["acquisition"]["reasons"]
     pilots.business_script.append(response)
-    code, out, _ = run_cli(["liquidity", "refresh", "reference.entities"])
+    code, out, _ = run_cli(
+        ["liquidity", "refresh", "reference.entities", "--require-complete"]
+    )
     assert code == 1 and json.loads(out)["error"]["code"] == "INCOMPLETE_RESULT"

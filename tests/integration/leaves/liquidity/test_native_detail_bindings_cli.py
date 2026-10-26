@@ -148,9 +148,9 @@ def test_independent_get_preserves_whole_native_root_and_never_publishes(
     assert result["data"] == value
     assert type(result["data"]["amount"]) is Decimal
     assert result["meta"]["detail_scope"] == "native_root"
-    assert (
-        not {"complete", "scope_complete", "dataset_complete"} & result["meta"].keys()
-    )
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["dataset_complete"] is True
+    assert result["meta"]["publication"]["status"] == "not_requested"
     expected = {
         WIRE[name]: int(lookup(name))
         if name == "network.account_capabilities"

@@ -651,7 +651,7 @@ def test_live_baseline_only_alias_resolves_with_independent_catalog_coverage(ins
         cli("list", *FLAGS, "--live", "--require-complete", code=1)["error"]["code"]
         == "INCOMPLETE_RESULT"
     )
-    rejected = cli("refresh", *FLAGS, code=1)
+    rejected = cli("refresh", *FLAGS, "--require-complete", code=1)
     assert rejected["error"]["code"] == "INCOMPLETE_RESULT"
     assert rejected["meta"]["published"] is False
     offline = cli("list", "--limit", "0")

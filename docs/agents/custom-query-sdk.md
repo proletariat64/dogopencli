@@ -70,6 +70,27 @@ A named detail query declares `result_identity` using exactly one of `fields` or
 A custom public Get separately requires its public `lookup` and `result_identity`;
 its returned root is checked against those public declarations. An accepted
 object Get may also declare the existing same-value `list_binding`.
+
+For custom List and Get, named queries are required by default. A separately
+qualified supplementary query may declare `"supplementary": true`; missing
+promised coverage still makes the result incomplete. For a detail query only,
+`"retained_errors": ["refused", "failed"]` selects the parser-qualified
+`QueryRefused` and/or `QueryFailed` categories that may be retained. The array
+must be a nonempty unique subset of those categories and requires
+`supplementary: true`; it is not a native-code allowlist. Omit it to retain no
+detail errors. Both custom List and Get enforce these declarations for retained
+detail failures; existing leaf qualification remains necessary.
+
+Qualified partial primary List traversal may remain usable under the collection
+SDK's independent coverage policy. This does not permit missing essential detail
+information. A supplementary named List within custom Get may retain qualified
+usable incomplete traversal evidence, never query failures.
+
+Conditional branches use `record_applicability` with observed native evidence;
+a host-frozen entity selector retains its verified source witness without a
+second read. See the [shared result policy](result-policy.md) and
+[conditional-query and frozen-selector interfaces](../../tools/leaf-dev/interfaces.md#conditional-custom-queries).
+
 Standard operations reject custom `queries` and shared-budget fields.
 
 ## Implement Python orchestration
@@ -86,7 +107,7 @@ Custom entry points are:
 | Entry | Result |
 | --- | --- |
 | `query_list(parameters, tools)` | `CustomListResult(records, evidence)` from `dogopencli.leaves.query`; evidence is `AcquisitionEvidence` from `dogopencli.result_policy`. |
-| `query_get(parameters, identity, tools)` | Declared public root object or array. |
+| `query_get(parameters, identity, tools)` | `CustomGetResult(data, evidence)` with the declared public root object or array and scoped coverage. |
 | `scope(parameters)` | Stable native scope string; required for every List. |
 | `filter(records, parameters)` | Qualified local filtering; required for every List. |
 
@@ -144,8 +165,11 @@ For an accepted composed Get with relationship coverage limits, return
 `CustomGetResult(data, evidence)` rather than discarding that limitation.
 `data` retains the declared object/array identity contract; `evidence` is an
 `AcquisitionEvidence` with unknown reported total and the actual returned root
-count. The host preserves it under `query_evidence.coverage`, including unknown
-history coverage and component attempts. This annotation cannot turn failed or
+count. Set `usable_incomplete=True` only when the operation's accepted contract
+qualifies that candidate for use despite those gaps; the constructor defaults to
+false. A bare object or array supplies only unqualified `COVERAGE_UNPROVEN`
+evidence and is rejected in both default and strict modes. The host preserves it under `query_evidence.coverage`, including
+unknown history coverage and component attempts. This annotation cannot turn failed or
 incomplete required named queries into success, and does not publish any cache.
 
 The host opens transport lazily and reuses one transport per declared query name
@@ -173,17 +197,21 @@ projection and whole-command failure rules still apply; that allowance is not
 reset for each row. Direct Get remains live-only and does not publish business
 cache or Duckdog data.
 
-Authentication, network, timeout, business, malformed-response and identity
-failures remain failures. The host remembers tool failures so catching an error
-inside the adapter cannot turn it into successful partial output.
+Authentication, network, timeout, unqualified business, malformed-response and
+identity failures remain failures. The host remembers tool failures so catching
+an error inside the adapter cannot turn it into successful partial output.
 
 A detail parser may raise `QueryRefused(native_code=...)` after establishing the
 endpoint's verified per-record refusal semantics. It may separately raise
 `QueryFailed(native_code=...)` for a business failure that the leaf's accepted
 policy permits retaining. These exceptions are distinct: a failed query is not
-a business refusal. A custom List may catch either, retain the account and mark
-the appropriate detail state, with both completeness flags false. Query traces
-count `failed` and `refused` separately, and later declared inquiries may proceed.
+a business refusal. Both custom List and Get require independently qualified
+leaf retention plus the supplementary and retained-category declarations above.
+An adapter may then catch either category, retain its usable core record and
+mark the appropriate detail state, with both completeness flags false. Result
+evidence must explicitly permit incomplete use. Required detail failures remain
+fatal, including when primary List rows are otherwise valid. Query traces count
+`failed` and `refused` separately, and later declared inquiries may proceed.
 
 The leaf owns qualification and retention policy. The SDK contains no endpoint,
 native-code or account exceptions and does not automatically downgrade business
@@ -214,10 +242,12 @@ If a custom operation fails with a `CliError`, its error metadata retains the
 same `query_evidence` so completed source acquisition and the failed query remain
 diagnosable without publishing partial records.
 
-Normal List result policy controls live, strict, refresh and offline behavior.
-Incomplete live results retain their evidence; strict rejects incomplete results,
-and incomplete refresh preserves the prior published capture. Custom execution
-does not add an independent cache or publication path.
+The shared [result policy](result-policy.md) controls List, Get, Refresh and
+offline behavior. Qualified usable incomplete results retain evidence and
+warnings by default; strict rejects them without candidate data. Default Refresh
+may publish a qualified nonempty incomplete candidate with its original gaps;
+strict rejection, hard failure and empty Refresh preserve the prior capture.
+Custom execution does not add an independent cache or publication path.
 
 ## Verify the installed boundary
 

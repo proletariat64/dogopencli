@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 
 from dogopencli import __version__
+from dogopencli.errors import diagnostic
 from dogopencli.jsonutil import canonical
 from dogopencli.leaves.cli import emit
 
@@ -71,19 +72,31 @@ def test_exact_business_values_and_metadata(capsys):
             "details": {},
         }
     ]
-    meta = {"returned_count": 1, "warnings": ["INCOMPLETE_RESULT"], "stale": True}
+    meta = {
+        "returned_count": 1,
+        "warnings": [
+            diagnostic(
+                "INCOMPLETE_RESULT",
+                "Coverage is incomplete",
+                severity="warning",
+                count=1,
+            )
+        ],
+        "stale": True,
+    }
     before = canonical({"data": data, "meta": meta, "error": None})
     emit(data, meta, output_format="text")
     output = capsys.readouterr()
-    assert output.err == ""
-    assert output.out == (
+    assert output.err == "warning: INCOMPLETE_RESULT: Coverage is incomplete\n"
+    assert output.out.split("Metadata:", 1)[0] == (
         "-\n  id: 001\n  amount: 12345678901234567890.123400\n"
         "  tiny: 1E-30\n  integer: 123456789012345678901234567890\n"
         "  active: false\n  missing: null\n  note:\n    中文\n    second line\n"
         '  empty: ""\n  details:\n    (empty object)\n\n'
-        "Metadata:\n  returned_count: 1\n  warnings:\n"
-        "    - INCOMPLETE_RESULT\n  stale: true\n"
     )
+    assert "returned_count: 1" in output.out
+    assert "code: INCOMPLETE_RESULT" in output.out
+    assert "severity: warning" in output.out and "stale: true" in output.out
     emit(data, meta, output_format="json")
     assert capsys.readouterr().out == before + "\n"
 
@@ -98,18 +111,28 @@ def test_business_commands_use_shared_text(run_cli, monkeypatch, action):
         "execute",
         lambda *args: (
             {"amount": Decimal("0.1000")},
-            {"warnings": ["INCOMPLETE_RESULT"], "published": False},
+            {
+                "warnings": [
+                    diagnostic(
+                        "INCOMPLETE_RESULT",
+                        "Coverage is incomplete",
+                        severity="warning",
+                        count=1,
+                    )
+                ],
+                "published": False,
+            },
         ),
     )
     args = ["payment", action, "sla.baselines"]
     if action == "get":
         args.append("001")
     code, output, error = run_cli([*args, "--format", "text"])
-    assert (code, error) == (0, "")
-    assert output == (
-        "amount: 0.1000\n\nMetadata:\n  warnings:\n"
-        "    - INCOMPLETE_RESULT\n  published: false\n"
-    )
+    assert code == 0
+    assert error == "warning: INCOMPLETE_RESULT: Coverage is incomplete\n"
+    assert output.startswith("amount: 0.1000\n\nMetadata:\n")
+    assert "code: INCOMPLETE_RESULT" in output and "severity: warning" in output
+    assert "published: false" in output
 
 
 def test_error_text_preserves_exit_streams_and_json(run_cli):
@@ -119,15 +142,22 @@ def test_error_text_preserves_exit_streams_and_json(run_cli):
     assert code == 1 and error == ""
     assert set(document) == {"data", "meta", "error"}
     assert document["data"] is None
-    assert document["meta"] == {"published": False}
+    assert document["meta"] == {
+        "published": False,
+        "outcome": "failed",
+        "data_quality": "unusable",
+        "publication": {"status": "unchanged", "reason": "rejected"},
+    }
     text_code, output, text_error = run_cli([*args, "--format", "text"])
     assert (text_code, text_error) == (code, error)
-    assert output == (
-        "Metadata:\n  published: false\n\nError:\n"
-        f"  code: {document['error']['code']}\n"
-        f"  message: {document['error']['message']}\n"
-        f"  retryable: {canonical(document['error']['retryable'])}\n"
-    )
+    assert output.startswith("Metadata:\n")
+    assert "published: false" in output
+    assert "outcome: failed" in output and "data_quality: unusable" in output
+    assert "status: unchanged" in output and "reason: rejected" in output
+    for key, value in document["error"].items():
+        assert (
+            f"{key}: {value if isinstance(value, str) else canonical(value)}" in output
+        )
 
 
 def test_business_failure_text_keeps_metadata_and_retryability(run_cli, monkeypatch):
@@ -141,30 +171,36 @@ def test_business_failure_text_keeps_metadata_and_retryability(run_cli, monkeypa
             "BUSINESS_QUERY_FAILED",
             "native query failed",
             retryable=True,
-            meta={"warnings": ["native diagnostic"]},
+            meta={
+                "warnings": [
+                    diagnostic(
+                        "NATIVE_WARNING", "native diagnostic", severity="warning"
+                    )
+                ]
+            },
         )
 
     monkeypatch.setattr(cli, "execute", fail)
     args = ["payment", "refresh", "sla.baselines"]
     code, output, error = run_cli(args)
-    assert code == 1 and error == ""
+    assert code == 1
+    assert error == "warning: NATIVE_WARNING: native diagnostic\n"
     document = json.loads(output)
-    assert document == {
-        "data": None,
-        "meta": {"warnings": ["native diagnostic"], "published": False},
-        "error": {
-            "code": "BUSINESS_QUERY_FAILED",
-            "message": "native query failed",
-            "retryable": True,
-        },
-    }
+    assert document["data"] is None
+    assert document["meta"]["published"] is False
+    assert document["meta"]["outcome"] == "failed"
+    assert document["meta"]["data_quality"] == "unusable"
+    assert document["meta"]["warnings"][0]["message"] == "native diagnostic"
+    assert document["error"]["code"] == "BUSINESS_QUERY_FAILED"
+    assert document["error"]["message"] == "native query failed"
+    assert document["error"]["retryable"] is True
     code, output, error = run_cli([*args, "--format", "text"])
-    assert code == 1 and error == ""
-    assert output == (
-        "Metadata:\n  warnings:\n    - native diagnostic\n  published: false\n\n"
-        "Error:\n  code: BUSINESS_QUERY_FAILED\n  message: native query failed\n"
-        "  retryable: true\n"
-    )
+    assert code == 1
+    assert error == "warning: NATIVE_WARNING: native diagnostic\n"
+    assert "code: NATIVE_WARNING" in output and "message: native diagnostic" in output
+    assert "published: false" in output and "outcome: failed" in output
+    assert "Error:\n" in output and "code: BUSINESS_QUERY_FAILED" in output
+    assert "message: native query failed" in output and "retryable: true" in output
 
 
 @pytest.mark.parametrize("data,expected", [([], "(empty list)"), (None, "null")])
@@ -227,3 +263,21 @@ def test_auth_error_keeps_stderr_and_renders_nested_partial_outcomes(capsys):
         and "Retry dogopencli auth check --domain fx" in streams.err
     )
     assert "{'" not in streams.err
+
+
+@pytest.mark.parametrize("malformed", [None, "", "   ", 7, []])
+def test_malformed_leaf_error_code_cannot_exit_success(run_cli, monkeypatch, malformed):
+    from dogopencli.errors import CliError
+    from dogopencli.leaves import cli
+
+    assert run_cli(["plugins", "install", "bundled:payment.sla.baselines"])[0] == 0
+
+    def fail(*args):
+        raise CliError(malformed, "adapter error", exit_code=0)
+
+    monkeypatch.setattr(cli, "execute", fail)
+    code, output, _ = run_cli(["payment", "list", "sla.baselines", "--live"])
+    result = json.loads(output)
+    assert code == 1 and result["data"] is None
+    assert result["error"]["code"] == "INTERNAL_ERROR"
+    assert result["meta"]["outcome"] == "failed"

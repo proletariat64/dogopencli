@@ -251,9 +251,59 @@ def test_inventory_exposes_only_saved_metadata(
         "row_count": row_count,
         "fetched_at": "2026-10-20T10:00:00Z",
         "simulated": simulated,
+        "complete": False,
+        "dataset_complete": False,
+        "warnings": [],
     }
     assert "business value" not in json.dumps(leaf)
     assert not service.state_path.exists()
+
+
+def test_saved_inventory_retains_acquisition_warnings_without_reading_records(
+    declarations, tmp_path, monkeypatch
+):
+    from dogopencli.cache import Cache, SnapshotMeta
+    from dogopencli.leaves.runtime import cache_for
+    from dogopencli.result_policy import AcquisitionEvidence
+
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False, reported_total=2, collected_total=1, arrivals=1
+    )
+    store = cache_for(tmp_path / "config.toml")
+    store.publish(
+        SnapshotMeta(
+            namespace="leaf:demo.items",
+            capability="demo.items",
+            scope="{}",
+            source_kind="snapshot",
+            snapshot_id="saved-partial",
+            dataset_id=None,
+            simulated=False,
+            backend_complete=False,
+            dataset_complete=False,
+            fetched_at="2026-10-20T10:00:00Z",
+            loaded_at="2026-10-20T10:00:00Z",
+            row_count=1,
+            source_observed_from=None,
+            source_observed_to=None,
+            acquisition=evidence.record(),
+        ),
+        [(1, '{"private":"not exposed"}')],
+    )
+
+    def reject_records(*args, **kwargs):
+        raise AssertionError("GUI inventory must not read business records")
+
+    monkeypatch.setattr(Cache, "read", reject_records)
+    monkeypatch.setattr(Cache, "records", reject_records)
+    saved = domains.DomainService(tmp_path / "config.toml").overview()[0]["leaves"][0][
+        "saved_data"
+    ]
+    assert saved["complete"] is False
+    assert saved["dataset_complete"] is False
+    assert saved["warnings"][0]["code"] == "INCOMPLETE_RESULT"
+    assert saved["warnings"][0]["reason_codes"] == ["COUNT_SHORTFALL"]
+    assert "not exposed" not in json.dumps(saved)
 
 
 @pytest.mark.parametrize("error_code", ["LOCKED", "CACHE_ERROR", "INVALID_RESPONSE"])

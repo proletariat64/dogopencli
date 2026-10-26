@@ -95,7 +95,12 @@
             ],
             "description": "Native detail aliasName must equal the baseline alias requested."
           },
-          "result_shape": "object"
+          "result_shape": "object",
+          "supplementary": true,
+          "retained_errors": [
+            "failed",
+            "refused"
+          ]
         }
       },
       "max_requests": 10000,
@@ -158,7 +163,7 @@
     "List only; baseline and detail remain internal inquiries, with no public Get.",
     "Cash uses qualified short-page/hole acquisition; baseline requires its own fixed-total coverage.",
     "The assembled directory has no native aggregate total; source totals and coverage remain in acquisition attempts.",
-    "Cash-only and baseline-only rows and qualified detail failures/refusals remain visible in incomplete live output; strict and refresh reject incomplete coverage.",
+    "Cash-only and baseline-only rows and qualified supplementary detail failures/refusals remain visible in usable incomplete output; default Refresh may publish them and --require-complete rejects incomplete coverage.",
     "Historical v0.4.3 business scope is preserved; current full baseline/detail production acceptance remains required.",
     "Only the observed HTTP 200 outer-false, inner-false, explicit null detail with result.errorCode=999 may be retained as failed while remaining details continue; other outer failures abort."
   ],

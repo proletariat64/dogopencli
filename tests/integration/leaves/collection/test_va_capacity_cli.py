@@ -151,7 +151,7 @@ def test_failed_or_empty_capacity_refresh_preserves_snapshot(handbook, failure):
         assert cli("collection", "refresh", LEAF)["meta"]["published"] is False
     else:
         browser.business_script.extend([first, last, *confirmations])
-        rejected = cli("collection", "refresh", LEAF, code=1)
+        rejected = cli("collection", "refresh", LEAF, "--require-complete", code=1)
         assert rejected["data"] is None
         assert rejected["error"]["code"] == (
             "INCOMPLETE_RESULT"

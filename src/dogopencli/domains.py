@@ -101,7 +101,9 @@ class DomainService:
 
     def overview(self) -> list[dict[str, Any]]:
         """Enrich GUI cards without making command gates depend on cache reads."""
+        from .errors import normalize_warnings
         from .leaves.runtime import cache_for
+        from .result_policy import AcquisitionEvidence, evaluate_result
 
         inventory = self.inventory()
         cache = cache_for(self.config_file)
@@ -112,19 +114,27 @@ class DomainService:
             if cache_error is None:
                 try:
                     snapshot = cache.current("leaf:" + leaf_id)
-                except CliError as error:
-                    # All leaves share one database. Avoid repeating a busy
-                    # timeout or failed read for every card in this inventory.
-                    cache_error = error.code
-                else:
                     if snapshot is None:
                         return {"state": "empty"}
+                    warnings = []
+                    if snapshot.acquisition is not None:
+                        evidence = AcquisitionEvidence.from_record(snapshot.acquisition)
+                        warnings = normalize_warnings(
+                            list(evaluate_result(evidence, mode="cache").warnings)
+                        )
                     return {
                         "state": "available",
                         "row_count": snapshot.row_count,
                         "fetched_at": snapshot.fetched_at,
                         "simulated": snapshot.simulated,
+                        "complete": snapshot.backend_complete,
+                        "dataset_complete": snapshot.dataset_complete,
+                        "warnings": warnings,
                     }
+                except CliError as error:
+                    # All leaves share one database. Avoid repeating a busy
+                    # timeout or failed read for every card in this inventory.
+                    cache_error = error.code
             return {"state": "unavailable", "error_code": cache_error}
 
         for domain in inventory:

@@ -4,11 +4,10 @@ Only validated candidates reach this policy. Domain failures are never caught
 or converted to partial success here; publishing remains a host transaction.
 """
 
-import sys
 from dataclasses import dataclass
 from typing import Any
 
-from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, CliError
+from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, TIMEOUT, CliError, diagnostic
 from .jsonutil import canonical
 
 SOURCE_ROW_OCCURRENCES = "source_row_occurrences"
@@ -31,6 +30,7 @@ class AcquisitionEvidence:
     coverage_basis: str | None = None
     sources: dict[str, dict[str, Any]] | None = None
     native_metadata: tuple[dict[str, Any], ...] | None = None
+    usable_incomplete: bool = False
 
     @classmethod
     def for_collection(
@@ -46,6 +46,7 @@ class AcquisitionEvidence:
         reasons: tuple[str, ...] = (),
         attempts: tuple[dict[str, Any], ...] = (),
         coverage_basis: str | None = None,
+        usable_incomplete: bool = True,
     ) -> "AcquisitionEvidence":
         # Bank's native total counts date groups while collected_total counts rows.
         comparable = total_semantics != "quote_date_groups"
@@ -88,6 +89,9 @@ class AcquisitionEvidence:
                 )
         if not complete and not codes:
             codes.append("COVERAGE_UNPROVEN")
+        if "IDENTITY_CONTENT_CONFLICT" in codes:
+            complete = False
+            usable_incomplete = False
         return cls(
             scope_complete=complete,
             dataset_complete=complete,
@@ -100,6 +104,7 @@ class AcquisitionEvidence:
             reasons=tuple(dict.fromkeys(codes)),
             attempts=attempts,
             coverage_basis=coverage_basis,
+            usable_incomplete=usable_incomplete,
         )
 
     def record(self) -> dict[str, Any]:
@@ -114,6 +119,7 @@ class AcquisitionEvidence:
             "total_semantics": self.total_semantics,
             "reasons": list(self.reasons),
             "attempts": list(self.attempts),
+            "usable_incomplete": self.usable_incomplete,
         }
         if self.requested_count is not None:
             record["requested_count"] = self.requested_count
@@ -130,7 +136,7 @@ class AcquisitionEvidence:
     def from_record(cls, record: Any) -> "AcquisitionEvidence":
         if not isinstance(record, dict):
             raise CliError(INVALID_RESPONSE, "cached acquisition evidence is invalid")
-        for flag in ("scope_complete", "dataset_complete"):
+        for flag in ("scope_complete", "dataset_complete", "usable_incomplete"):
             if not isinstance(record.get(flag), bool):
                 raise CliError(INVALID_RESPONSE, "cached acquisition flags are invalid")
         for key in (
@@ -206,6 +212,7 @@ class AcquisitionEvidence:
             native_metadata=tuple(native_metadata)
             if native_metadata is not None
             else None,
+            usable_incomplete=record["usable_incomplete"],
         )
         if coverage_basis in {
             "qualified_single_response",
@@ -487,6 +494,79 @@ class ResultDecision:
     warnings: tuple[dict[str, Any], ...]
     error: dict[str, Any] | None
     exit_code: int
+    data_quality: str
+    empty: bool
+
+    def meta(self, *, mode: str, published: bool = False) -> dict[str, Any]:
+        publication = {"status": "not_requested", "reason": None}
+        if mode == "refresh":
+            publication = {
+                "status": "published" if published else "unchanged",
+                "reason": (
+                    "accepted"
+                    if published
+                    else "rejected"
+                    if self.error
+                    else "empty_result"
+                    if self.empty
+                    else "not_published"
+                ),
+            }
+        return {
+            "outcome": "failed"
+            if self.error
+            else "warning"
+            if self.warnings
+            else "success",
+            "data_quality": self.data_quality,
+            "publication": publication,
+        }
+
+
+def _has_identity_conflict(record: dict[str, Any]) -> bool:
+    """Inspect SDK provenance only; native metadata is not coverage evidence."""
+    if "IDENTITY_CONTENT_CONFLICT" in record.get("reasons", ()) or (
+        type(record.get("conflict_count")) is int and record["conflict_count"] > 0
+    ):
+        return True
+    children = list(record.get("attempts", ()))
+    sources = record.get("sources")
+    if isinstance(sources, dict):
+        children.extend(sources.values())
+    if isinstance(record.get("acquisition"), dict):
+        children.append(record["acquisition"])
+    queries = record.get("queries")
+    if isinstance(queries, dict):
+        for query in queries.values():
+            if isinstance(query, dict):
+                children.extend(query.get("collections", ()))
+    return any(
+        _has_identity_conflict(child) for child in children if isinstance(child, dict)
+    )
+
+
+def _has_unrecovered_timeout(record: dict[str, Any]) -> bool:
+    """Completed fallback acquisitions may retain earlier timeout provenance."""
+    if record.get("scope_complete") is True and record.get("dataset_complete") is True:
+        return False
+    if record.get("error") == TIMEOUT or "PAGE_BUDGET_EXHAUSTED" in record.get(
+        "reasons", ()
+    ):
+        return True
+    children = list(record.get("attempts", ()))
+    for key in ("acquisition", "source_acquisition"):
+        if isinstance(record.get(key), dict):
+            children.append(record[key])
+    children.extend(record.get("detail_acquisition", ()))
+    if isinstance(record.get("sources"), dict):
+        children.extend(record["sources"].values())
+    if isinstance(record.get("queries"), dict):
+        for query in record["queries"].values():
+            if isinstance(query, dict):
+                children.extend(query.get("collections", ()))
+    return any(
+        _has_unrecovered_timeout(child) for child in children if isinstance(child, dict)
+    )
 
 
 def evaluate_result(
@@ -495,8 +575,30 @@ def evaluate_result(
     mode: str,
     require_complete: bool = False,
 ) -> ResultDecision:
-    incomplete = not (evidence.scope_complete and evidence.dataset_complete)
+    if _has_unrecovered_timeout(evidence.record()):
+        return ResultDecision(
+            expose_data=False,
+            publishable=False,
+            warnings=(),
+            error=diagnostic(
+                TIMEOUT,
+                "acquisition did not recover from its timeout or exhausted budget",
+                retryable=True,
+                origin="sdk",
+                stage="acquisition",
+                consequence="candidate data is withheld; no replacement is published",
+            ),
+            exit_code=1,
+            data_quality="unusable",
+            empty=evidence.collected_total == 0,
+        )
+    identity_conflict = _has_identity_conflict(evidence.record())
+    incomplete = identity_conflict or not (
+        evidence.scope_complete and evidence.dataset_complete
+    )
     reasons = list(evidence.reasons)
+    if identity_conflict and "IDENTITY_CONTENT_CONFLICT" not in reasons:
+        reasons.append("IDENTITY_CONTENT_CONFLICT")
     if incomplete and not reasons:
         reasons = ["COVERAGE_UNPROVEN"]
     warnings: tuple[dict[str, Any], ...] = ()
@@ -526,20 +628,51 @@ def evaluate_result(
                     warning_message = (
                         "query completed after bypassing verified pagination holes"
                     )
-                else:
+                elif evidence.duplicate_count:
                     warning_code = "DUPLICATE_ROWS"
                     warning_message = "identical duplicate rows removed"
+                else:
+                    warning_code = reasons[0]
+                    warning_message = "source acquisition warnings: " + ", ".join(
+                        reasons
+                    )
         warnings = (
-            {
-                "code": warning_code,
-                "message": warning_message,
-                "reason_codes": reasons,
-                "retryable": False,
-            },
+            diagnostic(
+                warning_code,
+                warning_message,
+                severity="warning",
+                retryable=False,
+                origin="sdk",
+                stage="coverage",
+                consequence=(
+                    "result has gaps within its promised coverage"
+                    if incomplete
+                    else "result meets its promised coverage"
+                ),
+                action="Inspect coverage reasons before using this result.",
+                reason_codes=reasons,
+            ),
         )
-    rejected = incomplete and (require_complete or mode == "refresh")
+    rejected = identity_conflict or (
+        incomplete and (require_complete or not evidence.usable_incomplete)
+    )
     error = (
-        {"code": INCOMPLETE_RESULT, "message": message, "retryable": False}
+        diagnostic(
+            INCOMPLETE_RESULT,
+            message,
+            retryable=False,
+            origin="sdk",
+            stage="coverage",
+            consequence="candidate data is withheld; no replacement is published",
+            action=(
+                "Resolve conflicting source identities and retry."
+                if identity_conflict
+                else "Use default mode only if the documented gaps are acceptable."
+                if evidence.usable_incomplete
+                else "Qualify incomplete-result usability or restore required coverage."
+            ),
+            reason_codes=reasons,
+        )
         if rejected
         else None
     )
@@ -549,19 +682,29 @@ def evaluate_result(
         warnings=warnings,
         error=error,
         exit_code=1 if rejected else 0,
+        data_quality="incomplete" if incomplete else "complete",
+        empty=evidence.collected_total == 0,
     )
 
 
 def check_complete(
     evidence: AcquisitionEvidence, *, require_complete: bool, mode: str = "live"
-) -> None:
+) -> ResultDecision:
     decision = evaluate_result(evidence, mode=mode, require_complete=require_complete)
     if decision.error is not None:
         meta = evidence.meta()
+        meta.update(decision.meta(mode=mode))
         meta["warnings"] = list(decision.warnings)
+        meta["diagnostic"] = decision.error
         if mode == "refresh":
             meta["published"] = False
-        raise CliError(INCOMPLETE_RESULT, decision.error["message"], meta=meta)
+        raise CliError(
+            decision.error["code"],
+            decision.error["message"],
+            retryable=decision.error["retryable"],
+            meta=meta,
+        )
+    return decision
 
 
 def prepare_result(
@@ -574,11 +717,9 @@ def prepare_result(
         or meta.get("dataset_complete") is not evidence.dataset_complete
     ):
         raise CliError(INVALID_RESPONSE, "output acquisition evidence conflicts")
-    check_complete(evidence, require_complete=require_complete, mode=mode)
-    decision = evaluate_result(evidence, mode=mode)
+    decision = check_complete(evidence, require_complete=require_complete, mode=mode)
     output = {**meta, **evidence.meta()}
+    output.update(decision.meta(mode=mode, published=meta.get("published") is True))
     if decision.warnings:
         output["warnings"] = list(decision.warnings)
-        for warning in decision.warnings:
-            print(f"warning: {warning['code']}: {warning['message']}", file=sys.stderr)
     return output

@@ -30,7 +30,14 @@ def custom_get(package, maximum=3):
         "def detail_capability(self, parameters): return Detail()",
         "def query_capability(self, operation, name, parameters): return Detail()\n"
         "    def query_get(self, parameters, identity, query):\n"
-        "        return query.detail('native', identity)",
+        "        from dogopencli.leaves.query import CustomGetResult\n"
+        "        from dogopencli.result_policy import AcquisitionEvidence\n"
+        "        data = query.detail('native', identity)\n"
+        "        return CustomGetResult(data, AcquisitionEvidence.for_collection(\n"
+        "            complete=True, reported_total=None, collected_total=1,\n"
+        "            arrivals=1, total_semantics='unknown',\n"
+        "            coverage_basis='qualified_single_response',\n"
+        "        ))",
     )
     path.write_text(source)
     return package
