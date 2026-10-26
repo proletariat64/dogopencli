@@ -67,6 +67,10 @@ the SDK infers neither joins nor source completeness.
 For Get, declare lookup meaning, returned identity and required context separately.
 Implement `detail_capability(parameters)` with pure `request_body` and
 `parse_detail` hooks; the host executes its independent restricted endpoint.
+Every List, Get and Refresh exposes `--require-complete`; it changes acceptance,
+not scope, freshness or request budgets. Required information remains mandatory;
+supplementary gaps need explicit qualification. See the shared
+[result policy](../../docs/agents/result-policy.md).
 Get-only starts from [its own sample](example-get-only/) and needs no List methods,
 `collection` or `dataset`. For a qualified List-to-Get association, declare
 `list_binding`; standard `list --live --with-detail` returns each selected row
@@ -101,8 +105,9 @@ rtk proxy uv run python -m pytest -q tests/integration/test_leaf_handbook.py
 
 Cover allowed/rejected requests, native values/types, paging, identity conflicts,
 count gaps, business errors and auth expiry. Verify live makes no publication;
-complete nonempty refresh and offline match; failed/empty/incomplete refresh
-preserves the prior capture. For Get, verify independent lookup and required
+accepted nonempty Refresh and offline match, including qualified usable incomplete
+candidates with their warnings; failed/empty/strict-rejected Refresh preserves the
+prior capture. For Get, verify independent lookup and required
 context, native nested preservation, identity/scope failures and no cache writes.
 For declared composition, test selected-window detail calls and all-or-failure
 output through the same installed CLI. The samples are exercised as directories

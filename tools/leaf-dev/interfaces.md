@@ -47,8 +47,8 @@ omit pagination fields from the native request; zero is not a capacity limit.
 Other modes require positive widths. Use
 [its sample](example-single-response/). A field identity
 has one native column; `hash` needs reviewed native columns and preserves native
-JSON. Optional `latest_by` selects the newest conflicting row; conflicts still
-leave coverage incomplete. Optional `max_pages` and `budget_seconds` narrow host
+JSON. Optional `latest_by` selects a conflicting candidate row for evidence;
+identity/content conflicts remain hard failures without accepted data or publication. Optional `max_pages` and `budget_seconds` narrow host
 bounds. Provider `general` works in any domain; `<domain>.collection` is private
 to its owner. Domain declarations do not register SDKs.
 
@@ -87,7 +87,8 @@ identity rules, unknown semantics, fallback and quality evidence.
 Parameters require `name`, `type`, `required`, `description`. Types are string,
 integer, number or boolean; optional defaults, choices and multiple values follow
 the validator. CLI names use kebab-case; adapter keys use underscores. Host flags
-are reserved. `required` governs acquisition; replay uses the saved scope.
+are reserved. Every List, Get and Refresh provides `--require-complete`; no leaf
+parameter or custom execution switch is needed. `required` governs acquisition; replay uses the saved scope.
 `local_field` permits an explicit offline filter only when `filter` implements its
 verified mapping; it does not filter automatically or extend saved coverage.
 
@@ -109,7 +110,7 @@ The [runtime](../../src/dogopencli/leaves/runtime.py) invokes these methods:
 | `detail_capability(parameters)` | For standard Get: independent endpoint and pure native request/parser hooks. No inquiry. |
 | `query_capability(operation, name, parameters)` | Custom operation: pure capability for one declared named inquiry. |
 | `query_list(parameters, tools)` | Custom List: Python orchestration returning `CustomListResult` with records and business coverage. |
-| `query_get(parameters, identity, tools)` | Custom Get: Python orchestration returning its declared public root. |
+| `query_get(parameters, identity, tools)` | Custom Get: Python orchestration returning `CustomGetResult(data, evidence)` for its declared public root and promised coverage. |
 
 For SDK List, the capability supplies:
 
@@ -152,6 +153,17 @@ declarations, named tools, execution bounds and coverage. Unresolved business
 semantics still require scoped qualification before implementation. Every standard
 List requires `collection`; custom List declares named host tools instead.
 Transport-taking adapter collectors are unsupported.
+
+## Result and evidence
+
+The shared [result policy](../../docs/agents/result-policy.md) owns acceptance,
+diagnostics, process status and publication. `AcquisitionEvidence` separates
+scope coverage, dataset coverage, native totals, returned root count and reasons.
+Its explicit `usable_incomplete` boolean defaults to false; collection SDK
+constructors supply qualified traversal policy. Custom operations must qualify
+retained gaps and report attempts, required components and applicability.
+`check_complete` returns the authoritative `ResultDecision` or raises a shared
+failure. Consumers use its metadata; leaves neither publish nor choose process exits.
 
 ## Package
 

@@ -90,9 +90,12 @@ request/time budgets and failed-query traces. The leaf owns binding validation
 and source coverage. Reserved `cashflow_curve`, `accuracy` and
 `cashflow_details` namespace collisions fail instead of overwriting native data.
 
-Live List never publishes. Only complete accepted nonempty refresh replaces a
-compatible saved capture. Failed, incomplete and successful-empty refreshes
-preserve the prior capture under host policy. Offline List replays the saved
+Live List never publishes. These leaves require all declared composed sources,
+so unqualified incomplete acquisition fails and preserves the prior capture.
+An accepted nonempty Refresh replaces a compatible saved capture; failed,
+strict-rejected and successful-empty Refresh preserve it. The shared
+[result policy](result-policy.md) also permits explicitly qualified usable
+incomplete publication; it does not relax these required-source contracts. Offline List replays the saved
 composed scope without network access. Older base-only contracts require fresh
 acquisition through existing incompatibility handling; no cache migration or
 fabricated child data is supported.
