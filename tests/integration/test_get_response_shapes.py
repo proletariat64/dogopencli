@@ -141,11 +141,17 @@ def test_native_shape_preserves_types_projection_and_storage(
     before = sorted(path.relative_to(config) for path in config.rglob("*"))
     value = [native(0), native(-1)] if shape == "array" else native()
     browser.business_script.append(reply(value))
-    result = cli("payment", "get", "synthetic.shapes", "REF")
+    result = cli("payment", "get", "synthetic.shapes", "REF", "--require-complete")
     assert result["data"] == value
     assert result["meta"]["returned_count"] == (2 if shape == "array" else 1)
     assert result["meta"]["detail_scope"] == "native_root"
-    assert not {"complete", "reported_total", "acquisition"} & result["meta"].keys()
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["dataset_complete"] is True
+    assert (
+        result["meta"]["acquisition"]["coverage_basis"] == "qualified_single_response"
+    )
+    assert result["meta"]["reported_total"] is None
+    assert result["meta"]["publication"]["status"] == "not_requested"
     assert browser.business_requests == [{"reference": "REF"}]
     browser.business_script.append(reply(value))
     projected = cli("payment", "get", "synthetic.shapes", "REF", "--fields", "amount")
@@ -429,3 +435,207 @@ def test_nested_composition_failure_is_atomic_and_preserves_saved_list(
     after = cli("payment", "list", "synthetic.shapes", "--limit", "0")
     assert after["data"] == saved["data"]
     assert after["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+def supplementary_package(tmp_path, *, binding=False):
+    root = package(tmp_path, binding=binding)
+    path = root / "leaf.json"
+    manifest = json.loads(path.read_text())
+    manifest["operations"]["get"].update(
+        execution="custom",
+        max_requests=10,
+        budget_seconds=60,
+        queries={
+            "root": {
+                "kind": "detail",
+                "result_identity": {"fields": ["id"], "description": "Native root"},
+            },
+            "extra": {
+                "kind": "detail",
+                "result_identity": {
+                    "fields": ["id"],
+                    "description": "Supplementary detail",
+                },
+                "supplementary": True,
+                "retained_errors": ["refused"],
+            },
+        },
+    )
+    path.write_text(json.dumps(manifest))
+    with (root / "adapter.py").open("a") as source:
+        source.write("""
+from dogopencli.leaves.query import CustomGetResult, QueryRefused
+from dogopencli.result_policy import AcquisitionEvidence
+class Supplementary(Detail):
+    def parse_detail(self, body, parameters, identity):
+        if parse(body)["data"].get("refused"):
+            raise QueryRefused(native_code="QUALIFIED_REFUSAL")
+        return super().parse_detail(body, parameters, identity)
+class Custom(Adapter):
+    def query_capability(self, operation, name, parameters):
+        return Supplementary() if name == "extra" else Detail()
+    def query_get(self, parameters, identity, tools):
+        root = tools.detail("root", identity)
+        try:
+            root["extra"] = tools.detail("extra", identity)
+            complete = True
+        except QueryRefused:
+            root["extra"] = None
+            complete = False
+        return CustomGetResult(root, AcquisitionEvidence.for_collection(
+            complete=complete, reported_total=None, collected_total=1,
+            reasons=() if complete else ("EXTRA_REFUSED",),
+            usable_incomplete=True,
+        ))
+adapter = Custom()
+""")
+    return root
+
+
+def test_custom_get_qualified_gap_is_usable_and_strict_rejects(detail_cli, tmp_path):
+    cli, browser, config = detail_cli
+    install(cli, supplementary_package(tmp_path), tmp_path)
+    for strict in (False, True):
+        browser.business_script.extend(
+            [reply({"id": "root"}), reply({"refused": True})]
+        )
+        result = cli(
+            "payment",
+            "get",
+            "synthetic.shapes",
+            "REF",
+            *(("--require-complete",) if strict else ()),
+            code=1 if strict else 0,
+        )
+        assert result["meta"]["complete"] is False
+        assert result["meta"]["acquisition"]["reasons"] == ["EXTRA_REFUSED"]
+        if strict:
+            assert result["data"] is None
+            assert result["error"]["code"] == "INCOMPLETE_RESULT"
+        else:
+            assert result["data"] == {"id": "root", "extra": None}
+            assert result["meta"]["outcome"] == "warning"
+    assert not (config / "leaf-cache.sqlite3").exists()
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_selected_detail_gaps_propagate_without_cache_publication(
+    detail_cli, tmp_path, strict
+):
+    cli, browser, config = detail_cli
+    install(cli, supplementary_package(tmp_path, binding=True), tmp_path)
+    browser.business_script.extend(
+        [
+            {
+                "status": 200,
+                "body": {"rows": [{"reference": "REF"}, {"reference": "OTHER"}]},
+            },
+            reply({"id": "root"}),
+            reply({"refused": True}),
+        ]
+    )
+    result = cli(
+        "payment",
+        "list",
+        "synthetic.shapes",
+        "--live",
+        "--with-detail",
+        "--limit",
+        "1",
+        *(("--require-complete",) if strict else ()),
+        code=1 if strict else 0,
+    )
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["source_acquisition"]["scope_complete"] is True
+    assert result["meta"]["detail_acquisition"][0]["scope_complete"] is False
+    assert len(browser.business_requests) == 3
+    if strict:
+        assert result["data"] is None
+        assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    else:
+        assert result["data"] == [
+            {"record": {"reference": "REF"}, "detail": {"id": "root", "extra": None}}
+        ]
+    assert not (config / "leaf-cache.sqlite3").exists()
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        {"retained_errors": []},
+        {"retained_errors": ["refused", "refused"]},
+        {"supplementary": False},
+        {"retained_errors": ["AUTH_REQUIRED"]},
+    ],
+)
+def test_invalid_supplementary_retention_contract_is_rejected(
+    detail_cli, tmp_path, declaration
+):
+    cli, browser, _ = detail_cli
+    root = supplementary_package(tmp_path)
+    path = root / "leaf.json"
+    manifest = json.loads(path.read_text())
+    manifest["operations"]["get"]["queries"]["extra"].update(declaration)
+    path.write_text(json.dumps(manifest))
+    result = cli("plugins", "install", str(root), code=1)
+    assert result["error"]["code"] == "INVALID_LEAF"
+    assert not browser.business_requests
+
+
+def test_required_selected_detail_keeps_native_failure_after_adapter_catches_it(
+    detail_cli, tmp_path
+):
+    cli, browser, config = detail_cli
+    root = supplementary_package(tmp_path, binding=True)
+    path = root / "leaf.json"
+    manifest = json.loads(path.read_text())
+    query = manifest["operations"]["get"]["queries"]["extra"]
+    del query["supplementary"]
+    del query["retained_errors"]
+    path.write_text(json.dumps(manifest))
+    install(cli, root, tmp_path)
+    browser.business_script.extend(
+        [
+            {"status": 200, "body": {"rows": [{"reference": "REF"}]}},
+            reply({"id": "root"}),
+            reply({"refused": True}),
+        ]
+    )
+    result = cli(
+        "payment", "list", "synthetic.shapes", "--live", "--with-detail", code=1
+    )
+    assert result["data"] is None
+    assert result["error"]["code"] == "BUSINESS_QUERY_FAILED"
+    assert result["error"]["native_code"] == "QUALIFIED_REFUSAL"
+    assert result["meta"]["detail_row"] == 1
+    assert not (config / "leaf-cache.sqlite3").exists()
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_custom_get_without_coverage_cannot_satisfy_acceptance(
+    detail_cli, tmp_path, strict
+):
+    cli, browser, _ = detail_cli
+    root = supplementary_package(tmp_path)
+    with (root / "adapter.py").open("a") as source:
+        source.write("""
+class Bare(Custom):
+    def query_get(self, parameters, identity, tools):
+        return tools.detail("root", identity)
+adapter = Bare()
+""")
+    install(cli, root, tmp_path)
+    browser.business_script.append(reply({"id": "root"}))
+    result = cli(
+        "payment",
+        "get",
+        "synthetic.shapes",
+        "REF",
+        *(("--require-complete",) if strict else ()),
+        code=1,
+    )
+    assert result["data"] is None
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert result["meta"]["acquisition"]["reasons"] == ["COVERAGE_UNPROVEN"]
+    assert result["meta"]["complete"] is False
+    assert browser.business_requests == [{"reference": "REF"}]

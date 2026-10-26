@@ -160,7 +160,8 @@ def test_handbook_direct_get_needs_no_saved_list(handbook):
     assert browser.business_requests == [{"recordId": "one"}]
     assert result["meta"]["query"] == {"identity": "one", "parameters": {}}
     assert result["meta"]["detail_scope"] == "native_root"
-    assert "complete" not in result["meta"]
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["reported_total"] is None
     assert not (config / "leaf-cache.sqlite3").exists()
 
 
