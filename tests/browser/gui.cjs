@@ -29,6 +29,8 @@ const [url, manifestPath] = process.argv.slice(2);
     assert.equal(await page.locator(".leaf").count(), 2);
     const sampleCard = page.locator(".leaf").filter({ has: docs });
     assert.ok((await sampleCard.innerText()).includes("2 · simulated"));
+    assert.ok((await sampleCard.innerText()).includes("Incomplete or unproven"));
+    assert.ok((await sampleCard.innerText()).includes("Saved warnings"));
     assert.ok((await sampleCard.innerText()).includes("Success"));
     assert.ok((await sampleCard.innerText()).includes("Captured"));
     const technical = sampleCard.locator(".leaf-details");

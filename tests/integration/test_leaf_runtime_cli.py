@@ -347,7 +347,11 @@ def test_interrupted_query_records_failed_execution_and_preserves_cache(
 
     pilots.business_handler = interrupted
     code, out, err = run_cli(["payment", "refresh", "sla.baselines"])
-    assert code == 130 and out == "" and "interrupted" in err
+    assert code == 130 and "interrupted" in err
+    rejected = json.loads(out)
+    assert rejected["data"] is None
+    assert rejected["error"]["code"] == "INTERRUPTED"
+    assert rejected["meta"]["published"] is False
     pilots.business_handler = None
     _, out, _ = run_cli(["domain", "leaves", "payment"])
     observation = json.loads(out)["result"][0]["last_execution"]

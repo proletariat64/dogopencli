@@ -282,6 +282,36 @@ def test_capture_keeps_original_private_bytes_and_restores_transport(
     assert main is not fake_main
 
 
+def test_capture_summary_preserves_underlying_cli_diagnostic(
+    tmp_path, monkeypatch, capsys
+):
+    private = tmp_path / "private"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "leaf.py",
+            "capture",
+            "--directory",
+            str(private),
+            "--config-dir",
+            str(tmp_path / "config"),
+            "--",
+            "payment",
+            "get",
+            "uninstalled.records",
+            "sample-id",
+        ],
+    )
+    status = migration.main()
+    summary = json.loads(capsys.readouterr().out)
+    original = json.loads((private / "envelope.json").read_text())
+    assert status == 1
+    assert summary["error"] == original["error"]["code"]
+    assert summary["diagnostic"] == original["error"]
+    assert summary["wrapper_error"] == "CAPTURE_QUERY_FAILED"
+    assert "sample-id" not in json.dumps(summary)
+
+
 def test_batch_handoff_covers_remaining_scope_once(tmp_path):
     path = ROOT / "tools/leaf-dev/batches.json"
     result = migration.batches(path)

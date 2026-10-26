@@ -46,6 +46,7 @@ def test_gui_browser_acceptance(editor):
     from dogopencli.cache import SnapshotMeta
     from dogopencli.domains import DomainService
     from dogopencli.leaves.runtime import cache_for
+    from dogopencli.result_policy import AcquisitionEvidence
 
     config_file = manifest.parents[3] / "config.toml"
     cache_for(config_file).publish(
@@ -64,6 +65,9 @@ def test_gui_browser_acceptance(editor):
             source_observed_from=None,
             source_observed_to=None,
             row_count=2,
+            acquisition=AcquisitionEvidence.for_collection(
+                complete=False, reported_total=3, collected_total=2, arrivals=2
+            ).record(),
         ),
         [(1, '{"id":"example-one"}'), (2, '{"id":"example-two"}')],
     )
