@@ -218,6 +218,7 @@ class QueryTools:
         config_file: Path | None = None,
         budget: QueryBudget | None = None,
         deadline: float | None = None,
+        resolved_entities: list[str] | None = None,
     ):
         self._leaf = leaf
         self._operation = operation
@@ -236,6 +237,26 @@ class QueryTools:
         self._required_incomplete = False
         self._required_failure: CliError | None = None
         self._queries: dict[str, dict] = {}
+        self._resolved_entities: tuple[str, ...] | None = None
+        if resolved_entities is not None:
+            if (
+                self._declarations.get("entity_selector") is not True
+                or not isinstance(resolved_entities, list)
+                or any(
+                    not isinstance(value, str) or not value.strip() or value == "ANY"
+                    for value in resolved_entities
+                )
+            ):
+                raise CliError(INVALID_RESPONSE, "invalid frozen entity selector proof")
+            self._resolved_entities = tuple(resolved_entities)
+            self._queries["entity_selector"] = {
+                "kind": "local_selector",
+                "calls": 1,
+                "requests": 0,
+                "succeeded": 1,
+                "selected_count": len(resolved_entities),
+                "frozen": True,
+            }
         self._coverage: dict | None = None
         self._transports: dict[str, _QueryTransport] = {}
 
@@ -494,6 +515,8 @@ class QueryTools:
                 raise CliError(
                     INVALID_RESPONSE, "entity selector configuration is missing"
                 )
+            if self._resolved_entities is not None:
+                return list(self._resolved_entities)
             from dogopencli.duckdog import resolve_selector
 
             result = resolve_selector(

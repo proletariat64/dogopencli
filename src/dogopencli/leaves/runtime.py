@@ -338,6 +338,7 @@ def execute(
         return datetime.now(timezone.utc)
 
     specification = leaf.manifest["operations"].get("list", {})
+    resolved_entities: list[str] | None = None
     if (
         operation in {"list", "refresh"}
         and specification.get("execution") != "custom"
@@ -353,12 +354,10 @@ def execute(
         if parameters.get("entity") == ["ANY"]:
             from dogopencli.duckdog import resolve_selector
 
-            parameters = {
-                **parameters,
-                "_resolved_entities": resolve_selector(
-                    "liquidity/reference/entities", "instId", config_file=config_file
-                ),
-            }
+            resolved_entities = resolve_selector(
+                "liquidity/reference/entities", "instId", config_file=config_file
+            )
+            parameters = {**parameters, "_resolved_entities": resolved_entities}
 
     store = cache_for(config_file)
     namespace = "leaf:" + leaf.id
@@ -487,6 +486,7 @@ def execute(
                         session.transport,
                         state_file=config_file.parent / "collection-state.json",
                         config_file=config_file,
+                        resolved_entities=resolved_entities,
                     ) as tools:
                         collected = tools.finish_list(
                             leaf.adapter.query_list(parameters, tools)

@@ -902,3 +902,31 @@ def test_query_cannot_execute_after_unqueried_applicability_is_recorded():
         tools.collect("source")
     with pytest.raises(CliError, match="applicability"):
         tools.finish_list(result())
+
+
+def test_frozen_empty_selector_keeps_host_proof_without_resolving_again(
+    tmp_path, monkeypatch
+):
+    from dogopencli import duckdog
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("frozen selector must not be read again")
+
+    monkeypatch.setattr(duckdog, "resolve_selector", unexpected)
+    _, leaf, capabilities = setup(Script())
+    leaf.manifest["operations"]["list"]["entity_selector"] = True
+    with QueryTools(
+        leaf,
+        "list",
+        {},
+        capabilities,
+        lambda cap: Script(),
+        config_file=tmp_path / "config.toml",
+        resolved_entities=[],
+    ) as tools:
+        assert tools.entity_selector() == []
+        candidate = tools.finish_list(result())
+    assert candidate.complete and candidate.records == []
+    trace = candidate.evidence.attempts[-1]
+    assert trace["request_count"] == 0
+    assert trace["queries"]["entity_selector"]["selected_count"] == 0

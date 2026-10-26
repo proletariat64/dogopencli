@@ -71,16 +71,25 @@ A custom public Get separately requires its public `lookup` and `result_identity
 its returned root is checked against those public declarations. An accepted
 object Get may also declare the existing same-value `list_binding`.
 
-For custom Get, named queries are required by default. A separately qualified
-supplementary query may declare `"supplementary": true`; missing promised
-coverage still makes the result incomplete. For a detail query only, `"retained_errors": ["refused", "failed"]`
-selects the parser-qualified `QueryRefused` and/or `QueryFailed` categories that
-may be retained. The array must be a nonempty unique subset of those categories
-and requires `supplementary: true`; it is not a native-code allowlist. Omit it to retain no detail errors. A supplementary named List within
-custom Get may retain qualified usable incomplete traversal evidence, never query
-failures. Existing custom List
-parser-qualified refusal/failure retention remains governed by its independently
-accepted leaf policy; this declaration gate does not create new List permissions.
+For custom List and Get, named queries are required by default. A separately
+qualified supplementary query may declare `"supplementary": true`; missing
+promised coverage still makes the result incomplete. For a detail query only,
+`"retained_errors": ["refused", "failed"]` selects the parser-qualified
+`QueryRefused` and/or `QueryFailed` categories that may be retained. The array
+must be a nonempty unique subset of those categories and requires
+`supplementary: true`; it is not a native-code allowlist. Omit it to retain no
+detail errors. Both custom List and Get enforce these declarations for retained
+detail failures; existing leaf qualification remains necessary.
+
+Qualified partial primary List traversal may remain usable under the collection
+SDK's independent coverage policy. This does not permit missing essential detail
+information. A supplementary named List within custom Get may retain qualified
+usable incomplete traversal evidence, never query failures.
+
+Conditional branches use `record_applicability` with observed native evidence;
+a host-frozen entity selector retains its verified source witness without a
+second read. See the [shared result policy](result-policy.md) and
+[conditional-query and frozen-selector interfaces](../../tools/leaf-dev/interfaces.md#conditional-custom-queries).
 
 Standard operations reject custom `queries` and shared-budget fields.
 
@@ -196,12 +205,13 @@ A detail parser may raise `QueryRefused(native_code=...)` after establishing the
 endpoint's verified per-record refusal semantics. It may separately raise
 `QueryFailed(native_code=...)` for a business failure that the leaf's accepted
 policy permits retaining. These exceptions are distinct: a failed query is not
-a business refusal. A custom List with an independently qualified retention
-policy may catch either, retain its usable core record and mark the appropriate detail state, with both
-completeness flags false. Custom Get additionally requires the supplementary and
-retained-category declaration above. Result evidence must explicitly permit
-incomplete use. Required detail failures remain fatal. Query traces
-count `failed` and `refused` separately, and later declared inquiries may proceed.
+a business refusal. Both custom List and Get require independently qualified
+leaf retention plus the supplementary and retained-category declarations above.
+An adapter may then catch either category, retain its usable core record and
+mark the appropriate detail state, with both completeness flags false. Result
+evidence must explicitly permit incomplete use. Required detail failures remain
+fatal, including when primary List rows are otherwise valid. Query traces count
+`failed` and `refused` separately, and later declared inquiries may proceed.
 
 The leaf owns qualification and retention policy. The SDK contains no endpoint,
 native-code or account exceptions and does not automatically downgrade business

@@ -191,3 +191,8 @@ incomplete evidence. The SDK rejects missing evidence, fabricated data-only resu
 contradictory complete claims, and attempts to erase observed failures. Required
 failures cannot be retained by List or Get. Qualified partial primary List traversal
 continues to use the collection SDK's existing usable-incomplete policy.
+
+The host can pass `resolved_entities` to `QueryTools` after resolving and freezing
+the registered entity selector. This retains its source witness, including a
+verified empty universe, and `entity_selector()` replays the frozen value without
+reading the selector again. Ordinary query parameters do not create this proof.
