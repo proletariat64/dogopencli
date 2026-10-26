@@ -173,7 +173,8 @@ def test_waterlevel_preserves_native_array_and_projects_each_member(installed):
     result = query(cli, "get", leaf, "account")
     assert result["data"] == rows
     assert result["meta"]["returned_count"] == 2
-    assert not {"complete", "reported_total", "acquisition"} & result["meta"].keys()
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["reported_total"] is None
     assert browser.business_requests == [
         {"tntInstId": "GUAPW3SG", "aliasName": "account"}
     ]

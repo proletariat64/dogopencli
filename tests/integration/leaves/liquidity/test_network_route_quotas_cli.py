@@ -112,8 +112,14 @@ def test_native_arrays_context_metadata_and_no_publication(installed):
     assert not (config / "duckdog.duckdb").exists()
     data = aggregate()
     browser.business_script.append(reply(data))
-    result = get(cli)
+    result = get(cli, "--require-complete")
     assert result["data"] == data
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["reported_total"] is None
+    assert (
+        result["meta"]["acquisition"]["coverage_basis"] == "qualified_single_response"
+    )
+    assert result["meta"]["acquisition"]["attempts"][0]["component"] == "native_quotas"
     assert "routeId" not in result["data"]
     assert "aliasName" not in result["data"]
     assert "tntInstId" not in result["data"]

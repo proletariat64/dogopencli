@@ -19,6 +19,8 @@ from dogopencli.errors import (
     REQUEST_NOT_ALLOWED,
     TIMEOUT,
     CliError,
+    diagnostic,
+    normalize_warnings,
 )
 from dogopencli.jsonutil import canonical
 from dogopencli.result_policy import AcquisitionEvidence
@@ -231,6 +233,8 @@ class QueryTools:
         self._budget = budget or QueryBudget(end, self._declarations["max_requests"])
         self._fatal: CliError | None = None
         self._incomplete = False
+        self._required_incomplete = False
+        self._required_failure: CliError | None = None
         self._queries: dict[str, dict] = {}
         self._coverage: dict | None = None
         self._transports: dict[str, _QueryTransport] = {}
@@ -306,8 +310,10 @@ class QueryTools:
             evidence = result.evidence
             if evidence is None:
                 raise CliError(INVALID_RESPONSE, "custom source evidence is missing")
-            self._incomplete |= not (
-                evidence.scope_complete and evidence.dataset_complete
+            incomplete = not (evidence.scope_complete and evidence.dataset_complete)
+            self._incomplete |= incomplete
+            self._required_incomplete |= incomplete and not (
+                declaration.get("supplementary") is True and evidence.usable_incomplete
             )
             trace["succeeded"] += 1
             trace.setdefault("collections", []).append(
@@ -357,6 +363,26 @@ class QueryTools:
                 self._incomplete = True
                 status = "refused" if isinstance(error, QueryRefused) else "failed"
                 trace[status] = trace.get(status, 0) + 1
+                trace["diagnostics"] = normalize_warnings(
+                    [
+                        *trace.get("diagnostics", []),
+                        diagnostic(
+                            error.code,
+                            error.message,
+                            severity="warning",
+                            component=name,
+                            retryable=error.retryable,
+                            native_code=(error.meta or {}).get("native_code"),
+                            consequence="promised detail coverage is incomplete",
+                        ),
+                    ]
+                )
+                qualified = declaration.get(
+                    "supplementary"
+                ) is True and status in declaration.get("retained_errors", [])
+                self._required_incomplete |= not qualified
+                if not qualified and self._required_failure is None:
+                    self._required_failure = error
             else:
                 self._fatal = error
                 trace["error"] = {"code": error.code, "retryable": error.retryable}
@@ -538,7 +564,9 @@ class QueryTools:
 
     def finish_get(self, result: Any, identity: str | None = None) -> dict | list[dict]:
         self._finish()
-        if self._incomplete:
+        if self._required_failure is not None:
+            raise self._required_failure
+        if self._required_incomplete:
             raise CliError(
                 INVALID_RESPONSE, "custom Get has incomplete required queries"
             )
@@ -551,8 +579,24 @@ class QueryTools:
                 raise CliError(
                     INVALID_RESPONSE, "custom Get coverage contradicts result"
                 )
-            self._coverage = evidence.record()
+            if self._incomplete and (
+                evidence.scope_complete
+                or evidence.dataset_complete
+                or not evidence.usable_incomplete
+            ):
+                raise CliError(
+                    INVALID_RESPONSE, "custom Get coverage contradicts queries"
+                )
             result = result.data
+        else:
+            evidence = AcquisitionEvidence(
+                scope_complete=False,
+                dataset_complete=False,
+                collected_total=len(result) if isinstance(result, list) else 1,
+                reasons=("COVERAGE_UNPROVEN",),
+            )
+        evidence = replace(evidence, attempts=(*evidence.attempts, self.evidence()))
+        self._coverage = evidence.record()
         context = None
         if "request_fields" in self._declarations["result_identity"]:
             context = {

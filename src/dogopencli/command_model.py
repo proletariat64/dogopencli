@@ -136,15 +136,10 @@ def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
         if operation == "list"
         else WINDOW[:4]
         if operation == "refresh"
-        else WINDOW[:1]
+        else (WINDOW[0], WINDOW[3])
         if operation == "get"
         else ()
     )
-    if (
-        operation == "get"
-        and leaf.manifest["operations"]["get"].get("execution") == "custom"
-    ):
-        host = (*host, WINDOW[3])
     if operation == "list" and leaf.manifest["operations"].get("get", {}).get(
         "list_binding"
     ):

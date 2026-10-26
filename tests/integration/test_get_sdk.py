@@ -134,15 +134,11 @@ def test_get_only_native_detail_without_list_or_storage(
         "parameters": {"id": "ACCOUNT"},
     }
     assert result["meta"]["returned_count"] == 1
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["dataset_complete"] is True
+    assert result["meta"]["reported_total"] is None
     assert (
-        not {
-            "complete",
-            "scope_complete",
-            "dataset_complete",
-            "reported_total",
-            "acquisition",
-        }
-        & result["meta"].keys()
+        result["meta"]["acquisition"]["coverage_basis"] == "qualified_single_response"
     )
     assert not (root / "duckdog.duckdb").exists()
     assert not (root / "leaf-cache.sqlite3").exists()

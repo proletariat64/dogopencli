@@ -106,6 +106,11 @@ QUERY_SCHEMA = {
     "additionalProperties": False,
     "properties": {
         "kind": {"enum": ["list", "detail", "inquiry"]},
+        "supplementary": {"type": "boolean"},
+        "retained_errors": {
+            "type": "array",
+            "items": {"enum": ["refused", "failed"]},
+        },
         "collection": {
             "type": "object",
             "required": ["provider", "paging", "primary_id"],
@@ -404,8 +409,15 @@ def _validate_custom_queries(domain: str, operation: dict) -> None:
     for name, query in operation["queries"].items():
         if re.fullmatch(r"[a-z][a-z0-9_]*", name) is None:
             raise _invalid("custom query name has invalid spelling")
+        if "retained_errors" in query and (
+            query["kind"] != "detail"
+            or query.get("supplementary") is not True
+            or not query["retained_errors"]
+            or len(query["retained_errors"]) != len(set(query["retained_errors"]))
+        ):
+            raise _invalid("retained errors require a supplementary detail query")
         if query["kind"] == "list":
-            if set(query) != {"kind", "collection"}:
+            if set(query) - {"kind", "collection", "supplementary"}:
                 raise _invalid("custom List query requires only kind and collection")
             collection = query["collection"]
             try:
@@ -414,7 +426,7 @@ def _validate_custom_queries(domain: str, operation: dict) -> None:
                 raise _invalid(error.message) from error
             _validate_paging(collection)
         elif query["kind"] == "inquiry":
-            if set(query) != {"kind", "result_shape"}:
+            if set(query) - {"kind", "result_shape", "supplementary"}:
                 raise _invalid("custom inquiry requires only kind and result_shape")
         else:
             if "result_identity" not in query or "collection" in query:

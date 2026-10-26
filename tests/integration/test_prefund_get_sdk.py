@@ -80,9 +80,9 @@ def test_independent_selected_root_preserves_native_arrays_and_never_fans_out(
     assert type(result["data"]["amount"]) is Decimal
     assert result["meta"]["returned_count"] == 1
     assert result["meta"]["detail_scope"] == "native_root"
-    assert (
-        not {"complete", "dataset_complete", "reported_total"} & result["meta"].keys()
-    )
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["dataset_complete"] is True
+    assert result["meta"]["reported_total"] is None
     assert browser.business_requests == [
         {"tntInstId": "GUAPW3SG", "preFundingId": "SELECTED"}
     ]

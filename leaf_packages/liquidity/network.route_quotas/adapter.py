@@ -11,6 +11,8 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import parse
+from dogopencli.leaves.query import CustomGetResult
+from dogopencli.result_policy import AcquisitionEvidence
 
 TENANT = "GUAPW3SG"
 
@@ -105,10 +107,33 @@ class Adapter:
 
     def query_get(
         self, parameters: dict[str, Any], identity: str, tools: Any
-    ) -> dict[str, Any]:
+    ) -> CustomGetResult:
         context = {**parameters, "routeId": identity}
         validate_context(context)
-        return tools.inquire("quotas", context)
+        data = tools.inquire("quotas", context)
+        return CustomGetResult(
+            data,
+            AcquisitionEvidence.for_collection(
+                complete=True,
+                reported_total=None,
+                collected_total=1,
+                arrivals=1,
+                total_semantics="unknown",
+                coverage_basis="qualified_single_response",
+                attempts=(
+                    {
+                        "component": "native_quotas",
+                        "status": "succeeded",
+                        "complete": True,
+                        "member_counts": {
+                            name: len(data[name])
+                            for name in ("dynamicQuotas", "staticQuotas")
+                        },
+                        "reported_count_unit": "unknown",
+                    },
+                ),
+            ),
+        )
 
 
 adapter = Adapter()

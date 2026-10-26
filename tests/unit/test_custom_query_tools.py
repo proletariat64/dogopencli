@@ -276,6 +276,8 @@ def test_retained_detail_failure_allows_later_queries_but_never_complete_output(
     trace = candidate.evidence.attempts[-1]
     assert trace["request_count"] == 2
     assert trace["queries"]["detail"]["failed"] == 1
+    assert trace["queries"]["detail"]["diagnostics"][0]["native_code"] == "999"
+    assert trace["queries"]["detail"]["diagnostics"][0]["component"] == "detail"
     assert trace["queries"]["detail"]["succeeded"] == 1
     assert "refused" not in trace["queries"]["detail"]
     assert "private-lookup" not in canonical(trace)
@@ -286,10 +288,11 @@ def test_retained_detail_failure_allows_later_queries_but_never_complete_output(
 def test_retained_business_error_cannot_finish_custom_get(error_type):
     script = Script({"refused" if error_type is QueryRefused else "failed": True})
     tools, _, _ = setup(script)
-    with pytest.raises(error_type):
+    with pytest.raises(error_type) as original:
         tools.detail("detail", "one")
-    with pytest.raises(CliError, match="incomplete required queries"):
+    with pytest.raises(error_type) as final:
         tools.finish_get({"id": "one"})
+    assert final.value is original.value
 
 
 @pytest.mark.parametrize("error_type", [QueryRefused, QueryFailed])
@@ -545,3 +548,116 @@ def test_entity_selector_is_opt_in_and_never_accepts_arbitrary_selector(tmp_path
         tools.entity_selector()
     assert caught.value.code == "REQUEST_NOT_ALLOWED"
     assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize(
+    "error_type,status", [(QueryRefused, "refused"), (QueryFailed, "failed")]
+)
+def test_custom_get_accepts_only_declared_supplementary_retained_error(
+    error_type, status
+):
+    from dogopencli.leaves.query import CustomGetResult
+    from dogopencli.result_policy import check_complete
+
+    tools, leaf, _ = setup(Script({status: True}))
+    declaration = leaf.manifest["operations"]["list"]
+    declaration["result_identity"] = {"fields": ["id"]}
+    declaration["queries"]["detail"].update(
+        supplementary=True, retained_errors=[status]
+    )
+    with pytest.raises(error_type):
+        tools.detail("detail", "one")
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=None,
+        collected_total=1,
+        reasons=("SUPPLEMENTARY_DETAIL_UNAVAILABLE",),
+        usable_incomplete=True,
+    )
+    native = {"id": "root", "detail": None}
+    assert tools.finish_get(CustomGetResult(native, evidence)) == native
+    retained = AcquisitionEvidence.from_record(tools.evidence()["coverage"])
+    assert retained.scope_complete is False
+    assert retained.attempts[-1]["queries"]["detail"][status] == 1
+    assert (
+        check_complete(retained, mode="get", require_complete=False).expose_data is True
+    )
+    with pytest.raises(CliError) as strict:
+        check_complete(retained, mode="get", require_complete=True)
+    assert strict.value.code == "INCOMPLETE_RESULT"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        CliError("AUTH_REQUIRED", "authenticate"),
+        CliError("TIMEOUT", "transport interrupted", retryable=True),
+        CliError("INVALID_RESPONSE", "invalid native identity"),
+    ],
+)
+def test_supplementary_get_cannot_hide_caught_hard_failure(failure):
+    from dogopencli.leaves.query import CustomGetResult
+
+    tools, leaf, _ = setup(Script(failure))
+    declaration = leaf.manifest["operations"]["list"]
+    declaration["result_identity"] = {"fields": ["id"]}
+    declaration["queries"]["detail"].update(
+        supplementary=True, retained_errors=["failed", "refused"]
+    )
+    with pytest.raises(CliError):
+        tools.detail("detail", "one")
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=None,
+        collected_total=1,
+        reasons=("SUPPLEMENTARY_UNAVAILABLE",),
+        usable_incomplete=True,
+    )
+    with pytest.raises(CliError) as caught:
+        tools.finish_get(CustomGetResult({"id": "root"}, evidence))
+    assert caught.value is failure
+
+
+def test_supplementary_get_cannot_claim_complete_after_refusal():
+    from dogopencli.leaves.query import CustomGetResult
+
+    tools, leaf, _ = setup(Script({"refused": True}))
+    declaration = leaf.manifest["operations"]["list"]
+    declaration["result_identity"] = {"fields": ["id"]}
+    declaration["queries"]["detail"].update(
+        supplementary=True, retained_errors=["refused"]
+    )
+    with pytest.raises(QueryRefused):
+        tools.detail("detail", "one")
+    evidence = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=None,
+        collected_total=1,
+    )
+    with pytest.raises(CliError, match="coverage contradicts queries"):
+        tools.finish_get(CustomGetResult({"id": "root"}, evidence))
+
+
+@pytest.mark.parametrize("supplementary", [False, True])
+def test_custom_get_traversal_gap_requires_supplementary_qualification(supplementary):
+    from dogopencli.leaves.query import CustomGetResult
+
+    tools, leaf, _ = setup(Script({"rows": [{"id": "old"}], "total": 2}))
+    declaration = leaf.manifest["operations"]["list"]
+    declaration["result_identity"] = {"fields": ["id"]}
+    declaration["queries"]["source"]["supplementary"] = supplementary
+    source = tools.collect("source")
+    evidence = AcquisitionEvidence.for_collection(
+        complete=False,
+        reported_total=None,
+        collected_total=1,
+        reasons=source.evidence.reasons,
+        usable_incomplete=True,
+    )
+    candidate = CustomGetResult({"id": "root", "history": source.records}, evidence)
+    if supplementary:
+        assert tools.finish_get(candidate) == {"id": "root", "history": [{"id": "old"}]}
+        assert tools.evidence()["coverage"]["scope_complete"] is False
+    else:
+        with pytest.raises(CliError, match="incomplete required queries"):
+            tools.finish_get(candidate)
