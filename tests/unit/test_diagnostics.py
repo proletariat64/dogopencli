@@ -50,12 +50,15 @@ def test_diagnostic_rejects_sensitive_native_context():
     assert error["native_code"] is None
 
 
-def test_sdk_error_preserves_qualified_component_facts_without_raw_metadata():
+@pytest.mark.parametrize("native_code", ["099", 0])
+def test_sdk_error_preserves_qualified_component_facts_without_raw_metadata(
+    native_code,
+):
     error = CliError(
         "BUSINESS_QUERY_FAILED",
         "History refused",
         meta={
-            "native_code": "099",
+            "native_code": native_code,
             "diagnostic": {
                 "component": "history",
                 "stage": "detail",
@@ -66,7 +69,7 @@ def test_sdk_error_preserves_qualified_component_facts_without_raw_metadata():
     ).diagnostic(component="sample.items")
     assert error["component"] == "history"
     assert error["stage"] == "detail"
-    assert error["native_code"] == "099"
+    assert error["native_code"] == native_code
     assert error["consequence"] == "The promised history is unavailable"
     assert "raw_response" not in error
 

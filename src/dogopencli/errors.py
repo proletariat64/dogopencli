@@ -217,10 +217,18 @@ class CliError(Exception):
         )
         context.setdefault("component", component)
         context.setdefault("consequence", "The requested result was not accepted.")
+        reasons = supplied.get("reason_codes") if isinstance(supplied, dict) else None
+        if isinstance(reasons, (list, tuple)) and all(
+            isinstance(reason, str) for reason in reasons
+        ):
+            context["reason_codes"] = reasons
+        native_code = facts.get("native_code")
+        if native_code is None and isinstance(supplied, dict):
+            native_code = supplied.get("native_code")
         return diagnostic(
             self.code,
             self.message,
             retryable=self.retryable,
-            native_code=facts.get("native_code"),
+            native_code=native_code,
             **context,
         )
