@@ -344,7 +344,9 @@ class SyncStore:
         target = self._target(attempt[0])
         relation = self._binding(target)
         namespace = self._namespace(target)
-        if mode == "settings" and "native_scope" in target.get("namespace", {}):
+        if mode in {"settings", "observation"} and "native_scope" in target.get(
+            "namespace", {}
+        ):
             family = {
                 k: v for k, v in target["namespace"].items() if k != "native_scope"
             }
@@ -365,7 +367,7 @@ class SyncStore:
                     and previous_scope != target["namespace"]
                 ):
                     raise _error(
-                        "Use one authoritative settings query scope per identity "
+                        "Use one authoritative snapshot query scope per identity "
                         "family; a different scope could overlap retained data"
                     )
         with self._transaction():

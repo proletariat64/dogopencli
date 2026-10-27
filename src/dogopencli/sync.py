@@ -51,6 +51,10 @@ def _target(leaf, profile, parameters, config_file, follow=False):
         },
         **parameters,
     }
+    if not profile.accepts(parameters):
+        raise CliError(
+            "SYNC_UNSUPPORTED", "Sync requires the declared native scope selectors"
+        )
     if profile.unsupported_reason:
         raise CliError("SYNC_UNSUPPORTED", profile.unsupported_reason)
     for definition in leaf.manifest["operations"]["list"]["parameters"]:
@@ -108,7 +112,9 @@ def _target(leaf, profile, parameters, config_file, follow=False):
             for key in profile.scope_parameters
         },
     }
-    if profile.mode == "settings":
+    if profile.mode == "settings" or (
+        profile.mode == "observation" and profile.time is None
+    ):
         try:
             namespace["native_scope"] = parse(native_scope)
         except ValueError:
@@ -258,6 +264,18 @@ def execute(invocation):
     results = []
     blocked_enrollments = []
     if getattr(invocation.args, "all", False):
+        results.extend(
+            {
+                "leaf": detail["id"],
+                "state": "failed",
+                "error": diagnostic(
+                    detail["code"],
+                    "Installed leaf could not be loaded",
+                    component=detail["id"],
+                ),
+            }
+            for detail in registry.diagnostics
+        )
         for leaf in registry.leaves.values():
             if "list" not in leaf.manifest["operations"]:
                 continue
@@ -345,6 +363,7 @@ def execute(invocation):
             }
             saved_selection = []
             for target, leaf, profile in selected:
+                requested_parameters = dict(target["parameters"])
                 old = previous.get(canonical(target["identity"]))
                 if explicit and old is None:
                     blocked = next(
@@ -385,7 +404,12 @@ def execute(invocation):
                             store.save_target(
                                 {**blocked, "resolved_by": saved_target["id"]}
                             )
-                saved_selection.append((saved_target, leaf, profile))
+                execution_target = (
+                    {**saved_target, "parameters": requested_parameters}
+                    if explicit
+                    else saved_target
+                )
+                saved_selection.append((execution_target, leaf, profile))
             selected = saved_selection
         else:
             for target in store.targets():

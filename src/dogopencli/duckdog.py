@@ -30,7 +30,7 @@ def _synced_records(logical_selector, config_file):
     try:
         document = tomllib.loads(location.read_text())
     except FileNotFoundError:
-        return None
+        document = {}
     except (OSError, ValueError) as error:
         raise _error("duckdog requires a readable valid configuration") from error
     section = document.get("duckdog", {})

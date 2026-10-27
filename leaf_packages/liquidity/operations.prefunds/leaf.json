@@ -119,7 +119,7 @@
   },
   "sync": [
     {
-      "variant": "default",
+      "variant": "approved",
       "mode": "observation",
       "key_fields": [
         "id"
@@ -129,7 +129,33 @@
       "parameters": {
         "status": [
           "APPROVED",
-          "CLOSED",
+          "CLOSED"
+        ]
+      },
+      "match": {
+        "status": [
+          "APPROVED",
+          "CLOSED"
+        ]
+      }
+    },
+    {
+      "variant": "submitted",
+      "mode": "observation",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native id identifies rows within the exact acquisition scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "parameters": {
+        "status": [
+          "SUBMITTED",
+          "REJECTED",
+          "CLOSED_SUBMITTED"
+        ]
+      },
+      "match": {
+        "status": [
           "SUBMITTED",
           "REJECTED",
           "CLOSED_SUBMITTED"

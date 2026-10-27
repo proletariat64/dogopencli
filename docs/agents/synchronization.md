@@ -55,7 +55,8 @@ source request cannot clear settings or mark runtime coverage complete. Get
 completeness describes its declared root/components only; there is no new generic
 Get crawl or implied full-history acquisition.
 
-Settings replace one authoritative query scope per qualified identity family.
+Settings and untimed observations replace one authoritative query scope per
+qualified identity family.
 Another query scope within that family could overlap or retain stale records after
 a broader refresh, so publication fails closed and preserves prior data. Use one
 scope for the current snapshot, or separate stores when comparing query scopes.
@@ -124,3 +125,17 @@ A valid explicit selection resolves matching never-published automatic enrollmen
 failures. When an explicit target already exists, status retains the old enrollment
 as `resolved` with `resolved_by`, alongside its attempt history; plain sync skips
 it. A later `--all` reevaluates automatic enrollment and can report it blocked again.
+
+Timed observations retain each complete capture generation with its requested date
+scope; successive dates do not manufacture a dated row identity. Intraday account
+demands use this policy because native `statisticalDate` contains only an HH:mm
+slot. Account cashflow and intraday-demand sync require explicit entity and bank;
+List-only implicit ownership resolution does not bind a durable namespace.
+Intraday statement sync is on HOLD because `bankTransNo` is only qualified inside
+a date query and native `valueDate` is optional. List inquiries remain available.
+
+Explicit followed ranges acquire only the submitted range while preserving the
+saved plan's earliest start. `--all` reports installed-package scan failures even
+when other leaves succeed. Owned synchronized selectors also work with default or
+environment configuration when no config file exists; explicit external bindings
+continue to take precedence.

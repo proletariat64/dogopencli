@@ -231,7 +231,10 @@
         "overlap_days": 1,
         "basis": "Inclusive native forecast target day YYYYMMDD."
       },
-      "allow_empty_key_components": true
+      "allow_empty_key_components": true,
+      "native_defaults": {
+        "inst-id": "Z21"
+      }
     }
   ]
 }

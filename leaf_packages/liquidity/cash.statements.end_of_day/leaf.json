@@ -148,11 +148,7 @@
         "valueDate",
         "bankTransNo"
       ],
-      "scope_parameters": [
-        "entity",
-        "account-alias",
-        "currency"
-      ],
+      "scope_parameters": [],
       "evidence": "Typed native composite identity preserves distinct institution/account/currency/value-date/transaction records. Duplicated composite identities fail rather than collapsing records. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
       "time": {
         "start_parameter": "from-date",
