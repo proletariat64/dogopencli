@@ -176,5 +176,18 @@
       "title": "Refresh only a complete directory",
       "command": "dogopencli liquidity refresh cash.accounts --require-complete"
     }
+  ],
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "aliasName",
+        "currency"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native (aliasName, currency) identifies one row; baseline alias must also be unique for dependent detail lookup. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 0
+    }
   ]
 }

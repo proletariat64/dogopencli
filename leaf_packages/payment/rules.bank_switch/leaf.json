@@ -104,5 +104,17 @@
         "switchNodeCode"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "switchNodeCode"
+      ],
+      "scope_parameters": [],
+      "evidence": "Nonblank native string switchNodeCode; lexical ordering, no guessed composites. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

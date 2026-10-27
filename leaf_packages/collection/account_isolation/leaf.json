@@ -155,5 +155,17 @@
         "id"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [],
+      "evidence": "Nonblank native string id; no numeric conversion or synthetic identity. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

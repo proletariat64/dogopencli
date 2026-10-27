@@ -75,12 +75,25 @@
     "The accepted completion boundary is the entire native history response array. Native total remains unknown; no claim is made about backend versions absent from that array or atomic consistency between the two inquiries.",
     "Return only native historical records in response order, preserving all fields, nested values, numeric precision and nulls. Never append the current detail. An empty history array is valid and remains empty.",
     "Live does not publish. Complete nonempty refresh publishes and offline replays its own saved scope; failed or empty refresh preserves the previous capture. Auth, business, schema, identity and lineage failures abort the entire inquiry.",
-    "No public Get, arbitrary report query, legacy runtime dependency, native value conversion or new Duckdog import."
+    "No public Get, arbitrary report query, legacy runtime dependency or native value conversion. Durable publication requires explicit sync."
   ],
   "examples": [
     {
       "title": "Read one decision report history",
       "command": "dogopencli liquidity list operations.decisions.history --live --id 123 --require-complete --limit 0"
+    }
+  ],
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "observation",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [
+        "id"
+      ],
+      "evidence": "Native integer historical row id; version is preserved independently, and duplicate row ids fail. Complete acquisition uses the declared native List collector and its scope/completeness evidence. Native report lineage is scoped by the selected current report id, not a global history enumeration."
     }
   ]
 }

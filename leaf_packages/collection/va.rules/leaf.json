@@ -110,5 +110,17 @@
         "vaRuleId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "vaRuleId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native nonblank string vaRuleId; original string preserved without deriving or coercing identity. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

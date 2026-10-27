@@ -91,7 +91,7 @@
     "Inquiry only: no Get, per-task detail, execution, confirmation, edit, history or joined strategy records.",
     "The frontend date picker rejects a truncated elapsed-day difference greater than 30; ordered second-precision bounds therefore must be fewer than 31 elapsed days apart.",
     "Large scopes can exhaust the shared request or time budget; narrow created-time bounds. No automatic date partitioning or alternate endpoint.",
-    "Live inquiry does not publish. Only complete nonempty explicit refresh replaces the saved capture; empty/error/incomplete refresh preserves prior rows and capture time. No Duckdog import."
+    "Live inquiry does not publish. Only complete nonempty explicit refresh replaces the saved capture; empty/error/incomplete refresh preserves prior rows and capture time. Durable publication requires explicit sync."
   ],
   "examples": [
     {
@@ -116,5 +116,28 @@
         "taskId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "taskId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native string taskId identifies a returned automatic-operation task within the exact created-time scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence. Native minDate/maxDate boundary inclusivity is not qualified, despite known GMT+8 clock; only exact bounded acquisition is supported.",
+      "time": {
+        "start_parameter": "created-from",
+        "end_parameter": "created-to",
+        "format": "datetime",
+        "timezone": "Asia/Shanghai",
+        "partitionable": false,
+        "follow_supported": false,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Native GMT+8 created-time lower bound YYYY-MM-DDTHH:mm:ss, without offset.",
+        "end_inclusive": null
+      }
+    }
+  ]
 }

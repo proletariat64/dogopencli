@@ -93,5 +93,28 @@
         "id"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native id identifies rows within this leaf and acquisition scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence. Adjacent native date bounds only; server boundary inclusivity is unproven. Coverage describes the exact query, not a half-open event interval.",
+      "time": {
+        "start_parameter": "from-date",
+        "end_parameter": "to-date",
+        "format": "compact_date",
+        "timezone": null,
+        "partitionable": false,
+        "follow_supported": false,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Native query start, valid YYYYMMDD; to-date must be one day later.",
+        "end_inclusive": null
+      }
+    }
+  ]
 }

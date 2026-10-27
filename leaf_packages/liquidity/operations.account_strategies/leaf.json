@@ -163,5 +163,19 @@
         "version"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "aliasName",
+        "currency",
+        "version"
+      ],
+      "scope_parameters": [],
+      "evidence": "Typed native aliasName/currency/integer version tuple; no synthetic output ID. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

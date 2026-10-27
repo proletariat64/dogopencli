@@ -87,5 +87,20 @@
         "currency"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "observation",
+      "key_fields": [
+        "aliasName",
+        "currency"
+      ],
+      "scope_parameters": [
+        "account-alias",
+        "currency"
+      ],
+      "evidence": "Native account alias and currency jointly identify each buffer row. Complete acquisition uses the declared native List collector and its scope/completeness evidence."
+    }
+  ]
 }

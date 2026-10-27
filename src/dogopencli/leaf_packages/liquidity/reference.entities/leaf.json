@@ -66,5 +66,17 @@
         "instId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "instId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native instId identifies each record. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 0
+    }
+  ]
 }

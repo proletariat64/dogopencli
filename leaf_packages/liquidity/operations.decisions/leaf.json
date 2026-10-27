@@ -69,7 +69,7 @@
     "Qualified starting width1000 uses native offset and fixed total; this is not a measured backend maximum. Duplicate IDs, total drift, short nonfinal pages or missing coverage fail strict publication.",
     "Independent POST JSON Get sends only integer id and preserves the full native root, including nested/unknown values. No history endpoint, child fanout, latest/version selection or List-row fallback.",
     "--live --with-detail uses the selected List window and qualified same-value id binding; record projection does not alter full detail. Get/composition never save a List or import Duckdog data.",
-    "Failed or complete-empty refresh preserves any prior nonempty saved List under standard host policy. No runtime Duckdog import contract is introduced."
+    "Failed or complete-empty refresh preserves any prior nonempty saved List under standard host policy. Durable publication requires explicit sync under the declared acquisition contract."
   ],
   "examples": [
     {
@@ -102,5 +102,27 @@
         "id"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native JSON integer id, never a business-reference substitution or synthetic key. Complete acquisition uses the declared native List collector and its scope/completeness evidence. Start and created windows are independent; only exact scopes can be imported. No automatic following or partitioning.",
+      "time": {
+        "start_parameter": "start-from",
+        "end_parameter": "start-to",
+        "format": "datetime",
+        "timezone": null,
+        "partitionable": false,
+        "follow_supported": false,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive native executionTimeStart lower bound, YYYY-MM-DDTHH:mm:ss; source timezone unknown, offsets rejected."
+      }
+    }
+  ]
 }

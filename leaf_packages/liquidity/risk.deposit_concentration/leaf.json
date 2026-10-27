@@ -89,5 +89,16 @@
         "id"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "observation",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native integer id identifies a record within this fixed tenant and metric. Complete acquisition uses the declared native List collector and its scope/completeness evidence."
+    }
+  ]
 }

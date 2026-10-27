@@ -125,5 +125,36 @@
         "dateFlag"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "aliasName",
+        "currency",
+        "entity",
+        "bankId",
+        "forecastDate",
+        "expectValueDate",
+        "fundActionType",
+        "dateFlag"
+      ],
+      "scope_parameters": [
+        "account-alias"
+      ],
+      "evidence": "Eight native business dimensions; no synthetic output ID. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "from-date",
+        "end_parameter": "to-date",
+        "format": "compact_date",
+        "timezone": null,
+        "partitionable": false,
+        "follow_supported": false,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive forecastDate lower bound, YYYYMMDD; distinct from expectValueDate."
+      }
+    }
+  ]
 }

@@ -80,5 +80,17 @@
         "slaConfigId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "slaConfigId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native slaConfigId identifies rows within this leaf and acquisition scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

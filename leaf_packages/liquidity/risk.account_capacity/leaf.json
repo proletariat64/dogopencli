@@ -113,5 +113,18 @@
   ],
   "dataset": {
     "relation": "liquidity_risk_account_capacity"
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "observation",
+      "key_fields": [
+        "aliasName"
+      ],
+      "scope_parameters": [
+        "account-alias"
+      ],
+      "evidence": "Native account alias, one validated object for every requested alias. Complete acquisition uses the declared native List collector and its scope/completeness evidence."
+    }
+  ]
 }

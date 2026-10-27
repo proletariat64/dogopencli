@@ -52,7 +52,7 @@
     "JSON POST /compoundOrderList.json; fixed tenant GUAPW3SG; rowStart offsets of width 5000; data.data and fixed data.totalCount.",
     "Native fields, amounts, rates, nulls, unknown fields and response order are retained without conversion.",
     "The host List SDK deduplicates native identities and uses the last arrival for conflicting records; conflicts or count gaps remain incomplete. Only complete nonempty refresh publishes; empty, failed or incomplete refresh preserves the previous snapshot. Live never publishes.",
-    "Runtime/date-partition Duckdog import has no supported contract for this leaf; installation initializes an empty binding only.",
+    "Installation initializes an empty binding only; explicit sync uses the declared acquisition and publication policy.",
     "Native Get uses POST form /compoundOrderDetail.json; lookup compoundOrderNo returns one native root object with orderNo.",
     "Get preserves all native nested fields and unknown values; separately queried history, logs and child endpoints remain unqueried.",
     "Get is live-only and publishes no cache or Duckdog data.",
@@ -89,5 +89,16 @@
         "orderNo"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "observation",
+      "key_fields": [
+        "orderNo"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native record identity: orderNo. Complete acquisition uses the declared native List collector and its scope/completeness evidence."
+    }
+  ]
 }
