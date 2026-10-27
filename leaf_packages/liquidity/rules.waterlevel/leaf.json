@@ -91,5 +91,17 @@
         "bufferId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "bufferId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native bufferId identifies configuration rows. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

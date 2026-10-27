@@ -259,5 +259,24 @@
     },
     "max_pages": 100,
     "budget_seconds": 120
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "uniqueId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native uniqueId is the transaction number and identifies each FX trade record; outBizNo is the separate customer order reference. Complete acquisition uses the declared native List collector and its scope/completeness evidence. Broad date-only queries may fail; operator supplies the qualified native business filters. No guessed all-leaf scope.",
+      "time": {
+        "start_parameter": "transact-from",
+        "end_parameter": "transact-to",
+        "format": "date",
+        "timezone": null,
+        "max_days": 1,
+        "basis": "Native transaction query date; source timezone and partition boundaries are not qualified."
+      }
+    }
+  ]
 }

@@ -314,5 +314,30 @@
       "title": "Filter the saved order scope locally",
       "command": "dogopencli payment list ptr.orders --order-status FUND_OUT_SUC --limit 0"
     }
+  ],
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "ptrOrderId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Exact nonblank native string ptrOrderId, distinct from caseId; native gmtModified is required integer milliseconds. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "updated-from",
+        "end_parameter": "updated-to",
+        "format": "offset_datetime",
+        "timezone": "UTC",
+        "end_inclusive": false,
+        "partitionable": true,
+        "follow_supported": true,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Native gmtModified update interval, inclusive start and exclusive end; not event-time history."
+      },
+      "version_field": "gmtModified",
+      "version_kind": "number"
+    }
   ]
 }

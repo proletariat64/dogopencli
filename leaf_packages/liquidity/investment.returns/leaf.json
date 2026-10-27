@@ -119,5 +119,17 @@
         }
       }
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "investmentNo"
+      ],
+      "scope_parameters": [],
+      "evidence": "One assembled root per native investment parent in the union of the two acquired source scopes. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "unsupported_reason": "Parent investmentNo contains children from two independent accrual/settlement windows. Merging parent snapshots would discard children; child-level durable identity/publication needs qualification."
+    }
+  ]
 }

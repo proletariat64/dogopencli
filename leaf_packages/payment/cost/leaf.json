@@ -166,5 +166,17 @@
         "itemId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "itemId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native itemId identifies each independent fee specification; preserve distinct IDs even for the same channel. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

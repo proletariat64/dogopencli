@@ -162,5 +162,17 @@
         "groupId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "groupId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native string groupId; leading zeros and long digit strings are retained. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

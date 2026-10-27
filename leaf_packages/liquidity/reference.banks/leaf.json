@@ -84,5 +84,17 @@
         "bankId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "bankId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native bankId identifies a bank reference record; no synthetic identity is created. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

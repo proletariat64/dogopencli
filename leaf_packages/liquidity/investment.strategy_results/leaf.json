@@ -102,7 +102,7 @@
     "Qualified request widths are 5000 and 10; neither is a measured backend maximum. Native pageSize=0 metadata is a placeholder, not a request-width echo; completeness uses native total and validated native identities.",
     "Only one task variant is acquired per invocation. Every row must match taskType and native triggerDate must lie in the GMT+08 business-day window. Result time and capture time are not trigger-date bounds.",
     "Native values, precision, unknown fields, operation logs, nested structures, nulls and array order are retained. A recommendation or adoption status does not prove investment execution or realized return.",
-    "Only complete nonempty refresh publishes. Empty, failed or incomplete refresh preserves previous saved data; live does not publish. No runtime Duckdog import is introduced.",
+    "Only complete nonempty refresh publishes. Empty, failed or incomplete refresh preserves previous saved data; live does not publish. Durable publication requires explicit sync under the declared acquisition contract.",
     "Get POST form /api/increment/decision/task/taskDetail.json sends only taskId. Required task-type validates returned taskType without sending that field. Returned taskId must match lookup.",
     "Get preserves the complete native root and publishes no cache; separately queried children remain unqueried. --live --with-detail composes only selected List rows atomically and preserves saved List data."
   ],
@@ -134,5 +134,65 @@
         "id"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "fund-decision-task",
+      "mode": "runtime",
+      "key_fields": [
+        "taskType",
+        "id"
+      ],
+      "scope_parameters": [
+        "task-type"
+      ],
+      "evidence": "Native taskType and id; acquisition and cache scopes fix taskType, so SDK deduplication uses native id without deriving a hash. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "from-date",
+        "end_parameter": "to-date",
+        "format": "date",
+        "timezone": "Asia/Shanghai",
+        "partitionable": true,
+        "follow_supported": true,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive native GMT+08 trigger business day, YYYY-MM-DD or YYYYMMDD."
+      },
+      "match": {
+        "task-type": "FUND_DECISION_TASK"
+      },
+      "parameters": {
+        "task-type": "FUND_DECISION_TASK"
+      }
+    },
+    {
+      "variant": "product-decision-task",
+      "mode": "runtime",
+      "key_fields": [
+        "taskType",
+        "id"
+      ],
+      "scope_parameters": [
+        "task-type"
+      ],
+      "evidence": "Native taskType and id; acquisition and cache scopes fix taskType, so SDK deduplication uses native id without deriving a hash. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "from-date",
+        "end_parameter": "to-date",
+        "format": "date",
+        "timezone": "Asia/Shanghai",
+        "partitionable": true,
+        "follow_supported": true,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive native GMT+08 trigger business day, YYYY-MM-DD or YYYYMMDD."
+      },
+      "match": {
+        "task-type": "PRODUCT_DECISION_TASK"
+      },
+      "parameters": {
+        "task-type": "PRODUCT_DECISION_TASK"
+      }
+    }
+  ]
 }

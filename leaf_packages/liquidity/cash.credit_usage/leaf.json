@@ -75,5 +75,16 @@
         "id"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "observation",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native string or integer id, preserving identity types; nested members use parent id and member id. Complete acquisition uses the declared native List collector and its scope/completeness evidence."
+    }
+  ]
 }

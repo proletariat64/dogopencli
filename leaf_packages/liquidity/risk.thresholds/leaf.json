@@ -103,5 +103,17 @@
         "benchmarkId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "benchmarkId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native benchmarkId identifies each record; no synthetic identity is created. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

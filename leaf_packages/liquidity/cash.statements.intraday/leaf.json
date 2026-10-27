@@ -131,5 +131,34 @@
         "bankTransNo"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "bankTransNo"
+      ],
+      "scope_parameters": [
+        "inst-id",
+        "account-alias",
+        "currency"
+      ],
+      "evidence": "Typed native bank transaction number within the acquired account/currency/date scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "from-date",
+        "end_parameter": "to-date",
+        "format": "date",
+        "timezone": "Asia/Shanghai",
+        "partitionable": true,
+        "follow_supported": true,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive value date start, YYYY-MM-DD or YYYYMMDD."
+      },
+      "parameters": {
+        "timezone": "GMT+08"
+      }
+    }
+  ]
 }

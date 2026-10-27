@@ -159,5 +159,17 @@
         "incrementProductId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "incrementProductId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native nonblank string physical product ID. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

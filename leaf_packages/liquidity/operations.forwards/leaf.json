@@ -77,5 +77,16 @@
         "orderNo"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "observation",
+      "key_fields": [
+        "orderNo"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native orderNo identifies rows within the exact acquisition scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence."
+    }
+  ]
 }

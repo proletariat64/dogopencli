@@ -132,7 +132,7 @@
     "Fixed GUAPW3SG tenant and EXPECTED_BAL_NOT_ENOUGH warning reason. Only the verified account-outflow query is used.",
     "Warning bounds require explicit offsets and normalize to UTC milliseconds. Native warningTime, warningLocalTime, timezone and updateTime remain unchanged.",
     "Width 1000 is qualified for complete acquisition, not a backend maximum. Native row totals govern offset paging; short-page recovery is not enabled.",
-    "Full native rows, unknown fields, nested values, nulls, blanks, zeros, precision and response order remain unchanged. No amount scaling, risk classification, account-capacity join, notification change or Duckdog import.",
+    "Full native rows, unknown fields, nested values, nulls, blanks, zeros, precision and response order remain unchanged. No amount scaling, risk classification, account-capacity join or notification change. Durable publication requires explicit sync.",
     "Native entitys and bankIds arrays define the saved source scope; returned rows must match supplied exact values. No ownership resolution or offline widening.",
     "Native aliasNames can silently broaden an unknown alias to all rows; that selector is excluded. Currency selector mapping remains unqualified and is excluded.",
     "Native warningTime uses the qualified service clock +08:00 for bound validation. Account-local warningLocalTime is preserved separately, without output conversion.",
@@ -163,5 +163,28 @@
     },
     "max_pages": 100,
     "budget_seconds": 300
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "monitorNo"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native monitorNo identifies one warning observation in the exact bounded source scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "warning-from",
+        "end_parameter": "warning-to",
+        "format": "offset_datetime",
+        "timezone": "Asia/Shanghai",
+        "partitionable": true,
+        "follow_supported": true,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive warning start instant: ISO8601 timestamp with explicit offset, at most millisecond precision.",
+        "precision": "millisecond"
+      }
+    }
+  ]
 }

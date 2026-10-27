@@ -106,5 +106,30 @@
         "orderNo"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "orderNo"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native orderNo identifies rows within the exact acquisition scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "from-date",
+        "end_parameter": "to-date",
+        "format": "date",
+        "timezone": "Asia/Shanghai",
+        "partitionable": true,
+        "follow_supported": true,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive native trading-date start, YYYY-MM-DD."
+      },
+      "parameters": {
+        "timezone": "GMT+08"
+      }
+    }
+  ]
 }

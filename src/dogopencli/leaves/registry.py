@@ -147,6 +147,7 @@ MANIFEST_SCHEMA = {
         "domain": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
         "name": {"type": "string", "pattern": f"^{_NAME}$"},
         "adapter": {"type": "string"},
+        "sync": {"type": "array", "items": {"type": "object"}},
         "operations": {
             "type": "object",
             "minProperties": 1,
@@ -451,6 +452,9 @@ def _validate_custom_queries(domain: str, operation: dict) -> None:
 
 def validate_manifest(value: Any) -> None:
     _validate(value, MANIFEST_SCHEMA, "leaf")
+    from ..sync_contracts import profiles
+
+    profiles(value)
     for action, operation in value["operations"].items():
         if operation.get("execution", "standard") == "custom":
             supported = MANIFEST_SCHEMA["properties"]["operations"]["properties"][
