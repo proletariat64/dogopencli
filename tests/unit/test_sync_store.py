@@ -234,6 +234,7 @@ def test_interrupted_row_stream_rolls_back_and_restart_succeeds(tmp_path):
         with pytest.raises(KeyboardInterrupt):
             publish(store, item, interrupted())
         assert store.records(item["id"]) == [{"id": "old"}]
+        assert not list(tmp_path.glob(".sync-stage-*"))
     with SyncStore(path) as store:
         publish(store, item, [{"id": "new"}])
         assert store.records(item["id"]) == [{"id": "new"}]
