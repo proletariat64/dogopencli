@@ -395,13 +395,14 @@ class SyncStore:
                 self.db.execute("SELECT count(*) FROM sync_values").fetchone()[0]
                 - existing
             )
+            unchanged = self.db.execute(
+                f"SELECT count(*) FROM sync_values v JOIN {_SCHEMA}.records "
+                f"r ON v.key=r.key "
+                "WHERE r.namespace=? AND v.record=r.record",
+                [namespace],
+            ).fetchone()[0]
+            updated = existing - unchanged
             if mode == "runtime":
-                unchanged = self.db.execute(
-                    f"SELECT count(*) FROM sync_values v JOIN {_SCHEMA}.records "
-                    f"r ON v.key=r.key "
-                    "WHERE r.namespace=? AND v.record=r.record",
-                    [namespace],
-                ).fetchone()[0]
                 if version_field:
                     invalid = self.db.execute(
                         f"SELECT 1 FROM sync_values v JOIN {_SCHEMA}.records r "
