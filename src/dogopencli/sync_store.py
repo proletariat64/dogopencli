@@ -5,11 +5,13 @@ metadata schema and never adopts external relations. Acquisition callers must
 supply complete authoritative evidence; records and coverage commit together.
 """
 
+import json
 from collections.abc import Iterable
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import uuid4
 
@@ -87,7 +89,7 @@ class SyncStore:
             self.db.execute("COMMIT")
         except BaseException as error:
             self.db.execute("ROLLBACK")
-            if isinstance(error, duckdb.Error):
+            if isinstance(error, (duckdb.Error, OSError)):
                 raise _error(
                     "Duckdog sync transaction failed; prior data preserved"
                 ) from error
@@ -337,35 +339,13 @@ class SyncStore:
                         "outside sync ownership"
                     )
                 self._verified_relations.add(relation)
-            self.db.execute(
-                "CREATE OR REPLACE TEMP TABLE sync_stage "
-                "(key VARCHAR, record VARCHAR, version VARCHAR)"
+            count = self._load_stage(
+                rows,
+                key_fields,
+                version_field,
+                version_kind,
+                allow_empty_key_components,
             )
-            batch = []
-            count = 0
-            for row in rows:
-                if not isinstance(row, dict) or any(
-                    k not in row
-                    or (not allow_empty_key_components and row[k] in (None, ""))
-                    for k in key_fields
-                ):
-                    raise CliError(
-                        INVALID_RESPONSE, "Sync row has missing native identity"
-                    )
-                version = (
-                    self._version(row.get(version_field), version_kind)
-                    if version_field
-                    else None
-                )
-                batch.append(
-                    (canonical([row[k] for k in key_fields]), canonical(row), version)
-                )
-                count += 1
-                if len(batch) == 1000:
-                    self._stage(batch)
-                    batch = []
-            if batch:
-                self._stage(batch)
             conflict = self.db.execute(
                 "SELECT 1 FROM sync_stage GROUP BY key "
                 "HAVING count(DISTINCT record)>1 LIMIT 1"
@@ -545,11 +525,65 @@ class SyncStore:
                 INVALID_RESPONSE, "Invalid qualified source version"
             ) from error
 
-    def _stage(self, batch):
-        self.db.execute(
-            "INSERT INTO sync_stage SELECT unnest(?), unnest(?), unnest(?)",
-            [[row[i] for row in batch] for i in range(3)],
-        )
+    def _load_stage(
+        self,
+        rows: Iterable[dict],
+        key_fields: tuple[str, ...],
+        version_field: str | None,
+        version_kind: str,
+        allow_empty_key_components: bool,
+    ) -> int:
+        """Stream exact JSON strings through a private file, not per-row DB binds.
+
+        This staging file is temporary, not a crash-resumption checkpoint. Only
+        the surrounding transaction can publish records or complete coverage.
+        """
+        count = 0
+        maximum_line = 1
+        with TemporaryDirectory(prefix=".sync-stage-", dir=self.path.parent) as folder:
+            location = Path(folder) / "records.ndjson"
+            with location.open("x", encoding="utf-8") as output:
+                location.chmod(0o600)
+                for row in rows:
+                    if not isinstance(row, dict) or any(
+                        k not in row
+                        or (not allow_empty_key_components and row[k] in (None, ""))
+                        for k in key_fields
+                    ):
+                        raise CliError(
+                            INVALID_RESPONSE, "Sync row has missing native identity"
+                        )
+                    version = (
+                        self._version(row.get(version_field), version_kind)
+                        if version_field
+                        else None
+                    )
+                    line = json.dumps(
+                        {
+                            "key": canonical([row[k] for k in key_fields]),
+                            "record": canonical(row),
+                            "version": version,
+                        },
+                        ensure_ascii=True,
+                    )
+                    output.write(line + "\n")
+                    maximum_line = max(maximum_line, len(line))
+                    count += 1
+            if count:
+                self.db.execute(
+                    "CREATE OR REPLACE TEMP TABLE sync_stage AS "
+                    "SELECT key, record, version FROM read_json(?, "
+                    "format='newline_delimited', "
+                    "columns={key: 'VARCHAR', record: 'VARCHAR', version: 'VARCHAR'}, "
+                    "maximum_object_size=?)",
+                    [str(location), max(1048576, maximum_line + 1)],
+                )
+            else:
+                self.db.execute(
+                    "CREATE OR REPLACE TEMP TABLE sync_stage "
+                    "(key VARCHAR, record VARCHAR, version VARCHAR)"
+                )
+        return count
 
     @staticmethod
     def status(path: Path) -> dict[str, Any]:
