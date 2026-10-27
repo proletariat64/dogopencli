@@ -144,5 +144,17 @@
         "slaConfigId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "slaConfigId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Nonblank native string slaConfigId; ASCII numeric IDs ordered by numeric value then original string, followed by other IDs lexically. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

@@ -187,12 +187,51 @@
     "Amounts and gmtModified are mutable values, excluded from identity. Same-key duplicates retain diagnostics and conservative publication policy; conflicting values are not silently declared complete.",
     "Null gmtCreate means no valid forecast value exists yet, even if amount is present. Retain that point and raw amounts, nulls and all unknown/nested fields without manufacturing a valid flag or dropping it.",
     "Empty timeZone has owner-confirmed UTC+8 business meaning; raw JSON stays empty. Millisecond timestamps stay native because general SDK currently has no declarative time formatting.",
-    "Complete nonempty refresh publishes; offline replays its own saved scope. Live does not publish and failed/empty refresh preserves the prior capture. No legacy runtime or new Duckdog import."
+    "Complete nonempty refresh publishes; offline replays its own saved scope. Live does not publish and failed/empty refresh preserves the prior capture. No legacy runtime. Durable publication requires explicit sync."
   ],
   "examples": [
     {
       "title": "Read native forecast points",
       "command": "dogopencli liquidity list forecast.cashflows --live --account-alias ACCOUNT --currency USD --inst-id ENTITY --from-date 20261015 --to-date 20261015 --require-complete --limit 0"
+    }
+  ],
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "entity",
+        "bankId",
+        "bankAccountAliasName",
+        "bankAccountNo",
+        "accountType",
+        "currency",
+        "bankAccountFlowDateSourceType",
+        "fundDirection",
+        "expectValueDateTime",
+        "extBizType",
+        "subBizType",
+        "originalBizNo",
+        "gmtCreate"
+      ],
+      "scope_parameters": [
+        "inst-id",
+        "account-alias",
+        "currency"
+      ],
+      "evidence": "Owner-approved full business dimensions plus native gmtCreate distinguish coexisting forecast models. Null creation means no valid forecast so far, retained unchanged. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "from-date",
+        "end_parameter": "to-date",
+        "format": "compact_date",
+        "timezone": "Asia/Shanghai",
+        "partitionable": true,
+        "follow_supported": true,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive native forecast target day YYYYMMDD."
+      },
+      "allow_empty_key_components": true
     }
   ]
 }

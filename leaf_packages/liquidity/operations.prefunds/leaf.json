@@ -116,5 +116,25 @@
         "id"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "observation",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native id identifies rows within the exact acquisition scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "parameters": {
+        "status": [
+          "APPROVED",
+          "CLOSED",
+          "SUBMITTED",
+          "REJECTED",
+          "CLOSED_SUBMITTED"
+        ]
+      }
+    }
+  ]
 }

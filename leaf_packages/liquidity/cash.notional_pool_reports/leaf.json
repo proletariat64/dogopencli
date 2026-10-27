@@ -130,5 +130,20 @@
         "valueDate"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "cashPoolName",
+        "aliasName",
+        "currency",
+        "valueDate"
+      ],
+      "scope_parameters": [],
+      "evidence": "Reviewed native pool/account-alias/currency/value-date tuple identifies one notional balance observation; balance updates retain identity. Native id is retained even when blank. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "unsupported_reason": "Native rows depend on the requested range. The same row identity does not establish reusable daily observations; authoritative historical merge semantics need qualification."
+    }
+  ]
 }

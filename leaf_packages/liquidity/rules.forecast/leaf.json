@@ -59,5 +59,17 @@
         "ruleId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "ruleId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native ruleId identifies each forecast rule. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

@@ -117,5 +117,17 @@
         "aliasName"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "aliasName"
+      ],
+      "scope_parameters": [],
+      "evidence": "Nonblank native string aliasName; native arrival order is retained. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

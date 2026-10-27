@@ -79,12 +79,36 @@
     "Each native child retains its exact request association in acquisition evidence; absent native identity echoes remain absent, and contradictory provided context fails. Child success and occurrence arrivals do not replace base coverage or prove source atomicity.",
     "Native zero-balance strings 0.0/0.00 use request value 0 for metrics only, matching the existing binding; output forecastBalance is unchanged.",
     "All required inquiries share the existing 303-physical-request and 300-second operation budgets, including retries. Business/auth/transport/schema/binding failures abort without a successful prefix or publication.",
-    "Live never publishes. Incomplete, failed and successful-empty refreshes preserve the previous compatible capture under host policy. Changed adapter contracts reject old summary-only captures; no cache migration or child fallback is provided. No public Get, new leaf, task execution or Duckdog import is introduced."
+    "Live never publishes. Incomplete, failed and successful-empty refreshes preserve the previous compatible capture under host policy. Changed adapter contracts reject old summary-only captures; no cache migration or child fallback is provided. No public Get, new leaf or task execution is introduced. Durable publication requires explicit sync."
   ],
   "examples": [
     {
       "title": "Read one bounded accuracy scope",
       "command": "dogopencli liquidity list forecast.accuracy --live --account-alias ACCOUNT --record-date 2026-10-21 --limit 0"
+    }
+  ],
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "observation",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [
+        "account-alias"
+      ],
+      "evidence": "Native nonempty base record id; every id retains its independently request-bound metrics. Complete acquisition uses the declared native List collector and its scope/completeness evidence. Each dated result is a snapshot of its selected query day; returned row dates are not the snapshot identity.",
+      "time": {
+        "start_parameter": "record-date",
+        "end_parameter": "record-date",
+        "format": "date",
+        "timezone": null,
+        "partitionable": false,
+        "follow_supported": false,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Native creation-query day YYYY-MM-DD; distinct from returned valueDate/baseValueDate."
+      }
     }
   ]
 }

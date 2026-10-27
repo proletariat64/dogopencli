@@ -125,5 +125,60 @@
       "title": "Source daily observations",
       "command": "dogopencli liquidity list cash.balances --live --entity ALIPAYGM --account-alias ACCOUNT --from-date 2026-10-01 --to-date 2026-10-07 --require-complete"
     }
+  ],
+  "sync": [
+    {
+      "variant": "latest",
+      "mode": "observation",
+      "key_fields": [
+        "balId"
+      ],
+      "scope_parameters": [
+        "entity",
+        "account-alias"
+      ],
+      "absent": [
+        "from-date",
+        "to-date"
+      ],
+      "parameters": {
+        "entity": [
+          "ANY"
+        ]
+      },
+      "evidence": "Latest native balId snapshots. Current entity selector is frozen; no historical ownership claim."
+    },
+    {
+      "variant": "daily",
+      "mode": "runtime",
+      "key_fields": [
+        "entity",
+        "aliasName",
+        "currency",
+        "statisticalDate"
+      ],
+      "scope_parameters": [],
+      "evidence": "Complete daily source queries with current frozen roster attribution; native entity/account/currency/statisticalDate identity. Acquisition reuses native at-most-30-alias and 7-day chunks.",
+      "time": {
+        "start_parameter": "from-date",
+        "end_parameter": "to-date",
+        "format": "date",
+        "timezone": "Asia/Shanghai",
+        "partitionable": true,
+        "follow_supported": true,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive daily start YYYY-MM-DD or YYYYMMDD; requires to-date."
+      },
+      "parameters": {
+        "entity": [
+          "ANY"
+        ]
+      },
+      "present": [
+        "from-date",
+        "to-date"
+      ]
+    }
   ]
 }

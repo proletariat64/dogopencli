@@ -49,7 +49,7 @@
     "Both explicit UTC trigger bounds are required; Z and numeric offsets normalize to native UTC whole seconds. Equal bounds select one entire second; the upper bound includes .999 milliseconds. Native epoch integers and null actual trigger times remain unchanged.",
     "Exactly one qualified pageSize5000 response with native total; this is not a measured maximum. Totals above5000, duplicate IDs or count deficits fail strict publication; narrow the trigger range instead of using unstable paging.",
     "Only the assigned ten-field summary projection is published: id, ruleId, executeStatus, createdOrder, bizNo, orderStatus, expectTriggerTime, realTriggerTime and optional gmtCreate/gmtModified. Amounts, aliases, operators, free text and environment metadata are excluded; ruleId is not row identity.",
-    "Bare offline List replays saved trigger scope; failures and complete-empty refresh preserve prior nonempty cache under standard host policy. No Get, with-detail or runtime Duckdog import contract."
+    "Bare offline List replays saved trigger scope; failures and complete-empty refresh preserve prior nonempty cache under standard host policy. No Get or with-detail. Durable publication requires explicit sync."
   ],
   "examples": [
     {
@@ -74,5 +74,27 @@
         "id"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native JSON integer id, never a business-reference substitution or synthetic key. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "trigger-from",
+        "end_parameter": "trigger-to",
+        "format": "offset_datetime",
+        "timezone": "UTC",
+        "partitionable": true,
+        "follow_supported": true,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive expected-trigger UTC lower second, YYYY-MM-DDTHH:mm:ssZ or explicit numeric offset normalized to UTC."
+      }
+    }
+  ]
 }

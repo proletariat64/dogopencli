@@ -95,5 +95,18 @@
   ],
   "dataset": {
     "relation": "liquidity_reference_blacklist_bank"
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "bankId",
+        "bankSwiftCode"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native (bankId, bankSwiftCode); empty native Swift is preserved as a literal key component. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

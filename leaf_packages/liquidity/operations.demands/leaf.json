@@ -111,5 +111,27 @@
         "taskId"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "taskId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native taskId identifies one returned record within the tenant and exact acquisition scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "execute-from",
+        "end_parameter": "execute-to",
+        "format": "datetime",
+        "timezone": null,
+        "partitionable": false,
+        "follow_supported": false,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive native execution-time lower bound YYYY-MM-DDTHH:mm:ss, without an offset; source timezone unknown."
+      }
+    }
+  ]
 }

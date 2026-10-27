@@ -61,7 +61,7 @@
     "JSON POST /queryStrategyBenchmarkList.json; fixed tenant GUAPW3SG; rowStart offsets of width 5000; data.data and fixed data.totalCount.",
     "Native fields, amounts, rates, nulls, unknown fields and response order are retained without conversion.",
     "The host List SDK deduplicates native identities and uses the last arrival for conflicting records; conflicts or count gaps remain incomplete. Only complete nonempty refresh publishes; empty, failed or incomplete refresh preserves the previous snapshot. Live never publishes.",
-    "Runtime/date-partition Duckdog import has no supported contract for this leaf; installation initializes an empty binding only.",
+    "Installation initializes an empty binding only; explicit sync uses the declared acquisition and publication policy.",
     "Identity is effectiveDate, strategyBenchmarkType, currency and colorType; blank native id is retained. Values are native percent strings without scaling.",
     "Fixed timeZone=GMT+08; valueDateStart/End bound effectiveDate (YYYYMMDD). Full native fields are retained; no synthetic primaryId is generated."
   ],
@@ -91,5 +91,30 @@
         "colorType"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "runtime",
+      "key_fields": [
+        "effectiveDate",
+        "strategyBenchmarkType",
+        "currency",
+        "colorType"
+      ],
+      "scope_parameters": [],
+      "evidence": "Native record identity: effectiveDate, strategyBenchmarkType, currency, colorType. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "time": {
+        "start_parameter": "from-date",
+        "end_parameter": "to-date",
+        "format": "date",
+        "timezone": "Asia/Shanghai",
+        "partitionable": true,
+        "follow_supported": true,
+        "max_days": 1,
+        "overlap_days": 1,
+        "basis": "Inclusive native business date start (YYYY-MM-DD)."
+      }
+    }
+  ]
 }

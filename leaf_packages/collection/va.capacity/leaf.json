@@ -28,14 +28,40 @@
   "summary": "VA-rule capacity and warning counters.",
   "purpose": "Inspect native VA-rule usage and capacity without expanding rules or individual virtual accounts.",
   "fields": [
-    {"name": "ruleId", "type": "string", "meaning": "Native unique VA-rule capacity row identity."},
-    {"name": "bankAccountVaId", "type": "native JSON value", "meaning": "Bank-account VA-rule reference; not the capacity row identity."},
-    {"name": "totalCount", "type": "native JSON value", "meaning": "Native per-row capacity counter, distinct from the response pagination totalCount."},
-    {"name": "usedCount", "type": "native JSON value", "meaning": "Native used-capacity counter; never recomputed."},
-    {"name": "availableCount", "type": "native JSON value", "meaning": "Native available-capacity counter; never derived from other fields."},
-    {"name": "canUseDays", "type": "native JSON value", "meaning": "Backend remaining-days estimate; aggregation periods are unverified."}
+    {
+      "name": "ruleId",
+      "type": "string",
+      "meaning": "Native unique VA-rule capacity row identity."
+    },
+    {
+      "name": "bankAccountVaId",
+      "type": "native JSON value",
+      "meaning": "Bank-account VA-rule reference; not the capacity row identity."
+    },
+    {
+      "name": "totalCount",
+      "type": "native JSON value",
+      "meaning": "Native per-row capacity counter, distinct from the response pagination totalCount."
+    },
+    {
+      "name": "usedCount",
+      "type": "native JSON value",
+      "meaning": "Native used-capacity counter; never recomputed."
+    },
+    {
+      "name": "availableCount",
+      "type": "native JSON value",
+      "meaning": "Native available-capacity counter; never derived from other fields."
+    },
+    {
+      "name": "canUseDays",
+      "type": "native JSON value",
+      "meaning": "Backend remaining-days estimate; aggregation periods are unverified."
+    }
   ],
-  "identity": ["ruleId"],
+  "identity": [
+    "ruleId"
+  ],
   "identity_description": "Nonblank native string ruleId; id, bankAccountVaId and accountNo are not row identities.",
   "limitations": [
     "Inquiry-only POST JSON /ivostro/api/warningUseCount/pageList.json with pageNo starting at 1 and pageSize=100. Width 100 is qualified, not a measured maximum.",
@@ -47,14 +73,47 @@
     "Live performs no business-cache publication. Only complete nonempty refresh publishes; failed, empty or incomplete refresh preserves previous records and capture time. No new Duckdog import or detail crawling."
   ],
   "examples": [
-    {"title": "Acquire all capacity rows", "command": "dogopencli collection list va.capacity --live --require-complete --limit 0"},
-    {"title": "Filter a VA rule locally", "command": "dogopencli collection list va.capacity --va-rule-id RULE_ID --limit 0"},
-    {"title": "Refresh the complete native scope", "command": "dogopencli collection refresh va.capacity --require-complete"}
+    {
+      "title": "Acquire all capacity rows",
+      "command": "dogopencli collection list va.capacity --live --require-complete --limit 0"
+    },
+    {
+      "title": "Filter a VA rule locally",
+      "command": "dogopencli collection list va.capacity --va-rule-id RULE_ID --limit 0"
+    },
+    {
+      "title": "Refresh the complete native scope",
+      "command": "dogopencli collection refresh va.capacity --require-complete"
+    }
   ],
-  "dataset": {"relation": "collection_va_capacity"},
+  "dataset": {
+    "relation": "collection_va_capacity"
+  },
   "collection": {
     "provider": "general",
-    "paging": {"mode": "page_number", "page_sizes": [100], "termination": "short_page"},
-    "primary_id": {"type": "field", "fields": ["ruleId"]}
-  }
+    "paging": {
+      "mode": "page_number",
+      "page_sizes": [
+        100
+      ],
+      "termination": "short_page"
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "ruleId"
+      ]
+    }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "observation",
+      "key_fields": [
+        "ruleId"
+      ],
+      "scope_parameters": [],
+      "evidence": "Nonblank native string ruleId; id, bankAccountVaId and accountNo are not row identities. Complete acquisition uses the declared native List collector and its scope/completeness evidence."
+    }
+  ]
 }

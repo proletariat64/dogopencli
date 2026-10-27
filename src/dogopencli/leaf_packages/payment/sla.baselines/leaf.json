@@ -166,5 +166,19 @@
         "id"
       ]
     }
-  }
+  },
+  "sync": [
+    {
+      "variant": "default",
+      "mode": "settings",
+      "key_fields": [
+        "id"
+      ],
+      "scope_parameters": [
+        "biz-legal-entity"
+      ],
+      "evidence": "Native id identifies each record. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5
+    }
+  ]
 }

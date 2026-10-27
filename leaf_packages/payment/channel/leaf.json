@@ -202,5 +202,79 @@
       "title": "Filter the saved source",
       "command": "dogopencli payment list channel --financial-inst-id BANK --status ENABLE --limit 0"
     }
+  ],
+  "sync": [
+    {
+      "variant": "external",
+      "mode": "settings",
+      "key_fields": [
+        "abilityId"
+      ],
+      "scope_parameters": [
+        "payout-type"
+      ],
+      "evidence": "User-confirmed native abilityId identifies each payment channel configuration. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5,
+      "match": {
+        "payout-type": "EXTERNAL"
+      },
+      "parameters": {
+        "payout-type": "EXTERNAL"
+      }
+    },
+    {
+      "variant": "liquidity",
+      "mode": "settings",
+      "key_fields": [
+        "abilityId"
+      ],
+      "scope_parameters": [
+        "payout-type"
+      ],
+      "evidence": "User-confirmed native abilityId identifies each payment channel configuration. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5,
+      "match": {
+        "payout-type": "LIQUIDITY"
+      },
+      "parameters": {
+        "payout-type": "LIQUIDITY"
+      }
+    },
+    {
+      "variant": "manual",
+      "mode": "settings",
+      "key_fields": [
+        "abilityId"
+      ],
+      "scope_parameters": [
+        "payout-type"
+      ],
+      "evidence": "User-confirmed native abilityId identifies each payment channel configuration. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5,
+      "match": {
+        "payout-type": "MANUAL"
+      },
+      "parameters": {
+        "payout-type": "MANUAL"
+      }
+    },
+    {
+      "variant": "settlement",
+      "mode": "settings",
+      "key_fields": [
+        "abilityId"
+      ],
+      "scope_parameters": [
+        "payout-type"
+      ],
+      "evidence": "User-confirmed native abilityId identifies each payment channel configuration. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "priority": 5,
+      "match": {
+        "payout-type": "SETTLEMENT"
+      },
+      "parameters": {
+        "payout-type": "SETTLEMENT"
+      }
+    }
   ]
 }
