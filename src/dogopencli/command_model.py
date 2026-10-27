@@ -33,6 +33,10 @@ COMMON = (
     ),
     opt("version", "Show version.", "bool"),
 )
+FOLLOW = opt(
+    "follow", "Continue this runtime target through today on later sync runs.", "bool"
+)
+ALL = opt("all", "Enroll all installed qualified List variants.", "bool")
 WINDOW = (
     opt("fields", "Comma-separated record fields."),
     opt(
@@ -140,11 +144,13 @@ def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
         if operation == "get"
         else ()
     )
+    if operation == "sync":
+        host = (FOLLOW,)
     if operation == "list" and leaf.manifest["operations"].get("get", {}).get(
         "list_binding"
     ):
         host = (*host, WITH_DETAIL)
-    declared = "list" if operation == "refresh" else operation
+    declared = "list" if operation in {"refresh", "sync"} else operation
     definitions = leaf.manifest["operations"].get(declared, {}).get("parameters", [])
     parameters = tuple(
         OptionSpec(
@@ -157,7 +163,8 @@ def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
             choices=tuple(item.get("choices", ())),
             choices_declared="choices" in item,
             value_type=item["type"],
-            required=item.get("required", False) and operation in {"get", "refresh"},
+            required=item.get("required", False)
+            and operation in {"get", "refresh", "sync"},
             argument_contract={
                 "value_type": item["type"],
                 "required_for_acquisition": item.get("required", False),
@@ -290,6 +297,28 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
             "dogopencli plugins uninstall --help",
         ),
     )
+    nodes[("sync",)] = BizNode(
+        ("sync",),
+        "Synchronize saved settings and runtime targets into Duckdog.",
+        options=(ALL, *COMMON),
+        handler="sync",
+        effects={
+            **NO_EFFECTS,
+            "mutates": True,
+            "network": True,
+            "browser_required": True,
+        },
+        constraints=(
+            "Complete acquisitions only; --all explicitly enrolls installed variants.",
+        ),
+    )
+    nodes[("sync", "status")] = BizNode(
+        ("sync", "status"),
+        "Inspect local targets, freshness and gaps without writes or network.",
+        options=COMMON,
+        handler="sync",
+        effects=NO_EFFECTS,
+    )
     for domain in domain_declarations():
         nodes[(domain.id,)] = BizNode(
             (domain.id,), "Discover " + domain.id + " inquiries.", options=COMMON
@@ -297,7 +326,11 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
     for leaf in registry.leaves.values():
         for operation in (
             *leaf.manifest["operations"],
-            *(("refresh", "prune") if "list" in leaf.manifest["operations"] else ()),
+            *(
+                ("refresh", "prune", "sync")
+                if "list" in leaf.manifest["operations"]
+                else ()
+            ),
             "describe",
         ):
             path = (leaf.domain, operation, leaf.name)
@@ -382,7 +415,7 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
             nodes[path] = BizNode(
                 path,
                 summary,
-                handler="leaf",
+                handler="sync" if operation == "sync" else "leaf",
                 errors=known_errors(
                     operation, has_list="list" in leaf.manifest["operations"]
                 ),
@@ -390,8 +423,8 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
                 arguments=arguments,
                 effects={
                     "mutates": operation != "describe",
-                    "network": operation in {"get", "refresh"},
-                    "browser_required": operation in {"get", "refresh"},
+                    "network": operation in {"get", "refresh", "sync"},
+                    "browser_required": operation in {"get", "refresh", "sync"},
                     "destructive": operation == "prune",
                 },
                 effects_variants=(
@@ -545,7 +578,7 @@ def resolve(argv: list[str]) -> Invocation:
 
     host_flags = {
         flag
-        for option in (*COMMON, *WINDOW, WITH_DETAIL)
+        for option in (*COMMON, *WINDOW, WITH_DETAIL, FOLLOW, ALL)
         if option.kind == "bool"
         for flag in option.flags
     }

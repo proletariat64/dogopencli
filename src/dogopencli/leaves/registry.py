@@ -28,6 +28,8 @@ _NAME = r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*"
 _PARAMETER = r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
 _TYPES = ["string", "integer", "number", "boolean"]
 _RESERVED = {
+    "follow",
+    "all",
     "version",
     "format",
     "fields",

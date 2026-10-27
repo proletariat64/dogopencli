@@ -39,6 +39,7 @@ class SyncProfile:
     evidence: str = ""
     priority: int = 10
     allow_empty_key_components: bool = False
+    native_defaults: dict[str, Any] = field(default_factory=dict)
 
     def accepts(self, parameters: dict[str, Any]) -> bool:
         values = {key.replace("_", "-"): value for key, value in parameters.items()}
@@ -99,14 +100,22 @@ def profiles(manifest: dict[str, Any]) -> tuple[SyncProfile, ...]:
         if set(present) & set(absent):
             raise _invalid("a parameter cannot be both present and absent")
         defaults = declaration.get("parameters", {})
+        native_defaults = declaration.get("native_defaults", {})
         match = declaration.get("match", {})
-        if not isinstance(defaults, dict) or not isinstance(match, dict):
+        if not all(
+            isinstance(value, dict) for value in (defaults, native_defaults, match)
+        ):
             raise _invalid("parameters and match must be objects")
         if (
-            set(scopes) | set(present) | set(absent) | set(defaults) | set(match)
+            set(scopes)
+            | set(present)
+            | set(absent)
+            | set(defaults)
+            | set(native_defaults)
+            | set(match)
         ) - definitions.keys():
             raise _invalid("profile refers to undeclared native parameters")
-        for key, value in {**defaults, **match}.items():
+        for key, value in [*native_defaults.items(), *defaults.items(), *match.items()]:
             definition = definitions[key]
             values = value if definition.get("multiple") else [value]
             if not isinstance(values, list):
@@ -214,6 +223,7 @@ def profiles(manifest: dict[str, Any]) -> tuple[SyncProfile, ...]:
                 evidence,
                 priority,
                 empty,
+                native_defaults,
             )
         )
     return tuple(result)

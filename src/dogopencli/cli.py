@@ -54,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
     ):
         return emit_help(invocation)
     path = invocation.node.path
+    if invocation.node.handler == "sync":
+        from .sync import main as sync_main
+
+        return sync_main(invocation)
     if path[:1] in (("domain",), ("gui",)):
         from .domain_cli import main as domain_main
         from .gui import main as gui_main

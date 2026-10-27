@@ -4,6 +4,8 @@ Each installed package owns its declarations. This matrix documents source contr
 
 Records use latest-observed ordering unless a declaration explicitly names a qualified version field and representation. PTR orders alone currently declare native numeric `gmtModified` ordering. A timestamp appearing in other native rows does not establish ordering. Query date windows are coverage dimensions, not record identity namespaces.
 
+`native_defaults` records implicit adapter defaults separately from enrollment `parameters`; cash balances use ALIPAYGM for an omitted explicit entity and ANY for all-leaf enrollment. Settings namespace also retains the existing native scope contract, so a native filtered snapshot cannot erase a broader snapshot.
+
 Settings priorities place entity and account directories before dependent runtime acquisition. Native collections retain their existing component evidence and total semantics; bank rate totals count quote-date groups. Cash daily labels describe current roster attribution, not historical ownership. Forecast cashflow composite identity explicitly permits native null/empty components.
 
 | Leaf | Variant | Policy | Native key | Namespace parameters | Acquisition / limitation | Evidence |
@@ -97,7 +99,7 @@ Settings priorities place entity and account directories before dependent runtim
 | payment.channel | settlement | settings | abilityId | payout-type | Current complete settings | [native contract](../../leaf_packages/payment/channel/leaf.json) |
 | payment.cost | default | settings | itemId | native global identity within source/variant | Current complete settings | [native contract](../../leaf_packages/payment/cost/leaf.json) |
 | payment.ptr.cases | default | settings | id | native global identity within source/variant | Current complete settings | [native contract](../../leaf_packages/payment/ptr.cases/README.md) |
-| payment.ptr.orders | default | runtime | ptrOrderId | native global identity within source/variant | Following; updated-from / updated-to; UTC; exclusive upper boundary | [native contract](../../leaf_packages/payment/ptr.orders/README.md) |
+| payment.ptr.orders | default | runtime | ptrOrderId | native global identity within source/variant | Following; updated-from / updated-to; Asia/Shanghai; exclusive upper boundary | [native contract](../../leaf_packages/payment/ptr.orders/README.md) |
 | payment.rules.bank_switch | default | settings | switchNodeCode | native global identity within source/variant | Current complete settings | [native contract](../../leaf_packages/payment/rules.bank_switch/README.md) |
 | payment.rules.cost_reduction | default | settings | groupId | native global identity within source/variant | Current complete settings | [native contract](../../leaf_packages/payment/rules.cost_reduction/README.md) |
 | payment.rules.retry | default | settings | ruleId | native global identity within source/variant | Current complete settings | [native contract](../../leaf_packages/payment/rules.retry/README.md) |

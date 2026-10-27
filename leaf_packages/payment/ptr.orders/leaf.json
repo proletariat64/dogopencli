@@ -328,7 +328,7 @@
         "start_parameter": "updated-from",
         "end_parameter": "updated-to",
         "format": "offset_datetime",
-        "timezone": "UTC",
+        "timezone": "Asia/Shanghai",
         "end_inclusive": false,
         "partitionable": true,
         "follow_supported": true,
