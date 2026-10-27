@@ -190,7 +190,8 @@
           "ALIPAYGM"
         ],
         "account-alias": []
-      }
+      },
+      "unsupported_reason": "Native daily values depend on the requested range: identical date/account keys differed between repeated single-day and multi-day acquisitions. Partition-invariant historical merge semantics require source qualification."
     }
   ]
 }

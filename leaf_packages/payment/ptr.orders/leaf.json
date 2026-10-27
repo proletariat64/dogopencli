@@ -303,7 +303,7 @@
     "After full padded stability, retain start <= gmtModified < end, sorted lexically by ptrOrderId. Padded native totals and both acquisition records remain in evidence; public output count is separate.",
     "Preserve the assigned PTR field allowlist, retained debtorAmount/returnAmount money keys and productionTrialRunFundOutAbilityVO baseline keys. Unknown fields are omitted; no money normalization or derived verification interpretation.",
     "Exact local scalar/nested whole-string filters only. Live never publishes; complete nonempty refresh publishes, and failed/incomplete/empty refresh preserves the saved snapshot. Offline uses the saved window; explicit acquisition bounds require a fresh live query.",
-    "List only; no Get, execution, trial, withdrawal, approval or update action. No new Duckdog import."
+    "List only; no Get, execution, trial, withdrawal, approval or update action. Explicit sync imports qualified complete updated-time windows; List and Refresh do not import."
   ],
   "examples": [
     {

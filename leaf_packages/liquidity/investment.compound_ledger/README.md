@@ -8,7 +8,7 @@ Native fields, amounts, rates, nulls, unknown fields and response order are reta
 
 The host List SDK deduplicates native identities and uses the last arrival for conflicting records; conflicts or count gaps remain incomplete. Only complete nonempty refresh publishes; empty, failed or incomplete refresh preserves the previous snapshot. Live never publishes.
 
-Runtime/date-partition Duckdog import has no supported contract for this leaf; installation initializes an empty binding only.
+Installation initializes an empty binding. Explicit `dogopencli liquidity sync investment.compound_ledger` imports only the qualified variants and windows declared in `leaf.json`; see the [sync contract](../../../docs/agents/synchronization.md). List and Refresh do not import.
 
 Use `dogopencli liquidity list investment.compound_ledger -h` for required query parameters and `dogopencli liquidity describe investment.compound_ledger` for field descriptions.
 

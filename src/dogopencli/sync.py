@@ -1,5 +1,6 @@
 """Saved-plan orchestration for explicitly qualified durable acquisitions."""
 
+import hashlib
 from dataclasses import asdict
 from datetime import datetime, timezone
 
@@ -66,7 +67,27 @@ def _target(leaf, profile, parameters, config_file, follow=False):
             "--follow requires a qualified historical query clock",
             exit_code=2,
         )
-    native_scope = leaf.adapter.scope(parameters)
+    if profile.time is not None and profile.time.partitionable:
+        # Validate the original spelling of both boundaries in bounded native
+        # requests. A request span limit must not reject a partitionable backfill.
+        bounds = windows(
+            {"parameters": parameters, "follow": False}, profile, now(), initial=True
+        )
+        first = next(bounds)
+        last = first
+        for boundary in bounds:
+            last = boundary
+        start_key = profile.time.start_parameter.replace("-", "_")
+        end_key = profile.time.end_parameter.replace("-", "_")
+        if first == last:
+            native_scope = leaf.adapter.scope(parameters)
+        else:
+            native_scope = leaf.adapter.scope(
+                {**parameters, **first, start_key: parameters[start_key]}
+            )
+            leaf.adapter.scope({**parameters, **last, end_key: parameters[end_key]})
+    else:
+        native_scope = leaf.adapter.scope(parameters)
     if profile.mode == "settings":
         for definition in leaf.manifest["operations"]["list"]["parameters"]:
             key = definition["name"].replace("-", "_")
@@ -307,6 +328,16 @@ def execute(invocation):
         )
     with SyncStore(registry.database_path()) as store:
         for blocked in blocked_enrollments:
+            old = next(
+                (
+                    saved
+                    for saved in store.targets()
+                    if canonical(saved["identity"]) == canonical(blocked["identity"])
+                ),
+                None,
+            )
+            if old and store.coverage(old["id"]):
+                blocked = {**old, "blocked": blocked["blocked"]}
             store.save_target(blocked)
         if explicit or getattr(invocation.args, "all", False):
             previous = {
@@ -315,11 +346,27 @@ def execute(invocation):
             saved_selection = []
             for target, leaf, profile in selected:
                 old = previous.get(canonical(target["identity"]))
-                if old and not old.get("blocked") and target["follow"] and profile.time:
+                if explicit and old is None:
+                    blocked = next(
+                        (
+                            saved
+                            for saved in previous.values()
+                            if saved.get("blocked")
+                            and not store.coverage(saved["id"])
+                            and saved["leaf_id"] == target["leaf_id"]
+                            and saved["variant"] in {target["variant"], "unqualified"}
+                            and saved["namespace"]["source"]
+                            == target["namespace"]["source"]
+                        ),
+                        None,
+                    )
+                    if blocked is not None:
+                        target["id"] = blocked["id"]
+                if old and target["follow"] and profile.time:
                     from .sync_plan import parse_bound
 
                     start_key = profile.time.start_parameter.replace("-", "_")
-                    if parse_bound(
+                    if start_key in old["parameters"] and parse_bound(
                         old["parameters"][start_key], profile.time
                     ) < parse_bound(target["parameters"][start_key], profile.time):
                         target["parameters"][start_key] = old["parameters"][start_key]
@@ -457,7 +504,13 @@ def status(invocation):
         elif target.get("blocked"):
             item["state"] = "blocked"
             item["reason"] = target["blocked"]
-        elif canonical(leaf.manifest) != canonical(target["manifest"]):
+        elif (
+            canonical(leaf.manifest) != canonical(target["manifest"])
+            or hashlib.sha256(
+                (leaf.path / leaf.manifest["adapter"].split(":", 1)[0]).read_bytes()
+            ).hexdigest()
+            != target["adapter_sha256"]
+        ):
             item["state"] = "blocked"
             item["reason"] = "Leaf contract changed"
         elif target["namespace"]["source"] != _source(
