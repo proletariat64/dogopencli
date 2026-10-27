@@ -57,7 +57,8 @@ def test_settings_replace_and_status_reads_without_creating_files(tmp_path):
     with SyncStore(path) as store:
         item = target(store)
         publish(store, item, [{"id": "a", "value": 1}, {"id": "b", "value": 2}])
-        publish(store, item, [{"id": "b", "value": 3}])
+        result = publish(store, item, [{"id": "b", "value": 3}])
+        assert result["updated"] == 1
         assert store.records(item["id"]) == [{"id": "b", "value": 3}]
     report = SyncStore.status(path)
     assert report["targets"][0]["row_count"] == 1
@@ -233,6 +234,7 @@ def test_interrupted_row_stream_rolls_back_and_restart_succeeds(tmp_path):
         with pytest.raises(KeyboardInterrupt):
             publish(store, item, interrupted())
         assert store.records(item["id"]) == [{"id": "old"}]
+        assert not list(tmp_path.glob(".sync-stage-*"))
     with SyncStore(path) as store:
         publish(store, item, [{"id": "new"}])
         assert store.records(item["id"]) == [{"id": "new"}]

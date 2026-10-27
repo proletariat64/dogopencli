@@ -453,6 +453,8 @@ def test_installed_parameter_modes_follow_operation_and_local_mapping(
     doc["operations"]["get"].pop("list_binding")
     doc["operations"]["get"]["parameters"] = [parameter]
     doc["operations"]["list"]["parameters"] = [parameter]
+    # The synthetic parameter contract no longer has the SLA sync scope.
+    doc.pop("sync")
     path.write_text(json.dumps(doc))
     for operation, expected in (
         ("list", {"cache", "live"}),
