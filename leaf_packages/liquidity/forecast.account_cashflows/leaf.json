@@ -204,7 +204,7 @@
         "entity",
         "bank"
       ],
-      "evidence": "Native identity within the exact saved account/date scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "evidence": "Native identity within the exact saved account/date scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence. Sync requires explicit entity and bank; implicit ownership resolution is not a durable namespace.",
       "time": {
         "start_parameter": "from-date",
         "end_parameter": "to-date",
@@ -215,7 +215,11 @@
         "max_days": 1,
         "overlap_days": 1,
         "basis": "Inclusive native value date YYYYMMDD."
-      }
+      },
+      "present": [
+        "entity",
+        "bank"
+      ]
     }
   ]
 }

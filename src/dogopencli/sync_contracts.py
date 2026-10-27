@@ -44,8 +44,18 @@ class SyncProfile:
     def accepts(self, parameters: dict[str, Any]) -> bool:
         values = {key.replace("_", "-"): value for key, value in parameters.items()}
         return (
-            all(values.get(key) == value for key, value in self.match.items())
-            and all(values.get(key) is not None for key in self.present)
+            all(
+                set(values[key]) == set(value)
+                if isinstance(value, list) and isinstance(values.get(key), list)
+                else values.get(key) == value
+                for key, value in self.match.items()
+            )
+            and all(
+                values.get(key) is not None
+                and (not isinstance(values[key], str) or bool(values[key].strip()))
+                and (not isinstance(values[key], list) or bool(values[key]))
+                for key in self.present
+            )
             and all(values.get(key) is None for key in self.absent)
         )
 

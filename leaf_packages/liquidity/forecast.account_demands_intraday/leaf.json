@@ -150,7 +150,7 @@
   "sync": [
     {
       "variant": "default",
-      "mode": "runtime",
+      "mode": "observation",
       "key_fields": [
         "statisticalDate"
       ],
@@ -159,7 +159,7 @@
         "entity",
         "bank"
       ],
-      "evidence": "Native identity within the exact saved account/date scope. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
+      "evidence": "Native statisticalDate is an HH:mm slot, not a calendar day. Preserve complete 96-slot account snapshots as observation generations with requested date provenance; explicit entity and bank bind ownership.",
       "time": {
         "start_parameter": "from-date",
         "end_parameter": "to-date",
@@ -170,7 +170,11 @@
         "max_days": 1,
         "overlap_days": 1,
         "basis": "Inclusive native value date YYYYMMDD."
-      }
+      },
+      "present": [
+        "entity",
+        "bank"
+      ]
     }
   ]
 }

@@ -97,8 +97,7 @@
         "currency"
       ],
       "scope_parameters": [
-        "account-alias",
-        "currency"
+        "account-alias"
       ],
       "evidence": "Native account alias and currency jointly identify each buffer row. Complete acquisition uses the declared native List collector and its scope/completeness evidence."
     }

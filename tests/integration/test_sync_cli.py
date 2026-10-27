@@ -241,8 +241,9 @@ def test_all_enrolls_settings_and_reports_unsupported_without_hiding_success(
     assert run_cli(["sync"])[0] == 1
 
 
+@pytest.mark.parametrize("config_exists", [True, False])
 def test_all_bootstraps_any_from_owned_entities_without_external_selector(
-    run_cli, pilots, tmp_path
+    run_cli, pilots, tmp_path, monkeypatch, config_exists
 ):
 
     from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
@@ -307,6 +308,10 @@ def test_all_bootstraps_any_from_owned_entities_without_external_selector(
         }
 
     pilots.business_handler = handler
+    if not config_exists:
+        monkeypatch.setenv("DOGOPENCLI_CHROME_PROFILE", str(tmp_path / "chrome"))
+        monkeypatch.setenv("DOGOPENCLI_CHROME_CDP_URL", "http://127.0.0.1:9222")
+        (tmp_path / "config.toml").unlink()
     code, output, _ = run_cli(["sync", "--all"])
     assert code == 0, output
     results = json.loads(output)["data"]["targets"]
@@ -527,7 +532,7 @@ def test_settings_query_scopes_cannot_mix_one_identity_family(
         ["payment", "sync", "sla.baselines", "--biz-category", "NATIVE"]
     )
     assert code == 1, output
-    assert "one authoritative settings query scope" in output
+    assert "one authoritative snapshot query scope" in output
     with duckdb.connect(str(tmp_path / "duckdog.duckdb"), read_only=True) as db:
         assert db.execute("SELECT _record FROM payment_sla_baselines").fetchall() == [
             ('{"id":"shared","value":"old"}',)
@@ -807,3 +812,60 @@ def test_all_preserves_historical_contract_evidence(
     assert "SYNC_CONTRACT_CHANGED" in output
     assert SyncStore.status(tmp_path / "duckdog.duckdb") == before
     assert len(cash_sync.business_requests) == requests
+
+
+def test_all_reports_broken_installed_leaf_and_commits_independent_success(
+    run_cli, pilots, tmp_path
+):
+    from test_leaf_pilots_cli import native_page
+
+    for leaf in ("fx.trade", "liquidity.reference.entities"):
+        assert run_cli(["plugins", "uninstall", leaf])[0] == 0
+    adapter = tmp_path / "plugins/collection/cost/adapter.py"
+    adapter.write_text(adapter.read_text() + "\nraise RuntimeError('broken adapter')\n")
+    pilots.business_script.append(native_page("payment", [{"id": "P"}]))
+    code, output, _ = run_cli(["sync", "--all"])
+    assert code == 1, output
+    targets = json.loads(output)["data"]["targets"]
+    assert {(t["leaf"], t["state"]) for t in targets} == {
+        ("payment.sla.baselines", "complete"),
+        ("collection.cost", "failed"),
+    }
+
+
+def test_explicit_follow_only_acquires_requested_range_and_retains_plan_start(
+    run_cli, cash_sync, monkeypatch
+):
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(
+        "dogopencli.sync.now", lambda: datetime(2026, 10, 21, tzinfo=timezone.utc)
+    )
+    args = ["liquidity", "sync", "cash.balances", "--follow"]
+    assert (
+        run_cli([*args, "--from-date", "2026-10-01", "--to-date", "2026-10-01"])[0] == 0
+    )
+    cash_sync.business_requests.clear()
+    code, output, _ = run_cli(
+        [*args, "--from-date", "2026-10-20", "--to-date", "2026-10-21"]
+    )
+    assert code == 0, output
+    assert [
+        r["queryStartDate"] for r in cash_sync.business_requests if "balanceType" in r
+    ] == ["20261020", "20261021"]
+    target = json.loads(run_cli(["sync", "status"])[1])["data"]["targets"][0]
+    assert target["parameters"]["from_date"] == "2026-10-01"
+    assert target["gaps"]
+
+
+def test_payment_entity_selection_cannot_overlap_full_snapshot(run_cli, pilots):
+    from test_leaf_pilots_cli import native_page
+
+    pilots.business_script.append(native_page("payment", [{"id": "P"}]))
+    assert run_cli(["payment", "sync", "sla.baselines"])[0] == 0
+    pilots.business_script.append(native_page("payment", [{"id": "P", "version": 2}]))
+    code, output, _ = run_cli(
+        ["payment", "sync", "sla.baselines", "--biz-legal-entity", "ENTITY"]
+    )
+    assert code == 1, output
+    assert "different scope could overlap" in output

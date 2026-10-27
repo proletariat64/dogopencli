@@ -106,7 +106,8 @@
       ],
       "scope_parameters": [],
       "evidence": "Native (bankId, bankSwiftCode); empty native Swift is preserved as a literal key component. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
-      "priority": 5
+      "priority": 5,
+      "allow_empty_key_components": true
     }
   ]
 }

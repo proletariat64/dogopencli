@@ -128,8 +128,7 @@
         "id"
       ],
       "scope_parameters": [
-        "category",
-        "strategy-type"
+        "category"
       ],
       "evidence": "Native physical id identifies each returned rule record; logical rule IDs and versions remain separate. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
       "priority": 5,
@@ -147,8 +146,7 @@
         "id"
       ],
       "scope_parameters": [
-        "category",
-        "strategy-type"
+        "category"
       ],
       "evidence": "Native physical id identifies each returned rule record; logical rule IDs and versions remain separate. Complete acquisition uses the declared native List collector and its scope/completeness evidence.",
       "priority": 5,

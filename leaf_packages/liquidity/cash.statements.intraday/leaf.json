@@ -158,7 +158,8 @@
       },
       "parameters": {
         "timezone": "GMT+08"
-      }
+      },
+      "unsupported_reason": "Native bankTransNo is qualified only within a query date scope; valueDate is optional, so cross-day durable identity is unqualified."
     }
   ]
 }
