@@ -198,6 +198,23 @@ class SyncStore:
     def save_target(self, target: dict) -> dict:
         self._binding(target)
         document = dict(target)
+        publication_fields = ("mode", "key_fields", "version_field", "version_kind")
+        if "profile" in document:
+            for previous in self.targets():
+                if (
+                    self._namespace(previous) == self._namespace(document)
+                    and "profile" in previous
+                    and any(
+                        previous["profile"].get(field) != document["profile"].get(field)
+                        for field in publication_fields
+                    )
+                    and self.coverage(previous["id"])
+                ):
+                    raise CliError(
+                        "SYNC_CONTRACT_CHANGED",
+                        "Durable identity or version policy changed; an explicit "
+                        "data migration is required before publishing",
+                    )
         identity = canonical(
             document.get("identity", {k: v for k, v in document.items() if k != "id"})
         )
@@ -320,6 +337,30 @@ class SyncStore:
         target = self._target(attempt[0])
         relation = self._binding(target)
         namespace = self._namespace(target)
+        if mode == "settings" and "native_scope" in target.get("namespace", {}):
+            family = {
+                k: v for k, v in target["namespace"].items() if k != "native_scope"
+            }
+            published = self.db.execute(
+                f"SELECT DISTINCT t.document FROM {_SCHEMA}.targets t "
+                f"JOIN {_SCHEMA}.coverage c ON c.target_id=t.id"
+            ).fetchall()
+            for (document,) in published:
+                previous = parse(document)
+                previous_scope = previous.get("namespace", {})
+                previous_family = {
+                    k: v for k, v in previous_scope.items() if k != "native_scope"
+                }
+                if (
+                    previous["leaf_id"] == target["leaf_id"]
+                    and previous.get("variant") == target.get("variant")
+                    and previous_family == family
+                    and previous_scope != target["namespace"]
+                ):
+                    raise _error(
+                        "Use one authoritative settings query scope per identity "
+                        "family; a different scope could overlap retained data"
+                    )
         with self._transaction():
             if relation not in self._verified_relations:
                 mismatch = self.db.execute(

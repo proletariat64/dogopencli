@@ -132,7 +132,10 @@ def recent(chunk, profile, cutoff):
     if not policy.timezone:
         return False
     end = parse_bound(chunk[policy.end_parameter.replace("-", "_")], policy)
-    end_day = end if policy.format in {"date", "compact_date"} else end.date()
+    is_date = policy.format in {"date", "compact_date"}
+    if policy.end_inclusive is False:
+        end -= timedelta(days=1) if is_date else timedelta(microseconds=1)
+    end_day = end if is_date else end.date()
     return end_day >= cutoff.astimezone(ZoneInfo(policy.timezone)).date() - timedelta(
         days=policy.overlap_days
     )

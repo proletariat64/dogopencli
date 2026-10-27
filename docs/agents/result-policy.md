@@ -109,3 +109,14 @@ separate unknown count semantics when those source counts do not describe roots.
 Neither Get nor composition writes cache
 or Duckdog. This policy adds no history, last-complete archive, merged captures,
 automatic imports or relaxation of [Duckdog qualification](../../tools/leaf-dev/duckdog-import.md).
+
+## Explicit durable synchronization
+
+`sync` is a separate explicit publication path. It reuses strict SDK acceptance
+before display filtering and requires complete authoritative acquisition for each
+settings scope or runtime chunk. Cache-specific `ResultDecision.publishable` is
+not permission to import. Qualified partial cache publication remains unchanged;
+that same partial candidate cannot replace durable settings or close a runtime
+gap. Complete recovery warnings remain acceptable. Data and coverage commit
+together; failed attempts retain prior successful as-of evidence. Details are in
+[synchronization contracts](synchronization.md).

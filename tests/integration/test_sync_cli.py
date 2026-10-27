@@ -1,6 +1,8 @@
 """Durable synchronization through installed public commands and fake CDP."""
 
 import json
+import shutil
+from pathlib import Path
 
 import pytest
 from test_leaf_pilots_cli import pilots as pilots
@@ -36,9 +38,26 @@ def test_settings_sync_replaces_and_preserves_after_incomplete(
         )
 
 
+def _cash_source(tmp_path):
+    """Fake CDP explicitly models range-invariant rows; production stays on HOLD."""
+    source = tmp_path / "range-invariant-cash-fixture"
+    shutil.copytree(
+        Path(__file__).resolve().parents[2] / "leaf_packages/liquidity/cash.balances",
+        source,
+    )
+    path = source / "leaf.json"
+    manifest = json.loads(path.read_text())
+    daily = next(
+        profile for profile in manifest["sync"] if profile["variant"] == "daily"
+    )
+    daily.pop("unsupported_reason", None)
+    daily["evidence"] = "Offline fixture guarantees range-invariant daily values."
+    path.write_text(json.dumps(manifest))
+    return source
+
+
 @pytest.fixture
 def cash_sync(run_cli, tmp_path, monkeypatch):
-    from pathlib import Path
 
     from fake_cdp import FakeBrowser
 
@@ -53,10 +72,7 @@ def cash_sync(run_cli, tmp_path, monkeypatch):
     browser = FakeBrowser(href=LIQUIDITY_STARTUP_URL)
     cdp.set_transport_factory(browser.transport)
     try:
-        source = (
-            Path(__file__).resolve().parents[2]
-            / "leaf_packages/liquidity/cash.balances"
-        )
+        source = _cash_source(tmp_path)
         assert run_cli(["plugins", "install", str(source)])[0] == 0
 
         def handler(body, _):
@@ -110,7 +126,6 @@ def cash_sync(run_cli, tmp_path, monkeypatch):
 def test_daily_history_chunk_resume_and_explicit_reconcile(
     run_cli, tmp_path, monkeypatch
 ):
-    from pathlib import Path
 
     from fake_cdp import FakeBrowser
 
@@ -125,10 +140,7 @@ def test_daily_history_chunk_resume_and_explicit_reconcile(
     browser = FakeBrowser(href=LIQUIDITY_STARTUP_URL)
     cdp.set_transport_factory(browser.transport)
     try:
-        source = (
-            Path(__file__).resolve().parents[2]
-            / "leaf_packages/liquidity/cash.balances"
-        )
+        source = _cash_source(tmp_path)
         assert run_cli(["plugins", "install", str(source)])[0] == 0
 
         def handler(body, _):
@@ -230,18 +242,15 @@ def test_all_enrolls_settings_and_reports_unsupported_without_hiding_success(
 
 
 def test_all_bootstraps_any_from_owned_entities_without_external_selector(
-    run_cli, pilots
+    run_cli, pilots, tmp_path
 ):
-    from pathlib import Path
 
     from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 
     pilots.href = LIQUIDITY_STARTUP_URL
     for name in ("collection.cost", "payment.sla.baselines", "fx.trade"):
         assert run_cli(["plugins", "uninstall", name])[0] == 0
-    source = (
-        Path(__file__).resolve().parents[2] / "leaf_packages/liquidity/cash.balances"
-    )
+    source = _cash_source(tmp_path)
     assert run_cli(["plugins", "install", str(source)])[0] == 0
 
     def handler(body, _):
@@ -450,8 +459,6 @@ def test_local_only_settings_filter_rejected_before_query(run_cli, pilots):
 def test_native_settings_filter_remains_valid_acquisition_scope(run_cli, pilots):
     from test_leaf_pilots_cli import native_page
 
-    pilots.business_script.append(native_page("payment", [{"id": "wide"}]))
-    assert run_cli(["payment", "sync", "sla.baselines"])[0] == 0
     pilots.business_script.append(
         native_page("payment", [{"id": "scoped", "bizCategory": "NATIVE"}])
     )
@@ -461,7 +468,7 @@ def test_native_settings_filter_remains_valid_acquisition_scope(run_cli, pilots)
     assert code == 0, output
     assert pilots.business_requests[-1]["bizCategory"] == "NATIVE"
     targets = json.loads(run_cli(["sync", "status"])[1])["data"]["targets"]
-    assert len(targets) == 2 and [t["row_count"] for t in targets] == [1, 1]
+    assert len(targets) == 1 and targets[0]["row_count"] == 1
 
 
 def test_native_default_and_explicit_default_share_target(run_cli, cash_sync):
@@ -498,3 +505,194 @@ def test_native_timestamp_validation_precedes_chunk_normalization(run_cli, pilot
     )
     assert code == 2, output
     assert pilots.business_requests == []
+
+
+def test_settings_query_scopes_cannot_mix_one_identity_family(
+    run_cli, pilots, tmp_path
+):
+    import duckdb
+    from test_leaf_pilots_cli import native_page
+
+    pilots.business_script.append(
+        native_page("payment", [{"id": "shared", "value": "old"}])
+    )
+    assert run_cli(["payment", "sync", "sla.baselines"])[0] == 0
+    pilots.business_script.append(
+        native_page("payment", [{"id": "shared", "value": "new"}])
+    )
+    code, output, _ = run_cli(
+        ["payment", "sync", "sla.baselines", "--biz-category", "NATIVE"]
+    )
+    assert code == 1, output
+    assert "one authoritative settings query scope" in output
+    with duckdb.connect(str(tmp_path / "duckdog.duckdb"), read_only=True) as db:
+        assert db.execute("SELECT _record FROM payment_sla_baselines").fetchall() == [
+            ('{"id":"shared","value":"old"}',)
+        ]
+    targets = json.loads(run_cli(["sync", "status"])[1])["data"]["targets"]
+    assert sorted(t["row_count"] for t in targets) == [0, 1]
+
+
+def test_explicit_native_scope_resolves_blocked_automatic_enrollment(run_cli, pilots):
+    from test_leaf_pilots_cli import native_page
+
+    from dogopencli.domain_contracts import FX_STARTUP_URL
+
+    pilots.href = FX_STARTUP_URL
+
+    for leaf in (
+        "payment.sla.baselines",
+        "collection.cost",
+        "liquidity.reference.entities",
+    ):
+        assert run_cli(["plugins", "uninstall", leaf])[0] == 0
+    assert run_cli(["sync", "--all"])[0] == 1
+    pilots.business_script.append(native_page("fx", [{"uniqueId": "T"}]))
+    code, output, _ = run_cli(
+        [
+            "fx",
+            "sync",
+            "trade",
+            "--transact-from",
+            "2026-10-01",
+            "--transact-to",
+            "2026-10-02",
+        ]
+    )
+    assert code == 0, output
+    status = json.loads(run_cli(["sync", "status"])[1])["data"]
+    assert len(status["targets"]) == 1
+    assert status["targets"][0]["state"] == "covered_as_observed"
+    count = len(pilots.business_requests)
+    code, output, _ = run_cli(["sync"])
+    assert code == 0, output
+    assert len(pilots.business_requests) == count
+
+
+def test_status_detects_adapter_change_without_import_or_database_write(
+    run_cli, pilots, tmp_path
+):
+    from test_leaf_pilots_cli import native_page
+
+    pilots.business_script.append(native_page("payment", [{"id": "old"}]))
+    assert run_cli(["payment", "sync", "sla.baselines"])[0] == 0
+    adapter = tmp_path / "plugins/payment/sla.baselines/adapter.py"
+    adapter.write_text(
+        adapter.read_text() + "\nraise RuntimeError('must not import for status')\n"
+    )
+    database = tmp_path / "duckdog.duckdb"
+    before = (database.stat().st_mtime_ns, database.stat().st_size)
+    requests = len(pilots.business_requests)
+    code, output, _ = run_cli(["sync", "status"])
+    assert code == 0, output
+    target = json.loads(output)["data"]["targets"][0]
+    assert target["state"] == "blocked"
+    assert target["row_count"] == 1
+    assert (database.stat().st_mtime_ns, database.stat().st_size) == before
+    assert len(pilots.business_requests) == requests
+
+
+def test_explicit_sync_does_not_silently_change_durable_identity(
+    run_cli, cash_sync, tmp_path
+):
+    args = [
+        "liquidity",
+        "sync",
+        "cash.balances",
+        "--from-date",
+        "2026-10-01",
+        "--to-date",
+        "2026-10-01",
+    ]
+    assert run_cli(args)[0] == 0
+    manifest_path = tmp_path / "plugins/liquidity/cash.balances/leaf.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["sync"][1]["key_fields"].reverse()
+    manifest_path.write_text(json.dumps(manifest))
+    requests = len(cash_sync.business_requests)
+    code, output, _ = run_cli(args)
+    assert code == 1, output
+    assert "SYNC_CONTRACT_CHANGED" in output
+    assert len(cash_sync.business_requests) == requests
+    target = json.loads(run_cli(["sync", "status"])[1])["data"]["targets"][0]
+    assert target["row_count"] == 1 and target["state"] == "blocked"
+
+
+def test_empty_selector_does_not_close_runtime_coverage(run_cli, cash_sync):
+    args = [
+        "liquidity",
+        "sync",
+        "cash.balances",
+        "--from-date",
+        "2026-10-01",
+        "--to-date",
+        "2026-10-01",
+    ]
+    assert run_cli(args)[0] == 0
+    cash_sync.business_handler = lambda body, _: {
+        "status": 200,
+        "body": {
+            "resultFlag": True,
+            "count": 0,
+            "result": {"success": True, "bankAccountPropertyVOList": []},
+        },
+    }
+    code, output, _ = run_cli(args)
+    assert code == 1, output
+    target = json.loads(run_cli(["sync", "status"])[1])["data"]["targets"][0]
+    assert target["row_count"] == 1
+    assert target["last_attempt"]["state"] == "failed"
+    assert target["last_success"]["state"] == "complete"
+
+
+def test_production_cash_daily_sync_remains_on_source_qualification_hold(
+    run_cli, pilots
+):
+    source = (
+        Path(__file__).resolve().parents[2] / "leaf_packages/liquidity/cash.balances"
+    )
+    assert run_cli(["plugins", "install", str(source)])[0] == 0
+    code, output, _ = run_cli(
+        [
+            "liquidity",
+            "sync",
+            "cash.balances",
+            "--from-date",
+            "2026-10-25",
+            "--to-date",
+            "2026-10-27",
+        ]
+    )
+    assert code == 1, output
+    assert "Partition-invariant historical merge" in output
+    assert pilots.business_requests == []
+
+
+def test_blocked_reenrollment_preserves_saved_history_plan(
+    run_cli, cash_sync, tmp_path
+):
+    manifest_path = tmp_path / "plugins/liquidity/cash.balances/leaf.json"
+    manifest = json.loads(manifest_path.read_text())
+    for profile in manifest["sync"]:
+        profile["parameters"]["entity"] = ["ALIPAYGM"]
+    manifest_path.write_text(json.dumps(manifest))
+    code, output, _ = run_cli(["sync", "--all"])
+    assert (
+        next(
+            t for t in json.loads(output)["data"]["targets"] if t["variant"] == "daily"
+        )["state"]
+        == "complete"
+    )
+    before = json.loads(run_cli(["sync", "status"])[1])["data"]
+    daily = next(t for t in before["targets"] if t["variant"] == "daily")
+    manifest_path = tmp_path / "plugins/liquidity/cash.balances/leaf.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["sync"][1]["unsupported_reason"] = "Source qualification withdrawn"
+    manifest_path.write_text(json.dumps(manifest))
+    assert run_cli(["sync", "--all"])[0] == 1
+    after = json.loads(run_cli(["sync", "status"])[1])["data"]
+    retained = next(t for t in after["targets"] if t["variant"] == "daily")
+    assert retained["state"] == "blocked"
+    assert retained["parameters"] == daily["parameters"]
+    assert retained["row_count"] == daily["row_count"]
+    assert retained["last_success"] == daily["last_success"]

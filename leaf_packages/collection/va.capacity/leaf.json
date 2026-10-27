@@ -70,7 +70,7 @@
     "All native fields, precise amounts, JSON types, unknown fields and nested array order are preserved. Output sorts ASCII digit ruleIds numerically with original-string tie-breakers, then other ruleIds lexically.",
     "Filters are exact case-sensitive local literal matches after full acquisition: same-field OR, cross-field AND. Values are not trimmed or normalized; missing/null values do not match. No backend filter is sent.",
     "One record is a VA-rule capacity/warning projection, not a VA-rule detail or an individual VA. UI warning classification is not inferred from counters. gmtCreate/gmtModified units and average/peak aggregation periods remain unverified.",
-    "Live performs no business-cache publication. Only complete nonempty refresh publishes; failed, empty or incomplete refresh preserves previous records and capture time. No new Duckdog import or detail crawling."
+    "Live performs no business-cache publication. Only complete nonempty refresh publishes; failed, empty or incomplete refresh preserves previous records and capture time. Explicit sync captures complete current observations; no detail crawling."
   ],
   "examples": [
     {

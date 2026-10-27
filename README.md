@@ -43,7 +43,8 @@ Bundled availability does not mean installed. The current bundled inquiries are:
 | liquidity | reference.entities | list |
 | fx | trade | list |
 
-Each list also receives host-owned refresh and prune commands; describe is shared.
+Each list also receives host-owned refresh, prune and sync commands; describe is shared.
+Sync requires an explicit per-variant qualification declaration.
 Only installed declarations appear in domain/operation help. Use `-h` or `--help`;
 positional `help` commands are unsupported. Navigation help shows immediate
 children; leaf-action help shows that invocation's arguments and options.
@@ -130,6 +131,43 @@ application independently. Human role/MFA input stays manual. `auth check` does 
 launch or repair Chrome. Domain enable/disable controls access and preserves cache
 and observations. Browser settings live under `[auth]`; never use CDP ports
 9330–9340 in this repository.
+
+## Synchronize durable data
+
+Sync writes explicitly requested complete acquisitions to the configured Duckdog
+store. List, Get and Refresh retain their existing cache behavior.
+
+```bash
+dogopencli sync --all
+dogopencli liquidity sync investment.benchmark_values --from-date 2026-10-01 --to-date 2026-10-03 --follow
+dogopencli sync
+dogopencli sync status
+```
+
+`--all` enrolls installed, qualified List variants: complete settings, today's
+queryable history, and current observations. Unsupported variants and unresolved
+scope remain visible failures. New installations are enrolled only by another
+explicit `--all` or scoped sync. Native time arguments keep their leaf-specific
+meaning; timestamps alone do not establish historical query support.
+
+Explicit dates save a bounded target. Add `--follow` to extend that target through
+today on later runs. Plain sync refreshes settings and observations, retries gaps,
+and advances following targets with their declared recent overlap. Completed
+fixed windows are skipped; explicitly requesting a completed range reconciles it.
+No background scheduler is started.
+
+Settings replace one complete authoritative scope atomically, including verified
+empty results. Runtime history merges by qualified identity and retains completed
+chunks when another fails. Partial acquisitions cannot publish durable data even
+when default List or Refresh would accept them with warnings. Separate settings
+query scopes that could overlap the same identity family cannot share one current
+snapshot; the prior publication is preserved.
+
+`sync status` is offline and read-only. It reports desired scopes, observed
+coverage, gaps, row counts and last success versus last attempt. Today's complete
+observation is not a final day, and status cannot prove that remote data has not
+changed. See [synchronization contracts](docs/agents/synchronization.md) and the
+[qualification matrix](docs/agents/sync-qualification.md).
 
 ## Configuration and local storage
 

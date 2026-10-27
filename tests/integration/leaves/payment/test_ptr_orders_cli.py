@@ -436,3 +436,65 @@ def test_request_allowlist_rejects_extra_selector(installed, run_cli, tmp_path):
     failure = cli("list", "--live", *BOUNDS, code=1)
     assert failure["error"]["code"] == "REQUEST_NOT_ALLOWED"
     assert not browser.business_requests
+
+
+def test_sync_follow_preserves_native_half_open_clock_and_frozen_cutoff(
+    installed, run_cli, monkeypatch
+):
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+
+    from dogopencli import sync
+
+    cli, browser, _ = installed
+    cutoff = datetime(2026, 10, 3, 4, 5, 6, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(sync, "now", lambda: cutoff)
+
+    def handler(body, _):
+        beginning = datetime.strptime(body["modifiedTimeBegin"], "%Y-%m-%d %H:%M:%S")
+        beginning = beginning.replace(tzinfo=ZoneInfo("Asia/Shanghai")) + timedelta(
+            seconds=1
+        )
+        return page([row(body["modifiedTimeBegin"], int(beginning.timestamp()) * 1000)])
+
+    browser.business_handler = handler
+    cli(
+        "sync",
+        "--updated-from",
+        "2026-09-30T16:00:00+00:00",
+        "--updated-to",
+        "2026-10-01T16:00:00+00:00",
+        "--follow",
+    )
+    browser.business_requests.clear()
+    code, output, _ = run_cli(["sync"])
+    assert code == 0, output
+    assert [
+        (r["modifiedTimeBegin"], r["modifiedTimeEnd"])
+        for r in browser.business_requests
+    ] == [
+        ("2026-10-01 23:59:59", "2026-10-03 00:00:01"),
+        ("2026-10-01 23:59:59", "2026-10-03 00:00:01"),
+        ("2026-10-02 23:59:59", "2026-10-03 04:05:07"),
+        ("2026-10-02 23:59:59", "2026-10-03 04:05:07"),
+    ]
+    chunks = parse(output)["data"]["targets"][0]["chunks"]
+    assert chunks[-1]["chunk"]["updated_to"] == "2026-10-03T04:05:06+08:00"
+
+
+def test_sync_partitions_backfill_larger_than_native_request_span(installed):
+    cli, browser, _ = installed
+    browser.business_handler = lambda body, _: page([])
+    result = cli(
+        "sync",
+        "--updated-from",
+        "2026-08-01T00:00:00+08:00",
+        "--updated-to",
+        "2026-10-01T00:00:00+08:00",
+    )
+    assert result["data"]["targets"][0]["acquired_chunks"] == 61
+    assert len(browser.business_requests) == 122  # Two native stability reads per day.
+    for request in browser.business_requests:
+        begin = datetime.strptime(request["modifiedTimeBegin"], "%Y-%m-%d %H:%M:%S")
+        end = datetime.strptime(request["modifiedTimeEnd"], "%Y-%m-%d %H:%M:%S")
+        assert (end - begin).total_seconds() == 86402  # Qualified one-second padding.
