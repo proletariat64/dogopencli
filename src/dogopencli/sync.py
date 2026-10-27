@@ -370,10 +370,27 @@ def execute(invocation):
                         old["parameters"][start_key], profile.time
                     ) < parse_bound(target["parameters"][start_key], profile.time):
                         target["parameters"][start_key] = old["parameters"][start_key]
-                saved_selection.append((store.save_target(target), leaf, profile))
+                saved_target = store.save_target(target)
+                if explicit:
+                    for blocked in previous.values():
+                        if (
+                            blocked.get("blocked")
+                            and blocked["id"] != saved_target["id"]
+                            and not store.coverage(blocked["id"])
+                            and blocked["leaf_id"] == target["leaf_id"]
+                            and blocked["variant"] in {target["variant"], "unqualified"}
+                            and blocked["namespace"]["source"]
+                            == target["namespace"]["source"]
+                        ):
+                            store.save_target(
+                                {**blocked, "resolved_by": saved_target["id"]}
+                            )
+                saved_selection.append((saved_target, leaf, profile))
             selected = saved_selection
         else:
             for target in store.targets():
+                if target.get("resolved_by"):
+                    continue
                 if target.get("blocked"):
                     results.append(_record_block(store, target, target["blocked"]))
                     continue
@@ -398,7 +415,7 @@ def execute(invocation):
                         raise CliError(
                             "SYNC_CONTRACT_CHANGED",
                             "Saved target contract changed; "
-                            "explicitly requalify the target",
+                            "published data requires explicit migration",
                         )
                     if target["namespace"]["source"] != _source(config_file, domain):
                         raise CliError(
@@ -498,7 +515,10 @@ def status(invocation):
         )
         item["freshness"] = "as_observed" if target.get("last_success") else "unknown"
         leaf = registry.leaves.get(target["leaf_id"])
-        if leaf is None:
+        if target.get("resolved_by"):
+            item["state"] = "resolved"
+            item["resolved_by"] = target["resolved_by"]
+        elif leaf is None:
             item["state"] = "inactive"
             item["reason"] = "Leaf is not installed"
         elif target.get("blocked"):
