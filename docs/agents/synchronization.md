@@ -115,3 +115,12 @@ requests. Existing List behavior remains available, but sync must not infer
 partition-invariant history from those responses. Host behavior tests use an
 explicitly range-invariant offline fixture and do not qualify that production
 source. Consult the qualification matrix for all current limitations.
+
+Published coverage remains bound to its acquisition contract. Changes to the
+adapter, manifest or sync profile block reuse and publication in that namespace,
+including explicit sync and `--all`; a separately qualified data migration is
+required. Extending a date horizon under the same contract remains supported.
+A valid explicit selection resolves matching never-published automatic enrollment
+failures. When an explicit target already exists, status retains the old enrollment
+as `resolved` with `resolved_by`, alongside its attempt history; plain sync skips
+it. A later `--all` reevaluates automatic enrollment and can report it blocked again.

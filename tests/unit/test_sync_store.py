@@ -351,3 +351,7 @@ def test_restart_marks_unfinished_attempt_without_claiming_coverage(tmp_path):
     attempt = SyncStore.status(path)["attempts"][0]
     assert attempt["state"] == "interrupted"
     assert attempt["diagnostic"]["code"] == "INTERRUPTED"
+    assert attempt["diagnostic"]["severity"] == "error"
+    assert attempt["diagnostic"]["origin"] == "host"
+    assert attempt["diagnostic"]["stage"] == "execution"
+    assert "component" in attempt["diagnostic"]

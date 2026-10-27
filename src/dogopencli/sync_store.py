@@ -17,7 +17,7 @@ from uuid import uuid4
 
 import duckdb
 
-from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, LOCKED, CliError
+from .errors import INCOMPLETE_RESULT, INVALID_RESPONSE, LOCKED, CliError, diagnostic
 from .jsonutil import canonical, parse
 
 _SCHEMA = "_dogopencli_sync"
@@ -115,11 +115,11 @@ class SyncStore:
                     "WHERE state='running'",
                     [
                         canonical(
-                            {
-                                "code": "INTERRUPTED",
-                                "message": "Previous writer ended before completion",
-                                "retryable": True,
-                            }
+                            diagnostic(
+                                "INTERRUPTED",
+                                "Previous writer ended before completion",
+                                retryable=True,
+                            )
                         )
                     ],
                 )
@@ -198,21 +198,28 @@ class SyncStore:
     def save_target(self, target: dict) -> dict:
         self._binding(target)
         document = dict(target)
-        publication_fields = ("mode", "key_fields", "version_field", "version_kind")
         if "profile" in document:
             for previous in self.targets():
                 if (
-                    self._namespace(previous) == self._namespace(document)
+                    (
+                        self._namespace(previous) == self._namespace(document)
+                        or (
+                            "identity" in previous
+                            and "identity" in document
+                            and canonical(previous["identity"])
+                            == canonical(document["identity"])
+                        )
+                    )
                     and "profile" in previous
                     and any(
-                        previous["profile"].get(field) != document["profile"].get(field)
-                        for field in publication_fields
+                        canonical(previous.get(field)) != canonical(document.get(field))
+                        for field in ("profile", "manifest", "adapter_sha256")
                     )
                     and self.coverage(previous["id"])
                 ):
                     raise CliError(
                         "SYNC_CONTRACT_CHANGED",
-                        "Durable identity or version policy changed; an explicit "
+                        "Published acquisition contract changed; an explicit "
                         "data migration is required before publishing",
                     )
         identity = canonical(

@@ -699,3 +699,111 @@ def test_blocked_reenrollment_preserves_saved_history_plan(
     assert retained["parameters"] == daily["parameters"]
     assert retained["row_count"] == daily["row_count"]
     assert retained["last_success"] == daily["last_success"]
+
+
+def test_existing_explicit_target_resolves_later_blocked_enrollment(run_cli, pilots):
+    from test_leaf_pilots_cli import native_page
+
+    from dogopencli.domain_contracts import FX_STARTUP_URL
+
+    pilots.href = FX_STARTUP_URL
+    for leaf in (
+        "payment.sla.baselines",
+        "collection.cost",
+        "liquidity.reference.entities",
+    ):
+        assert run_cli(["plugins", "uninstall", leaf])[0] == 0
+    args = [
+        "fx",
+        "sync",
+        "trade",
+        "--transact-from",
+        "2026-10-01",
+        "--transact-to",
+        "2026-10-02",
+    ]
+    pilots.business_script.append(native_page("fx", [{"uniqueId": "T"}]))
+    assert run_cli(args)[0] == 0
+    assert run_cli(["sync", "--all"])[0] == 1
+    before = json.loads(run_cli(["sync", "status"])[1])["data"]
+    blocked = next(t for t in before["targets"] if t["state"] == "blocked")
+    pilots.business_script.append(native_page("fx", [{"uniqueId": "T"}]))
+    code, output, _ = run_cli(args)
+    assert code == 0, output
+    code, output, _ = run_cli(["sync"])
+    assert code == 0, output
+    after = json.loads(run_cli(["sync", "status"])[1])["data"]
+    resolved = next(t for t in after["targets"] if t["id"] == blocked["id"])
+    assert resolved["state"] == "resolved"
+    assert resolved["resolved_by"] in {t["id"] for t in after["targets"]}
+    assert {a["id"] for a in before["attempts"]} <= {a["id"] for a in after["attempts"]}
+    # An explicit new discovery request reevaluates the automatic enrollment.
+    assert run_cli(["sync", "--all"])[0] == 1
+    rediscovered = json.loads(run_cli(["sync", "status"])[1])["data"]
+    blocked_again = next(t for t in rediscovered["targets"] if t["id"] == blocked["id"])
+    assert blocked_again["state"] == "blocked"
+    assert "resolved_by" not in blocked_again
+    pilots.business_script.append(native_page("fx", [{"uniqueId": "T"}]))
+    assert run_cli(args)[0] == 0
+    assert run_cli(["sync"])[0] == 0
+
+
+def test_all_cannot_relabel_published_coverage_after_adapter_change(
+    run_cli, pilots, tmp_path
+):
+    from test_leaf_pilots_cli import native_page
+
+    from dogopencli.sync_store import SyncStore
+
+    for leaf in ("fx.trade", "collection.cost", "liquidity.reference.entities"):
+        assert run_cli(["plugins", "uninstall", leaf])[0] == 0
+    pilots.business_script.append(native_page("payment", [{"id": "old"}]))
+    assert run_cli(["payment", "sync", "sla.baselines"])[0] == 0
+    before = SyncStore.status(tmp_path / "duckdog.duckdb")
+    adapter = tmp_path / "plugins/payment/sla.baselines/adapter.py"
+    adapter.write_text(adapter.read_text() + "\n# changed acquisition contract\n")
+    requests = len(pilots.business_requests)
+    code, output, _ = run_cli(["sync", "--all"])
+    assert code == 1, output
+    assert "SYNC_CONTRACT_CHANGED" in output
+    after = SyncStore.status(tmp_path / "duckdog.duckdb")
+    assert after == before
+    assert len(pilots.business_requests) == requests
+
+
+@pytest.mark.parametrize("change", ["adapter", "profile"])
+def test_all_preserves_historical_contract_evidence(
+    run_cli, cash_sync, tmp_path, monkeypatch, change
+):
+    from datetime import datetime, timezone
+
+    from dogopencli.sync_store import SyncStore
+
+    monkeypatch.setattr(
+        "dogopencli.sync.now", lambda: datetime(2026, 10, 1, tzinfo=timezone.utc)
+    )
+    manifest_path = tmp_path / "plugins/liquidity/cash.balances/leaf.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["sync"] = [p for p in manifest["sync"] if p["variant"] == "daily"]
+    for profile in manifest["sync"]:
+        profile["parameters"]["entity"] = ["ALIPAYGM"]
+    manifest_path.write_text(json.dumps(manifest))
+    code, output, _ = run_cli(["sync", "--all"])
+    assert code == 0, output
+    before = SyncStore.status(tmp_path / "duckdog.duckdb")
+    assert before["coverage"]
+    if change == "adapter":
+        adapter = manifest_path.parent / "adapter.py"
+        adapter.write_text(adapter.read_text() + "\n# acquisition contract changed\n")
+    else:
+        manifest["sync"][0]["priority"] = 99
+        manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(
+        "dogopencli.sync.now", lambda: datetime(2026, 10, 10, tzinfo=timezone.utc)
+    )
+    requests = len(cash_sync.business_requests)
+    code, output, _ = run_cli(["sync", "--all"])
+    assert code == 1, output
+    assert "SYNC_CONTRACT_CHANGED" in output
+    assert SyncStore.status(tmp_path / "duckdog.duckdb") == before
+    assert len(cash_sync.business_requests) == requests
