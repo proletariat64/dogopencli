@@ -146,7 +146,13 @@
           "ANY"
         ]
       },
-      "evidence": "Latest native balId snapshots. Current entity selector is frozen; no historical ownership claim."
+      "evidence": "Latest native balId snapshots. Current entity selector is frozen; no historical ownership claim.",
+      "native_defaults": {
+        "entity": [
+          "ALIPAYGM"
+        ],
+        "account-alias": []
+      }
     },
     {
       "variant": "daily",
@@ -178,7 +184,13 @@
       "present": [
         "from-date",
         "to-date"
-      ]
+      ],
+      "native_defaults": {
+        "entity": [
+          "ALIPAYGM"
+        ],
+        "account-alias": []
+      }
     }
   ]
 }

@@ -329,6 +329,128 @@ def _compose_details(
     return combined, acquisitions
 
 
+def _collect_raw(
+    leaf,
+    parameters,
+    session,
+    capability,
+    scope,
+    sources,
+    custom_list,
+    collection,
+    config_file,
+    resolved_entities,
+):
+    if custom_list:
+        with QueryTools(
+            leaf,
+            "list",
+            parameters,
+            capability,
+            session.transport,
+            state_file=config_file.parent / "collection-state.json",
+            config_file=config_file,
+            resolved_entities=resolved_entities,
+        ) as tools:
+            collected = tools.finish_list(leaf.adapter.query_list(parameters, tools))
+    elif sources is not None:
+        collected = collect_sources(
+            sources,
+            session.transport,
+            leaf.adapter.assemble,
+            parameters,
+            collection,
+            domain=leaf.domain,
+            leaf_id=leaf.id,
+            state_file=config_file.parent / "collection-state.json",
+        )
+    else:
+        transport = session.transport(capability)
+        collected = collect_list(
+            capability,
+            transport,
+            scope,
+            collection,
+            domain=leaf.domain,
+            leaf_id=leaf.id,
+            state_file=config_file.parent / "collection-state.json",
+        )
+    return collected
+
+
+def acquire_list(leaf: Leaf, parameters: dict, config_file: Path):
+    """Acquire native List records before display filtering or cache publication."""
+    parameters = dict(parameters)
+    resolved_entities = None
+    if leaf.manifest["operations"]["list"].get("entity_selector") and parameters.get(
+        "entity"
+    ) == ["ANY"]:
+        from dogopencli.duckdog import resolve_selector
+
+        resolved_entities = resolve_selector(
+            "liquidity/reference/entities", "instId", config_file=config_file
+        )
+        parameters["_resolved_entities"] = resolved_entities
+    capability = _list_capabilities(leaf, parameters)
+    scope = leaf.adapter.scope(parameters)
+    collection = leaf.manifest.get("collection")
+    custom_list = leaf.manifest["operations"]["list"].get("execution") == "custom"
+    sources = (
+        {
+            name: (item, leaf.adapter.source_scope(name, parameters))
+            for name, item in capability.items()
+        }
+        if collection is not None and "sources" in collection
+        else None
+    )
+    startup = (
+        next(iter(capability.values()))
+        if sources is not None or custom_list
+        else capability
+    )
+    started_at = datetime.now(timezone.utc).isoformat()
+    with inquiry_session(
+        config_file=config_file, startup_url=getattr(startup, "page_url", None)
+    ) as session:
+        collected = _collect_raw(
+            leaf,
+            parameters,
+            session,
+            capability,
+            scope,
+            sources,
+            custom_list,
+            collection,
+            config_file,
+            resolved_entities,
+        )
+    rows = _validate_records(
+        collected.records,
+        leaf.manifest.get("identity", []),
+        leaf.manifest.get("collection", {}).get("primary_id"),
+    )
+    evidence = collected.evidence
+    if not isinstance(evidence, AcquisitionEvidence):
+        raise CliError("INVALID_RESPONSE", "List acquisition evidence is missing")
+    decision = check_complete(evidence, require_complete=True, mode="live")
+    try:
+        native_scope = parse(scope)
+    except ValueError:
+        native_scope = scope
+    return (
+        rows,
+        evidence,
+        {
+            "started_at": started_at,
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "native_scope": native_scope,
+            "parameters": parameters,
+            "contract_id": _contract_id(leaf, capability),
+            "warnings": list(decision.warnings),
+        },
+    )
+
+
 def execute(
     leaf: Leaf, operation: str, parameters: dict, args: Namespace, config_file: Path
 ) -> tuple[Any, dict]:
@@ -477,42 +599,18 @@ def execute(
                 config_file=config_file,
                 startup_url=getattr(startup, "page_url", None),
             ) as session:
-                if custom_list:
-                    with QueryTools(
-                        leaf,
-                        "list",
-                        parameters,
-                        capability,
-                        session.transport,
-                        state_file=config_file.parent / "collection-state.json",
-                        config_file=config_file,
-                        resolved_entities=resolved_entities,
-                    ) as tools:
-                        collected = tools.finish_list(
-                            leaf.adapter.query_list(parameters, tools)
-                        )
-                elif sources is not None:
-                    collected = collect_sources(
-                        sources,
-                        session.transport,
-                        leaf.adapter.assemble,
-                        parameters,
-                        collection,
-                        domain=leaf.domain,
-                        leaf_id=leaf.id,
-                        state_file=config_file.parent / "collection-state.json",
-                    )
-                else:
-                    transport = session.transport(capability)
-                    collected = collect_list(
-                        capability,
-                        transport,
-                        scope,
-                        collection,
-                        domain=leaf.domain,
-                        leaf_id=leaf.id,
-                        state_file=config_file.parent / "collection-state.json",
-                    )
+                collected = _collect_raw(
+                    leaf,
+                    parameters,
+                    session,
+                    capability,
+                    scope,
+                    sources,
+                    custom_list,
+                    collection,
+                    config_file,
+                    resolved_entities,
+                )
                 rows = _validate_records(
                     collected.records,
                     leaf.manifest.get("identity", []),
