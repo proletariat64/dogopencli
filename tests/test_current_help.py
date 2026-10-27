@@ -115,7 +115,9 @@ def test_first_help_traverses_all_children_without_runtime(
         )
         for flag in ("-h", "--help"):
             assert json.loads(run_cli([*path, flag])[1])["data"] == doc
-        if (
+        # Bare sync executes its saved plan despite also exposing status.
+        # Every explicit help form above and below must still stay offline.
+        if path != ["sync"] and (
             names
             or len(path) == 0
             or path in [["payment"], ["collection"], ["fx"], ["liquidity"]]
