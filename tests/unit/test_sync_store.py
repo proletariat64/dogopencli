@@ -57,7 +57,8 @@ def test_settings_replace_and_status_reads_without_creating_files(tmp_path):
     with SyncStore(path) as store:
         item = target(store)
         publish(store, item, [{"id": "a", "value": 1}, {"id": "b", "value": 2}])
-        publish(store, item, [{"id": "b", "value": 3}])
+        result = publish(store, item, [{"id": "b", "value": 3}])
+        assert result["updated"] == 1
         assert store.records(item["id"]) == [{"id": "b", "value": 3}]
     report = SyncStore.status(path)
     assert report["targets"][0]["row_count"] == 1
