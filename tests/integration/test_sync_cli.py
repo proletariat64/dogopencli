@@ -339,6 +339,9 @@ def test_follow_extends_and_rechecks_only_recent_history(
     ]
     code, output, _ = run_cli(args)
     assert code == 0, output
+    assert [
+        r["queryStartDate"] for r in cash_sync.business_requests if "balanceType" in r
+    ] == ["20261001", "20261002"]
     cash_sync.business_requests.clear()
     code, output, _ = run_cli(["sync"])
     assert code == 0, output
