@@ -1,0 +1,16 @@
+[Unit]
+Description=Dogopencli plugin registry
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/admin/workspace/plugin-site/current
+ExecStart=/usr/bin/python3 server.py --host 127.0.0.1 --port 5910 --data /home/admin/workspace/plugin-site/data
+EnvironmentFile=-/home/admin/workspace/plugin-site/publish.env
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
