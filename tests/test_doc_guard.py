@@ -75,11 +75,26 @@ class DocGuardTests(unittest.TestCase):
             "docs/design/payment.md",
             "docs/design/payment-v01.2.3.md",
             "docs/research/genernal/2026-09-08-access.md",
+            "tools/plugin-site/notes.md",
+            "tools/plugin-site/web/notes.md",
         ):
             with self.subTest(name=name):
                 result = self.run_guard({name: "# Test\n"})
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("invalid documentation", result.stdout)
+
+    def test_plugin_site_guides_keep_content_checks(self) -> None:
+        for name in (
+            "tools/plugin-site/README.md",
+            "tools/plugin-site/web/agent-guide.md",
+        ):
+            with self.subTest(name=name):
+                valid = self.run_guard({name: "# Plugin guide\n"})
+                self.assertEqual(valid.returncode, 0, valid.stdout)
+                invalid = self.run_guard({name: "## Missing title\n"})
+                self.assertIn("first content line must be an H1", invalid.stdout)
+                broken = self.run_guard({name: "# Guide\n\n[Missing](missing.md)\n"})
+                self.assertIn("broken local link", broken.stdout)
 
     def test_process_and_version_archives_are_not_active_documentation(self) -> None:
         for name in (
