@@ -2,17 +2,17 @@
   "domain": "liquidity",
   "name": "cash.balances",
   "adapter": "adapter.py:adapter",
-  "summary": "Latest account snapshots or source daily closing balance observations.",
-  "purpose": "Read native balances with explicit scope and frozen current-roster daily labels.",
+  "summary": "Native account day-end balances for explicit dates.",
+  "purpose": "Read unchanged day-end records from one source with independent acquisition coverage.",
   "operations": {
     "list": {
-      "description": "List latest snapshots, or daily observations when paired dates are supplied.",
+      "description": "List native account day-end balances for explicit inclusive dates.",
       "parameters": [
         {
           "name": "entity",
           "type": "string",
           "required": false,
-          "description": "Exact native instId selection; default ALIPAYGM; ANY freezes the local entity selector.",
+          "description": "Optional native entity scope; default ALIPAYGM only when no explicit alias; ANY freezes local entities.",
           "multiple": true,
           "local_field": "entity"
         },
@@ -27,40 +27,42 @@
         {
           "name": "from-date",
           "type": "string",
-          "required": false,
-          "description": "Inclusive daily start YYYY-MM-DD or YYYYMMDD; requires to-date.",
-          "local_field": "statisticalDate"
+          "required": true,
+          "description": "Inclusive native valueDate; YYYY-MM-DD or YYYYMMDD; both dates required.",
+          "local_field": "valueDate"
         },
         {
           "name": "to-date",
           "type": "string",
-          "required": false,
-          "description": "Inclusive daily end; requires from-date.",
-          "local_field": "statisticalDate"
-        },
-        {
-          "name": "timezone",
-          "type": "string",
-          "required": false,
-          "description": "Latest only; qualified GMT+08.",
-          "local_field": "timeZone"
-        },
-        {
-          "name": "page-size",
-          "type": "integer",
-          "required": false,
-          "description": "Latest only; native request width 1 through 100, default100."
+          "required": true,
+          "description": "Inclusive native valueDate; YYYY-MM-DD or YYYYMMDD; both dates required.",
+          "local_field": "valueDate"
         }
       ],
       "execution": "custom",
       "queries": {
-        "latest": {
-          "kind": "inquiry",
-          "result_shape": "object"
-        },
-        "daily": {
-          "kind": "inquiry",
-          "result_shape": "object"
+        "balances": {
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "offset",
+              "page_sizes": [
+                500
+              ]
+            },
+            "primary_id": {
+              "type": "hash",
+              "fields": [
+                "entity",
+                "bankId",
+                "aliasName",
+                "currency",
+                "valueDate"
+              ]
+            },
+            "latest_by": "__dogopencli_dayend_order"
+          }
         },
         "roster": {
           "kind": "list",
@@ -85,45 +87,102 @@
       },
       "max_requests": 10000,
       "budget_seconds": 900,
-      "entity_selector": true
+      "entity_selector": true,
+      "account_directory": true
     }
   },
-  "identity": [],
-  "identity_description": "Adapter validates mode-specific native primary keys: latest balId; daily (entity,aliasName,currency,statisticalDate). No common native ID exists across modes.",
+  "identity": [
+    "entity",
+    "bankId",
+    "aliasName",
+    "currency",
+    "valueDate"
+  ],
+  "identity_description": "Native entity, bank, alias, currency and valueDate composite business key.",
   "fields": [
+    {
+      "name": "entity",
+      "type": "string",
+      "meaning": "Native entity; preserved unchanged."
+    },
+    {
+      "name": "bankId",
+      "type": "string",
+      "meaning": "Native bankId; preserved unchanged."
+    },
     {
       "name": "aliasName",
       "type": "string",
-      "meaning": "Native alias or explicitly attributed current-roster label."
+      "meaning": "Native aliasName; preserved unchanged."
+    },
+    {
+      "name": "accountNo",
+      "type": "string",
+      "meaning": "Native accountNo; preserved unchanged."
     },
     {
       "name": "currency",
       "type": "string",
-      "meaning": "Native currency or frozen current-roster currency."
+      "meaning": "Native currency; preserved unchanged."
     },
     {
-      "name": "entity",
+      "name": "valueDate",
       "type": "string",
-      "meaning": "Latest native entity; daily current-roster label, not historical ownership."
+      "meaning": "Native valueDate; preserved unchanged."
+    },
+    {
+      "name": "openBalance",
+      "type": "string",
+      "meaning": "Native openBalance; preserved unchanged."
+    },
+    {
+      "name": "openAvlBalance",
+      "type": "string",
+      "meaning": "Native openAvlBalance; preserved unchanged."
+    },
+    {
+      "name": "closeBalance",
+      "type": "string",
+      "meaning": "Native closeBalance; preserved unchanged."
+    },
+    {
+      "name": "closeAvlBalance",
+      "type": "string",
+      "meaning": "Native closeAvlBalance; preserved unchanged."
+    },
+    {
+      "name": "timeZone",
+      "type": "string",
+      "meaning": "Native timeZone; preserved unchanged."
+    },
+    {
+      "name": "statementCreateTime",
+      "type": "string",
+      "meaning": "Native statementCreateTime; preserved unchanged."
+    },
+    {
+      "name": "updateTime",
+      "type": "string",
+      "meaning": "Native updateTime; preserved unchanged."
+    },
+    {
+      "name": "source",
+      "type": "string",
+      "meaning": "Native source; preserved unchanged."
     }
   ],
   "dataset": {
     "relation": "liquidity_cash_balances"
   },
   "limitations": [
-    "No dates selects latest snapshots. Paired dates select daily observations with fixed GMT+08 and closing book balance semantics.",
-    "Daily queries use disjoint at-most30-alias and at-most7-day chunks, at most1000 chunks; one900-second deadline includes roster acquisition.",
-    "Daily output retains every native field plus validated current roster entity/alias/currency labels; missing observations are not zero-filled.",
-    "Source counts, roster coverage, frozen selection and all chunk outcomes are retained independently. No unsupported Duckdog import or forecast computation."
+    "Only POST /dayendBalDetailQuery.json supplies balances; paired dates required for acquisition.",
+    "Directory enumeration freezes current aliases, not historical ownership or proof all account balances are updated.",
+    "No Get, history wrapper, generated business ID, timezone conversion, zero filling or source fallback."
   ],
   "examples": [
     {
-      "title": "Latest snapshots",
-      "command": "dogopencli liquidity list cash.balances --live --entity ALIPAYGM --limit 0 --require-complete"
-    },
-    {
-      "title": "Source daily observations",
-      "command": "dogopencli liquidity list cash.balances --live --entity ALIPAYGM --account-alias ACCOUNT --from-date 2026-10-01 --to-date 2026-10-07 --require-complete"
+      "title": "Explicit account day-end range",
+      "command": "dogopencli liquidity list cash.balances --live --account-alias ACCOUNT --from-date 2026-09-18 --to-date 2026-09-18 --limit 0 --require-complete"
     }
   ]
 }

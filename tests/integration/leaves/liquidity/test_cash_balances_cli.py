@@ -1,7 +1,6 @@
-"""Installed cash balances preserve latest and daily native contract variants."""
+"""Installed day-end balance contracts through public CLI and fake CDP."""
 
 import shutil
-from decimal import Decimal
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -17,7 +16,7 @@ SOURCE = ROOT / "leaf_packages/liquidity" / LEAF
 TENANT = "GUAPW3SG"
 
 
-@pytest.fixture(params=["directory"])
+@pytest.fixture(params=["directory", "zip"])
 def installed(request, run_cli, tmp_path, monkeypatch):
     config = tmp_path / "config"
     config.mkdir()
@@ -60,400 +59,652 @@ def installed(request, run_cli, tmp_path, monkeypatch):
         cdp.set_transport_factory(None)
 
 
-def snapshot(identity="B1", **values):
+FLAGS = [
+    "--account-alias",
+    "ACCOUNT",
+    "--from-date",
+    "2026-09-18",
+    "--to-date",
+    "20260918",
+]
+
+
+def row(**extra):
     return {
-        "balId": identity,
-        "entity": "ALIPAYGM",
+        "entity": "OTHER",
+        "bankId": "BANK",
         "aliasName": "ACCOUNT",
+        "accountNo": "0001",
         "currency": "USD",
-        "curBalance": Decimal("12.1234567890123456789"),
-        "leastDayendBalVo": {"closeBalance": "12,345.67", "unknown": [None, False, 0]},
-        "unknown": {"kept": True},
-        "avlBalanceSwitch": True,
-        **values,
+        "valueDate": "20260918",
+        "openBalance": "100.0000",
+        "openAvlBalance": "90.00",
+        "closeBalance": "120.1234567890123456789",
+        "closeAvlBalance": "110.00",
+        "timeZone": "Asia/Hong_Kong",
+        "statementCreateTime": "2026-09-18 23:59:59",
+        "updateTime": "2026-09-19 08:00:00",
+        "source": "day",
+        "unknown": {"nested": [None, False, 0]},
+        **extra,
     }
 
 
-def response(data):
-    return {"status": 200, "body": {"success": True, "data": data}}
+def page(rows, start=0, total=None, **extra):
+    return {
+        "status": 200,
+        "body": {
+            "success": True,
+            "data": {
+                "data": rows,
+                "totalCount": len(rows) if total is None else total,
+                "rowStart": start,
+                "pageSize": 500,
+                **extra,
+            },
+        },
+    }
 
 
-def roster(alias="ACCOUNT", entity="ALIPAYGM", currency="USD"):
+def test_alias_bypasses_current_directory_preserves_native_and_replay(installed):
+    cli, browser, config = installed
+    browser.business_script.append(page([row()]))
+    live = cli("list", "--live", *FLAGS, "--limit", "0", "--require-complete")
+    assert live["data"] == [row()]
+    assert browser.business_requests == [
+        {
+            "tntInstId": "GUAPW3SG",
+            "aliasName": "ACCOUNT",
+            "startDate": "20260918",
+            "endDate": "20260918",
+            "rowStart": 0,
+            "pageSize": 500,
+        }
+    ]
+    assert not (config / "leaf-cache.sqlite3").exists()
+    browser.business_script.append(page([row()]))
+    saved = cli("refresh", *FLAGS, "--require-complete")
+    count = len(browser.business_requests)
+    offline = cli("list", "--limit", "0")
+    assert offline["data"] == live["data"]
+    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+    assert len(browser.business_requests) == count
+
+
+def roster(alias="ACCOUNT", entity="ALIPAYGM", **extra):
     return {
         "aliasName": alias,
         "instId": entity,
-        "currency": currency,
         "bankId": "BANK",
+        "currency": "USD",
+        **extra,
     }
 
 
-def daily(alias="ACCOUNT", day="2026-10-01", **values):
+def directory_page(rows):
     return {
-        "id": "chart-native-id",
-        "data": alias,
-        "statisticalDate": day,
-        "balance": Decimal("123.4567890123456789"),
-        "unknown": [None, False, "", 0],
-        **values,
+        "status": 200,
+        "body": {
+            "resultFlag": True,
+            "result": {"success": True, "bankAccountPropertyVOList": rows},
+        },
     }
 
 
-def script(browser, accounts, make_daily=None, latest=None):
+def composition(envelope):
+    return next(
+        x
+        for x in envelope["meta"]["acquisition"]["attempts"]
+        if x.get("composition") == "cash-balance-dayend-v1"
+    )
+
+
+def test_entity_enumerates_live_without_status_filters_and_freezes_aliases(installed):
+    cli, browser, _ = installed
+
     def handler(body, _):
         if "bankAccountQueryVO" in body:
-            vo = parse(body["bankAccountQueryVO"])
-            rows = accounts[vo["rowStart"] : vo["rowStart"] + vo["pageSize"]]
-            return {
-                "status": 200,
-                "body": {
-                    "resultFlag": True,
-                    "count": 99999,
-                    "result": {"success": True, "bankAccountPropertyVOList": rows},
-                },
-            }
-        if "balanceType" in body:
-            assert set(body) == {
-                "tntInstId",
-                "balanceType",
-                "aliasNames",
-                "queryStartDate",
-                "queryDate",
-            }
-            assert body["balanceType"] == "day"
-            assert 1 <= len(body["aliasNames"]) <= 30
-            return response(
-                make_daily(body)
-                if make_daily
-                else [daily(a) for a in body["aliasNames"]]
-            )
-        rows = latest if latest is not None else [snapshot()]
-        return response(
-            {
-                "data": rows[body["rowStart"] : body["rowStart"] + body["pageSize"]],
-                "totalCount": len(rows),
-            }
-        )
+            context = parse(body["bankAccountQueryVO"])
+            position, width = context["rowStart"], context["pageSize"]
+            accounts = [
+                roster(status="CLOSED", manualInfoStatus="DISABLED"),
+                roster("UNSELECTED", "OTHER"),
+            ]
+            return directory_page(accounts[position : position + width])
+        return page([row(entity="ALIPAYGM")])
 
     browser.business_handler = handler
-
-
-def frozen(envelope):
-    return next(
-        a
-        for a in envelope["meta"]["acquisition"]["attempts"]
-        if a.get("composition") == "cash-balance-selection-v1"
-    )
-
-
-@pytest.mark.parametrize("installed", ["directory", "zip"], indirect=True)
-def test_latest_native_pages_refresh_offline_and_no_side_effect_help(installed):
-    cli, browser, config = installed
-    cli("list", "-h")
-    cli("describe")
-    assert not browser.transports
-    records = [snapshot(str(i)) for i in range(3)]
-    script(browser, [], latest=records)
-    live = cli(
-        "list", "--live", "--page-size", "2", "--limit", "0", "--require-complete"
-    )
-    assert live["data"] == records
-    assert live["meta"]["reported_total"] == 3
-    assert not (config / "leaf-cache.sqlite3").exists()
-    assert [b["rowStart"] for b in browser.business_requests] == [0, 2]
-    saved = cli("refresh", "--page-size", "2", "--require-complete")
-    n = len(browser.business_requests)
-    offline = cli("list", "--limit", "0")
-    assert offline["data"] == records
-    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
-    assert len(browser.business_requests) == n
-    assert frozen(offline)["entities"] == ["ALIPAYGM"]
-
-
-@pytest.mark.parametrize("installed", ["directory", "zip"], indirect=True)
-def test_daily_current_roster_labels_and_full_native_fields(installed):
-    cli, browser, _ = installed
-    script(browser, [roster(), roster("OTHER", "OTHER")])
-    flags = [
-        "--entity",
-        "ALIPAYGM",
-        "--account-alias",
-        "ACCOUNT",
-        "--from-date",
-        "2026-10-01",
-        "--to-date",
-        "20261001",
-    ]
-    live = cli("list", "--live", *flags, "--require-complete")
-    expected = {
-        **daily(),
-        "aliasName": "ACCOUNT",
-        "entity": "ALIPAYGM",
-        "currency": "USD",
-    }
-    assert live["data"] == [expected]
-    assert live["meta"]["reported_total"] is None
-    state = frozen(live)
-    assert state["binding_semantics"] == "current-roster-not-historical-ownership"
-    assert state["planned_chunks"] == state["succeeded_chunks"] == 1
-    assert state["dependencies"][0]["acquisition"]["scope_complete"] is True
-    cli("refresh", *flags, "--require-complete")
-    n = len(browser.business_requests)
-    assert cli("list", *flags)["data"] == [expected]
-    assert len(browser.business_requests) == n
-
-
-def test_daily_31_accounts_eight_days_are_four_disjoint_chunks(installed):
-    cli, browser, _ = installed
-    accounts = [roster(f"A{i:02}") for i in range(31)]
-
-    def make(body):
-        from datetime import datetime, timedelta
-
-        first = datetime.strptime(body["queryStartDate"], "%Y%m%d")
-        last = datetime.strptime(body["queryDate"], "%Y%m%d")
-        return [
-            daily(a, (first + timedelta(days=d)).strftime("%Y-%m-%d"))
-            for a in body["aliasNames"]
-            for d in range((last - first).days + 1)
-        ]
-
-    script(browser, accounts, make)
     result = cli(
         "list",
         "--live",
         "--from-date",
-        "2026-10-01",
+        "20260918",
         "--to-date",
-        "2026-10-08",
+        "20260918",
         "--limit",
         "0",
         "--require-complete",
     )
-    assert len(result["data"]) == 31 * 8
-    chunks = [b for b in browser.business_requests if "balanceType" in b]
-    assert [
-        (len(b["aliasNames"]), b["queryStartDate"], b["queryDate"]) for b in chunks
-    ] == [
-        (30, "20261001", "20261007"),
-        (30, "20261008", "20261008"),
-        (1, "20261001", "20261007"),
-        (1, "20261008", "20261008"),
-    ]
-    assert frozen(result)["planned_chunks"] == 4
+    assert result["data"] == [row(entity="ALIPAYGM")]
+    selected = composition(result)
+    assert selected["directory"]["source"] == "live"
+    assert selected["aliases"] == ["ACCOUNT"]
+    assert selected["planned_accounts"] == selected["successful_accounts"] == 1
+    assert selected["query_execution_complete"] is True
 
 
 @pytest.mark.parametrize(
     "flags",
     [
-        ["--from-date", "2026-10-01"],
-        ["--to-date", "2026-10-01"],
-        ["--from-date", "2026-10-03", "--to-date", "2026-10-01"],
-        [
-            "--from-date",
-            "2026-10-01",
-            "--to-date",
-            "2026-10-02",
-            "--timezone",
-            "GMT+08",
-        ],
-        ["--from-date", "2026-10-01", "--to-date", "2026-10-02", "--page-size", "10"],
-        ["--entity", " "],
-        ["--account-alias", "ANY"],
-        ["--page-size", "101"],
-        ["--entity", "ANY", "--entity", "OTHER"],
+        [],
+        ["--from-date", "20260918"],
+        ["--from-date", "20260230", "--to-date", "20260301"],
+        ["--from-date", "20260919", "--to-date", "20260918"],
+        ["--from-date", "2026-9-18", "--to-date", "20260918"],
+        [*FLAGS, "--timezone", "GMT+08"],
+        [*FLAGS, "--page-size", "500"],
     ],
 )
-def test_invalid_scope_rejected_before_browser(installed, flags):
-    cli, browser, _ = installed
-    assert cli("list", "--live", *flags, code=2)["error"]["code"] == "INVALID_ARGUMENT"
-    assert not browser.transports
-
-
-@pytest.mark.parametrize(
-    "failure",
-    [
-        "unknown_alias",
-        "ambiguous_binding",
-        "returned_alias",
-        "returned_date",
-        "amount",
-        "missing_balance",
-        "native_label_conflict",
-    ],
-)
-def test_daily_binding_or_chunk_failure_preserves_prior_capture(installed, failure):
-    cli, browser, _ = installed
-    flags = ["--from-date", "2026-10-01", "--to-date", "2026-10-01"]
-    script(browser, [roster()])
-    saved = cli("refresh", *flags, "--require-complete")
-    accounts = [roster()]
-
-    def make(body):
-        return [daily()]
-
-    if failure == "unknown_alias":
-        flags += ["--account-alias", "MISSING"]
-    elif failure == "ambiguous_binding":
-        accounts += [roster(entity="OTHER", currency="CNY")]
-    elif failure == "returned_alias":
-
-        def make(body):
-            return [daily("OTHER")]
-    elif failure == "returned_date":
-
-        def make(body):
-            return [daily(day="2026-10-02")]
-    elif failure == "amount":
-
-        def make(body):
-            return [daily(balance=True)]
-    elif failure == "missing_balance":
-
-        def make(body):
-            r = daily()
-            r.pop("balance")
-            return [r]
-    else:
-
-        def make(body):
-            return [daily(entity="OTHER")]
-
-    script(browser, accounts, make)
-    assert (
-        cli("refresh", *flags, "--require-complete", code=1)["error"]["code"]
-        == "INVALID_RESPONSE"
-    )
-    offline = cli("list", "--from-date", "2026-10-01", "--to-date", "2026-10-01")
-    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
-
-
-def test_required_chunk_business_failure_is_fatal(installed):
-    cli, browser, _ = installed
-    script(browser, [roster()])
-    original = browser.business_handler
-
-    def handler(body, ctx):
-        if "balanceType" in body:
-            return {"status": 200, "body": {"success": False, "data": None}}
-        return original(body, ctx)
-
-    browser.business_handler = handler
-    result = cli(
-        "refresh",
-        "--from-date",
-        "2026-10-01",
-        "--to-date",
-        "2026-10-01",
-        "--require-complete",
-        code=1,
-    )
-    assert result["error"]["code"] == "BUSINESS_QUERY_FAILED"
-    assert result["meta"]["published"] is False
-
-
-def test_any_freezes_local_selector_in_scope_and_never_sends_any(
-    installed, monkeypatch
+def test_dates_required_and_old_options_removed_before_business_request(
+    installed, flags
 ):
-    from dogopencli import duckdog
-
     cli, browser, _ = installed
-    current = ["ALIPAYGM"]
-    calls = []
-
-    def selector(path, field, *, config_file):
-        calls.append((path, field))
-        return list(current)
-
-    monkeypatch.setattr(duckdog, "resolve_selector", selector)
-    script(browser, [], latest=[snapshot()])
-    result = cli("refresh", "--entity", "ANY", "--require-complete")
-    assert frozen(result)["mode"] == "ANY"
-    assert frozen(result)["entities"] == ["ALIPAYGM"]
-    assert all(
-        "ANY" not in body.get("entitys", []) for body in browser.business_requests
-    )
-    n = len(browser.business_requests)
-    assert cli("list", "--entity", "ANY")["data"] == [snapshot()]
-    assert len(browser.business_requests) == n
-    assert calls
-    current[:] = ["OTHER"]
-    assert cli("list", "--entity", "ANY", code=1)["error"]["code"] in (
-        "CACHE_MISS",
-        "INVALID_ARGUMENT",
-    )
-
-
-def test_empty_any_selector_never_submits_unscoped_balance_query(
-    installed, monkeypatch
-):
-    from dogopencli import duckdog
-
-    cli, browser, _ = installed
-    monkeypatch.setattr(duckdog, "resolve_selector", lambda *args, **kwargs: [])
-    result = cli("list", "--live", "--entity", "ANY", "--require-complete")
-    assert result["data"] == []
+    result = cli("list", "--live", *flags, code=2)
+    assert result["error"] is not None
     assert not browser.business_requests
 
 
 @pytest.mark.parametrize(
-    "failure", ["changed_total", "duplicate", "conflict", "scope", "amount", "auth"]
+    "extra",
+    [
+        {"aliasName": "UNREQUESTED"},
+        {"valueDate": "20260919"},
+        {"valueDate": "2026918"},
+        {"entity": ""},
+        {"bankId": None},
+        {"updateTime": "2026-09-19T08:00:00Z"},
+        {"updateTime": "2026-09-19 8:00:00"},
+        {"updateTime": "2026-02-30 08:00:00"},
+        {"updateTime": None},
+        {"__dogopencli_dayend_order": 0},
+        {"closeBalance": 1},
+    ],
 )
-def test_latest_page_failures_preserve_saved_capture(installed, failure):
+def test_invalid_native_scope_identity_time_and_amount_fail(installed, extra):
     cli, browser, _ = installed
-    script(browser, [], latest=[snapshot()])
-    saved = cli("refresh", "--require-complete")
-    browser.business_handler = None
-    first = response({"data": [snapshot("A")], "totalCount": 2})
-    second = response({"data": [snapshot("B")], "totalCount": 2})
-    expected = "INVALID_RESPONSE"
-    if failure == "changed_total":
-        second["body"]["data"]["totalCount"] = 3
-    elif failure == "duplicate":
-        second["body"]["data"]["data"] = [snapshot("A")]
-        expected = "INCOMPLETE_RESULT"
-    elif failure == "conflict":
-        second["body"]["data"]["data"] = [snapshot("A", curBalance=1)]
-    elif failure == "scope":
-        second["body"]["data"]["data"] = [snapshot("B", entity="OTHER")]
-    elif failure == "amount":
-        second["body"]["data"]["data"] = [snapshot("B", curBalance=True)]
-    else:
-        second = {"status": 401, "body": {}}
-        expected = "AUTH_REQUIRED"
-    browser.business_script.extend([first, second])
-    failed = cli("refresh", "--page-size", "1", "--require-complete", code=1)
-    assert failed["error"]["code"] == expected
-    assert failed["meta"]["published"] is False
-    assert cli("list")["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+    browser.business_script.append(page([row(**extra)]))
+    got = cli("list", "--live", *FLAGS, code=1)
+    assert got["error"]["code"] == "INVALID_RESPONSE"
+    assert got["data"] is None
 
 
-def test_daily_disallows_more_than_1000_chunks_before_balance_requests(installed):
+def test_explicit_entity_validates_native_without_directory(installed):
     cli, browser, _ = installed
-    script(browser, [roster()])
+    browser.business_script.append(page([row()]))
+    got = cli("list", "--live", *FLAGS, "--entity", "ALIPAYGM", code=1)
+    assert got["error"]["code"] == "INVALID_RESPONSE"
+    assert len(browser.business_requests) == 1
+
+
+@pytest.mark.parametrize(
+    "script, expected",
+    [
+        ([{"status": 401, "body": {}}], "AUTH_REQUIRED"),
+        ([{"status": 200, "body": {"success": False}}], "BUSINESS_QUERY_FAILED"),
+        ([page([row()], rowStart=1)], "INVALID_RESPONSE"),
+        ([page([row()], pageSize=10)], "INVALID_RESPONSE"),
+    ],
+)
+def test_query_errors_and_malformed_echo_are_not_success(installed, script, expected):
+    cli, browser, _ = installed
+    browser.business_script.extend(script)
+    got = cli("list", "--live", *FLAGS, code=1)
+    assert got["error"]["code"] == expected
+    assert got["data"] is None
+
+
+def test_multiple_aliases_deduplicate_requests_and_keep_independent_totals(installed):
+    cli, browser, _ = installed
+    browser.business_script.extend([page([row()]), page([])])
     result = cli(
-        "list", "--live", "--from-date", "2000-01-01", "--to-date", "2026-10-01", code=2
+        "list",
+        "--live",
+        *FLAGS,
+        "--account-alias",
+        "ACCOUNT",
+        "--account-alias",
+        "EMPTY",
+        "--limit",
+        "0",
+        "--require-complete",
     )
-    assert result["error"]["code"] == "INVALID_ARGUMENT"
-    assert not [body for body in browser.business_requests if "balanceType" in body]
+    assert result["data"] == [row()]
+    selection = composition(result)
+    assert selection["aliases"] == ["ACCOUNT", "EMPTY"]
+    assert (
+        selection["planned_accounts"]
+        == selection["queried_accounts"]
+        == selection["successful_accounts"]
+        == 2
+    )
+    assert selection["successful_empty_accounts"] == 1
+    assert result["meta"]["reported_total"] is None
 
 
-@pytest.mark.parametrize("daily_mode", [False, True])
-def test_boolean_zero_unknown_field_conflict_fails_in_both_modes(installed, daily_mode):
+@pytest.mark.parametrize("bad", ["overlap", "short", "drift"])
+def test_paging_overlap_missing_rows_and_total_drift_rejected_strict(installed, bad):
     cli, browser, _ = installed
-    if daily_mode:
-        script(
-            browser,
-            [roster()],
-            lambda body: [daily(unknown={"flag": False}), daily(unknown={"flag": 0})],
+    records = [row(accountNo=str(i), bankId="BANK" + str(i)) for i in range(501)]
+    first = records[:500] if bad != "short" else records[:499]
+    second = records[499:500] if bad == "overlap" else records[500:]
+    browser.business_script.extend(
+        [
+            page(first, total=501),
+            page(second, start=500, total=502 if bad == "drift" else 501),
+        ]
+    )
+    got = cli("list", "--live", *FLAGS, "--require-complete", code=1)
+    assert got["error"]["code"] in {"INVALID_RESPONSE", "INCOMPLETE_RESULT"}
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        (
+            {"updateTime": "2026-09-19 08:00:00", "closeBalance": "9999"},
+            {"updateTime": "2026-09-19 09:00:00", "closeBalance": "1"},
+        ),
+        (
+            {"updateTime": "2026-09-19 09:00:00", "closeBalance": "1"},
+            {"updateTime": "2026-09-19 08:00:00", "closeBalance": "9999"},
+        ),
+        ({"closeBalance": "9999"}, {"closeBalance": "1"}),
+    ],
+)
+def test_same_key_content_conflict_remains_exit_one(installed, first, second):
+    cli, browser, _ = installed
+    browser.business_script.append(page([row(**first), row(**second)]))
+    got = cli("list", "--live", *FLAGS, code=1)
+    assert got["data"] is None
+    assert got["error"]["code"] == "INCOMPLETE_RESULT"
+    assert "IDENTITY_CONTENT_CONFLICT" in str(got["meta"])
+
+
+def seed_accounts(config, records, *, complete=True):
+    from dogopencli.cache import Cache, SnapshotMeta
+    from dogopencli.jsonutil import canonical
+    from dogopencli.result_policy import AcquisitionEvidence
+
+    evidence = AcquisitionEvidence.for_collection(
+        complete=complete,
+        reported_total=len(records) if complete else len(records) + 1,
+        collected_total=len(records),
+        arrivals=len(records),
+    )
+    Cache(config / "leaf-cache.sqlite3").publish(
+        SnapshotMeta(
+            namespace="leaf:liquidity.cash.accounts",
+            capability="liquidity.cash.accounts",
+            scope="",
+            source_kind="live",
+            snapshot_id="synthetic-accounts",
+            dataset_id=None,
+            simulated=False,
+            backend_complete=complete,
+            dataset_complete=complete,
+            fetched_at="2026-10-19T00:00:00+00:00",
+            loaded_at="2026-10-19T00:00:00+00:00",
+            source_observed_from=None,
+            source_observed_to=None,
+            row_count=len(records),
+            acquisition=evidence.record(),
+        ),
+        ((i, canonical(r)) for i, r in enumerate(records)),
+    )
+
+
+def seed_duckdog(config, rows=None, *, missing_alias=False):
+    import duckdb
+
+    database = config / "duckdog.duckdb"
+    with duckdb.connect(str(database)) as connection:
+        if missing_alias:
+            connection.execute("CREATE TABLE accounts (instId VARCHAR, bankId VARCHAR)")
+            connection.execute(
+                "INSERT INTO accounts VALUES (?, ?)", ["ALIPAYGM", "BANK"]
+            )
+        else:
+            connection.execute(
+                "CREATE TABLE accounts "
+                "(aliasName VARCHAR, instId VARCHAR, bankId VARCHAR)"
+            )
+            for item in rows or [roster()]:
+                connection.execute(
+                    "INSERT INTO accounts VALUES (?, ?, ?)",
+                    [item.get("aliasName"), item.get("instId"), item.get("bankId")],
+                )
+    with (config / "config.toml").open("a") as stream:
+        stream.write(
+            f'\n[duckdog]\npath = "{database}"\n[duckdog.selectors]\n'
+            '"liquidity/cash/accounts" = "accounts"\n'
         )
-        flags = ["--from-date", "2026-10-01", "--to-date", "2026-10-01"]
+
+
+ENTITY_FLAGS = ["--from-date", "20260918", "--to-date", "20260918"]
+
+
+@pytest.mark.parametrize(
+    "source,complete", [("cache", True), ("cache", False), ("duckdog", None)]
+)
+def test_directory_selected_quality_is_retained_without_quality_fallback(
+    installed, source, complete
+):
+    cli, browser, config = installed
+    seed_accounts(config, [roster()], complete=complete is not False)
+    if source == "duckdog":
+        seed_duckdog(config, [roster(), roster()])
+    browser.business_script.append(page([row(entity="ALIPAYGM")]))
+    result = cli("list", "--live", *ENTITY_FLAGS, "--limit", "0")
+    assert result["data"] == [row(entity="ALIPAYGM")]
+    assert len(browser.business_requests) == 1
+    directory = composition(result)["directory"]
+    assert directory["source"] == source
+    assert directory["quality"].get("complete") is complete
+    assert result["meta"]["complete"] is (complete is True)
+    if complete is not True:
+        assert (
+            "ACCOUNT_DIRECTORY_INCOMPLETE" if complete is False else "COVERAGE_UNPROVEN"
+        ) in str(result["meta"])
+        browser.business_script.append(page([row(entity="ALIPAYGM")]))
+        rejected = cli("list", "--live", *ENTITY_FLAGS, "--require-complete", code=1)
+        assert rejected["error"]["code"] == "INCOMPLETE_RESULT"
+
+
+@pytest.mark.parametrize("kind", ["no_match", "missing_fields", "empty"])
+def test_optional_directory_no_match_or_missing_fields_falls_to_cache(installed, kind):
+    cli, browser, config = installed
+    seed_duckdog(
+        config, [roster(entity="OTHER")], missing_alias=kind == "missing_fields"
+    )
+    if kind == "empty":
+        import duckdb
+
+        with duckdb.connect(str(config / "duckdog.duckdb")) as connection:
+            connection.execute("DELETE FROM accounts")
+    seed_accounts(config, [roster()])
+    browser.business_script.append(page([row(entity="ALIPAYGM")]))
+    got = cli("list", "--live", *ENTITY_FLAGS, "--require-complete")
+    assert composition(got)["directory"]["source"] == "cache"
+    assert len(browser.business_requests) == 1
+
+
+def test_ambiguous_directory_alias_is_hard_error(installed):
+    cli, browser, config = installed
+    seed_duckdog(config, [roster(), roster(bankId="OTHER")])
+    got = cli("list", "--live", *ENTITY_FLAGS, code=1)
+    assert got["error"]["code"] == "INVALID_RESPONSE"
+    assert not browser.business_requests
+
+
+def test_configured_broken_duckdog_never_falls_back(installed):
+    cli, browser, config = installed
+    seed_duckdog(config)
+    (config / "duckdog.duckdb").write_bytes(b"not a database")
+    seed_accounts(config, [roster()])
+    got = cli("list", "--live", *ENTITY_FLAGS, code=1)
+    assert got["error"]["code"] == "LEAF_LOAD_ERROR"
+    assert not browser.business_requests
+
+
+def test_live_directory_empty_proof_is_empty_query_scope(installed):
+    cli, browser, _ = installed
+    browser.business_handler = lambda body, _: directory_page([])
+    got = cli("list", "--live", *ENTITY_FLAGS, "--require-complete")
+    assert got["data"] == []
+    assert composition(got)["planned_accounts"] == 0
+    assert composition(got)["directory"]["source"] == "live"
+    assert all("bankAccountQueryVO" in x for x in browser.business_requests)
+
+
+def test_live_directory_auth_failure_stays_auth_failure(installed):
+    cli, browser, _ = installed
+    browser.business_script.append({"status": 401, "body": {}})
+    got = cli("list", "--live", *ENTITY_FLAGS, code=1)
+    assert got["error"]["code"] == "AUTH_REQUIRED"
+
+
+@pytest.mark.parametrize("failure", ["empty", "error", "conflict", "strict"])
+def test_rejected_and_empty_refresh_preserve_prior_snapshot(installed, failure):
+    cli, browser, config = installed
+    browser.business_script.append(page([row()]))
+    saved = cli("refresh", *FLAGS)
+    if failure == "empty":
+        browser.business_script.append(page([]))
+        cli("refresh", *FLAGS)
+    elif failure == "error":
+        browser.business_script.append({"status": 200, "body": {"success": False}})
+        cli("refresh", *FLAGS, code=1)
+    elif failure == "conflict":
+        browser.business_script.append(page([row(), row(closeBalance="1")]))
+        cli("refresh", *FLAGS, code=1)
     else:
-        script(
-            browser,
-            [],
-            latest=[snapshot(unknown={"flag": False}), snapshot(unknown={"flag": 0})],
+        seed_accounts(config, [roster()], complete=False)
+        browser.business_script.append(page([row(entity="ALIPAYGM")]))
+        cli("refresh", *ENTITY_FLAGS, "--require-complete", code=1)
+    offline = cli("list", "--limit", "0")
+    assert offline["data"] == [row()]
+    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+def test_failed_account_keeps_frozen_plan_success_failure_and_unqueried_counts(
+    installed,
+):
+    cli, browser, _ = installed
+    browser.business_script.extend(
+        [page([row()]), {"status": 200, "body": {"success": False}}]
+    )
+    got = cli(
+        "list",
+        "--live",
+        *FLAGS,
+        "--account-alias",
+        "FAILED",
+        "--account-alias",
+        "UNQUERIED",
+        code=1,
+    )
+    assert got["error"]["code"] == "BUSINESS_QUERY_FAILED"
+    selected = composition(got)
+    assert selected["aliases"] == ["ACCOUNT", "FAILED", "UNQUERIED"]
+    assert selected["planned_accounts"] == 3
+    assert selected["queried_accounts"] == 2
+    assert selected["successful_accounts"] == 1
+    assert selected["failed_accounts"] == 1
+    assert selected["successful_empty_accounts"] == 0
+    assert selected["query_execution_complete"] is False
+    assert len(browser.business_requests) == 2
+
+
+@pytest.mark.parametrize(
+    "first, second, expected",
+    [
+        (
+            {"updateTime": "2026-09-19 08:00:00", "closeBalance": "9999"},
+            {"updateTime": "2026-09-19 09:00:00", "closeBalance": "1"},
+            "1",
+        ),
+        (
+            {"updateTime": "2026-09-19 09:00:00", "closeBalance": "1"},
+            {"updateTime": "2026-09-19 08:00:00", "closeBalance": "9999"},
+            "1",
+        ),
+        ({"closeBalance": "9999"}, {"closeBalance": "1"}, "1"),
+    ],
+)
+def test_public_sdk_candidate_selection_cleans_sort_field_preserves_conflicts(
+    installed, first, second, expected
+):
+    from dogopencli.jsonutil import canonical
+    from dogopencli.leaves.query import QueryTools, query_capabilities
+    from dogopencli.leaves.registry import Registry
+    from dogopencli.transport import OriginMetadata, TransportResponse
+
+    _, _, config = installed
+    leaf = Registry(config / "config.toml").scan().get("liquidity", LEAF)
+    parameters = {
+        "account_alias": ["ACCOUNT"],
+        "from_date": "20260918",
+        "to_date": "20260918",
+    }
+
+    class Native:
+        def execute(self, request, *, timeout):
+            return TransportResponse(
+                200,
+                canonical(page([row(**first), row(**second)])["body"]).encode(),
+                OriginMetadata("fixture", True, None, None, None, None, None),
+            )
+
+        def close(self):
+            pass
+
+    with QueryTools(
+        leaf,
+        "list",
+        parameters,
+        query_capabilities(leaf, "list", parameters),
+        lambda _: Native(),
+    ) as tools:
+        candidate = leaf.adapter.query_list(parameters, tools)
+        assert candidate.records == [
+            row(**(second if first["closeBalance"] == "9999" else first))
+        ]
+        assert candidate.records[0]["closeBalance"] == expected
+        assert not any(k.startswith("__dogopencli") for k in candidate.records[0])
+        assert "IDENTITY_CONTENT_CONFLICT" in str(candidate.evidence.record())
+        collected = tools.finish_list(candidate)
+        assert collected.records == candidate.records
+        assert collected.evidence.scope_complete is False
+
+
+def test_entity_any_frozen_selection_live_and_offline(installed):
+    cli, browser, config = installed
+    import duckdb
+
+    database = config / "duckdog.duckdb"
+    with duckdb.connect(str(database)) as connection:
+        connection.execute("CREATE TABLE entities (instId VARCHAR)")
+        connection.execute(
+            "INSERT INTO entities VALUES (?), (?)", ["ALIPAYGM", "OTHER"]
         )
-        flags = []
-    failed = cli("refresh", *flags, "--require-complete", code=1)
-    assert failed["error"]["code"] == "INVALID_RESPONSE"
-    assert failed["meta"]["published"] is False
+    with (config / "config.toml").open("a") as stream:
+        stream.write(
+            f'\n[duckdog]\npath = "{database}"\n[duckdog.selectors]\n'
+            '"liquidity/reference/entities" = "entities"\n'
+        )
+    browser.business_script.append(page([row()]))
+    flags = [*FLAGS, "--entity", "ANY"]
+    live = cli("list", "--live", *flags, "--require-complete")
+    assert live["data"] == [row()]
+    assert composition(live)["entities"] == ["ALIPAYGM", "OTHER"]
+    browser.business_script.append(page([row()]))
+    cli("refresh", *flags, "--require-complete")
+    count = len(browser.business_requests)
+    offline = cli("list", "--entity", "ANY", "--limit", "0", "--require-complete")
+    assert offline["data"] == [row()]
+    assert len(browser.business_requests) == count
+
+
+def test_complete_multi_page_native_records_survive_refresh_replay(installed):
+    cli, browser, _ = installed
+    records = [row(bankId="BANK" + str(i)) for i in range(501)]
+    browser.business_script.extend(
+        [page(records[:500], total=501), page(records[500:], start=500, total=501)]
+    )
+    live = cli("list", "--live", *FLAGS, "--limit", "0", "--require-complete")
+    assert live["data"] == records
+    assert [r["rowStart"] for r in browser.business_requests] == [0, 500]
+    accounts = [x for x in live["meta"]["acquisition"]["attempts"] if "alias" in x]
+    assert len(accounts) == 1
+    assert accounts[0]["acquisition"]["reported_total"] == 501
+    assert accounts[0]["acquisition"]["arrivals"] == 501
+    browser.business_script.extend(
+        [page(records[:500], total=501), page(records[500:], start=500, total=501)]
+    )
+    cli("refresh", *FLAGS, "--require-complete")
+    before = len(browser.business_requests)
+    offline = cli("list", "--limit", "0", "--require-complete")
+    assert offline["data"] == records
+    assert len(browser.business_requests) == before
+
+
+def test_prior_source_contract_cannot_replay_as_dayend(installed):
+    from dataclasses import replace
+
+    from dogopencli.cache import Cache
+    from dogopencli.jsonutil import canonical
+
+    cli, browser, config = installed
+    browser.business_script.append(page([row()]))
+    cli("refresh", *FLAGS, "--require-complete")
+    cache = Cache(config / "leaf-cache.sqlite3")
+    snapshot, records = cache.read("leaf:liquidity.cash.balances")
+    prior_scope = {**parse(snapshot.scope), "contract_id": "prior-trend-contract"}
+    cache.publish(replace(snapshot, scope=canonical(prior_scope)), records)
+    before = len(browser.business_requests)
+    got = cli("list", code=1)
+    assert got["error"]["code"] == "CACHE_CONTRACT_CHANGED"
+    assert len(browser.business_requests) == before
+
+
+@pytest.mark.parametrize("records", [[roster(alias=3)], [roster(instId=["ALIPAYGM"])]])
+def test_malformed_configured_cached_directory_never_falls_back(installed, records):
+    cli, browser, config = installed
+    seed_accounts(config, records)
+    got = cli("list", "--live", *ENTITY_FLAGS, code=1)
+    assert got["error"]["code"] == "INVALID_RESPONSE"
+    assert not browser.business_requests
+
+
+def test_duckdog_directory_read_budget_is_hard_error(installed):
+    cli, browser, config = installed
+    seed_duckdog(config)
+    import duckdb
+
+    with duckdb.connect(str(config / "duckdog.duckdb")) as connection:
+        connection.execute(
+            "INSERT INTO accounts SELECT aliasName, instId, bankId "
+            "FROM accounts, range(100000)"
+        )
+    got = cli("list", "--live", *ENTITY_FLAGS, code=1)
+    assert got["error"]["code"] == "CONFIG_ERROR"
+    assert not browser.business_requests
+
+
+@pytest.mark.parametrize(
+    "records,total,code,successful,empty,incomplete",
+    [
+        ([], 1, 0, 0, 0, 1),
+        ([], 0, 0, 1, 1, 0),
+        ([row()], 2, 0, 0, 0, 1),
+        ([row()], 1, 0, 1, 0, 0),
+    ],
+)
+def test_account_outcomes_distinguish_incomplete_from_successful_empty(
+    installed, records, total, code, successful, empty, incomplete
+):
+    cli, browser, _ = installed
+    browser.business_script.append(page(records, total=total))
+    got = cli("list", "--live", *FLAGS, code=code)
+    selected = composition(got)
+    assert selected["planned_accounts"] == selected["queried_accounts"] == 1
+    assert selected["successful_accounts"] == successful
+    assert selected["successful_empty_accounts"] == empty
+    assert selected["incomplete_accounts"] == incomplete
+    assert selected["failed_accounts"] == 0
+    assert selected["query_execution_complete"] is (incomplete == 0)
+    account = next(x for x in got["meta"]["acquisition"]["attempts"] if "alias" in x)
+    assert account["acquisition"]["reported_total"] == total
+    assert account["acquisition"]["scope_complete"] is (incomplete == 0)
+    if incomplete:
+        assert "COUNT_SHORTFALL" in str(account["acquisition"])
