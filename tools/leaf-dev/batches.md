@@ -75,7 +75,7 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 - B16/#275：两个 List 完成。cost 以 itemId 保留不同计费规格，clearingNetworkName 在完整取源后精确筛选，live/offline 一致。channel 以 abilityId 去重，使用已批准的 short_page 绕行；同 ID 同内容重复为 exit 0 + warning，可发布 refresh；冲突仍失败。total 未知，不声称已证明后端业务全集。
 - B17/#276：两个 PTR List 完成，复用 custom 实现两次成功完整稳定读取、字段白名单及填充范围验证后修剪；两项原生／pinned、live/refresh/offline及同ZIP HTTP生命周期通过。
 - B18/#277：三个 List 完成。银行黑名单按 bankId+bankSwiftCode 为键，先比较 gmtModified，再比较 gmtCreate 选择；独立保留源到达、原生 total 和选中行数量。
-- B19/#278：两个 List 完成。cash.accounts 保留已批准的 failed-detail/incomplete 策略，strict 拒绝不完整详情；默认 Refresh 仅可发布显式批准可用的不完整候选并保留告警。cash.balances 保留 latest/daily、冻结的当前目录标签和账户／日期分块；当前目录不作为历史所有权证明。
+- B19/#278：两个 List 完成。cash.accounts 保留已批准的 failed-detail/incomplete 策略，strict 拒绝不完整详情；默认 Refresh 仅可发布显式批准可用的不完整候选并保留告警。cash.balances 按 #385 使用唯一日终明细来源，显式成对日期与逐账户 SDK 分页；实体查询冻结 Duckdog／缓存／实时目录来源及质量，显式 alias 不依赖当前目录；当前目录不作为历史所有权或历史账户全集证明。
 - B20/#279：`operations.account_strategies` List 完成，保留原生复合身份、全部版本和状态；旧额外空终页探测由 SDK 标准完整性机制替代。`risk.account_capacity` List 完成，custom 按原1–10显式账户范围逐一校验原生alias回显；原生／pinned、live/refresh/offline及同ZIP HTTP生命周期通过。
 
 B11–B20 累计交付 25 leaves / 29 actions；原有 #332 范围全部完成。
