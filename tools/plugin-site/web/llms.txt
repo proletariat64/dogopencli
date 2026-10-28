@@ -1,0 +1,30 @@
+# Dogopencli Plugin Registry
+
+This registry distributes inquiry-only dogopencli leaf ZIP packages.
+All URLs below are relative to /plugins/. Read docs before developing or publishing.
+
+- Human guide: docs
+- Agent development guide: agent-guide.md
+- Release catalog: api/catalog (JSON; releases sorted by publication time)
+- Authoritative manifest/interface: reference/tools/leaf-dev/interfaces.md
+- Development handbook: reference/tools/leaf-dev/handbook.md
+- List SDK: reference/docs/agents/list-collection-sdk.md
+- Get SDK: reference/docs/agents/get-sdk.md
+- Custom SDK: reference/docs/agents/custom-query-sdk.md
+- Result policy: reference/docs/agents/result-policy.md
+- Runnable List + Get example: reference/tools/leaf-dev/example/leaf.json and adapter.py
+
+GET api/catalog returns releases with id, domain, name, summary, version,
+operations, manifest, sha256, bytes, published_at, download, validation.
+Version is an immutable registry release label, not a leaf manifest field.
+Use the exact download path from a catalog record. Do not invent endpoints.
+Install: dogopencli plugins install <absolute download URL>
+
+PUT api/releases/<version> publishes raw ZIP bytes with Content-Length and
+Authorization: Bearer <publisher token>. Never print or persist tokens.
+201 created; 400 invalid package/version; 401 authentication required;
+409 immutable version already exists; 413 payload size; 503 publishing disabled.
+ZIP limit: 50 MiB; expanded content: 100 MiB; entries: 1000.
+Static validation never imports adapters and does NOT prove production UAT.
+Only install trusted packages: installation imports their Python adapters.
+No business query or domain authentication is required to use this registry.
