@@ -679,3 +679,32 @@ def test_duckdog_directory_read_budget_is_hard_error(installed):
     got = cli("list", "--live", *ENTITY_FLAGS, code=1)
     assert got["error"]["code"] == "CONFIG_ERROR"
     assert not browser.business_requests
+
+
+@pytest.mark.parametrize(
+    "records,total,code,successful,empty,incomplete",
+    [
+        ([], 1, 0, 0, 0, 1),
+        ([], 0, 0, 1, 1, 0),
+        ([row()], 2, 0, 0, 0, 1),
+        ([row()], 1, 0, 1, 0, 0),
+    ],
+)
+def test_account_outcomes_distinguish_incomplete_from_successful_empty(
+    installed, records, total, code, successful, empty, incomplete
+):
+    cli, browser, _ = installed
+    browser.business_script.append(page(records, total=total))
+    got = cli("list", "--live", *FLAGS, code=code)
+    selected = composition(got)
+    assert selected["planned_accounts"] == selected["queried_accounts"] == 1
+    assert selected["successful_accounts"] == successful
+    assert selected["successful_empty_accounts"] == empty
+    assert selected["incomplete_accounts"] == incomplete
+    assert selected["failed_accounts"] == 0
+    assert selected["query_execution_complete"] is (incomplete == 0)
+    account = next(x for x in got["meta"]["acquisition"]["attempts"] if "alias" in x)
+    assert account["acquisition"]["reported_total"] == total
+    assert account["acquisition"]["scope_complete"] is (incomplete == 0)
+    if incomplete:
+        assert "COUNT_SHORTFALL" in str(account["acquisition"])

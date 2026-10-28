@@ -402,6 +402,7 @@ class Adapter:
             "planned_accounts": len(aliases),
             "queried_accounts": 0,
             "successful_accounts": 0,
+            "incomplete_accounts": 0,
             "failed_accounts": 0,
             "successful_empty_accounts": 0,
             "query_execution_complete": False,
@@ -437,10 +438,14 @@ class Adapter:
             evidence = result.evidence
             if evidence is None:
                 invalid("day-end acquisition evidence missing")
-            complete &= evidence.scope_complete and evidence.dataset_complete
+            account_complete = evidence.scope_complete and evidence.dataset_complete
+            complete &= account_complete
             arrivals += evidence.arrivals or 0
-            selection["successful_accounts"] += 1
-            selection["successful_empty_accounts"] += not result.records
+            selection["successful_accounts"] += account_complete
+            selection["incomplete_accounts"] += not account_complete
+            selection["successful_empty_accounts"] += (
+                account_complete and evidence.reported_total == 0 and not result.records
+            )
             rows.extend(
                 {k: v for k, v in row.items() if k != ORDER} for row in result.records
             )
