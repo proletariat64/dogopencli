@@ -1,4 +1,4 @@
-# Durable export and scoped observation import
+# Durable export and scoped import
 
 `export` retrieves an installed List scope online. `import` writes an exact saved
 export into its registered Duckdog destination offline. Each command executes its
@@ -13,6 +13,9 @@ dogopencli workflow export show --export EXPORT_ID
 dogopencli workflow import plan --export EXPORT_ID --action preserve
 dogopencli workflow import apply --plan IMPORT_PLAN_ID
 dogopencli workflow observation show --export EXPORT_ID
+dogopencli workflow import plan --export EXPORT_ID --action replace-full
+dogopencli workflow import apply --plan REPLACEMENT_PLAN_ID
+dogopencli workflow current show --export EXPORT_ID
 dogopencli workflow status
 ```
 
@@ -56,7 +59,7 @@ the host lifecycle writer lock. A failed write rolls back both. Reapplying the s
 export/action/destination, including a regenerated import plan after restart,
 returns `replayed: true` without inserting rows. The receipt is authoritative if a
 process stops after commit but before printing its response. Host observation tables
-are added without migrating or rewriting current rows. Uninstallation retains data
+are added without migrating the registered `_record` schema. Uninstallation retains data
 and registered binding history.
 
 `observation show` reads stored DuckDB rows and their receipt. `export show` reads
@@ -66,6 +69,26 @@ export and committed observations. It initializes no schema and advances no stag
 Workflow artifacts live under `workflow/` beside the selected configuration file;
 Duckdog destinations remain the leaf registry's existing database/relation bindings.
 
-This workflow supports scoped preservation. Replacement, keyed updates, historical
-coverage planning, repair orchestration and scheduling require their own explicit
-contracts and commands.
+`replace-full` explicitly publishes a complete exact full query observation as
+current data. Its preview shows the namespace (leaf, operation, environment, native
+parameters and scope), existing and new counts, and `expected_current`. Initial
+publication expects `null`; it needs no fabricated predecessor. Complete-empty
+replacement intentionally clears that namespace. Failed, incomplete and unavailable
+exports cannot prepare a normal import plan.
+
+Apply checks the expected publication under the writer lock. A stale plan fails
+without changing records. Rows, saved observation, publication receipt and current
+pointer commit atomically. Replacement removes the previous scope's exact row
+occurrences and inserts the selected export, preserving unrelated scopes and existing
+rows. Nested values and legitimate duplicate multiplicity remain intact; no inferred
+business key or time field is needed. Previous exports and observations stay readable.
+Replaying an already published export is a no-op even after another export became
+current; retry never moves the pointer backwards. An already preserved export can
+be explicitly published without duplicating its saved observation.
+
+`current show --export EXPORT_ID` uses that export's exact namespace to read the
+current committed observation and publication receipt. `status.current_publications`
+identifies the current exports separately from latest attempts and saved history.
+A failed refresh leaves current data visible. Import, current readback and status
+remain offline. Keyed updates, historical coverage planning, repair orchestration
+and scheduling require their own explicit contracts and commands.
