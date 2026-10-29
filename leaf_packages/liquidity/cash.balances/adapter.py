@@ -361,6 +361,23 @@ def enumerate_aliases(
 
 
 class Adapter:
+    def history_contract(self, parameters: dict) -> dict:
+        values = resolve(parameters)
+        return {
+            "time_basis": "valueDate",
+            "interpretation": "calendar_date",
+            "format": "%Y%m%d",
+            "boundary": "inclusive",
+            "timezone": None,
+            "from_parameter": "from_date",
+            "to_parameter": "to_date",
+            "from": values["start"],
+            "to": values["end"],
+            "splitting": "explicit_windows",
+            "cross_range_equivalence": False,
+            "modification_time": "updateTime (native local format; timezone unknown)",
+        }
+
     def query_capability(self, operation: str, name: str, parameters: dict) -> Any:
         resolve(parameters)
         return RosterInquiry() if name == "roster" else BalanceInquiry()

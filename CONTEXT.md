@@ -2,6 +2,11 @@
 
 本词汇表定义当前查询所需的业务对象、时间与质量含义。原生字段和参数见已安装 leaf 的 describe/help。
 
+**有界历史查询观测（Bounded History Query Observation）**：固定原生时间边界、筛选条件和
+有限截止点的独立查询结果。目标范围、工作包、采集尝试与已完成范围分别记录；
+空结果只证明该次原生查询完整，不补造每日记录。不同窗口保持独立观测，
+除非原生契约另有明确保证，否则不推定其拼接等同于更宽窗口或已发布的当前历史。
+
 **外汇逐笔交易（FX Individual Trade）**：FX Shield 中单笔客户外汇交易的风险受理记录，
 包含原生交易与报价信息，属于运行态。原生 `uniqueId` 是交易单号，标识该逐笔记录；
 `outBizNo` 是对客单号，多个交易单可关联同一对客单号。
@@ -117,6 +122,11 @@ _Avoid_: 根据金额重算匹配、按相似字段去重，或把无效的原�
 成功空刷新保留旧结果并说明本次未发布；缓存不是历史数据集。
 _Avoid_: 将多个范围或多次采集拼接成历史、将离线空筛选当作来源无记录的证明。
 
+**范围观测（Scoped Observation）**：一次完整原生查询范围的精确保留结果，连同采集
+结论与来源保存在已注册数据集内。保留观测不改变当前数据视图；同一导出的重放不重复
+插入，不同导出即使值相同也分别保留。采集时刻不替代业务时间。
+_Avoid_: 将观测保留当作当前快照替换、按相同行去重，或推导未声明的每日历史覆盖。
+
 **duckdog**：独立的历史数据集与分析层，负责导入、保存、合并及分析在线 JSON 查询结果。
 它按列表叶子组织数据集，不将 get 作为数据集。新插件安装时注册工作表并初始化空表，
 后续加载验证绑定；卸载保留数据集。查询与刷新不自动导入，历史数据政策仍由 duckdog 决定。
@@ -146,3 +156,14 @@ _Avoid_: 将 SLA 基线与实际到账耗时作为同义词。
 
 **收款交易成本配置（Collection Transaction-Cost Configuration）**：描述收款渠道交易费用的适用条件、计费方式及费率的配置记录；不同于已发生交易的实际费用，也不同于 VA 账户费用配置。
 _Avoid_: 将收款交易成本配置简称为实际收款费用，或与 VA 费用混用。
+
+A **current publication** is an explicitly selected complete full observation in an
+exact native query namespace. Replacement checks the expected prior publication
+and commits records, provenance and pointer together; saved observations remain
+readable independently of which export is current.
+
+A **historical range replacement** is an explicit local publication backed by
+a complete exact export whose native contract establishes replacement coverage
+for that business namespace and range. Absence removes only owned occurrences
+inside that range; outside history and separate observations remain retained.
+A successful empty query alone does not establish deletion semantics.

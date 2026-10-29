@@ -457,3 +457,41 @@ def test_request_allowlist_rejects_unregistered_fields_width_and_context(monkeyp
     ]:
         with pytest.raises(CliError):
             inquiry.page_body(changed_scope, offset, width)
+
+
+def test_workflow_detail_plan_freezes_sources_without_row_bound_values(installed):
+    from dogopencli.jsonutil import canonical
+
+    kind, cli, browser, _ = installed
+    plan = cli(
+        "workflow",
+        "plan",
+        "create",
+        "--leaf",
+        "liquidity." + LEAF,
+        "--with-detail",
+        "--parameters",
+        canonical(
+            {
+                "task-type": kind,
+                "from-date": "20261019",
+                "to-date": "20261019",
+            }
+        ),
+    )["data"]
+    assert not browser.business_requests
+    assert plan["detail_contract"]["declaration"]["list_binding"] == {
+        "identity_field": "id",
+        "parameters": {"task-type": "taskType"},
+    }
+    rows = records(kind, count=1)
+    detail = native_detail(kind, identity="0")
+    browser.business_script.extend([list_reply(rows), reply(detail)])
+    exported = cli("workflow", "export", "run", "--plan", plan["id"])["data"]
+    assert exported["state"] == "complete_nonempty"
+    assert exported["records"] == [{"record": rows[0], "detail": detail}]
+    assert browser.business_requests[-1] == {"taskId": "0"}
+    browser.business_script.append(list_reply([]))
+    empty = cli("workflow", "export", "run", "--plan", plan["id"])["data"]
+    assert empty["state"] == "complete_empty"
+    assert empty["records"] == []

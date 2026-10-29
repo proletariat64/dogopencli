@@ -4,6 +4,7 @@ import hashlib
 import inspect
 import math
 from argparse import Namespace
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
@@ -329,8 +330,91 @@ def _compose_details(
     return combined, acquisitions
 
 
+def freeze_list_parameters(leaf: Leaf, parameters: dict, config_file: Path) -> dict:
+    """Read local selectors only, rejecting drift in an already frozen request."""
+    specification = leaf.manifest["operations"].get("list", {})
+    if specification.get("entity_selector") is True and parameters.get("entity") == [
+        "ANY"
+    ]:
+        from dogopencli.duckdog import resolve_selector
+
+        entities = resolve_selector(
+            "liquidity/reference/entities", "instId", config_file=config_file
+        )
+        if (
+            "_resolved_entities" in parameters
+            and parameters["_resolved_entities"] != entities
+        ):
+            raise CliError(
+                "WORKFLOW_ERROR", "Frozen entity selection changed; create a new plan"
+            )
+        return {**parameters, "_resolved_entities": entities}
+    return parameters
+
+
+def planned_get_scope(leaf: Leaf, parameters: dict, identity: str) -> tuple[Any, dict]:
+    """Describe the declared detail inquiry without opening a browser."""
+    validate_detail_lookup(identity)
+    return {"identity": identity, "parameters": parameters}, planned_detail_environment(
+        leaf, parameters
+    )
+
+
+def planned_detail_environment(leaf: Leaf, parameters: dict) -> dict:
+    """Describe declared Get sources without requiring a particular row identity."""
+    custom = leaf.manifest["operations"]["get"].get("execution") == "custom"
+    capability = (
+        query_capabilities(leaf, "get", parameters)
+        if custom
+        else leaf.adapter.detail_capability(parameters)
+    )
+    capabilities = capability.values() if custom else [capability]
+    return {
+        "domain": leaf.domain,
+        "queries": [
+            {
+                "method": item.contract.method,
+                "host": item.contract.host,
+                "path": item.contract.path,
+                "page_url": getattr(item, "page_url", None),
+            }
+            for item in capabilities
+        ],
+    }
+
+
+def planned_list_scope(leaf: Leaf, parameters: dict) -> tuple[Any, dict]:
+    """Validate native scope offline and describe its inquiry environment."""
+    capability = _list_capabilities(leaf, parameters)
+    scope = leaf.adapter.scope(parameters)
+    try:
+        scope = parse(scope)
+    except (ValueError, TypeError):
+        pass
+    capabilities = capability.values() if isinstance(capability, dict) else [capability]
+    environment = {
+        "domain": leaf.domain,
+        "queries": [
+            {
+                "method": item.contract.method,
+                "host": item.contract.host,
+                "path": item.contract.path,
+                "page_url": getattr(item, "page_url", None),
+            }
+            for item in capabilities
+        ],
+    }
+    return scope, environment
+
+
 def execute(
-    leaf: Leaf, operation: str, parameters: dict, args: Namespace, config_file: Path
+    leaf: Leaf,
+    operation: str,
+    parameters: dict,
+    args: Namespace,
+    config_file: Path,
+    *,
+    capture: Callable[[list[dict], dict], None] | None = None,
 ) -> tuple[Any, dict]:
     """Execute one supported action; publication always uses the full candidate."""
 
@@ -347,17 +431,9 @@ def execute(
         raise CliError(
             "INVALID_LEAF", "standard List requires a collection declaration"
         )
-    if (
-        operation in {"list", "refresh"}
-        and specification.get("entity_selector") is True
-    ):
-        if parameters.get("entity") == ["ANY"]:
-            from dogopencli.duckdog import resolve_selector
-
-            resolved_entities = resolve_selector(
-                "liquidity/reference/entities", "instId", config_file=config_file
-            )
-            parameters = {**parameters, "_resolved_entities": resolved_entities}
+    if operation in {"list", "refresh"}:
+        parameters = freeze_list_parameters(leaf, parameters, config_file)
+        resolved_entities = parameters.get("_resolved_entities")
 
     store = cache_for(config_file)
     namespace = "leaf:" + leaf.id
@@ -406,7 +482,7 @@ def execute(
         rows = record.data if is_array else [record.data]
         projected = _project(rows, fields)
         data = projected if is_array else projected[0]
-        return data, {
+        metadata = {
             "source": "live",
             "leaf": leaf.id,
             "operation": "get",
@@ -426,6 +502,9 @@ def execute(
             **decision.meta(mode="get"),
             "warnings": list(decision.warnings),
         }
+        if capture is not None:
+            capture(rows, {**metadata, "scope": metadata["query"]})
+        return data, metadata
     definitions = leaf.manifest["operations"]["list"].get("parameters", [])
     local_parameters = {
         definition["name"].replace("-", "_")
@@ -547,7 +626,12 @@ def execute(
                 if args.with_detail:
                     source_list_acquisition = evidence.record()
                     details, detail_acquisitions = _compose_details(
-                        leaf, session, window, fields, collected.deadline, offset
+                        leaf,
+                        session,
+                        selected if capture is not None else window,
+                        None if capture is not None else fields,
+                        collected.deadline,
+                        0 if capture is not None else offset,
                     )
                     source_occurrences = (
                         evidence.total_semantics == SOURCE_ROW_OCCURRENCES
@@ -622,6 +706,61 @@ def execute(
                             ],
                         }
                         raise
+
+                if capture is not None:
+                    local_filters = {
+                        key: value
+                        for key, value in query.items()
+                        if key in local_parameters
+                    }
+                    saved_scope = effective_scope
+                    saved_metadata = {
+                        "query": query,
+                        "scope": saved_scope,
+                        "fetched_at": fetched_at,
+                        **evidence.meta(),
+                        **decision.meta(mode=operation),
+                        "warnings": list(decision.warnings),
+                    }
+                    if local_filters:
+                        # These records are a complete local selection of an
+                        # acquired source, not the full native response scope.
+                        saved_metadata.update(
+                            scope={
+                                "native_scope": effective_scope,
+                                "local_filters": local_filters,
+                            },
+                            local_filters=local_filters,
+                            source_acquisition=evidence.record(),
+                            coverage_basis="local_selection_of_native_acquisition",
+                            reported_total=None,
+                            collected_total=len(selected),
+                        )
+                        saved_metadata.pop("acquisition", None)
+                        saved_metadata["selection"] = {
+                            "filters": local_filters,
+                            "record_count": len(selected),
+                            "complete": evidence.scope_complete
+                            and evidence.dataset_complete,
+                        }
+                    if args.with_detail:
+                        saved_metadata.update(
+                            with_detail=True,
+                            scope={
+                                "list_scope": saved_metadata["scope"],
+                                "composition": "declared_get",
+                            },
+                            source_acquisition=source_list_acquisition,
+                            detail_acquisition=[
+                                item.record() for item in detail_acquisitions
+                            ],
+                        )
+                    capture(details if args.with_detail else selected, saved_metadata)
+                    if args.with_detail:
+                        details = [
+                            {**item, "record": _project([item["record"]], fields)[0]}
+                            for item in window_rows(details, limit, offset)
+                        ]
 
             published = decision.publishable
             if published:

@@ -211,7 +211,9 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
             next=spec.next,
             exit_codes=EXIT_CODES,
         )
-    for node in DECLARATIONS:
+    from .workflow import declarations
+
+    for node in (*DECLARATIONS, *declarations()):
         options = (
             *node.options,
             *(o for o in COMMON if o.name not in {x.name for x in node.options}),
