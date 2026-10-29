@@ -41,6 +41,9 @@ dataset destination exists. Exporting it does not invent a Duckdog binding or en
 it as an enumerable dataset. Use
 `plan create --with-detail` only with an existing declared List/Get binding; export
 composes every selected List row before applying preview limits or projection.
+The plan pins the installed adapter implementation and the complete Get declaration,
+including its row binding. It does not call Get capability factories with missing
+row values. A changed adapter or Get declaration requires a new plan.
 
 `ANY` entity selectors resolve read-only from the configured local Duckdog selector
 when compiling a plan. The effective native IDs are saved in the plan and checked

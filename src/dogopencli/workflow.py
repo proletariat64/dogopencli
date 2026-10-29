@@ -294,25 +294,17 @@ class Store:
 
 def list_detail_contract(leaf: Any) -> dict:
     """Freeze List-bound Get sources and row-to-request semantics offline."""
-    from .leaves.runtime import planned_detail_environment
-
     specification = leaf.manifest["operations"].get("get", {})
-    parameters = specification.get("parameters", [])
-    defaults = {
-        item["name"].replace("-", "_"): item["default"]
-        for item in parameters
-        if "default" in item
-    }
     if not specification.get("list_binding"):
         raise CliError(
             "WORKFLOW_ERROR", "Native detail binding changed; create a new plan"
         )
+    # Capability factories can require values supplied only by acquired rows.
+    # Pin the loader's existing implementation identity instead of inventing
+    # those values or resolving a different Get source during offline planning.
     return {
-        "binding": specification["list_binding"],
-        "parameters": parameters,
-        "lookup": specification.get("lookup"),
-        "result_identity": specification.get("result_identity"),
-        "environment": planned_detail_environment(leaf, defaults),
+        "adapter_sha256": leaf.adapter_sha256,
+        "declaration": specification,
     }
 
 
