@@ -106,7 +106,9 @@ mutation is added.
 ## Bounded workflow history
 
 The adapter's `history_contract` declares inclusive calendar `valueDate` bounds
-and requires explicit account aliases for durable history planning. Explicit
+for explicit aliases, selected entities, or the frozen ANY entity selector.
+Entity-wide exports enumerate accounts through the existing exporter directory
+contract and retain its quality and current-ownership limitations. Explicit
 windows retain separately labeled native observations; no multi-day/daily query
 equivalence is asserted. Source modification time remains distinct from calendar
 business dates and acquisition time. See the host bounded-history guide for

@@ -26,12 +26,29 @@ def declarations() -> tuple[BizNode, ...]:
             "current data.",
             (),
         ),
-        (("workflow", "plan"), "Compile or inspect native List scope offline.", ()),
+        (
+            ("workflow", "plan"),
+            "Compile or inspect declared inquiry scope offline.",
+            (),
+        ),
         (
             ("workflow", "plan", "create"),
             "Save native scope only; does not export or initialize storage.",
             (
                 opt("leaf", "Installed domain.dotted-leaf identity.", required=True),
+                opt(
+                    "operation",
+                    "Declared List or Get inquiry.",
+                    choices=("list", "get"),
+                    default="list",
+                ),
+                opt("identity", "Get only: exact native detail identity."),
+                opt(
+                    "with_detail",
+                    "List only: compose declared Get for every selected row.",
+                    "bool",
+                    default=False,
+                ),
                 opt(
                     "mode",
                     "Full observation or bounded native history.",
@@ -45,7 +62,7 @@ def declarations() -> tuple[BizNode, ...]:
                 ),
                 opt(
                     "parameters",
-                    "Native List parameters as a JSON object.",
+                    "Native operation parameters as a JSON object.",
                     default="{}",
                 ),
             ),
@@ -83,7 +100,7 @@ def declarations() -> tuple[BizNode, ...]:
         ),
         (
             ("workflow", "export", "run"),
-            "Export one planned List result; display controls never truncate "
+            "Export one planned inquiry result; display controls never truncate "
             "saved records.",
             (
                 opt("plan", "Saved plan ID.", required=True),
@@ -240,7 +257,30 @@ def native_plan(invocation: "Invocation") -> dict:
         raise CliError(
             "INVALID_ARGUMENT", "Workflow requires an installed List leaf", exit_code=2
         )
-    definitions = leaf.manifest["operations"]["list"].get("parameters", [])
+    operation = args.operation
+    if operation not in leaf.manifest["operations"]:
+        raise CliError(
+            "INVALID_ARGUMENT", "Leaf does not declare requested operation", exit_code=2
+        )
+    if operation == "get":
+        from .leaves.query import validate_detail_lookup
+
+        validate_detail_lookup(args.identity)
+        if args.mode != "full" or args.with_detail:
+            raise CliError(
+                "INVALID_ARGUMENT",
+                "Get requires full mode without --with-detail",
+                exit_code=2,
+            )
+    elif args.identity is not None:
+        raise CliError("INVALID_ARGUMENT", "--identity requires Get", exit_code=2)
+    if args.with_detail and not leaf.manifest["operations"].get("get", {}).get(
+        "list_binding"
+    ):
+        raise CliError(
+            "INVALID_ARGUMENT", "Leaf has no declared List/Get binding", exit_code=2
+        )
+    definitions = leaf.manifest["operations"][operation].get("parameters", [])
     known = {item["name"]: item for item in definitions}
     tokens = []
     for key, value in parameters.items():
@@ -263,7 +303,7 @@ def native_plan(invocation: "Invocation") -> dict:
         BizNode(
             (domain, "refresh", name),
             "",
-            options=leaf_options(leaf, "refresh"),
+            options=leaf_options(leaf, "get" if operation == "get" else "refresh"),
             handler="workflow",
         ),
         tokens,
@@ -273,10 +313,20 @@ def native_plan(invocation: "Invocation") -> dict:
         for item in definitions
     }
     effective = {key: value for key, value in effective.items() if value is not None}
-    from .leaves.runtime import planned_list_scope
+    from .leaves.runtime import (
+        freeze_list_parameters,
+        planned_get_scope,
+        planned_list_scope,
+    )
 
     runtime_leaf = invocation.registry._load(leaf.path)
-    scope, environment = planned_list_scope(runtime_leaf, effective)
+    if operation == "list":
+        effective = freeze_list_parameters(
+            runtime_leaf, effective, invocation.config_file
+        )
+        scope, environment = planned_list_scope(runtime_leaf, effective)
+    else:
+        scope, environment = planned_get_scope(runtime_leaf, effective, args.identity)
     plan = {
         "version": 1,
         "id": uuid.uuid4().hex,
@@ -285,7 +335,9 @@ def native_plan(invocation: "Invocation") -> dict:
         "binding": binding(invocation.config_file, leaf.id),
         "environment": environment,
         "native_scope": scope,
-        "operation": "list",
+        "operation": operation,
+        "with_detail": args.with_detail,
+        **({"identity": args.identity} if operation == "get" else {}),
         "mode": "full",
         "parameters": {
             key: value for key, value in effective.items() if value is not None
@@ -492,7 +544,7 @@ def run_export(
 ) -> tuple[dict, dict]:
     from .domains import DomainService
     from .leaves.registry import Registry
-    from .leaves.runtime import execute, planned_list_scope
+    from .leaves.runtime import execute, planned_get_scope, planned_list_scope
 
     if plan is None:
         plan = store.read("plans", invocation.args.plan)
@@ -513,7 +565,7 @@ def run_export(
         "id": uuid.uuid4().hex,
         "plan": plan["id"],
         "leaf": plan["leaf"],
-        "operation": "list",
+        "operation": plan["operation"],
         "binding": plan["binding"],
         "environment": plan["environment"],
         "parameters": plan["parameters"],
@@ -551,9 +603,18 @@ def run_export(
         ).inventory(domain)[0]["enabled"]:
             raise CliError("DOMAIN_DISABLED", f"Domain is disabled: {domain}")
         leaf = Registry(invocation.config_file).scan().get(domain, name)
-        scope, environment = planned_list_scope(leaf, plan["parameters"])
+        if plan["operation"] == "get":
+            scope, environment = planned_get_scope(
+                leaf, plan["parameters"], plan["identity"]
+            )
+        else:
+            scope, environment = planned_list_scope(leaf, plan["parameters"])
         keyed = getattr(leaf.adapter, "keyed_contract", None)
-        if callable(keyed):
+        if (
+            callable(keyed)
+            and plan["operation"] == "list"
+            and not plan.get("with_detail")
+        ):
             result["keyed_contract"] = keyed(plan["parameters"])
         if "history_plan" in plan:
             history_contract = getattr(leaf.adapter, "history_contract", None)
@@ -571,7 +632,8 @@ def run_export(
             )
         args = Namespace(
             live=True,
-            with_detail=False,
+            with_detail=plan.get("with_detail", False),
+            detail_identity=plan.get("identity"),
             fields=invocation.args.fields,
             limit=invocation.args.limit,
             offset=invocation.args.offset,
@@ -581,7 +643,7 @@ def run_export(
         )
         displayed, meta = execute(
             leaf,
-            "list",
+            plan["operation"],
             plan["parameters"],
             args,
             invocation.config_file,
