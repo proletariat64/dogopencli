@@ -57,6 +57,21 @@ def declarations() -> tuple[BizNode, ...]:
         ),
         (("workflow", "export"), "Execute or inspect exact immutable exports.", ()),
         (
+            ("workflow", "repair"),
+            "Freeze gaps and inspect separate repair exports.",
+            (),
+        ),
+        (
+            ("workflow", "repair", "plan"),
+            "Save repair work from the frozen baseline gaps.",
+            (opt("plan", "Original full or history plan ID.", required=True),),
+        ),
+        (
+            ("workflow", "repair", "show"),
+            "Inspect frozen baseline and repair outcomes offline.",
+            (opt("repair", "Saved repair plan ID.", required=True),),
+        ),
+        (
             ("workflow", "history"),
             "Inspect bounded native history observations offline.",
             (),
@@ -92,7 +107,8 @@ def declarations() -> tuple[BizNode, ...]:
             ("workflow", "import", "plan"),
             "Preview exact scope, counts and expected current publication.",
             (
-                opt("export", "Exact complete export ID.", required=True),
+                opt("export", "Exact complete export ID."),
+                opt("repair", "Exact completed repair selection; preserve only."),
                 opt(
                     "action",
                     "Preserve an observation, replace a full scope, "
@@ -139,7 +155,8 @@ def declarations() -> tuple[BizNode, ...]:
             effects={
                 **NO_EFFECTS,
                 "mutates": path[-1] in {"create", "run", "apply"}
-                or path == ("workflow", "import", "plan"),
+                or path
+                in {("workflow", "import", "plan"), ("workflow", "repair", "plan")},
                 "network": path[-1] == "run",
                 "browser_required": path[-1] == "run",
             },
@@ -301,6 +318,16 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         return store.save("plans", native_plan(invocation)), None
     if path == ("plan", "show"):
         return store.read("plans", invocation.args.plan), None
+    if path == ("repair", "plan"):
+        from .workflow_repair import compile_plan
+
+        return compile_plan(
+            invocation, store, store.read("plans", invocation.args.plan)
+        ), None
+    if path == ("repair", "show"):
+        from .workflow_repair import inspect
+
+        return inspect(store, store.read("plans", invocation.args.repair)), None
     if path == ("history", "show"):
         from .workflow_history import coverage
 
@@ -315,6 +342,10 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         from .workflow_storage import apply
 
         plan = store.read("imports", invocation.args.plan)
+        if "repair_id" in plan:
+            from .workflow_repair import apply as apply_repair
+
+            return apply_repair(invocation.config_file, store, plan), None
         artifact = exact_export(store, plan["export_id"])
         # Direct comparison binds exact values and numeric representations to
         # the reviewed plan without an adapter/configuration fingerprint.
@@ -356,6 +387,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
     if path == ("status",):
         from .workflow_history import coverage
         from .workflow_keyed import imports as keyed_imports
+        from .workflow_repair import inspect as repair_status
         from .workflow_snapshot import publications
         from .workflow_storage import receipts
 
@@ -391,6 +423,13 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         histories = [
             coverage(store, plan) for plan in plans if plan.get("mode") == "history"
         ]
+        repairs = [
+            repair_status(store, plan) for plan in plans if plan.get("mode") == "repair"
+        ]
+        for repair in repairs:
+            next(
+                item for item in plan_status if item["plan_id"] == repair["repair_id"]
+            )["state"] = "complete" if repair["complete"] else "incomplete"
         for history in histories:
             states = [item["state"] for item in history["packages"]]
             state = (
@@ -426,6 +465,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
             ],
             "current_effect": "unchanged",
             "history": histories,
+            "repairs": repairs,
         }, None
     raise CliError("INVALID_ARGUMENT", "Unknown workflow stage", exit_code=2)
 
@@ -460,6 +500,10 @@ def run_export(
             from .workflow_history import run
 
             return run(invocation, store, plan)
+        if plan.get("mode") == "repair":
+            from .workflow_repair import run as repair
+
+            return repair(invocation, store, plan)
         if invocation.args.package is not None:
             raise CliError(
                 "INVALID_ARGUMENT", "--package requires a history plan", exit_code=2
@@ -475,6 +519,11 @@ def run_export(
         "parameters": plan["parameters"],
         "started_at": now(),
         "state": "unqueried",
+        **(
+            {"repair_plan": plan["repair_plan"], "baseline_plan": plan["baseline_plan"]}
+            if "repair_plan" in plan
+            else {}
+        ),
         **(
             {
                 "history_plan": plan["history_plan"],
@@ -607,6 +656,14 @@ def import_plan(invocation: "Invocation", store: Store) -> dict:
     from .workflow_snapshot import preview as snapshot_preview
     from .workflow_storage import current_count, receipts
 
+    if bool(invocation.args.export) == bool(invocation.args.repair):
+        raise CliError(
+            "INVALID_ARGUMENT", "Select exactly one --export or --repair", exit_code=2
+        )
+    if invocation.args.repair:
+        from .workflow_repair import import_plan as repair_import
+
+        return repair_import(invocation, store)
     artifact = exact_export(store, invocation.args.export)
     verify_binding(invocation.config_file, artifact)
     existing = receipts(artifact["binding"])

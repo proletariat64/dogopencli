@@ -93,5 +93,6 @@ A failed refresh leaves current data visible. Import, current readback and statu
 remain offline. [Bounded history](bounded-history.md) adds explicit native query
 packages and coverage inspection. [Scoped keyed history](keyed-history.md)
 reconciles overlaps only with explicit native identity, namespace and ordering
-facts. Repair orchestration and scheduling require their own explicit contracts
-and commands.
+facts. [Frozen repair](repair-workflow.md) fills known acquisition gaps through
+separate exports and an exact offline input selection. Scheduling requires its
+own explicit contracts and commands.
