@@ -91,6 +91,7 @@ current committed observation and publication receipt. `status.current_publicati
 identifies the current exports separately from latest attempts and saved history.
 A failed refresh leaves current data visible. Import, current readback and status
 remain offline. [Bounded history](bounded-history.md) adds explicit native query
-packages and coverage inspection without merging separate observations. Keyed
-updates, historical merge, repair orchestration and scheduling require their own
-explicit contracts and commands.
+packages and coverage inspection. [Scoped keyed history](keyed-history.md)
+reconciles overlaps only with explicit native identity, namespace and ordering
+facts. Repair orchestration and scheduling require their own explicit contracts
+and commands.
