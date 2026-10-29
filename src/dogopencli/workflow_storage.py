@@ -138,7 +138,13 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                         "Exact export differs from committed observation",
                     )
                 db.execute("ROLLBACK")
-                return {**parse(previous[1]), "replayed": True, "inserted_count": 0}
+                return {
+                    **parse(previous[1]),
+                    "action": "preserve",
+                    "current_effect": "unchanged",
+                    "replayed": True,
+                    "inserted_count": 0,
+                }
             receipt = {
                 "export_id": artifact["id"],
                 "plan_id": plan["id"],

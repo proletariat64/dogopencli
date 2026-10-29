@@ -14,6 +14,7 @@ dogopencli workflow import plan --export EXPORT_ID --action preserve
 dogopencli workflow import apply --plan IMPORT_PLAN_ID
 dogopencli workflow observation show --export EXPORT_ID
 dogopencli workflow import plan --export EXPORT_ID --action replace-full
+dogopencli workflow import plan --export EXPORT_ID --action replace-range
 dogopencli workflow import apply --plan REPLACEMENT_PLAN_ID
 dogopencli workflow current show --export EXPORT_ID
 dogopencli workflow status
@@ -96,3 +97,7 @@ reconciles overlaps only with explicit native identity, namespace and ordering
 facts. [Frozen repair](repair-workflow.md) fills known acquisition gaps through
 separate exports and an exact offline input selection. Scheduling requires its
 own explicit contracts and commands.
+
+[Historical range replacement](range-replacement.md) requires explicit native
+replacement coverage; ordinary history planning does not establish deletion
+semantics. Read it before selecting `--action replace-range`.

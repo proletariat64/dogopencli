@@ -254,7 +254,7 @@ def save_observation(db: Any, artifact: dict, receipt: dict) -> None:
             artifact["id"],
             binding["leaf"],
             binding["relation"],
-            "keyed",
+            receipt["action"],
             receipt["committed_at"],
             canonical(artifact),
             canonical(receipt),
