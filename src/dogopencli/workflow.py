@@ -111,8 +111,9 @@ def declarations() -> tuple[BizNode, ...]:
                 opt("repair", "Exact completed repair selection; preserve only."),
                 opt(
                     "action",
-                    "Import action.",
-                    choices=("preserve", "replace-full"),
+                    "Preserve an observation, replace a full scope, "
+                    "or reconcile declared native keys.",
+                    choices=("preserve", "replace-full", "keyed"),
                     required=True,
                 ),
             ),
@@ -349,7 +350,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         # Direct comparison binds exact values and numeric representations to
         # the reviewed plan without an adapter/configuration fingerprint.
         if (
-            plan.get("action") not in {"preserve", "replace-full"}
+            plan.get("action") not in {"preserve", "replace-full", "keyed"}
             or canonical(plan.get("input")) != canonical(artifact)
             or plan.get("binding") != artifact["binding"]
         ):
@@ -357,6 +358,10 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
                 "WORKFLOW_ERROR", "Import plan differs from its exact frozen input"
             )
         verify_binding(invocation.config_file, artifact)
+        if plan["action"] == "keyed":
+            from .workflow_keyed import apply as reconcile
+
+            return reconcile(invocation.config_file, plan, artifact, now()), None
         if plan["action"] == "replace-full":
             from .workflow_snapshot import apply as replace
 
@@ -367,6 +372,11 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
 
         artifact = exact_export(store, invocation.args.export)
         verify_binding(invocation.config_file, artifact)
+        from .workflow_keyed import active
+        from .workflow_keyed import current as keyed_current
+
+        if active(artifact):
+            return keyed_current(artifact), None
         return current(artifact), None
     if path == ("observation", "show"):
         from .workflow_storage import read
@@ -376,6 +386,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         return read(artifact["binding"], artifact["id"]), None
     if path == ("status",):
         from .workflow_history import coverage
+        from .workflow_keyed import imports as keyed_imports
         from .workflow_repair import inspect as repair_status
         from .workflow_snapshot import publications
         from .workflow_storage import receipts
@@ -442,6 +453,11 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
             "latest_attempt": ordered[-1] if ordered else None,
             "last_successful_export": successful[-1] if successful else None,
             "committed_observations": committed,
+            "keyed_imports": [
+                row
+                for destination in bindings.values()
+                for row in keyed_imports(destination)
+            ],
             "current_publications": [
                 row
                 for destination in bindings.values()
@@ -536,6 +552,9 @@ def run_export(
             raise CliError("DOMAIN_DISABLED", f"Domain is disabled: {domain}")
         leaf = Registry(invocation.config_file).scan().get(domain, name)
         scope, environment = planned_list_scope(leaf, plan["parameters"])
+        keyed = getattr(leaf.adapter, "keyed_contract", None)
+        if callable(keyed):
+            result["keyed_contract"] = keyed(plan["parameters"])
         if "history_plan" in plan:
             history_contract = getattr(leaf.adapter, "history_contract", None)
             expected = {**plan["contract"], **plan["range"]}
@@ -633,6 +652,7 @@ def verify_binding(config_file: Path, artifact: dict) -> None:
 
 
 def import_plan(invocation: "Invocation", store: Store) -> dict:
+    from .workflow_keyed import preview as keyed_preview
     from .workflow_snapshot import preview as snapshot_preview
     from .workflow_storage import current_count, receipts
 
@@ -673,6 +693,8 @@ def import_plan(invocation: "Invocation", store: Store) -> dict:
             **(
                 snapshot_preview(artifact)
                 if invocation.args.action == "replace-full"
+                else keyed_preview(artifact)
+                if invocation.args.action == "keyed"
                 else {}
             ),
         },
