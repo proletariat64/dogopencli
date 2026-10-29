@@ -90,17 +90,27 @@ def declarations() -> tuple[BizNode, ...]:
         (("workflow", "import"), "Plan or apply exact exports offline.", ()),
         (
             ("workflow", "import", "plan"),
-            "Preview preserve counts; current data remains unchanged.",
+            "Preview exact scope, counts and expected current publication.",
             (
                 opt("export", "Exact complete export ID.", required=True),
-                opt("action", "Import action.", choices=("preserve",), required=True),
+                opt(
+                    "action",
+                    "Import action.",
+                    choices=("preserve", "replace-full"),
+                    required=True,
+                ),
             ),
         ),
         (
             ("workflow", "import", "apply"),
-            "Commit exact observation and replay receipt offline; current data"
-            " stays unchanged.",
+            "Apply the reviewed write action and replay receipt offline.",
             (opt("plan", "Exact import plan ID.", required=True),),
+        ),
+        (("workflow", "current"), "Inspect scoped current publications offline.", ()),
+        (
+            ("workflow", "current", "show"),
+            "Read current publication for an exact export namespace.",
+            (opt("export", "Export identifying the namespace.", required=True),),
         ),
         (
             ("workflow", "observation"),
@@ -308,7 +318,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         # Direct comparison binds exact values and numeric representations to
         # the reviewed plan without an adapter/configuration fingerprint.
         if (
-            plan.get("action") != "preserve"
+            plan.get("action") not in {"preserve", "replace-full"}
             or canonical(plan.get("input")) != canonical(artifact)
             or plan.get("binding") != artifact["binding"]
         ):
@@ -316,7 +326,17 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
                 "WORKFLOW_ERROR", "Import plan differs from its exact frozen input"
             )
         verify_binding(invocation.config_file, artifact)
+        if plan["action"] == "replace-full":
+            from .workflow_snapshot import apply as replace
+
+            return replace(invocation.config_file, plan, artifact, now()), None
         return apply(invocation.config_file, plan, artifact, now()), None
+    if path == ("current", "show"):
+        from .workflow_snapshot import current
+
+        artifact = exact_export(store, invocation.args.export)
+        verify_binding(invocation.config_file, artifact)
+        return current(artifact), None
     if path == ("observation", "show"):
         from .workflow_storage import read
 
@@ -325,6 +345,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         return read(artifact["binding"], artifact["id"]), None
     if path == ("status",):
         from .workflow_history import coverage
+        from .workflow_snapshot import publications
         from .workflow_storage import receipts
 
         exports = [
@@ -382,6 +403,11 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
             "latest_attempt": ordered[-1] if ordered else None,
             "last_successful_export": successful[-1] if successful else None,
             "committed_observations": committed,
+            "current_publications": [
+                row
+                for destination in bindings.values()
+                for row in publications(destination)
+            ],
             "current_effect": "unchanged",
             "history": histories,
         }, None
@@ -461,6 +487,16 @@ def run_export(
             raise CliError("DOMAIN_DISABLED", f"Domain is disabled: {domain}")
         leaf = Registry(invocation.config_file).scan().get(domain, name)
         scope, environment = planned_list_scope(leaf, plan["parameters"])
+        if "history_plan" in plan:
+            history_contract = getattr(leaf.adapter, "history_contract", None)
+            expected = {**plan["contract"], **plan["range"]}
+            if not callable(history_contract) or canonical(
+                history_contract(plan["parameters"])
+            ) != canonical(expected):
+                raise CliError(
+                    "WORKFLOW_ERROR",
+                    "Native history contract changed; create a new plan",
+                )
         if scope != plan["native_scope"] or environment != plan["environment"]:
             raise CliError(
                 "WORKFLOW_ERROR", "Native scope/environment changed; create a new plan"
@@ -548,6 +584,7 @@ def verify_binding(config_file: Path, artifact: dict) -> None:
 
 
 def import_plan(invocation: "Invocation", store: Store) -> dict:
+    from .workflow_snapshot import preview as snapshot_preview
     from .workflow_storage import current_count, receipts
 
     artifact = exact_export(store, invocation.args.export)
@@ -568,7 +605,7 @@ def import_plan(invocation: "Invocation", store: Store) -> dict:
             "created_at": now(),
             "export_id": artifact["id"],
             "binding": artifact["binding"],
-            "action": "preserve",
+            "action": invocation.args.action,
             "scope": artifact["metadata"]["scope"],
             "existing_count": sum(item["record_count"] for item in scoped),
             "new_count": 0 if replayed else artifact["record_count"],
@@ -576,5 +613,10 @@ def import_plan(invocation: "Invocation", store: Store) -> dict:
             "current_count": current_count(artifact["binding"]),
             "count_basis": "preserved_observations_in_exact_scope",
             "input": artifact,
+            **(
+                snapshot_preview(artifact)
+                if invocation.args.action == "replace-full"
+                else {}
+            ),
         },
     )

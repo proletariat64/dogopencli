@@ -156,3 +156,8 @@ _Avoid_: 将 SLA 基线与实际到账耗时作为同义词。
 
 **收款交易成本配置（Collection Transaction-Cost Configuration）**：描述收款渠道交易费用的适用条件、计费方式及费率的配置记录；不同于已发生交易的实际费用，也不同于 VA 账户费用配置。
 _Avoid_: 将收款交易成本配置简称为实际收款费用，或与 VA 费用混用。
+
+A **current publication** is an explicitly selected complete full observation in an
+exact native query namespace. Replacement checks the expected prior publication
+and commits records, provenance and pointer together; saved observations remain
+readable independently of which export is current.

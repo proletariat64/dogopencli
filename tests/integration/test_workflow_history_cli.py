@@ -295,3 +295,25 @@ def test_full_observation_needs_no_history_contract_or_date(run_cli, installed):
     assert code == 2, output
     assert "no native history range contract" in json.loads(output)["error"]["message"]
     assert not browser.business_requests
+
+
+def test_changed_native_time_contract_requires_new_plan_before_requests(
+    run_cli, installed
+):
+    _, browser, config = installed
+    plan = create(run_cli)
+    adapter = config / "plugins/liquidity/cash.balances/adapter.py"
+    adapter.write_text(
+        adapter.read_text().replace(
+            '"time_basis": "valueDate"', '"time_basis": "updateTime"'
+        )
+    )
+    code, output, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    assert code == 1, output
+    assert not browser.business_requests
+    status = call(run_cli, "history", "show", "--plan", plan["id"])
+    assert status["packages"][0]["state"] == "failed"
+    assert (
+        "history contract changed"
+        in status["packages"][0]["attempts"][0]["error"]["message"]
+    )
