@@ -363,13 +363,6 @@ def enumerate_aliases(
 class Adapter:
     def history_contract(self, parameters: dict) -> dict:
         values = resolve(parameters)
-        if not values["aliases"]:
-            raise CliError(
-                INVALID_ARGUMENT,
-                "History requires explicit account aliases; "
-                "current directory is not historical ownership",
-                exit_code=2,
-            )
         return {
             "time_basis": "valueDate",
             "interpretation": "calendar_date",

@@ -416,3 +416,103 @@ def test_import_preserves_repeated_native_cashflow_occurrences(run_cli, pilots):
     )
     assert code == 0, output
     assert parse(output)["data"]["records"][0]["cashflow_details"] == [occurrence] * 103
+
+
+def test_durable_get_preserves_declared_root_before_projection(run_cli, pilots):
+    plan = call(
+        run_cli,
+        "plan",
+        "create",
+        "--leaf",
+        "payment.sla.baselines",
+        "--operation",
+        "get",
+        "--identity",
+        "one",
+    )
+    assert not pilots.business_requests
+    root = {"id": "one", "nested": [False, {"amount": "1.000000000000000001"}]}
+    pilots.business_script.append(
+        {"status": 200, "body": {"success": True, "resultData": root}}
+    )
+    exported = call(run_cli, "export", "run", "--plan", plan["id"], "--fields", "id")
+    saved = call(run_cli, "export", "show", "--export", exported["id"])
+    assert saved["records"] == [root]
+    assert saved["operation"] == "get"
+    assert saved["metadata"]["detail_scope"] == "native_root"
+    prepared = call(
+        run_cli, "import", "plan", "--export", exported["id"], "--action", "preserve"
+    )
+    call(run_cli, "import", "apply", "--plan", prepared["id"])
+    assert call(run_cli, "observation", "show", "--export", exported["id"])[
+        "records"
+    ] == [root]
+
+
+def test_durable_list_detail_composes_all_rows_before_preview(run_cli, pilots):
+    plan = call(
+        run_cli, "plan", "create", "--leaf", "payment.sla.baselines", "--with-detail"
+    )
+    pilots.business_script.extend(
+        [
+            payment_page([{"id": "one"}, {"id": "two"}]),
+            {
+                "status": 200,
+                "body": {
+                    "success": True,
+                    "resultData": {"id": "one", "value": [False]},
+                },
+            },
+            {
+                "status": 200,
+                "body": {"success": True, "resultData": {"id": "two", "value": [None]}},
+            },
+        ]
+    )
+    exported = call(
+        run_cli, "export", "run", "--plan", plan["id"], "--limit", "1", "--fields", "id"
+    )
+    saved = call(run_cli, "export", "show", "--export", exported["id"])
+    assert saved["records"] == [
+        {"record": {"id": "one"}, "detail": {"id": "one", "value": [False]}},
+        {"record": {"id": "two"}, "detail": {"id": "two", "value": [None]}},
+    ]
+    assert len(exported["records"]) == 1
+    assert saved["metadata"]["with_detail"] is True
+
+
+def test_get_publication_cannot_replace_wider_list_current_scope(run_cli, pilots):
+    list_plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
+    rows = [{"id": "one"}, {"id": "two"}]
+    pilots.business_script.append(payment_page(rows))
+    listed = call(run_cli, "export", "run", "--plan", list_plan["id"])
+    publication = call(
+        run_cli, "import", "plan", "--export", listed["id"], "--action", "replace-full"
+    )
+    call(run_cli, "import", "apply", "--plan", publication["id"])
+    get_plan = call(
+        run_cli,
+        "plan",
+        "create",
+        "--leaf",
+        "payment.sla.baselines",
+        "--operation",
+        "get",
+        "--identity",
+        "one",
+    )
+    pilots.business_script.append(
+        {
+            "status": 200,
+            "body": {"success": True, "resultData": {"id": "one", "detail": True}},
+        }
+    )
+    detail = call(run_cli, "export", "run", "--plan", get_plan["id"])
+    publication = call(
+        run_cli, "import", "plan", "--export", detail["id"], "--action", "replace-full"
+    )
+    call(run_cli, "import", "apply", "--plan", publication["id"])
+    assert call(run_cli, "current", "show", "--export", listed["id"])["records"] == rows
+    assert call(run_cli, "current", "show", "--export", detail["id"])["records"] == [
+        {"id": "one", "detail": True}
+    ]
