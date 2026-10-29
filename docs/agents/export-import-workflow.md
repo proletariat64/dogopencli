@@ -32,11 +32,13 @@ full observation of that exact query, including a native date filter when suppli
 it does not claim daily coverage or synthesize a business time index. Get-only
 leaves are not enumerable datasets. Help and inspection remain offline.
 
-Use `plan create --operation get --identity NATIVE_ID` for a declared Get on a
-List-capable leaf. It captures only the native root/components declared by that
-Get, with their acquisition evidence; it does not discover additional children.
+Use `plan create --operation get --identity NATIVE_ID` for any declared Get. It
+captures only the native root/components declared by that Get, with their acquisition evidence; it does not discover additional children.
 Get observations retain a separate operation/identity namespace and cannot replace
-wider List data. Get-only leaves remain outside dataset enrollment. Use
+wider List data. A Get-only export has `binding: null`: its exact artifact can be
+inspected or repaired, but import and current-data actions report that no registered
+dataset destination exists. Exporting it does not invent a Duckdog binding or enroll
+it as an enumerable dataset. Use
 `plan create --with-detail` only with an existing declared List/Get binding; export
 composes every selected List row before applying preview limits or projection.
 
