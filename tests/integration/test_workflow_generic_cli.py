@@ -286,14 +286,10 @@ def test_get_only_leaf_cannot_be_enrolled_as_dataset(run_cli, pilots):
             "create",
             "--leaf",
             "liquidity.network.route_quotas",
-            "--operation",
-            "get",
-            "--identity",
-            "ROOT",
         ]
     )
     assert code == 2, output
-    assert "List leaf" in json.loads(output)["error"]["message"]
+    assert "operation" in json.loads(output)["error"]["message"]
     assert not pilots.business_requests
 
 
@@ -350,3 +346,128 @@ class SyntheticAdapter(Adapter):
 
 adapter = SyntheticAdapter()
 """
+
+
+def test_synthetic_get_only_export_is_durable_without_dataset_binding(
+    run_cli, pilots, tmp_path
+):
+    import shutil
+    from pathlib import Path
+
+    from leaves.liquidity.test_investment_products_cli import detail, history, row
+
+    from dogopencli.browser import cdp
+    from dogopencli.jsonutil import parse
+
+    pilots.href = "https://iliquidity.alipay.com/GUAPW3SG/menu/PortfolioMgmt"
+    source = tmp_path / "get-only"
+    shutil.copytree(
+        Path(__file__).resolve().parents[2]
+        / "leaf_packages/liquidity/investment.products",
+        source,
+    )
+    manifest = json.loads((source / "leaf.json").read_text())
+    manifest["name"] = "synthetic.get_only"
+    manifest["operations"].pop("list")
+    manifest["operations"]["get"].pop("list_binding", None)
+    for key in ("dataset", "collection"):
+        manifest.pop(key, None)
+    (source / "leaf.json").write_text(json.dumps(manifest))
+    code, output, _ = run_cli(["plugins", "install", str(source)])
+    assert code == 0, output
+    plan = call(
+        run_cli,
+        "plan",
+        "create",
+        "--leaf",
+        "liquidity.synthetic.get_only",
+        "--operation",
+        "get",
+        "--identity",
+        "PHYSICAL-1",
+    )
+    assert plan["binding"] is None
+    versions = [row("OLDER", version=1)]
+    pilots.business_script.extend([detail(), history(versions)])
+    exported = call(
+        run_cli, "export", "run", "--plan", plan["id"], "--fields", "detail"
+    )
+    assert exported["binding"] is None
+    assert len(pilots.business_requests) == 2
+
+    def offline(*args, **kwargs):
+        raise AssertionError("inspect/import must remain offline")
+
+    # A failed unbound Get can be repaired as an exact inquiry, without
+    # acquiring a dataset destination as a side effect.
+    failed_plan = call(
+        run_cli,
+        "plan",
+        "create",
+        "--leaf",
+        "liquidity.synthetic.get_only",
+        "--operation",
+        "get",
+        "--identity",
+        "PHYSICAL-1",
+    )
+    pilots.business_script.append({"status": 500, "body": {}})
+    code, _, _ = run_cli(["workflow", "export", "run", "--plan", failed_plan["id"]])
+    assert code == 1
+    repair = call(run_cli, "repair", "plan", "--plan", failed_plan["id"])
+    pilots.business_script.extend([detail(), history(versions)])
+    repaired = call(run_cli, "export", "run", "--plan", repair["id"])
+    assert repaired["complete"] is True
+    code, output, _ = run_cli(
+        ["workflow", "import", "plan", "--repair", repair["id"], "--action", "preserve"]
+    )
+    assert code == 1, output
+    assert "registered dataset destination" in json.loads(output)["error"]["message"]
+    enrolled = call(run_cli, "target", "enroll")
+    assert all(
+        call(run_cli, "plan", "show", "--plan", identity)["leaf"]
+        != "liquidity.synthetic.get_only"
+        for identity in enrolled["plans"]
+    )
+
+    cdp.set_transport_factory(offline)
+    code, output, _ = run_cli(
+        ["workflow", "export", "show", "--export", exported["id"]]
+    )
+    assert code == 0, output
+    assert parse(output)["data"]["records"] == [
+        {"detail": detail()["body"]["data"], "history": versions}
+    ]
+    status = call(run_cli, "status")
+    assert (
+        status["last_successful_export"]["id"] == repaired["packages"][0]["export_id"]
+    )
+    for action in ("preserve", "replace-full", "replace-range", "keyed"):
+        code, output, _ = run_cli(
+            [
+                "workflow",
+                "import",
+                "plan",
+                "--export",
+                exported["id"],
+                "--action",
+                action,
+            ]
+        )
+        assert code == 1, output
+        assert (
+            "registered dataset destination" in json.loads(output)["error"]["message"]
+        )
+    for command in ("current", "observation"):
+        code, output, _ = run_cli(
+            ["workflow", command, "show", "--export", exported["id"]]
+        )
+        assert code == 1, output
+        assert (
+            "registered dataset destination" in json.loads(output)["error"]["message"]
+        )
+    code, output, _ = run_cli(
+        ["workflow", "plan", "create", "--leaf", "liquidity.synthetic.get_only"]
+    )
+    assert code == 2, output
+    assert "operation" in json.loads(output)["error"]["message"]

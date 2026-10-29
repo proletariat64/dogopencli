@@ -260,10 +260,6 @@ def native_plan(invocation: "Invocation") -> dict:
             "INVALID_ARGUMENT", "--leaf requires domain.dotted-leaf", exit_code=2
         )
     leaf = invocation.registry.get(domain, name)
-    if "list" not in leaf.manifest["operations"]:
-        raise CliError(
-            "INVALID_ARGUMENT", "Workflow requires an installed List leaf", exit_code=2
-        )
     operation = args.operation
     if operation not in leaf.manifest["operations"]:
         raise CliError(
@@ -339,7 +335,9 @@ def native_plan(invocation: "Invocation") -> dict:
         "id": uuid.uuid4().hex,
         "created_at": now(),
         "leaf": leaf.id,
-        "binding": binding(invocation.config_file, leaf.id),
+        "binding": binding(invocation.config_file, leaf.id)
+        if "list" in leaf.manifest["operations"]
+        else None,
         "environment": environment,
         "native_scope": scope,
         "operation": operation,
@@ -470,7 +468,11 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
             {key: value for key, value in item.items() if key != "records"}
             for item in store.list("exports")
         ]
-        bindings = {canonical(item["binding"]): item["binding"] for item in exports}
+        bindings = {
+            canonical(item["binding"]): item["binding"]
+            for item in exports
+            if item["binding"] is not None
+        }
         committed = [
             row for destination in bindings.values() for row in receipts(destination)
         ]
@@ -621,17 +623,21 @@ def run_export(
         captured.update(records=records, metadata=metadata)
 
     try:
-        current_binding = binding(invocation.config_file, plan["leaf"])
-        if current_binding != plan["binding"]:
-            raise CliError(
-                "WORKFLOW_ERROR", "Registered destination differs from saved plan"
-            )
         domain, name = plan["leaf"].split(".", 1)
         if not DomainService(
             invocation.config_file, registry=invocation.registry
         ).inventory(domain)[0]["enabled"]:
             raise CliError("DOMAIN_DISABLED", f"Domain is disabled: {domain}")
         leaf = Registry(invocation.config_file).scan().get(domain, name)
+        current_binding = (
+            binding(invocation.config_file, plan["leaf"])
+            if "list" in leaf.manifest["operations"]
+            else None
+        )
+        if current_binding != plan["binding"]:
+            raise CliError(
+                "WORKFLOW_ERROR", "Registered destination differs from saved plan"
+            )
         if plan["operation"] == "get":
             scope, environment = planned_get_scope(
                 leaf, plan["parameters"], plan["identity"]
@@ -733,7 +739,12 @@ def exact_export(store: Store, identity: str) -> dict:
             or metadata["complete"] is not True
             or metadata["dataset_complete"] is not True
             or canonical(metadata["query"]) != canonical(value["parameters"])
-            or value["binding"]["leaf"] != value["leaf"]
+            or (
+                value["binding"] is None
+                and value["operation"] != "get"
+                or value["binding"] is not None
+                and value["binding"]["leaf"] != value["leaf"]
+            )
             or not isinstance(metadata["scope"], (dict, str))
         ):
             raise ValueError
@@ -745,6 +756,12 @@ def exact_export(store: Store, identity: str) -> dict:
 
 
 def verify_binding(config_file: Path, artifact: dict) -> None:
+    if artifact["binding"] is None:
+        raise CliError(
+            "WORKFLOW_ERROR",
+            "Get export has no registered dataset destination; "
+            "inspect the saved export without importing it",
+        )
     if binding(config_file, artifact["leaf"]) != artifact["binding"]:
         raise CliError("WORKFLOW_ERROR", "Exact export destination binding conflicts")
 
