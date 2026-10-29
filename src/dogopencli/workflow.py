@@ -146,6 +146,9 @@ def declarations() -> tuple[BizNode, ...]:
             (),
         ),
     ]
+    from .workflow_targets import declaration_entries
+
+    entries.extend(declaration_entries())
     return tuple(
         BizNode(
             path,
@@ -154,9 +157,13 @@ def declarations() -> tuple[BizNode, ...]:
             handler="workflow" if len(path) == 3 or path[-1] == "status" else None,
             effects={
                 **NO_EFFECTS,
-                "mutates": path[-1] in {"create", "run", "apply"}
+                "mutates": path[-1] in {"create", "run", "apply", "enroll"}
                 or path
-                in {("workflow", "import", "plan"), ("workflow", "repair", "plan")},
+                in {
+                    ("workflow", "import", "plan"),
+                    ("workflow", "repair", "plan"),
+                    ("workflow", "target", "plan"),
+                },
                 "network": path[-1] == "run",
                 "browser_required": path[-1] == "run",
             },
@@ -314,6 +321,10 @@ def dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
 def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
     store = Store(invocation.config_file)
     path = invocation.node.path[1:]
+    if path[0] == "target":
+        from .workflow_targets import dispatch as targets
+
+        return targets(invocation, store), None
     if path == ("plan", "create"):
         return store.save("plans", native_plan(invocation)), None
     if path == ("plan", "show"):
@@ -390,6 +401,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         from .workflow_repair import inspect as repair_status
         from .workflow_snapshot import publications
         from .workflow_storage import receipts
+        from .workflow_targets import summaries as target_summaries
 
         exports = [
             {key: value for key, value in item.items() if key != "records"}
@@ -466,6 +478,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
             "current_effect": "unchanged",
             "history": histories,
             "repairs": repairs,
+            "targets": target_summaries(store),
         }, None
     raise CliError("INVALID_ARGUMENT", "Unknown workflow stage", exit_code=2)
 
