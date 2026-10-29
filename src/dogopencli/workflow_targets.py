@@ -249,6 +249,21 @@ def following(invocation: "Invocation", store: "Store", target: dict) -> dict:
             "cutoff": plan["created_at"],
             "coverage_basis": "full_observations",
         }
+    domain, name = seed["leaf"].split(".", 1)
+    declaration = invocation.registry.get(domain, name)
+    leaf = invocation.registry._load(declaration.path)
+    # Validate the original bounds before reusing their successful coverage.
+    # Dynamic following dates are checked separately when compiling new work.
+    scope, environment = planned_list_scope(leaf, seed["parameters"])
+    refreshed = compile_plan(
+        {**seed, "native_scope": scope, "environment": environment}, leaf, None
+    )
+    if (
+        scope != seed["native_scope"]
+        or environment != seed["environment"]
+        or refreshed["contract"] != seed["contract"]
+    ):
+        invalid("Native history semantics changed; save a new target")
     contract = seed["contract"]
     cutoff = (
         datetime.fromisoformat(now()).astimezone(ZoneInfo(target["timezone"])).date()
@@ -288,9 +303,6 @@ def following(invocation: "Invocation", store: "Store", target: dict) -> dict:
             merged[-1] = (merged[-1][0], max(right, merged[-1][1]))
         else:
             merged.append((left, right))
-    domain, name = seed["leaf"].split(".", 1)
-    declaration = invocation.registry.get(domain, name)
-    leaf = invocation.registry._load(declaration.path)
     plans = []
     for left, right in merged:
         parameters = {

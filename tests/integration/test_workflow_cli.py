@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 pytest_plugins = ["integration.test_leaf_pilots_cli"]
 
 
@@ -516,3 +518,44 @@ def test_get_publication_cannot_replace_wider_list_current_scope(run_cli, pilots
     assert call(run_cli, "current", "show", "--export", detail["id"])["records"] == [
         {"id": "one", "detail": True}
     ]
+
+
+@pytest.mark.parametrize("change", ["endpoint", "binding", "parameters"])
+def test_saved_list_detail_rejects_changed_detail_contract_before_queries(
+    run_cli, pilots, change
+):
+    plan = call(
+        run_cli, "plan", "create", "--leaf", "payment.sla.baselines", "--with-detail"
+    )
+    root = Path(os.environ["DOGOPENCLI_CONFIG"]).parent
+    plugin = root / "plugins/payment/sla.baselines"
+    if change == "endpoint":
+        adapter = plugin / "adapter.py"
+        adapter.write_text(
+            adapter.read_text().replace(
+                "/api/fundOutSlaBaseline/getFundOutSlaBaselineDetail",
+                "/api/fundOutSlaBaseline/getFundOutSlaBaselineDetailChanged",
+            )
+        )
+    else:
+        path = plugin / "leaf.json"
+        manifest = json.loads(path.read_text())
+        if change == "binding":
+            manifest["operations"]["get"]["list_binding"]["identity_field"] = "other_id"
+        else:
+            manifest["operations"]["get"]["parameters"] = [
+                {
+                    "name": "view",
+                    "type": "string",
+                    "required": False,
+                    "default": "new",
+                    "description": "Native detail view.",
+                }
+            ]
+        path.write_text(json.dumps(manifest))
+    pilots.business_script.append(payment_page([]))
+    code, output, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    assert code != 0, output
+    assert "detail" in json.loads(output)["error"]["message"].lower()
+    assert not pilots.business_requests
+    assert call(run_cli, "plan", "show", "--plan", plan["id"]) == plan

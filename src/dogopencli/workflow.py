@@ -292,6 +292,30 @@ class Store:
         ]
 
 
+def list_detail_contract(leaf: Any) -> dict:
+    """Freeze List-bound Get sources and row-to-request semantics offline."""
+    from .leaves.runtime import planned_detail_environment
+
+    specification = leaf.manifest["operations"].get("get", {})
+    parameters = specification.get("parameters", [])
+    defaults = {
+        item["name"].replace("-", "_"): item["default"]
+        for item in parameters
+        if "default" in item
+    }
+    if not specification.get("list_binding"):
+        raise CliError(
+            "WORKFLOW_ERROR", "Native detail binding changed; create a new plan"
+        )
+    return {
+        "binding": specification["list_binding"],
+        "parameters": parameters,
+        "lookup": specification.get("lookup"),
+        "result_identity": specification.get("result_identity"),
+        "environment": planned_detail_environment(leaf, defaults),
+    }
+
+
 def native_plan(invocation: "Invocation") -> dict:
     from .command_model import leaf_options, parse_options
 
@@ -392,6 +416,11 @@ def native_plan(invocation: "Invocation") -> dict:
         "native_scope": scope,
         "operation": operation,
         "with_detail": args.with_detail,
+        **(
+            {"detail_contract": list_detail_contract(runtime_leaf)}
+            if args.with_detail
+            else {}
+        ),
         **({"identity": args.identity} if operation == "get" else {}),
         "mode": "full",
         "parameters": {
@@ -697,6 +726,12 @@ def run_export(
             )
         else:
             scope, environment = planned_list_scope(leaf, plan["parameters"])
+        if plan.get("with_detail") and list_detail_contract(leaf) != plan.get(
+            "detail_contract"
+        ):
+            raise CliError(
+                "WORKFLOW_ERROR", "Native detail contract changed; create a new plan"
+            )
         replacement = getattr(leaf.adapter, "range_replacement_contract", None)
         if (
             callable(replacement)

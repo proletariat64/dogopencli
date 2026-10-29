@@ -355,6 +355,13 @@ def freeze_list_parameters(leaf: Leaf, parameters: dict, config_file: Path) -> d
 def planned_get_scope(leaf: Leaf, parameters: dict, identity: str) -> tuple[Any, dict]:
     """Describe the declared detail inquiry without opening a browser."""
     validate_detail_lookup(identity)
+    return {"identity": identity, "parameters": parameters}, planned_detail_environment(
+        leaf, parameters
+    )
+
+
+def planned_detail_environment(leaf: Leaf, parameters: dict) -> dict:
+    """Describe declared Get sources without requiring a particular row identity."""
     custom = leaf.manifest["operations"]["get"].get("execution") == "custom"
     capability = (
         query_capabilities(leaf, "get", parameters)
@@ -362,7 +369,7 @@ def planned_get_scope(leaf: Leaf, parameters: dict, identity: str) -> tuple[Any,
         else leaf.adapter.detail_capability(parameters)
     )
     capabilities = capability.values() if custom else [capability]
-    return {"identity": identity, "parameters": parameters}, {
+    return {
         "domain": leaf.domain,
         "queries": [
             {

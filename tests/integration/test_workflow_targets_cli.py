@@ -1,5 +1,8 @@
 """Saved target intent and frozen execution through the public CLI."""
 
+import json
+
+import pytest
 from test_workflow_cli import call
 from test_workflow_history_cli import create
 
@@ -351,3 +354,51 @@ def test_following_reuses_seed_history_and_preserves_interior_gap(
         "20260920",
         "20260919",
     ]
+
+
+@pytest.mark.parametrize("drift", ["source", "history", "scope"])
+def test_fully_covered_following_rechecks_native_contract_before_zero_work(
+    run_cli, installed, monkeypatch, drift
+):
+    from leaves.liquidity.test_cash_balances_cli import page
+
+    from dogopencli import workflow
+    from dogopencli.browser import cdp
+
+    _, browser, config = installed
+    monkeypatch.setattr(workflow, "now", lambda: "2026-09-20T12:00:00+00:00")
+    original = create(run_cli)
+    browser.business_script.append(page([]))
+    call(run_cli, "export", "run", "--plan", original["id"])
+    target = call(
+        run_cli,
+        "target",
+        "create",
+        "--plan",
+        original["id"],
+        "--policy",
+        "following",
+        "--timezone",
+        "UTC",
+        "--lookback-days",
+        "0",
+    )
+    assert call(run_cli, "target", "plan", "--target", target["id"])["plans"] == []
+    adapter = config / "plugins/liquidity/cash.balances/adapter.py"
+    old, new = {
+        "source": ("/dayendBalDetailQuery.json", "/changedDayendQuery.json"),
+        "history": ('"time_basis": "valueDate"', '"time_basis": "updateTime"'),
+        "scope": (
+            "return canonical(resolve(parameters))",
+            'return canonical({**resolve(parameters), "source": "changed"})',
+        ),
+    }[drift]
+    assert old in adapter.read_text()
+    adapter.write_text(adapter.read_text().replace(old, new))
+    cdp.set_transport_factory(
+        lambda *a, **k: pytest.fail("Planning must remain offline")
+    )
+    code, output, _ = run_cli(["workflow", "target", "plan", "--target", target["id"]])
+    assert code == 2, output
+    assert "save a new target" in json.loads(output)["error"]["message"]
+    assert len(browser.business_requests) == 1

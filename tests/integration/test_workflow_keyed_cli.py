@@ -297,3 +297,62 @@ def test_status_distinguishes_keyed_commit_from_latest_export_attempt(run_cli, k
     assert status["last_successful_export"]["id"] == newer["id"]
     assert status["keyed_imports"][0]["export_id"] == first["id"]
     assert status["keyed_imports"][0]["inserted_count"] == 1
+
+
+def test_committed_empty_export_replans_after_source_contract_changes(run_cli, keyed):
+    from leaves.liquidity.test_cash_balances_cli import row
+
+    from dogopencli.browser import cdp
+
+    browser, config = keyed
+    first = export(run_cli, browser, [])
+    uncommitted = export(run_cli, browser, [])
+    saved = call(
+        run_cli, "import", "plan", "--export", first["id"], "--action", "keyed"
+    )
+    call(run_cli, "import", "apply", "--plan", saved["id"])
+    adapter = config / "plugins/liquidity/cash.balances/adapter.py"
+    adapter.write_text(
+        adapter.read_text().replace('"identity": ["entity",', '"identity": [')
+    )
+    later = export(run_cli, browser, [row()])
+    assert merge(run_cli, later)["inserted_count"] == 1
+    cdp.set_transport_factory(lambda *a, **k: pytest.fail("Replay must remain offline"))
+    assert call(run_cli, "import", "apply", "--plan", saved["id"])["replayed"] is True
+    replay = merge(run_cli, first)
+    assert replay["replayed"] is True
+    assert replay["inserted_count"] == replay["updated_count"] == 0
+    assert current(run_cli, later)["records"] == [row()]
+    code, output, _ = run_cli(
+        [
+            "workflow",
+            "import",
+            "plan",
+            "--export",
+            uncommitted["id"],
+            "--action",
+            "keyed",
+        ]
+    )
+    assert code == 1
+    assert "contract differs" in json.loads(output)["error"]["message"]
+
+    import duckdb
+
+    with duckdb.connect(first["binding"]["database"]) as db:
+        saved_header = json.loads(
+            db.execute(
+                "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
+                [first["id"]],
+            ).fetchone()[0]
+        )
+        saved_header["keyed_contract"]["identity"] = ["tampered"]
+        db.execute(
+            "UPDATE _dogopencli_observations SET artifact=? WHERE export_id=?",
+            [json.dumps(saved_header), first["id"]],
+        )
+    code, output, _ = run_cli(
+        ["workflow", "import", "plan", "--export", first["id"], "--action", "keyed"]
+    )
+    assert code == 1
+    assert "differs from keyed receipt" in json.loads(output)["error"]["message"]

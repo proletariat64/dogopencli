@@ -179,19 +179,38 @@ def preview(artifact: dict) -> dict:
     key = namespace(artifact)
     with connection(artifact["binding"]) as db:
         guard(db, artifact["binding"])
-        previous = rows(db, artifact)
-        _, counts = changes(artifact, previous)
         replayed = installed(db, "_dogopencli_keyed_receipts") and bool(
             db.execute(
                 "SELECT 1 FROM _dogopencli_keyed_receipts WHERE export_id=?",
                 [artifact["id"]],
             ).fetchone()
         )
+        if replayed:
+            saved = db.execute(
+                "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
+                [artifact["id"]],
+            ).fetchone()
+            if not saved or not metadata_match(saved[0], artifact):
+                invalid("Exact export differs from keyed receipt")
+            existing_count = db.execute(
+                "SELECT count(*) FROM _dogopencli_keyed_current "
+                "WHERE relation_name=? AND namespace=?",
+                [artifact["binding"]["relation"], key],
+            ).fetchone()[0]
+            counts = {
+                "inserted_count": 0,
+                "updated_count": 0,
+                "unchanged_count": len(entries(artifact)),
+            }
+        else:
+            previous = rows(db, artifact)
+            _, counts = changes(artifact, previous)
+            existing_count = len(previous)
     return {
         "namespace": parse(key),
-        "existing_count": len(previous),
+        "existing_count": existing_count,
         "new_count": 0 if replayed else counts["inserted_count"],
-        "current_count": len(previous),
+        "current_count": existing_count,
         "current_effect": "reconcile_keyed_history",
         "count_basis": "scoped_native_identity",
         "ordering": contract(artifact)["ordering"],
