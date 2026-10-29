@@ -161,3 +161,9 @@ A **current publication** is an explicitly selected complete full observation in
 exact native query namespace. Replacement checks the expected prior publication
 and commits records, provenance and pointer together; saved observations remain
 readable independently of which export is current.
+
+A **historical range replacement** is an explicit local publication backed by
+a complete exact export whose native contract establishes replacement coverage
+for that business namespace and range. Absence removes only owned occurrences
+inside that range; outside history and separate observations remain retained.
+A successful empty query alone does not establish deletion semantics.

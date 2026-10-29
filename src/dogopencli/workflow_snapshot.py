@@ -41,8 +41,26 @@ def pointer(db: Any, binding: dict, key: str) -> str | None:
     return row[0] if row else None
 
 
+def guard(db: Any, binding: dict) -> None:
+    from .workflow_keyed import installed as table_installed
+
+    for table in ("_dogopencli_keyed_receipts", "_dogopencli_range_publications"):
+        if (
+            table_installed(db, table)
+            and db.execute(
+                f"SELECT 1 FROM {table} WHERE relation_name=? LIMIT 1",
+                [binding["relation"]],
+            ).fetchone()
+        ):
+            raise CliError(
+                "WORKFLOW_ERROR",
+                "Current relation has incompatible keyed/range ownership",
+            )
+
+
 def preview(artifact: dict) -> dict:
     with connection(artifact["binding"]) as db:
+        guard(db, artifact["binding"])
         key = namespace(artifact)
         previous = pointer(db, artifact["binding"], key)
         count = 0
@@ -130,6 +148,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
     with lifecycle_lock(Registry(config_file)):
         with connection(binding, write=True) as db:
             db.execute("BEGIN TRANSACTION")
+            guard(db, binding)
             db.execute(
                 "CREATE TABLE IF NOT EXISTS _dogopencli_current_publications "
                 "(relation_name VARCHAR NOT NULL, namespace VARCHAR NOT NULL,"
