@@ -101,7 +101,8 @@ def compile_plan(plan: dict, leaf: "Leaf", windows: str | None) -> dict:
 def gaps(plan: dict, ranges: list[dict]) -> list[dict]:
     """Subtract queried calendar intervals without reading record maxima."""
     contract = plan["contract"]
-    cursor = calendar(plan["desired_range"]["from"], contract).toordinal()
+    start = calendar(plan["desired_range"]["from"], contract).toordinal()
+    cursor = start
     end = calendar(plan["desired_range"]["to"], contract).toordinal()
     result = []
     for left, right in sorted(
@@ -111,6 +112,11 @@ def gaps(plan: dict, ranges: list[dict]) -> list[dict]:
         )
         for item in ranges
     ):
+        left, right = max(start, left), min(end, right)
+        if right < left:
+            continue
+        if cursor > end:
+            break
         if left > cursor:
             result.append(
                 {

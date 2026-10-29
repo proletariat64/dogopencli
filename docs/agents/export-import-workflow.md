@@ -151,8 +151,10 @@ plan and capture cutoff. A capture cutoff is not a business timestamp.
 For history, also provide `--timezone Asia/Shanghai` (the operator's cutoff
 calendar zone), and optionally `--lookback-days 2`. History requires the leaf's
 declared inclusive calendar contract and permission for explicit windows.
-The cutoff is frozen when planning, so a later run cannot widen it. Work includes
-uncovered native query intervals plus the explicit lookback, measured from that
+The cutoff is frozen when planning, so a later run cannot widen it. Retained
+coverage is clipped to the frozen start and cutoff; out-of-range intervals do not
+create or extend requested work. Work includes uncovered native query intervals
+plus the explicit lookback, measured from that
 cutoff, including its calendar day. Without lookback, completed native query
 intervals are reused. Row maxima never establish coverage. An unknown native
 timezone remains unknown; the cutoff zone does not relabel source timestamps.
