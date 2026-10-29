@@ -1,6 +1,9 @@
 # Duckdog 显式 settings 导入
 
-查询宿主只管理安装时的空表初始化、绑定验证和临时查询缓存。
+查询与 refresh 管理安装绑定及临时查询缓存，不自动导入。
+宿主的 [workflow](../../docs/agents/export-import-workflow.md) 可显式保留完整导出为 scoped observation；
+它复用已注册目标，不改变当前 `_record` 表，也不使用下述外部 helper 的来源名单。
+本文其余部分仅说明独立 settings helper。
 refresh 与 adapter 不导入数据。外部 settings helper 仅在任务明确要求导入时运行；
 它和宿主的 `_record VARCHAR` 安装表是不同的所有权边界。
 

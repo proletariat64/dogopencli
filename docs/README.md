@@ -12,3 +12,5 @@
 
 已安装 leaf 的原生接口、参数与字段以其 manifest、adapter、公开 help/describe 为准。
 未安装或未迁移的查询不因文档提及而获得注册或生产验收。
+
+显式导出与离线观测保留见 [Export/import workflow](agents/export-import-workflow.md)。
