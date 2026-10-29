@@ -18,7 +18,10 @@ to its registered local Duckdog asset offline. Report these outcomes separately.
    requested write action. Reuse existing authorization. Resolve missing business
    scope with the user; keep actual capability limits visible. Let the public
    planner validate and freeze dates, parameters, binding and work packages.
-   Inspect the saved plan before execution.
+   Inspect the saved plan before execution. For a declared Get or qualified
+   List/detail composition, use the public operation/identity/detail options and
+   preserve their selected root/components; do not enroll Get-only leaves as
+   datasets or discover new relationships during export.
 3. Run the saved export plan. Preserve exact export identities and acquisition
    conclusions. Preview limits/projection affect presentation only. After partial
    failure, inspect retained outcomes and continue authorized unresolved work;
