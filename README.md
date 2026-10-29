@@ -3,6 +3,8 @@
 An inquiry-only CLI for payment, collection, liquidity and FX operations, intended
 for one person on one machine. Install the leaves you need, discover their commands
 with progressive help, and query live data or replay a local snapshot.
+Use the [durable workflow](docs/agents/export-import-workflow.md) to plan an exact export and explicitly
+preserve it as an offline Duckdog observation.
 
 **Developing or migrating a leaf?** Start with [tools/leaf-dev](tools/leaf-dev/README.md)
 for the handbook, interfaces, workflow, runnable example and helpers.

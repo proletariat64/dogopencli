@@ -146,6 +146,12 @@ def main(argv: list[str]) -> int:
                 )
             emit(data, output_format=output_format)
             return 0
+        if node.path[:1] == ("workflow",):
+            from ..workflow import dispatch
+
+            data, meta = dispatch(invocation)
+            emit(data, meta, output_format=output_format)
+            return 0
         if len(node.path) != 3:
             raise CliError("INVALID_ARGUMENT", "Use dogopencli --help", exit_code=2)
         domain, operation, name = node.path

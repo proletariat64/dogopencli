@@ -4,6 +4,7 @@ import hashlib
 import inspect
 import math
 from argparse import Namespace
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
@@ -329,8 +330,38 @@ def _compose_details(
     return combined, acquisitions
 
 
+def planned_list_scope(leaf: Leaf, parameters: dict) -> tuple[Any, dict]:
+    """Validate native scope offline and describe its inquiry environment."""
+    capability = _list_capabilities(leaf, parameters)
+    scope = leaf.adapter.scope(parameters)
+    try:
+        scope = parse(scope)
+    except (ValueError, TypeError):
+        pass
+    capabilities = capability.values() if isinstance(capability, dict) else [capability]
+    environment = {
+        "domain": leaf.domain,
+        "queries": [
+            {
+                "method": item.contract.method,
+                "host": item.contract.host,
+                "path": item.contract.path,
+                "page_url": getattr(item, "page_url", None),
+            }
+            for item in capabilities
+        ],
+    }
+    return scope, environment
+
+
 def execute(
-    leaf: Leaf, operation: str, parameters: dict, args: Namespace, config_file: Path
+    leaf: Leaf,
+    operation: str,
+    parameters: dict,
+    args: Namespace,
+    config_file: Path,
+    *,
+    capture: Callable[[list[dict], dict], None] | None = None,
 ) -> tuple[Any, dict]:
     """Execute one supported action; publication always uses the full candidate."""
 
@@ -542,6 +573,18 @@ def execute(
                     if operation == "list"
                     else rows
                 )
+                if capture is not None:
+                    capture(
+                        selected,
+                        {
+                            "query": query,
+                            "scope": effective_scope,
+                            "fetched_at": fetched_at,
+                            **evidence.meta(),
+                            **decision.meta(mode=operation),
+                            "warnings": list(decision.warnings),
+                        },
+                    )
                 window = window_rows(selected, limit, offset)
                 _project(window, fields)
                 if args.with_detail:
