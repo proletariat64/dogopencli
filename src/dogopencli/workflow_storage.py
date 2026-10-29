@@ -7,6 +7,7 @@ host tables, keyed by export occurrence and ordinal, without business deduplicat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from .errors import CliError
@@ -110,10 +111,98 @@ def read(binding: dict, export_id: str) -> dict:
         }
 
 
+def exact_match(left: dict, right: dict) -> bool:
+    """Compare frozen values without constructing two whole-corpus strings."""
+    if not isinstance(left, dict) or not isinstance(right, dict):
+        return False
+    left_rows, right_rows = left.get("records"), right.get("records")
+    return (
+        isinstance(left_rows, list)
+        and isinstance(right_rows, list)
+        and len(left_rows) == len(right_rows)
+        and canonical({k: v for k, v in left.items() if k != "records"})
+        == canonical({k: v for k, v in right.items() if k != "records"})
+        and all(
+            canonical(a) == canonical(b)
+            for a, b in zip(left_rows, right_rows, strict=True)
+        )
+    )
+
+
+BATCH_ROWS = 10000
+
+
+def stage_checkpoint(phase: str, count: int) -> None:
+    """Fault-injection seam at durable boundaries; no external progress state."""
+
+
+def stage_rows(db: Any, artifact: dict) -> None:
+    """Commit bounded hidden batches, checking exact retained rows on resume.
+
+    Observation/publication receipts alone expose data. Staged rows survive an
+    interruption but never appear in observations or registered current tables.
+    """
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS _dogopencli_observation_rows "
+        "(export_id VARCHAR NOT NULL, ordinal BIGINT NOT NULL, _record "
+        "VARCHAR NOT NULL, PRIMARY KEY(export_id, ordinal))"
+    )
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS _dogopencli_import_staging "
+        "(export_id VARCHAR PRIMARY KEY, metadata VARCHAR NOT NULL)"
+    )
+    metadata = canonical({k: v for k, v in artifact.items() if k != "records"})
+    previous = db.execute(
+        "SELECT metadata FROM _dogopencli_import_staging WHERE export_id=?",
+        [artifact["id"]],
+    ).fetchone()
+    if previous and previous[0] != metadata:
+        raise CliError("WORKFLOW_ERROR", "Exact export differs from staged import")
+    db.execute(
+        "INSERT INTO _dogopencli_import_staging VALUES (?, ?) ON CONFLICT DO NOTHING",
+        [artifact["id"], metadata],
+    )
+    retained = db.execute(
+        "SELECT count(*) FROM _dogopencli_observation_rows WHERE export_id=?",
+        [artifact["id"]],
+    ).fetchone()[0]
+    if retained > len(artifact["records"]):
+        raise CliError("WORKFLOW_ERROR", "Staged row count differs from exact export")
+    for start in range(0, len(artifact["records"]), BATCH_ROWS):
+        end = min(start + BATCH_ROWS, len(artifact["records"]))
+        rows = [canonical(row) for row in artifact["records"][start:end]]
+        if start < retained:
+            saved = db.execute(
+                "SELECT ordinal, _record FROM _dogopencli_observation_rows "
+                "WHERE export_id=? AND ordinal>=? AND ordinal<? ORDER BY ordinal",
+                [artifact["id"], start, end],
+            ).fetchall()
+            if saved != list(enumerate(rows, start)):
+                raise CliError(
+                    "WORKFLOW_ERROR", "Exact export differs from staged rows"
+                )
+            continue
+        with NamedTemporaryFile(mode="w+", encoding="utf-8", suffix=".jsonl") as stream:
+            for ordinal, row in enumerate(rows, start):
+                stream.write(canonical({"ordinal": ordinal, "_record": row}) + "\n")
+            stream.flush()
+            db.execute("BEGIN TRANSACTION")
+            db.execute(
+                "INSERT INTO _dogopencli_observation_rows SELECT ?, ordinal, _record "
+                "FROM read_json(?, format='newline_delimited', "
+                "columns={ordinal:'BIGINT', _record:'VARCHAR'})",
+                [artifact["id"], stream.name],
+            )
+            stage_checkpoint("before_batch_commit", end)
+            db.execute("COMMIT")
+            stage_checkpoint("after_batch_commit", end)
+
+
 def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> dict:
     binding = plan["binding"]
     with lifecycle_lock(Registry(config_file)):
         with connection(binding, write=True) as db:
+            stage_rows(db, artifact)
             db.execute("BEGIN TRANSACTION")
             db.execute(
                 "CREATE TABLE IF NOT EXISTS _dogopencli_observations (export_id "
@@ -132,7 +221,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 [artifact["id"]],
             ).fetchone()
             if previous:
-                if canonical(parse(previous[0])) != canonical(artifact):
+                if not exact_match(parse(previous[0]), artifact):
                     raise CliError(
                         "WORKFLOW_ERROR",
                         "Exact export differs from committed observation",
@@ -168,15 +257,9 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                     canonical(receipt),
                 ],
             )
-            if artifact["records"]:
-                db.executemany(
-                    "INSERT INTO _dogopencli_observation_rows VALUES (?, ?, ?)",
-                    [
-                        (artifact["id"], i, canonical(row))
-                        for i, row in enumerate(artifact["records"])
-                    ],
-                )
+            stage_checkpoint("before_publication_commit", artifact["record_count"])
             db.execute("COMMIT")
+            stage_checkpoint("after_publication_commit", artifact["record_count"])
             return {
                 **receipt,
                 "replayed": False,

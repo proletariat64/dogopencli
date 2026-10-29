@@ -7,7 +7,7 @@ from .errors import CliError
 from .jsonutil import canonical, parse
 from .leaves.lifecycle import lifecycle_lock
 from .leaves.registry import Registry
-from .workflow_storage import connection
+from .workflow_storage import connection, exact_match
 
 
 def invalid(message: str) -> None:
@@ -244,7 +244,7 @@ def save_observation(db: Any, artifact: dict, receipt: dict) -> None:
         [artifact["id"]],
     ).fetchone()
     if saved:
-        if canonical(parse(saved[0])) != canonical(artifact):
+        if not exact_match(parse(saved[0]), artifact):
             invalid("Exact export differs from committed observation")
         return
     binding = artifact["binding"]
@@ -260,14 +260,6 @@ def save_observation(db: Any, artifact: dict, receipt: dict) -> None:
             canonical(receipt),
         ],
     )
-    if artifact["records"]:
-        db.executemany(
-            "INSERT INTO _dogopencli_observation_rows VALUES (?, ?, ?)",
-            [
-                (artifact["id"], i, canonical(row))
-                for i, row in enumerate(artifact["records"])
-            ],
-        )
 
 
 def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> dict:
@@ -277,6 +269,9 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
         invalid("Keyed plan namespace differs from frozen export")
     with lifecycle_lock(Registry(config_file)):
         with connection(binding, write=True) as db:
+            from .workflow_storage import stage_rows
+
+            stage_rows(db, artifact)
             db.execute("BEGIN TRANSACTION")
             guard(db, binding)
             db.execute(
@@ -300,7 +295,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                     "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
                     [artifact["id"]],
                 ).fetchone()
-                if not saved or canonical(parse(saved[0])) != canonical(artifact):
+                if not saved or not exact_match(parse(saved[0]), artifact):
                     invalid("Exact export differs from keyed receipt")
                 db.execute("ROLLBACK")
                 return {

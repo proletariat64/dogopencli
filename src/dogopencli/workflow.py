@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 import sqlite3
 import uuid
 from argparse import Namespace
@@ -183,6 +184,39 @@ class Store:
     def save(self, kind: str, value: dict) -> dict:
         directory = self.root / kind
         directory.mkdir(parents=True, exist_ok=True)
+        if kind == "exports":
+            # One rename publishes metadata and exact records together. Listings
+            # never open the retained corpus; unpublished bundles are invisible.
+            temporary = directory / ("." + uuid.uuid4().hex)
+            temporary.mkdir(mode=0o700)
+            try:
+                for name, content in (
+                    (
+                        "metadata.json",
+                        {k: v for k, v in value.items() if k != "records"},
+                    ),
+                    ("records.json", value.get("records", [])),
+                ):
+                    with (temporary / name).open("x", encoding="utf-8") as stream:
+                        os.chmod(temporary / name, 0o600)
+                        stream.write(canonical(content))
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                fd = os.open(temporary, os.O_RDONLY)
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+                temporary.rename(directory / value["id"])
+                fd = os.open(directory, os.O_RDONLY)
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+            finally:
+                if temporary.exists():
+                    shutil.rmtree(temporary)
+            return value
         target = directory / (value["id"] + ".json")
         temporary = directory / ("." + uuid.uuid4().hex)
         try:
@@ -205,7 +239,12 @@ class Store:
         if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{32}", identity):
             raise CliError("WORKFLOW_ERROR", "Invalid saved identity")
         try:
-            value = parse((self.root / kind / (identity + ".json")).read_bytes())
+            if kind == "exports":
+                bundle = self.root / kind / identity
+                value = parse((bundle / "metadata.json").read_bytes())
+                value["records"] = parse((bundle / "records.json").read_bytes())
+            else:
+                value = parse((self.root / kind / (identity + ".json")).read_bytes())
             if (
                 not isinstance(value, dict)
                 or value.get("id") != identity
@@ -219,6 +258,17 @@ class Store:
             ) from error
 
     def list(self, kind: str) -> list[dict]:
+        if kind == "exports":
+            try:
+                return [
+                    parse((path / "metadata.json").read_bytes())
+                    for path in sorted((self.root / kind).glob("[0-9a-f]" * 32))
+                    if path.is_dir()
+                ]
+            except (OSError, ValueError, TypeError) as error:
+                raise CliError(
+                    "WORKFLOW_ERROR", "Saved export metadata is invalid"
+                ) from error
         return [
             self.read(kind, path.stem)
             for path in sorted((self.root / kind).glob("*.json"))
@@ -350,7 +400,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
     if path == ("import", "plan"):
         return import_plan(invocation, store), None
     if path == ("import", "apply"):
-        from .workflow_storage import apply
+        from .workflow_storage import apply, exact_match
 
         plan = store.read("imports", invocation.args.plan)
         if "repair_id" in plan:
@@ -363,7 +413,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         if (
             plan.get("action")
             not in {"preserve", "replace-full", "replace-range", "keyed"}
-            or canonical(plan.get("input")) != canonical(artifact)
+            or not exact_match(plan.get("input"), artifact)
             or plan.get("binding") != artifact["binding"]
         ):
             raise CliError(

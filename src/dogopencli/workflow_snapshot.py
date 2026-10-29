@@ -7,7 +7,7 @@ from .errors import CliError
 from .jsonutil import canonical, parse
 from .leaves.lifecycle import lifecycle_lock
 from .leaves.registry import Registry
-from .workflow_storage import connection
+from .workflow_storage import connection, exact_match
 
 
 def namespace(artifact: dict) -> str:
@@ -147,6 +147,9 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
         )
     with lifecycle_lock(Registry(config_file)):
         with connection(binding, write=True) as db:
+            from .workflow_storage import stage_rows
+
+            stage_rows(db, artifact)
             db.execute("BEGIN TRANSACTION")
             guard(db, binding)
             db.execute(
@@ -169,7 +172,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                     "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
                     [artifact["id"]],
                 ).fetchone()
-                if not saved or canonical(parse(saved[0])) != canonical(artifact):
+                if not saved or not exact_match(parse(saved[0]), artifact):
                     raise CliError(
                         "WORKFLOW_ERROR",
                         "Exact export differs from committed publication",
@@ -213,7 +216,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
                 [artifact["id"]],
             ).fetchone()
-            if saved and canonical(parse(saved[0])) != canonical(artifact):
+            if saved and not exact_match(parse(saved[0]), artifact):
                 raise CliError(
                     "WORKFLOW_ERROR", "Exact export differs from committed observation"
                 )
@@ -230,14 +233,6 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                         canonical(receipt),
                     ],
                 )
-                if artifact["records"]:
-                    db.executemany(
-                        "INSERT INTO _dogopencli_observation_rows VALUES (?, ?, ?)",
-                        [
-                            (artifact["id"], ordinal, canonical(row))
-                            for ordinal, row in enumerate(artifact["records"])
-                        ],
-                    )
             relation = '"' + binding["relation"].replace('"', '""') + '"'
             if previous:
                 # Multiset subtraction preserves unrelated occurrences, including

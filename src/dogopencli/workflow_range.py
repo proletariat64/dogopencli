@@ -203,6 +203,9 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
         invalid("Replacement plan differs from frozen native range")
     with lifecycle_lock(Registry(config_file)):
         with connection(binding, write=True) as db:
+            from .workflow_storage import stage_rows
+
+            stage_rows(db, artifact)
             db.execute("BEGIN TRANSACTION")
             guard(db, binding)
             db.execute(
@@ -288,23 +291,25 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 selected,
             )
             if artifact["records"]:
-                db.executemany(
-                    "INSERT INTO _dogopencli_range_rows VALUES (?, ?, ?, ?, ?, ?)",
+                # Calendar validation already established these native values;
+                # derive the same ordinal from retained canonical row storage.
+                db.execute(
+                    "INSERT INTO _dogopencli_range_rows SELECT ?, ?, export_id, "
+                    "ordinal, date_diff('day', DATE '0001-01-01', "
+                    "strptime(json_extract_string(_record, ?), ?)) + 1, _record "
+                    "FROM _dogopencli_observation_rows WHERE export_id=?",
                     [
-                        (
-                            binding["relation"],
-                            key,
-                            artifact["id"],
-                            i,
-                            calendar(row[value["field"]], value).toordinal(),
-                            canonical(row),
-                        )
-                        for i, row in enumerate(artifact["records"])
+                        binding["relation"],
+                        key,
+                        '$."' + value["field"] + '"',
+                        value["format"],
+                        artifact["id"],
                     ],
                 )
-                db.executemany(
-                    f"INSERT INTO {relation} VALUES (?)",
-                    [(canonical(row),) for row in artifact["records"]],
+                db.execute(
+                    f"INSERT INTO {relation} SELECT _record FROM "
+                    "_dogopencli_observation_rows WHERE export_id=? ORDER BY ordinal",
+                    [artifact["id"]],
                 )
             db.execute(
                 "INSERT INTO _dogopencli_range_receipts VALUES (?, ?, ?)",
