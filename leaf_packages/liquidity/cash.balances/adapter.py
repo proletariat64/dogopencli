@@ -361,6 +361,30 @@ def enumerate_aliases(
 
 
 class Adapter:
+    def history_contract(self, parameters: dict) -> dict:
+        values = resolve(parameters)
+        if not values["aliases"]:
+            raise CliError(
+                INVALID_ARGUMENT,
+                "History requires explicit account aliases; "
+                "current directory is not historical ownership",
+                exit_code=2,
+            )
+        return {
+            "time_basis": "valueDate",
+            "interpretation": "calendar_date",
+            "format": "%Y%m%d",
+            "boundary": "inclusive",
+            "timezone": None,
+            "from_parameter": "from_date",
+            "to_parameter": "to_date",
+            "from": values["start"],
+            "to": values["end"],
+            "splitting": "explicit_windows",
+            "cross_range_equivalence": False,
+            "modification_time": "updateTime (native local format; timezone unknown)",
+        }
+
     def query_capability(self, operation: str, name: str, parameters: dict) -> Any:
         resolve(parameters)
         return RosterInquiry() if name == "roster" else BalanceInquiry()

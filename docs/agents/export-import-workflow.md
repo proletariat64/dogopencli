@@ -67,5 +67,6 @@ Workflow artifacts live under `workflow/` beside the selected configuration file
 Duckdog destinations remain the leaf registry's existing database/relation bindings.
 
 This workflow supports scoped preservation. Replacement, keyed updates, historical
-coverage planning, repair orchestration and scheduling require their own explicit
-contracts and commands.
+merge, repair orchestration and scheduling require their own explicit contracts
+and commands. [Bounded history](bounded-history.md) adds explicit native query
+packages and coverage inspection without merging separate observations.
