@@ -100,4 +100,14 @@ snapshot. Offline List replays only the saved day-end source and its explicit
 date scope, without live directory fallback or inferred dates. Old-source caches
 are not migrated or accepted under this contract.
 
-No Get, Duckdog balance import, sync qualification or business mutation is added.
+No Get, automatic Duckdog balance publication, sync qualification or business
+mutation is added.
+
+## Bounded workflow history
+
+The adapter's `history_contract` declares inclusive calendar `valueDate` bounds
+and requires explicit account aliases for durable history planning. Explicit
+windows retain separately labeled native observations; no multi-day/daily query
+equivalence is asserted. Source modification time remains distinct from calendar
+business dates and acquisition time. See the host bounded-history guide for
+planning, package resume, coverage inspection and exact offline preservation.

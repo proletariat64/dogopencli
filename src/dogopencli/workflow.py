@@ -33,6 +33,17 @@ def declarations() -> tuple[BizNode, ...]:
             (
                 opt("leaf", "Installed domain.dotted-leaf identity.", required=True),
                 opt(
+                    "mode",
+                    "Full observation or bounded native history.",
+                    choices=("full", "history"),
+                    default="full",
+                ),
+                opt(
+                    "windows",
+                    "History only: JSON array of explicit native {from,to} windows; "
+                    "default is one unchanged range.",
+                ),
+                opt(
                     "parameters",
                     "Native List parameters as a JSON object.",
                     default="{}",
@@ -46,11 +57,26 @@ def declarations() -> tuple[BizNode, ...]:
         ),
         (("workflow", "export"), "Execute or inspect exact immutable exports.", ()),
         (
+            ("workflow", "history"),
+            "Inspect bounded native history observations offline.",
+            (),
+        ),
+        (
+            ("workflow", "history", "show"),
+            "Show desired range, package attempts and gaps without advancing work.",
+            (opt("plan", "Saved history plan ID.", required=True),),
+        ),
+        (
             ("workflow", "export", "run"),
             "Export one planned List result; display controls never truncate "
             "saved records.",
             (
                 opt("plan", "Saved plan ID.", required=True),
+                opt(
+                    "package",
+                    "History only: execute one exact package; "
+                    "completed exports are reused.",
+                ),
                 opt("limit", "Preview rows; zero means all.", "int", default=100),
                 opt("offset", "Preview offset.", "int", default=0),
                 opt("fields", "Preview fields only."),
@@ -233,7 +259,7 @@ def native_plan(invocation: "Invocation") -> dict:
 
     runtime_leaf = invocation.registry._load(leaf.path)
     scope, environment = planned_list_scope(runtime_leaf, effective)
-    return {
+    plan = {
         "version": 1,
         "id": uuid.uuid4().hex,
         "created_at": now(),
@@ -247,6 +273,15 @@ def native_plan(invocation: "Invocation") -> dict:
             key: value for key, value in effective.items() if value is not None
         },
     }
+    if args.mode == "history":
+        from .workflow_history import compile_plan
+
+        return compile_plan(plan, runtime_leaf, args.windows)
+    if args.windows is not None:
+        raise CliError(
+            "INVALID_ARGUMENT", "--windows requires --mode history", exit_code=2
+        )
+    return plan
 
 
 def dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
@@ -265,6 +300,10 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         return store.save("plans", native_plan(invocation)), None
     if path == ("plan", "show"):
         return store.read("plans", invocation.args.plan), None
+    if path == ("history", "show"):
+        from .workflow_history import coverage
+
+        return coverage(store, store.read("plans", invocation.args.plan)), None
     if path == ("export", "run"):
         return run_export(invocation, store)
     if path == ("export", "show"):
@@ -305,6 +344,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         verify_binding(invocation.config_file, artifact)
         return read(artifact["binding"], artifact["id"]), None
     if path == ("status",):
+        from .workflow_history import coverage
         from .workflow_snapshot import publications
         from .workflow_storage import receipts
 
@@ -337,6 +377,25 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
             }
             for plan in plans
         ]
+        histories = [
+            coverage(store, plan) for plan in plans if plan.get("mode") == "history"
+        ]
+        for history in histories:
+            states = [item["state"] for item in history["packages"]]
+            state = (
+                (
+                    "complete_nonempty"
+                    if "complete_nonempty" in states
+                    else "complete_empty"
+                )
+                if history["complete"]
+                else "unqueried"
+                if all(item == "unqueried" for item in states)
+                else "incomplete"
+            )
+            next(item for item in plan_status if item["plan_id"] == history["plan_id"])[
+                "state"
+            ] = state
         return {
             "plans": plans,
             "plan_status": plan_status,
@@ -350,6 +409,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
                 for row in publications(destination)
             ],
             "current_effect": "unchanged",
+            "history": histories,
         }, None
     raise CliError("INVALID_ARGUMENT", "Unknown workflow stage", exit_code=2)
 
@@ -371,12 +431,23 @@ def binding(config_file: Path, leaf_id: str) -> dict:
         ) from error
 
 
-def run_export(invocation: "Invocation", store: Store) -> tuple[dict, dict]:
+def run_export(
+    invocation: "Invocation", store: Store, plan: dict | None = None
+) -> tuple[dict, dict]:
     from .domains import DomainService
     from .leaves.registry import Registry
     from .leaves.runtime import execute, planned_list_scope
 
-    plan = store.read("plans", invocation.args.plan)
+    if plan is None:
+        plan = store.read("plans", invocation.args.plan)
+        if plan.get("mode") == "history":
+            from .workflow_history import run
+
+            return run(invocation, store, plan)
+        if invocation.args.package is not None:
+            raise CliError(
+                "INVALID_ARGUMENT", "--package requires a history plan", exit_code=2
+            )
     result = {
         "version": 1,
         "id": uuid.uuid4().hex,
@@ -388,6 +459,15 @@ def run_export(invocation: "Invocation", store: Store) -> tuple[dict, dict]:
         "parameters": plan["parameters"],
         "started_at": now(),
         "state": "unqueried",
+        **(
+            {
+                "history_plan": plan["history_plan"],
+                "native_range": plan["range"],
+                "history_contract": plan["contract"],
+            }
+            if "history_plan" in plan
+            else {}
+        ),
     }
     captured = {}
 
@@ -407,6 +487,16 @@ def run_export(invocation: "Invocation", store: Store) -> tuple[dict, dict]:
             raise CliError("DOMAIN_DISABLED", f"Domain is disabled: {domain}")
         leaf = Registry(invocation.config_file).scan().get(domain, name)
         scope, environment = planned_list_scope(leaf, plan["parameters"])
+        if "history_plan" in plan:
+            history_contract = getattr(leaf.adapter, "history_contract", None)
+            expected = {**plan["contract"], **plan["range"]}
+            if not callable(history_contract) or canonical(
+                history_contract(plan["parameters"])
+            ) != canonical(expected):
+                raise CliError(
+                    "WORKFLOW_ERROR",
+                    "Native history contract changed; create a new plan",
+                )
         if scope != plan["native_scope"] or environment != plan["environment"]:
             raise CliError(
                 "WORKFLOW_ERROR", "Native scope/environment changed; create a new plan"
