@@ -1,6 +1,6 @@
 # Durable export and scoped import
 
-`export` retrieves an installed List scope online. `import` writes an exact saved
+`export` retrieves an installed List scope or its declared Get inquiry online. `import` writes an exact saved
 export into its registered Duckdog destination offline. Each command executes its
 own stage. Query cache publication, successful export and committed import are
 separate outcomes.
@@ -31,6 +31,27 @@ A plan selects one installed List leaf and its native scope. `mode: full` means 
 full observation of that exact query, including a native date filter when supplied;
 it does not claim daily coverage or synthesize a business time index. Get-only
 leaves are not enumerable datasets. Help and inspection remain offline.
+
+Use `plan create --operation get --identity NATIVE_ID` for a declared Get on a
+List-capable leaf. It captures only the native root/components declared by that
+Get, with their acquisition evidence; it does not discover additional children.
+Get observations retain a separate operation/identity namespace and cannot replace
+wider List data. Get-only leaves remain outside dataset enrollment. Use
+`plan create --with-detail` only with an existing declared List/Get binding; export
+composes every selected List row before applying preview limits or projection.
+
+`ANY` entity selectors resolve read-only from the configured local Duckdog selector
+when compiling a plan. The effective native IDs are saved in the plan and checked
+again before acquisition; a changed selector requires a new plan. Planning does not
+query an account directory online. Entity-wide account inquiries retain the leaf's
+exporter-owned enumeration, directory quality and reported gaps during export.
+
+Local record filters retain the requested selected records and their exact filter
+scope. Their saved coverage is labeled `local_selection_of_native_acquisition`;
+native totals and acquisition evidence remain separately recorded as
+`source_acquisition`. A complete selection means the complete acquired source was
+filtered locally, and does not claim that selected rows are the entire native scope.
+
 
 Exports save qualified public records before presentation limit, offset and field
 projection. Intentional leaf allowlists remain effective. Nested values, exact JSON

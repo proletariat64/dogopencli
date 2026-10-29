@@ -384,6 +384,9 @@ def enroll(invocation: "Invocation", store: "Store") -> dict:
                 parameters=canonical(supplied),
                 mode=invocation.args.mode,
                 windows=None,
+                operation="list",
+                identity=None,
+                with_detail=False,
             ),
         )
         try:
