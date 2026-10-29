@@ -478,3 +478,40 @@ def test_durable_list_detail_composes_all_rows_before_preview(run_cli, pilots):
     ]
     assert len(exported["records"]) == 1
     assert saved["metadata"]["with_detail"] is True
+
+
+def test_get_publication_cannot_replace_wider_list_current_scope(run_cli, pilots):
+    list_plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
+    rows = [{"id": "one"}, {"id": "two"}]
+    pilots.business_script.append(payment_page(rows))
+    listed = call(run_cli, "export", "run", "--plan", list_plan["id"])
+    publication = call(
+        run_cli, "import", "plan", "--export", listed["id"], "--action", "replace-full"
+    )
+    call(run_cli, "import", "apply", "--plan", publication["id"])
+    get_plan = call(
+        run_cli,
+        "plan",
+        "create",
+        "--leaf",
+        "payment.sla.baselines",
+        "--operation",
+        "get",
+        "--identity",
+        "one",
+    )
+    pilots.business_script.append(
+        {
+            "status": 200,
+            "body": {"success": True, "resultData": {"id": "one", "detail": True}},
+        }
+    )
+    detail = call(run_cli, "export", "run", "--plan", get_plan["id"])
+    publication = call(
+        run_cli, "import", "plan", "--export", detail["id"], "--action", "replace-full"
+    )
+    call(run_cli, "import", "apply", "--plan", publication["id"])
+    assert call(run_cli, "current", "show", "--export", listed["id"])["records"] == rows
+    assert call(run_cli, "current", "show", "--export", detail["id"])["records"] == [
+        {"id": "one", "detail": True}
+    ]
