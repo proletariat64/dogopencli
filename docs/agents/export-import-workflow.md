@@ -96,3 +96,42 @@ reconciles overlaps only with explicit native identity, namespace and ordering
 facts. [Frozen repair](repair-workflow.md) fills known acquisition gaps through
 separate exports and an exact offline input selection. Scheduling requires its
 own explicit contracts and commands.
+
+## Saved targets and explicit following
+
+`workflow target create --plan ID` preserves an exact full/history plan as bounded
+intent. `workflow target plan --target ID` freezes an execution;
+`workflow target run --execution ID` executes that exact work and reuses completed
+exports. Repeating bounded work never advances the requested date range.
+Planning writes workflow files only; it never exports or imports.
+
+Following is explicit: `workflow target create --plan ID --policy following`.
+For full observations each explicit planning call freezes a fresh observation
+plan and capture cutoff. A capture cutoff is not a business timestamp.
+For history, also provide `--timezone Asia/Shanghai` (the operator's cutoff
+calendar zone), and optionally `--lookback-days 2`. History requires the leaf's
+declared inclusive calendar contract and permission for explicit windows.
+The cutoff is frozen when planning, so a later run cannot widen it. Work includes
+uncovered native query intervals plus the explicit lookback, measured from that
+cutoff, including its calendar day. Without lookback, completed native query
+intervals are reused. Row maxima never establish coverage. An unknown native
+timezone remains unknown; the cutoff zone does not relabel source timestamps.
+
+`workflow target enroll --scopes '{"domain.leaf":{"native-argument":"value"}}'`
+creates a bounded set from currently installed List datasets. `--mode history`
+requests native history support. The saved enrollment shows exact required native
+arguments, validation/capability diagnostics, declared limitations, and excluded
+Get-only leaves. It never fabricates parameter combinations. Omitted scopes and
+unsupported capabilities stay visible and make execution fail in aggregate;
+independent successful exports remain saved and are reused on retry. Installing a
+new leaf does not change existing target sets: run enrollment again explicitly
+to create a new set. Diagnostics are frozen intent; supply corrected scope in a
+new enrollment rather than silently changing old work.
+
+`workflow target show --target ID` and `workflow status` inspect target intent,
+frozen work and attempts offline. Status retains exact export IDs, latest attempt
+and last successful exports, exporter metadata (counts, capture times, time basis,
+cache facts when supplied), known history gaps, and committed import receipts and
+current publications separately. Inspection/help never authenticate, export,
+import, or initialize a schema. Execution performs export only; import remains an
+explicit separate stage bound to exact saved exports.
