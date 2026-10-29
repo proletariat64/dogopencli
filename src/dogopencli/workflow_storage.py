@@ -98,7 +98,7 @@ def read(binding: dict, export_id: str) -> dict:
             ).fetchall()
         ]
         if (
-            canonical(rows) != canonical(artifact["records"])
+            len(rows) != artifact["record_count"]
             or len(rows) != receipt["record_count"]
         ):
             raise CliError("WORKFLOW_ERROR", "Stored observation is inconsistent")
@@ -109,6 +109,16 @@ def read(binding: dict, export_id: str) -> dict:
             "records": rows,
             "receipt": receipt,
         }
+
+
+def header(artifact: dict) -> dict:
+    """The metadata committed with canonical ordinal rows; no second row blob."""
+    return {key: value for key, value in artifact.items() if key != "records"}
+
+
+def metadata_match(saved: str, artifact: dict) -> bool:
+    # stage_rows separately compared every retained row to this exact input.
+    return canonical(parse(saved)) == canonical(header(artifact))
 
 
 def exact_match(left: dict, right: dict) -> bool:
@@ -151,7 +161,7 @@ def stage_rows(db: Any, artifact: dict) -> None:
         "CREATE TABLE IF NOT EXISTS _dogopencli_import_staging "
         "(export_id VARCHAR PRIMARY KEY, metadata VARCHAR NOT NULL)"
     )
-    metadata = canonical({k: v for k, v in artifact.items() if k != "records"})
+    metadata = canonical(header(artifact))
     previous = db.execute(
         "SELECT metadata FROM _dogopencli_import_staging WHERE export_id=?",
         [artifact["id"]],
@@ -221,7 +231,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 [artifact["id"]],
             ).fetchone()
             if previous:
-                if not exact_match(parse(previous[0]), artifact):
+                if not metadata_match(previous[0], artifact):
                     raise CliError(
                         "WORKFLOW_ERROR",
                         "Exact export differs from committed observation",
@@ -253,7 +263,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                     binding["relation"],
                     "preserve",
                     committed_at,
-                    canonical(artifact),
+                    canonical(header(artifact)),
                     canonical(receipt),
                 ],
             )

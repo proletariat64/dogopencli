@@ -7,7 +7,7 @@ from .errors import CliError
 from .jsonutil import canonical, parse
 from .leaves.lifecycle import lifecycle_lock
 from .leaves.registry import Registry
-from .workflow_storage import connection, exact_match
+from .workflow_storage import connection, header, metadata_match
 
 
 def invalid(message: str) -> None:
@@ -244,7 +244,7 @@ def save_observation(db: Any, artifact: dict, receipt: dict) -> None:
         [artifact["id"]],
     ).fetchone()
     if saved:
-        if not exact_match(parse(saved[0]), artifact):
+        if not metadata_match(saved[0], artifact):
             invalid("Exact export differs from committed observation")
         return
     binding = artifact["binding"]
@@ -256,7 +256,7 @@ def save_observation(db: Any, artifact: dict, receipt: dict) -> None:
             binding["relation"],
             receipt["action"],
             receipt["committed_at"],
-            canonical(artifact),
+            canonical(header(artifact)),
             canonical(receipt),
         ],
     )
@@ -295,7 +295,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                     "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
                     [artifact["id"]],
                 ).fetchone()
-                if not saved or not exact_match(parse(saved[0]), artifact):
+                if not saved or not metadata_match(saved[0], artifact):
                     invalid("Exact export differs from keyed receipt")
                 db.execute("ROLLBACK")
                 return {

@@ -450,7 +450,10 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
     if path == ("export", "show"):
         return store.read("exports", invocation.args.export), None
     if path == ("import", "plan"):
-        return import_plan(invocation, store), None
+        saved = import_plan(invocation, store)
+        # Frozen copies stay durable; previews show the bounded scope/count
+        # contract rather than serializing an entire million-row input again.
+        return {k: v for k, v in saved.items() if k not in {"input", "inputs"}}, None
     if path == ("import", "apply"):
         from .workflow_storage import apply, exact_match
 

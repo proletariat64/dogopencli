@@ -7,7 +7,7 @@ from .errors import CliError
 from .jsonutil import canonical, parse
 from .leaves.lifecycle import lifecycle_lock
 from .leaves.registry import Registry
-from .workflow_storage import connection, exact_match
+from .workflow_storage import connection, header, metadata_match
 
 
 def namespace(artifact: dict) -> str:
@@ -69,7 +69,7 @@ def preview(artifact: dict) -> dict:
             if previous:
                 count = parse(
                     db.execute(
-                        "SELECT artifact FROM _dogopencli_observations WHERE "
+                        "SELECT receipt FROM _dogopencli_observations WHERE "
                         "export_id=?",
                         [previous],
                     ).fetchone()[0]
@@ -172,7 +172,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                     "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
                     [artifact["id"]],
                 ).fetchone()
-                if not saved or not exact_match(parse(saved[0]), artifact):
+                if not saved or not metadata_match(saved[0], artifact):
                     raise CliError(
                         "WORKFLOW_ERROR",
                         "Exact export differs from committed publication",
@@ -216,7 +216,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
                 [artifact["id"]],
             ).fetchone()
-            if saved and not exact_match(parse(saved[0]), artifact):
+            if saved and not metadata_match(saved[0], artifact):
                 raise CliError(
                     "WORKFLOW_ERROR", "Exact export differs from committed observation"
                 )
@@ -229,7 +229,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                         binding["relation"],
                         "replace-full",
                         committed_at,
-                        canonical(artifact),
+                        canonical(header(artifact)),
                         canonical(receipt),
                     ],
                 )
@@ -273,7 +273,11 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 "export_id=excluded.export_id",
                 [binding["relation"], key, artifact["id"]],
             )
+            from .workflow_storage import stage_checkpoint
+
+            stage_checkpoint("before_publication_commit", artifact["record_count"])
             db.execute("COMMIT")
+            stage_checkpoint("after_publication_commit", artifact["record_count"])
             return {
                 **receipt,
                 "replayed": False,

@@ -76,8 +76,13 @@ locally. Plans retain their exact input for direct comparison, including numeric
 representation; no whole-adapter/configuration fingerprint is required. Missing,
 malformed or changed local input and conflicting destinations fail explicitly.
 
-Observation rows and their replay receipt commit in one DuckDB transaction under
-the host lifecycle writer lock. A failed write rolls back both. Reapplying the same
+Imports prepare hidden observation rows in transactions of at most 10,000 rows
+under the host lifecycle writer lock. Each batch commit is durable progress;
+unpublished rows have no observation receipt and are never exposed as committed
+observations or current data. An interrupted explicit apply compares retained
+ordinal/record values with the same frozen input and resumes after durable batches.
+Publication commits the observation receipt and any current rows/pointer together.
+A failed publication retains the previous current result and resumable staging. Reapplying the same
 export/action/destination, including a regenerated import plan after restart,
 returns `replayed: true` without inserting rows. The receipt is authoritative if a
 process stops after commit but before printing its response. Host observation tables
@@ -88,6 +93,13 @@ and registered binding history.
 the acquisition artifact; it does not prove import. `status` reads saved desired
 plans, per-plan unqueried/latest attempt states, latest export attempt, last complete
 export and committed observations. It initializes no schema and advances no stage.
+Completed exports are published by one atomic directory rename, containing
+`metadata.json` and `records.json`. Offline listings, coverage and target planning
+read only metadata; they do not parse all retained records. Exact export/import
+commands still read their selected records. Import-plan previews omit the frozen
+record copies while retaining exact identities, scope and affected counts. Full
+artifact parsing uses memory proportional to the selected input; bounded write
+transactions do not imply a streaming acquisition or constant-memory importer.
 Workflow artifacts live under `workflow/` beside the selected configuration file;
 Duckdog destinations remain the leaf registry's existing database/relation bindings.
 
@@ -161,3 +173,21 @@ cache facts when supplied), known history gaps, and committed import receipts an
 current publications separately. Inspection/help never authenticate, export,
 import, or initialize a schema. Execution performs export only; import remains an
 explicit separate stage bound to exact saved exports.
+
+## Synthetic scale verification
+
+The opt-in public CLI scale test installs an unrelated synthetic leaf, exports
+one million history rows through fake CDP, imports offline, replays the exact plan,
+and checks status/coverage without opening retained record files. It reports
+elapsed times, process peak RSS and batch bounds to a task-owned evidence file.
+These measurements are separate from native inquiry UAT.
+
+```bash
+DOGOPENCLI_RUN_SCALE=1 DOGOPENCLI_SCALE_EVIDENCE=/tmp/dogopencli-scale.json \
+  python -m pytest -q -n 0 \
+  tests/integration/test_workflow_scale_cli.py::test_million_row_synthetic_history_measurement
+```
+
+Focused crash tests interrupt before and after batch commit, and before/after
+publication commit. Database receipts remain authoritative after commit even
+when no success response was emitted; status performs no recovery writes.

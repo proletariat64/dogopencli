@@ -9,7 +9,7 @@ from .leaves.lifecycle import lifecycle_lock
 from .leaves.registry import Registry
 from .workflow_history import calendar
 from .workflow_keyed import installed, save_observation
-from .workflow_storage import connection
+from .workflow_storage import connection, metadata_match
 
 
 def invalid(message: str) -> None:
@@ -235,7 +235,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                     "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
                     [artifact["id"]],
                 ).fetchone()
-                if not saved or canonical(parse(saved[0])) != canonical(artifact):
+                if not saved or not metadata_match(saved[0], artifact):
                     invalid("Exact export differs from committed range publication")
                 db.execute("ROLLBACK")
                 return {**parse(replay[0]), "replayed": True, "inserted_count": 0}
