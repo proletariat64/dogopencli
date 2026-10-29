@@ -289,11 +289,12 @@ def test_import_rejects_changed_exact_input_and_preserves_committed_observations
     path = (
         Path(os.environ["DOGOPENCLI_CONFIG"]).parent
         / "workflow/exports"
-        / (second["id"] + ".json")
+        / second["id"]
+        / "records.json"
     )
     original = path.read_text()
     value = json.loads(original)
-    value["records"][0]["id"] = "changed"
+    value[0]["id"] = "changed"
     path.write_text(json.dumps(value))
     code, output, _ = run_cli(["workflow", "import", "apply", "--plan", prepared["id"]])
     assert code == 1 and json.loads(output)["error"]["code"] == "WORKFLOW_ERROR"

@@ -9,7 +9,7 @@ from .leaves.lifecycle import lifecycle_lock
 from .leaves.registry import Registry
 from .workflow_history import calendar
 from .workflow_keyed import installed, save_observation
-from .workflow_storage import connection
+from .workflow_storage import connection, metadata_match
 
 
 def invalid(message: str) -> None:
@@ -203,6 +203,9 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
         invalid("Replacement plan differs from frozen native range")
     with lifecycle_lock(Registry(config_file)):
         with connection(binding, write=True) as db:
+            from .workflow_storage import stage_rows
+
+            stage_rows(db, artifact)
             db.execute("BEGIN TRANSACTION")
             guard(db, binding)
             db.execute(
@@ -232,7 +235,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                     "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
                     [artifact["id"]],
                 ).fetchone()
-                if not saved or canonical(parse(saved[0])) != canonical(artifact):
+                if not saved or not metadata_match(saved[0], artifact):
                     invalid("Exact export differs from committed range publication")
                 db.execute("ROLLBACK")
                 return {**parse(replay[0]), "replayed": True, "inserted_count": 0}
@@ -288,23 +291,25 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 selected,
             )
             if artifact["records"]:
-                db.executemany(
-                    "INSERT INTO _dogopencli_range_rows VALUES (?, ?, ?, ?, ?, ?)",
+                # Calendar validation already established these native values;
+                # derive the same ordinal from retained canonical row storage.
+                db.execute(
+                    "INSERT INTO _dogopencli_range_rows SELECT ?, ?, export_id, "
+                    "ordinal, date_diff('day', DATE '0001-01-01', "
+                    "strptime(json_extract_string(_record, ?), ?)) + 1, _record "
+                    "FROM _dogopencli_observation_rows WHERE export_id=?",
                     [
-                        (
-                            binding["relation"],
-                            key,
-                            artifact["id"],
-                            i,
-                            calendar(row[value["field"]], value).toordinal(),
-                            canonical(row),
-                        )
-                        for i, row in enumerate(artifact["records"])
+                        binding["relation"],
+                        key,
+                        '$."' + value["field"] + '"',
+                        value["format"],
+                        artifact["id"],
                     ],
                 )
-                db.executemany(
-                    f"INSERT INTO {relation} VALUES (?)",
-                    [(canonical(row),) for row in artifact["records"]],
+                db.execute(
+                    f"INSERT INTO {relation} SELECT _record FROM "
+                    "_dogopencli_observation_rows WHERE export_id=? ORDER BY ordinal",
+                    [artifact["id"]],
                 )
             db.execute(
                 "INSERT INTO _dogopencli_range_receipts VALUES (?, ?, ?)",
