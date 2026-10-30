@@ -69,8 +69,8 @@ def expected_request(case, offset=0):
             tntInstId="GUAPW3SG",
             riskMode=MODE[case],
             timeZone="GMT+08",
-            startTime="2026-09-25",
-            endTime="2026-09-26",
+            startTime="2026-09-24 16:00:00",
+            endTime="2026-09-26 15:59:59",
         )
     return body
 
@@ -318,9 +318,7 @@ def test_sla_version_requires_native_string_when_present(installed):
         ("--from-date", "20260925"),
         ("--from-date", "2026-09-25", "--to-date", "20260926"),
         ("--from-date", "20260230", "--to-date", "20260301"),
-        ("--from-date", "20260925", "--to-date", "20260927"),
         ("--from-date", "20260926", "--to-date", "20260925"),
-        ("--from-date", "20260925", "--to-date", "20260925"),
     ],
 )
 def test_unqualified_dates_fail_before_business_contact(installed, dates):

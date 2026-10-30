@@ -77,8 +77,12 @@ individually endpoint-qualified and descending. `single` and `single_response`
 have exactly one size. Offset position is absolute zero-based `rowStart`;
 numbered pages start at `contract.one_based ? 1 : 0`.
 A field identity has exactly one native field; `hash` uses a reviewed tuple.
-Optional `latest_by` resolves a conflicting candidate row for evidence; an
-identity/content conflict remains a hard failure without accepted data or publication.
+Optional `latest_by` selects the latest complete record for a stable business identity
+within one acquisition. Greatest validated ordering value wins; equal ordering values
+use last arrival, while identity positions retain first-seen order. Resolved versions
+and ties produce warnings, accepted in default and strict modes when acquisition
+coverage is complete. Missing, invalid, nonfinite or mixed ordering representations
+fail. Undeclared or unresolved identity/content conflicts remain hard failures.
 Unproven identity requires empty manifest `identity` and forbids `latest_by`.
 Optional `max_pages` (1–1000) and `budget_seconds` (1–900) narrow host bounds.
 Get-only omits `collection`; no version negotiation is added.
@@ -254,8 +258,8 @@ Raw source scopes never enter the preference file; its existing hashed keys appl
 ## Identity, duplicates, holes and coverage
 
 - Identity must be selected by the leaf developer at design time and reviewed by a human (HIL) against business semantics. A hash cannot make non-unique columns unique. `hash` uses `sha256(canonical([typed_field_values,...]))` in declared field order, so numbers and strings cannot collide by string concatenation. Missing/null/non-scalar key parts are invalid. Collision of a 256-bit digest with different native tuples is a hard error. Do not mutate native row JSON or generate a synthetic source field.
-- Maintain a first-seen position per identity; collapse identical cross-page duplicates. On different content for the same identity, retain the row with the greatest parsed `latest_by` value when configured, breaking equal timestamps with last arrival; otherwise the **last loaded row wins**. Preserve explicit diagnostic reasons and counts, including conflicts; identity/content conflicts fail acceptance in every mode. For an unverified ordering, last arrival is not a proof that the row is globally newest.
-- A duplicate or conflict is *not* automatically proof of complete coverage: a repeated row can conceal an omitted row. Report arrivals, unique count, duplicate count, conflicting count, reported total, and `scope_complete=false` on page overlaps or unverified holes. Qualified short-page recovery records verified bypasses separately.
+- Maintain first-seen identity positions. Declared `latest_by` chooses whole native records by greatest validated ordering value, breaking ties with last arrival. Retain resolved-version and tie diagnostics separately from unresolved conflicts. Without declared ordering, differing content for one identity remains a hard failure; a retained diagnostic candidate does not establish a latest business state.
+- A duplicate or conflict is *not* automatically proof of complete coverage: a repeated row can conceal an omitted row. Report arrivals, unique count, duplicate count, conflicting count, reported total, and `scope_complete=false` on page overlaps or unverified holes. Latest selection alone cannot repair traversal or native count gaps. Qualified short-page recovery records verified bypasses separately.
 - For a reported fixed unique-object total, require `unique_count == reported_total` and **no anomalous gaps/duplicates** to claim complete. Reject changing totals or invalid response envelopes; do not guess other total semantics. An unproven identity uses `primary_id: {"type":"unproven","fields":[]}` and `contract.has_identity=False`. Preserve every native arrival without deduplication; exact repeated JSON is diagnostic only. Unknown totals require a separately qualified `single_response` or short-page contract to establish completeness; count equality does not prove it. Stop an unproven read on overlap, a short page or the logical-page cap, retaining validated arrivals with explicit incomplete evidence; strict mode rejects it; default Refresh may publish a qualified usable nonempty candidate. No synthetic ID or hash is justified.
 - Detect short pages before the expected end, empty interior pages and final unique/count shortfall. Advance by the requested page stride (not returned row count), so following valid ranges can still be read and exposed as explicitly partial. Never fill missing data or change effective reported total. A bounded fallback must **restart from position zero** using the next declared width, without mixing candidates.
 - If all declared widths fail to prove coverage, return the last validated *partial* candidate for live display with incomplete evidence where possible; strict modes reject it. An unavailable or malformed page producing a hard business/authorization/schema error never becomes partial success. Unsupported request widths are never guessed.
@@ -350,6 +354,26 @@ channel 已接受使用 `short_page` 的大步长绕行策略；上述差异作�
 
 Prefer small edits to `collect.py`, `contracts.py`, the first-party manifest/registry/runtime and leaf-dev guidance; create a tiny state helper if needed. Do not introduce a public SDK version, autonomous daemon, interface inheritance hierarchy or another domain register. Existing endpoint JSON parsing remains leaf-owned.
 
+
+## Assess applicable SDK capabilities
+
+Before implementing or reviewing a leaf, assess applicable optional SDK features:
+standard `sources` plus pure `assemble` for independent reads, `latest_by` for an
+owner-confirmed stable document identity with comparable versions, existing temporal
+parsers and declared history conversion, and source/acquisition evidence. Reuse the
+standard path whenever it expresses the qualified behavior. Custom orchestration
+requires a genuine response/input dependency or a documented uncovered capability.
+A field name alone does not qualify version selection or a time axis.
+
+Keep native total meanings fixed. A unique-business-object total is checked against
+selected distinct identities; version arrivals do not repair a missing identity. A
+qualified occurrence total is checked against raw traversal before version selection;
+identical rows or repeated pages cannot stand in for missing occurrences. Preserve
+arrivals, source totals, selected counts, exact duplicates, resolved versions and
+coverage independently through named sources, cache, export/import and readback.
+Static verification checks declarations and malformed metadata; it cannot establish
+business applicability or architectural compliance.
+
 ## Bundled pilot contracts
 
 | Leaf | Paging / qualified widths | Identity / coverage |
@@ -369,3 +393,14 @@ transport acceptance qualifies production ordering or snapshot consistency.
 metadata. The collector supplies qualified evidence; it does not independently
 choose public status or publish. Projection and display limits never improve
 acquisition quality or reduce a Refresh candidate.
+
+
+### Internal ordering fields
+
+A capability may declare `EndpointContract.internal_fields` as a tuple of adapter
+scratch field names. Parsers reject native collisions before adding these fields;
+SDK selection uses them and removes them before returning records to sources,
+cache, export or public output. Identity fields cannot be internal. Preserve native
+timestamps unchanged and declare only derived scratch values here. The latest
+selection evidence retains its ordering field name and separate resolved-version,
+equal-order and identical-duplicate counts; it retains no scratch record values.

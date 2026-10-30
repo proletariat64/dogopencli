@@ -1,7 +1,7 @@
 """Native bounded funding-demand List through the host collection SDK."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -16,11 +16,17 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
+from dogopencli.temporal import (
+    normalize_local_datetime,
+    normalize_utc_milliseconds,
+    parse_iso_millisecond_instant,
+)
 
 TENANT = "GUAPW3SG"
 PAGE_SIZE = 5000
 PUBLIC_TIME = "%Y-%m-%dT%H:%M:%S"
 NATIVE_TIME = "%Y-%m-%d %H:%M:%S"
+SOURCE_ZONE = timezone(timedelta(hours=8))
 STRING_FIELDS = (
     "taskId",
     "tntInstId",
@@ -41,7 +47,8 @@ STRING_FIELDS = (
 def timestamp(value: Any, format_string: str) -> datetime:
     if not isinstance(value, str) or len(value) != 19 or not value.isascii():
         raise ValueError
-    parsed = datetime.strptime(value, format_string)
+    normalized = normalize_local_datetime(value)
+    parsed = datetime.strptime(normalized, NATIVE_TIME)
     if parsed.strftime(format_string) != value:
         raise ValueError
     return parsed
@@ -49,15 +56,15 @@ def timestamp(value: Any, format_string: str) -> datetime:
 
 def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
     try:
-        start = timestamp(parameters.get("execute_from"), PUBLIC_TIME)
-        end = timestamp(parameters.get("execute_to"), PUBLIC_TIME)
+        start = timestamp(parameters.get("from_time"), PUBLIC_TIME)
+        end = timestamp(parameters.get("to_time"), PUBLIC_TIME)
         if start > end:
             raise ValueError
     except ValueError as error:
         raise CliError(
             INVALID_ARGUMENT,
-            "demands requires ordered --execute-from/--execute-to YYYY-MM-DDTHH:mm:ss; "
-            "source timezone is unknown and offsets are unsupported",
+            "demands requires ordered --from-time/--to-time YYYY-MM-DDTHH:mm:ss; "
+            "Beijing GMT+08:00; offsets are unsupported",
             exit_code=EXIT_USAGE,
         ) from error
     return {
@@ -238,6 +245,33 @@ DETAIL = DetailInquiry()
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = native_scope(parameters)
+        return {
+            bound: normalize_utc_milliseconds(
+                datetime.strptime(native[field], NATIVE_TIME).replace(
+                    tzinfo=SOURCE_ZONE
+                )
+            )
+            for bound, field in (("from", "startExecuteTime"), ("to", "endExecuteTime"))
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        values = {
+            key: parse_iso_millisecond_instant(bounds[bound])
+            for key, bound in (("from_time", "from"), ("to_time", "to"))
+        }
+        if any(value.microsecond for value in values.values()):
+            raise CliError(
+                INVALID_ARGUMENT,
+                "demands cannot express fractional-second windows",
+                exit_code=EXIT_USAGE,
+            )
+        return {
+            key: value.astimezone(SOURCE_ZONE).strftime(PUBLIC_TIME)
+            for key, value in values.items()
+        }
+
     def detail_capability(self, parameters: dict[str, Any]) -> DetailInquiry:
         return DETAIL
 

@@ -35,6 +35,8 @@ class EndpointContract:
     # No existing capability permits repeated arrivals to prove completeness.
     total_semantics: str = "unique_objects"
     duplicate_policy: str = "conservative"
+    # Explicit adapter scratch fields removed after SDK selection, before storage.
+    internal_fields: tuple[str, ...] = ()
     has_identity: bool = True
     # Named GET sources can carry an exact inquiry object as a JSON string.
     # Its keys, fixed scope and optional page widths are validated before execution.

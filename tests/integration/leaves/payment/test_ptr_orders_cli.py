@@ -1,5 +1,6 @@
 """Installed PTR order stability and half-open windows with synthetic CDP data."""
 
+import json
 import shutil
 from copy import deepcopy
 from datetime import datetime
@@ -20,7 +21,7 @@ START = "2026-10-01T00:00:00+08:00"
 END = "2026-10-02T00:00:00+08:00"
 START_MS = int(datetime.fromisoformat(START).timestamp()) * 1000
 END_MS = int(datetime.fromisoformat(END).timestamp()) * 1000
-BOUNDS = ("--updated-from", START, "--updated-to", END)
+BOUNDS = ("--from-time", START, "--to-time", END)
 
 
 def row(identity="ORDER", modified=START_MS, **values):
@@ -130,14 +131,12 @@ def test_two_padded_reads_before_trim_keep_native_totals_separate(installed):
     evidence = result["meta"]["acquisition"]
     assert evidence["reported_total"] is None
     assert evidence["collected_total"] == 2
-    attempt = evidence["attempts"][0]
-    assert attempt["padded_count"] == 5
-    assert attempt["trimmed_count"] == 2
-    assert attempt["discarded_padding_count"] == 3
-    assert [item["reported_total"] for item in attempt["reads"]] == [5, 5]
-    trace = evidence["attempts"][-1]
-    assert trace["queries"]["orders"]["calls"] == 2
-    assert trace["request_count"] == 2
+    assert evidence["coverage_basis"] == "validated_sources"
+    assert set(evidence["sources"]) == {"first", "second"}
+    for source in evidence["sources"].values():
+        assert source["acquisition"]["reported_total"] == 5
+        assert source["acquisition"]["collected_total"] == 5
+        assert source["acquisition"]["scope_complete"] is True
     assert (
         browser.business_requests
         == [
@@ -303,9 +302,7 @@ def test_local_nested_exact_filters_apply_after_full_scope(
 )
 def test_invalid_or_future_windows_fail_before_auth(installed, start, end):
     cli, browser, _ = installed
-    failure = cli(
-        "list", "--live", "--updated-from", start, "--updated-to", end, code=2
-    )
+    failure = cli("list", "--live", "--from-time", start, "--to-time", end, code=2)
     assert failure["error"]["code"] == "INVALID_ARGUMENT"
     assert not browser.business_requests
     assert not browser.transports
@@ -317,14 +314,14 @@ def test_equivalent_offset_bounds_normalize_to_shanghai_scope(installed):
     result = cli(
         "list",
         "--live",
-        "--updated-from",
+        "--from-time",
         "2026-09-30T16:00:00+00:00",
-        "--updated-to",
+        "--to-time",
         "2026-10-01T16:00:00+00:00",
     )
     assert result["data"] == [row()]
     assert browser.business_requests[0]["modifiedTimeBegin"] == "2026-09-30 23:59:59"
-    assert result["meta"]["scope"]["updated_from"] == START
+    assert result["meta"]["scope"]["from_time"] == START
 
 
 @pytest.mark.parametrize(
@@ -411,7 +408,7 @@ def test_static_help_and_rejected_scope_never_query(installed, run_cli):
     assert set(described["data"]["operations"]) == {"list"}
     status, output, error = run_cli(["payment", "list", "ptr.orders", "--help"])
     assert status == 0, output + error
-    assert "updated-from" in output
+    assert "from-time" in output
     status, _, _ = run_cli(["payment", "get", "ptr.orders", "ORDER"])
     assert status != 0
     assert not browser.transports
@@ -436,3 +433,169 @@ def test_request_allowlist_rejects_extra_selector(installed, run_cli, tmp_path):
     failure = cli("list", "--live", *BOUNDS, code=1)
     assert failure["error"]["code"] == "REQUEST_NOT_ALLOWED"
     assert not browser.business_requests
+
+
+def test_history_plan_round_trips_half_open_second_and_preserves_sources(
+    installed, run_cli
+):
+    _, browser, _ = installed
+
+    def command(*args, code=0):
+        status, output, error = run_cli(list(args))
+        assert status == code, output + error
+        return parse(output)
+
+    plan = command(
+        "workflow",
+        "plan",
+        "create",
+        "--leaf",
+        "payment.ptr.orders",
+        "--mode",
+        "history",
+        "--parameters",
+        json.dumps(
+            {
+                "from-time": START,
+                "to-time": "2026-10-01T00:00:01+08:00",
+                "channel": ["BANK"],
+            }
+        ),
+    )["data"]
+    assert plan["desired_range"] == {
+        "from": "2026-09-30T16:00:00.000Z",
+        "to": "2026-09-30T16:00:00.999Z",
+    }
+    assert plan["packages"][0]["parameters"]["channel"] == ["BANK"]
+    assert plan["packages"][0]["parameters"]["to_time"] == "2026-10-01T00:00:01+08:00"
+    stable(browser, [row(), row("EXCLUDED", START_MS + 1000)])
+    run = command("workflow", "export", "create", "--plan", plan["id"])["data"]
+    command("workflow", "export", "run", "--run", run["id"])
+    assert (
+        browser.business_requests
+        == [
+            {
+                "pageNo": 0,
+                "pageSize": 500,
+                "modifiedTimeBegin": "2026-09-30 23:59:59",
+                "modifiedTimeEnd": "2026-10-01 00:00:02",
+            }
+        ]
+        * 2
+    )
+    history = command("workflow", "history", "show", "--plan", plan["id"])["data"]
+    artifact_id = history["packages"][0]["export_id"]
+    exported = command("workflow", "export", "show", "--export", artifact_id)["data"]
+    acquisition = exported["metadata"]["source_acquisition"]
+    assert acquisition["collected_total"] == 1
+    for source in acquisition["sources"].values():
+        assert source["acquisition"]["reported_total"] == 2
+        assert source["acquisition"]["scope_complete"] is True
+    prepared = command(
+        "workflow", "import", "plan", "--export", artifact_id, "--action", "preserve"
+    )["data"]
+    request_count = len(browser.business_requests)
+    command("workflow", "import", "apply", "--plan", prepared["id"])
+    observed = command("workflow", "observation", "show", "--export", artifact_id)[
+        "data"
+    ]
+    assert observed["records"] == [row()]
+    assert observed["scope"] == exported["metadata"]["scope"]
+    assert len(browser.business_requests) == request_count
+
+
+@pytest.mark.parametrize(
+    "lower,upper",
+    [
+        ("2026-09-30T16:00:00.001Z", "2026-09-30T16:00:00.999Z"),
+        ("2026-09-30T16:00:00.000Z", "2026-09-30T16:00:00.998Z"),
+        ("2026-09-30T16:00:00Z", "2026-09-30T16:00:00.999Z"),
+        ("2026-10-01T00:00:00.000+08:00", "2026-09-30T16:00:00.999Z"),
+    ],
+)
+def test_history_windows_reject_lossy_or_noncanonical_endpoints(
+    installed, run_cli, lower, upper
+):
+    _, browser, _ = installed
+    status, output, error = run_cli(
+        [
+            "workflow",
+            "plan",
+            "create",
+            "--leaf",
+            "payment.ptr.orders",
+            "--mode",
+            "history",
+            "--parameters",
+            json.dumps({"from-time": START, "to-time": END}),
+            "--windows",
+            json.dumps([{"from": lower, "to": upper}]),
+        ]
+    )
+    assert status == 2, output + error
+    assert parse(output)["error"]["code"] == "INVALID_ARGUMENT"
+    assert not browser.transports
+
+
+def test_history_explicit_window_keeps_fixed_filters_and_exact_padding(
+    installed, run_cli
+):
+    _, browser, _ = installed
+    status, output, error = run_cli(
+        [
+            "workflow",
+            "plan",
+            "create",
+            "--leaf",
+            "payment.ptr.orders",
+            "--mode",
+            "history",
+            "--parameters",
+            json.dumps(
+                {"from-time": START, "to-time": END, "order-status": ["FUND_OUT_SUC"]}
+            ),
+            "--windows",
+            json.dumps(
+                [
+                    {
+                        "from": "2026-09-30T16:00:01.000Z",
+                        "to": "2026-09-30T16:00:01.999Z",
+                    }
+                ]
+            ),
+        ]
+    )
+    assert status == 0, output + error
+    package = parse(output)["data"]["packages"][0]
+    assert package["parameters"] == {
+        "from_time": "2026-10-01T00:00:01+08:00",
+        "to_time": "2026-10-01T00:00:02+08:00",
+        "order_status": ["FUND_OUT_SUC"],
+    }
+    assert package["native_scope"] == {
+        "from_time": "2026-10-01T00:00:01+08:00",
+        "to_time": "2026-10-01T00:00:02+08:00",
+    }
+    assert not browser.transports
+
+
+def test_two_sources_keep_six_physical_request_limit(installed, monkeypatch):
+    from dogopencli import collect
+
+    cli, browser, _ = installed
+    monkeypatch.setattr(collect, "_sleep", lambda seconds: None)
+    retry = {"status": 502, "body": {}}
+    browser.business_script.extend(
+        [retry, retry, page([row()]), retry, retry, page([row()])]
+    )
+    assert cli("list", "--live", *BOUNDS)["data"] == [row()]
+    assert len(browser.business_requests) == 6
+
+
+def test_replaced_updated_options_are_rejected(installed):
+    cli, browser, _ = installed
+    failure = cli(
+        "list", "--live", "--updated-from", START, "--updated-to", END, code=2
+    )
+    assert failure["error"]["code"] == "INVALID_ARGUMENT"
+    assert not browser.transports

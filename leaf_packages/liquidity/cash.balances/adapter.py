@@ -103,6 +103,7 @@ class BalanceInquiry:
         ),
         fixed_body_values=(("tntInstId", TENANT),),
         allowed_page_sizes=(500,),
+        internal_fields=(ORDER,),
     )
 
     def page_body(self, scope: str, row_start: int, page_size: int) -> dict:

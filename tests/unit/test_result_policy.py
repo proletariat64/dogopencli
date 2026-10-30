@@ -408,3 +408,32 @@ def test_exhausted_page_budget_is_not_a_qualified_publishable_gap():
     decision = evaluate_result(evidence, mode="refresh")
     assert not decision.expose_data and not decision.publishable
     assert decision.error["code"] == "TIMEOUT"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("resolved_version_count", -1),
+        ("identical_duplicate_count", 1),
+        ("equal_order_count", 3),
+        ("latest_by", ""),
+    ],
+)
+def test_cache_rejects_corrupt_latest_selection_counts(field, value):
+    evidence = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=1,
+        collected_total=1,
+        arrivals=2,
+        reasons=("LATEST_BY_SELECTION",),
+        selection={
+            "latest_by": "ordering",
+            "resolved_version_count": 1,
+            "identical_duplicate_count": 0,
+            "equal_order_count": 0,
+        },
+    )
+    record = evidence.record()
+    record["selection"][field] = value
+    with pytest.raises(CliError, match="selection evidence"):
+        AcquisitionEvidence.from_record(record)

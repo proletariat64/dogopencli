@@ -7,16 +7,16 @@
       "description": "Inspect existing outflow PTR orders after two complete stable padded reads and half-open window trimming.",
       "parameters": [
         {
-          "name": "updated-from",
+          "name": "from-time",
           "type": "string",
           "required": true,
           "description": "Inclusive updated-time lower instant: YYYY-MM-DDTHH:MM:SS with numeric offset; normalized to Shanghai +08:00."
         },
         {
-          "name": "updated-to",
+          "name": "to-time",
           "type": "string",
           "required": true,
-          "description": "Exclusive updated-time upper instant: explicit numeric offset, ordered, at most 31 days after updated-from and not future."
+          "description": "Exclusive updated-time upper instant: explicit numeric offset, ordered, at most 31 days after from-time and not future."
         },
         {
           "name": "id",
@@ -99,29 +99,17 @@
           "description": "Exact whole-string local ptrFinalResult match. Repeated values OR, different fields AND; commas and * literal."
         }
       ],
-      "execution": "custom",
-      "queries": {
-        "orders": {
-          "kind": "list",
-          "collection": {
-            "provider": "general",
-            "paging": {
-              "mode": "single",
-              "page_sizes": [
-                500
-              ]
-            },
-            "primary_id": {
-              "type": "field",
-              "fields": [
-                "ptrOrderId"
-              ]
-            }
-          }
-        }
-      },
-      "max_requests": 6,
-      "budget_seconds": 900
+      "history": {
+        "interpretation": "instant",
+        "time_basis": "gmtModified",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "from_parameter": "from-time",
+        "to_parameter": "to-time",
+        "precision": "millisecond",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     }
   },
   "summary": "Existing outflow PTR orders in an explicit updated-time interval.",
@@ -303,16 +291,58 @@
     "After full padded stability, retain start <= gmtModified < end, sorted lexically by ptrOrderId. Padded native totals and both acquisition records remain in evidence; public output count is separate.",
     "Preserve the assigned PTR field allowlist, retained debtorAmount/returnAmount money keys and productionTrialRunFundOutAbilityVO baseline keys. Unknown fields are omitted; no money normalization or derived verification interpretation.",
     "Exact local scalar/nested whole-string filters only. Live never publishes; complete nonempty refresh publishes, and failed/incomplete/empty refresh preserves the saved snapshot. Offline uses the saved window; explicit acquisition bounds require a fresh live query.",
-    "List only; no Get, execution, trial, withdrawal, approval or update action. No new Duckdog import."
+    "List only; no Get, execution, trial, withdrawal, approval or update action. No automatic Duckdog import; exact workflow observations require explicit preserve import.",
+    "History uses inclusive UTC-millisecond gmtModified bounds [start, end-1ms], with lossless whole-second public conversion and explicit windows only. No cross-range equivalence is claimed."
   ],
   "examples": [
     {
       "title": "Inspect a completed updated-time interval",
-      "command": "dogopencli payment list ptr.orders --live --updated-from 2026-10-01T00:00:00+08:00 --updated-to 2026-10-02T00:00:00+08:00 --require-complete --limit 0"
+      "command": "dogopencli payment list ptr.orders --live --from-time 2026-10-01T00:00:00+08:00 --to-time 2026-10-02T00:00:00+08:00 --require-complete --limit 0"
     },
     {
       "title": "Filter the saved order scope locally",
       "command": "dogopencli payment list ptr.orders --order-status FUND_OUT_SUC --limit 0"
     }
-  ]
+  ],
+  "collection": {
+    "provider": "general",
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "ptrOrderId"
+      ]
+    },
+    "sources": {
+      "first": {
+        "paging": {
+          "mode": "single",
+          "page_sizes": [
+            500
+          ]
+        },
+        "primary_id": {
+          "type": "field",
+          "fields": [
+            "ptrOrderId"
+          ]
+        }
+      },
+      "second": {
+        "paging": {
+          "mode": "single",
+          "page_sizes": [
+            500
+          ]
+        },
+        "primary_id": {
+          "type": "field",
+          "fields": [
+            "ptrOrderId"
+          ]
+        }
+      }
+    },
+    "max_pages": 2,
+    "budget_seconds": 900
+  }
 }

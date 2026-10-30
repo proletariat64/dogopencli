@@ -19,8 +19,12 @@ current records or a measured maximum width.
 
 Full native JSON remains intact, including parent references, nested/unknown
 fields and nullable/blank/zero/negative counter, status and time values.
-Source timezone and date-bound timestamp membership are unproven. No
-financial arithmetic, related-source join or detail enrichment is performed.
+The owner-confirmed history model uses inclusive Beijing calendar days on
+`inquiryStartTime`; compact `inquiryStartDate`/`inquiryEndDate` implement its range.
+`inquiryEndTime` remains a lifecycle value, not another history axis. This model
+is an owner decision, not an independently proved backend predicate. No local
+timestamp filtering, financial arithmetic, related-source join or detail enrichment
+is performed.
 
 The SDK retains the last conflicting arrival and marks coverage incomplete.
 Strict live/refresh rejects duplicate identities, conflicts and count gaps;

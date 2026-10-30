@@ -326,7 +326,10 @@ def test_conflict_chooses_latest_timestamp_then_last_arrival():
     )
     assert by_time.records == [latest]
     assert not by_time.complete
-    assert by_time.evidence.attempts[0]["conflict_count"] == 1
+    assert by_time.evidence.attempts[0]["conflict_count"] == 0
+    assert by_time.evidence.selection["resolved_version_count"] == 1
+    assert "COUNT_SHORTFALL" in by_time.evidence.reasons
+    assert "IDENTITY_CONTENT_CONFLICT" not in by_time.evidence.reasons
     by_arrival = collect(
         Native(sizes=(2,)),
         Script(offset([latest, old], 2)),
@@ -1002,3 +1005,91 @@ def test_short_page_independent_source_evidence_survives_replay():
         replay.sources["base"]["acquisition"]["coverage_basis"]
         == "qualified_short_page"
     )
+
+
+@pytest.mark.parametrize(
+    "semantics,total,complete",
+    [
+        ("unique_objects", 1, True),
+        ("unique_objects", 2, False),
+        ("source_row_occurrences", 2, True),
+        ("source_row_occurrences", 3, False),
+    ],
+)
+def test_latest_selection_keeps_native_count_semantics(semantics, total, complete):
+    from dogopencli.result_policy import AcquisitionEvidence, evaluate_result
+
+    source = Native(sizes=(4,))
+    source.contract = replace(source.contract, total_semantics=semantics)
+    older = {"id": "a", "changed": 1, "nested": {"value": "old"}}
+    newer = {"id": "a", "changed": 2, "nested": {"value": "new"}}
+    got = collect(
+        source, Script(offset([older, newer], total)), config((4,), latest_by="changed")
+    )
+    assert got.records == [newer]
+    assert got.complete is complete
+    evidence = AcquisitionEvidence.from_record(got.evidence.record())
+    assert evidence.arrivals == 2
+    assert evidence.reported_total == total
+    assert evidence.collected_total == 1
+    decision = evaluate_result(evidence, mode="live", require_complete=True)
+    assert decision.exit_code == (0 if complete else 1)
+    assert decision.warnings[0]["code"] == (
+        "LATEST_BY_SELECTION" if complete else "INCOMPLETE_RESULT"
+    )
+
+
+@pytest.mark.parametrize(
+    "value", [None, False, float("inf"), "local time", "2026-01-01T00:00:00"]
+)
+def test_latest_selection_validates_ordering_even_without_duplicate_identity(value):
+    with pytest.raises(CliError, match="timestamp"):
+        collect(
+            Native(sizes=(4,)),
+            Script(offset([{"id": "a", "changed": value}], 1)),
+            config((4,), latest_by="changed"),
+        )
+
+
+def test_latest_selection_rejects_mixed_ordering_across_distinct_identities():
+    with pytest.raises(CliError, match="mixed native timestamp formats"):
+        collect(
+            Native(sizes=(4,)),
+            Script(
+                offset(
+                    [
+                        {"id": "a", "changed": 1},
+                        {"id": "b", "changed": "2026-01-01T00:00:00Z"},
+                    ],
+                    2,
+                )
+            ),
+            config((4,), latest_by="changed"),
+        )
+
+
+def test_latest_occurrence_total_repeated_page_does_not_prove_raw_coverage():
+    source = Native(sizes=(2,))
+    source.contract = replace(source.contract, total_semantics="source_row_occurrences")
+    first = [{"id": "a", "changed": 1}, {"id": "a", "changed": 2}]
+    got = collect(
+        source,
+        Script(offset(first, 4), offset(first, 4)),
+        config((2,), latest_by="changed"),
+    )
+    assert not got.complete
+    assert got.evidence.arrivals == 4
+    assert got.evidence.collected_total == 1
+    assert got.evidence.selection["identical_duplicate_count"] == 2
+    assert "COUNT_MISMATCH" in got.evidence.reasons
+    assert got.evidence.meta()["missing_count"] == 2
+    assert got.evidence.meta()["coverage_ratio"] == 0.5
+
+
+def test_collection_removes_only_declared_internal_fields_before_return():
+    source = Native(sizes=(4,))
+    source.contract = replace(source.contract, internal_fields=("order",))
+    native = {"id": "a", "order": 2, "changed": "raw native", "nested": {"value": 3}}
+    got = collect(source, Script(offset([native], 1)), config((4,), latest_by="order"))
+    assert got.records == [{"id": "a", "changed": "raw native", "nested": {"value": 3}}]
+    assert got.evidence.selection["latest_by"] == "order"

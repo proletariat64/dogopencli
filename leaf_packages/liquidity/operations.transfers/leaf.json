@@ -10,15 +10,26 @@
           "name": "from-date",
           "type": "string",
           "required": true,
-          "description": "Native Transaction Date start day YYYY-MM-DD; both ordered bounds are required."
+          "description": "Beijing GMT+08 business start day YYYY-MM-DD; both ordered bounds required."
         },
         {
           "name": "to-date",
           "type": "string",
           "required": true,
-          "description": "Native Transaction Date end day YYYY-MM-DD, at or after from-date."
+          "description": "Inclusive Beijing GMT+08 business end day YYYY-MM-DD."
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "gmtCreate",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "modification_time": "gmtModified",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     },
     "get": {
       "description": "Read one complete native detail root; separate histories and child endpoints are unqueried.",
@@ -65,13 +76,13 @@
   "identity": [
     "orderNo"
   ],
-  "identity_description": "Native orderNo identifies one returned record within the tenant and exact acquisition scope.",
+  "identity_description": "Stable native orderNo identifies one document; latest validated gmtModified selects its complete observed version within this acquisition.",
   "limitations": [
     "Fixed GUAPW3SG tenant. POST form /transferOrderQuery.json contains a serialized transferOrderQueryRequestVO with fixed empty debitEntity/creditEntity arrays and blank debit/credit date bounds.",
-    "Required ISO Transaction Date bounds expand to native 00:00:00 and 23:59:59. Native source timezone and the relationship to displayed gmtCreate remain unproven; no local date-membership filtering.",
+    "Required Beijing ISO dates expand to inclusive full-day seconds. Convert each endpoint independently with America/Los_Angeles seasonal rules for the offset-free native transaction query clock. Returned GMT+08 fields remain raw.",
     "Absolute rowStart offsets use pageSize=1000. Top-level count must equal result.count; records are result.data. Other native filters are unsupported.",
     "Preserve full native rows, nested logs, unknown fields and nullable monetary strings. orderStatus, receiptStatus and executeResult remain separate raw states; no bank-success inference or detail enrichment.",
-    "The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima.",
+    "The host SDK owns retries, completeness and publication. Declared latest_by selects full rows by validated native gmtModified (GMT+08); resolved versions/ties warn and can be complete. Native totals retain unique-object meaning; duplicates and traversal/count gaps remain objective. Widths are qualified values, not measured backend maxima.",
     "Native baseResult.data transfer root; no account enrichment, HTML unescaping, status interpretation or additional log inquiry.",
     "Get and supported List --live --with-detail preserve native types, nesting and unknown fields, perform no implicit history/child inquiries, and write no cache or Duckdog data."
   ],
@@ -105,6 +116,7 @@
       "fields": [
         "orderNo"
       ]
-    }
+    },
+    "latest_by": "__dogopencli_transfer_order"
   }
 }

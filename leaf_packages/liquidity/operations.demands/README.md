@@ -3,8 +3,8 @@
 Read native records through the host List SDK.
 
 ```bash
-dogopencli liquidity list operations.demands --live --require-complete --limit 0 --execute-from 2026-04-01T00:00:00 --execute-to 2026-04-02T00:00:00
-dogopencli liquidity refresh operations.demands --require-complete --execute-from 2026-04-01T00:00:00 --execute-to 2026-04-02T00:00:00
+dogopencli liquidity list operations.demands --live --require-complete --limit 0 --from-time 2026-04-01T00:00:00 --to-time 2026-04-02T00:00:00
+dogopencli liquidity refresh operations.demands --require-complete --from-time 2026-04-01T00:00:00 --to-time 2026-04-02T00:00:00
 dogopencli liquidity list operations.demands --limit 0
 ```
 
@@ -12,7 +12,7 @@ GET `/riskActionTaskQuery.json` with outer tenant and a JSON-string `riskActionT
 
 Fixed GUAPW3SG tenant and FUND_REQUIRE source. One GET /riskActionTaskQuery.json uses a serialized riskActionTaskQueryVO, rowStart=0 and pageSize=5000.
 
-Both offset-free execution-time bounds are required. Public values use T; wire values use a space. Equal bounds are permitted and native boundaries are inclusive. No timezone is inferred.
+Both offset-free execution-time bounds are required. Public values use T; wire values use a space. Equal bounds are permitted and native boundaries are inclusive. Offset-free executeTime values use owner-confirmed Beijing GMT+08:00. History uses the same inclusive axis with canonical UTC millisecond bounds; fractional-second windows are rejected, not rounded.
 
 Native result.dataValue records and result.count describe the queried task scope. Counts or arrivals above 5000 are rejected; narrow the bounds. No offset fallback, automatic partitioning or alternate source.
 
@@ -28,7 +28,7 @@ Native FUND_REQUIRE taskId from the List; sourceId is a different reference. Nat
 
 ```bash
 dogopencli liquidity get operations.demands NATIVE_ID
-dogopencli liquidity list operations.demands --live --with-detail --require-complete --limit 1 --execute-from 2026-04-01T00:00:00 --execute-to 2026-04-02T00:00:00
+dogopencli liquidity list operations.demands --live --with-detail --require-complete --limit 1 --from-time 2026-04-01T00:00:00 --to-time 2026-04-02T00:00:00
 ```
 
 One GET query `/riskActionTaskQueryDetail.json` request returns `result.riskActionVO`. Preserve the whole native root, including unknown fields, exact values and nested arrays. Missing/malformed roots, business rejection and identity/context contradictions fail; no unverified not-found mapping, child/history acquisition, cache write or Duckdog import.
