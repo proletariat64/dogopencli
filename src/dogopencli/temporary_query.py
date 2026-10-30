@@ -32,3 +32,37 @@ def display_options(args: Any) -> tuple[int, int, list[str] | None]:
 
 def window_rows(rows: list[dict], limit: int, offset: int) -> list[dict]:
     return rows[offset:] if limit == 0 else rows[offset : offset + limit]
+
+
+def list_preview_metadata(
+    matched: int,
+    returned: int,
+    limit: int,
+    offset: int,
+    *,
+    custom_detail: bool | None = None,
+) -> dict:
+    """Describe the current display window independently of acquisition facts."""
+    meta = {
+        "matched_total": matched,
+        "returned_count": returned,
+        "has_more": offset + returned < matched,
+    }
+    if custom_detail is not None:
+        meta.update(
+            with_detail=True,
+            detail_scope="custom" if custom_detail else "native_root",
+            detail_count=returned,
+            detail_window={"offset": offset, "limit": limit},
+            detail_coverage=(
+                "Only selected List rows; each custom Get follows its "
+                "declared leaf relationship and coverage contract. "
+                "Detail success does not expand List coverage."
+                if custom_detail
+                else "Only selected List rows; "
+                "one native root response per row. "
+                "Separate histories, logs and child pages are not acquired. "
+                "Detail success does not expand List coverage."
+            ),
+        )
+    return meta

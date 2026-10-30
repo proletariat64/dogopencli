@@ -930,3 +930,45 @@ def test_frozen_empty_selector_keeps_host_proof_without_resolving_again(
     trace = candidate.evidence.attempts[-1]
     assert trace["request_count"] == 0
     assert trace["queries"]["entity_selector"]["selected_count"] == 0
+
+
+def test_collect_progress_counts_each_successful_named_component():
+    from dogopencli.progress import observe
+
+    script = Script(
+        {"rows": [{"id": "one"}], "total": 1},
+        {"rows": [{"id": "two"}], "total": 1},
+    )
+    tools, _, _ = setup(script)
+    progress = []
+    with observe(progress.append):
+        tools.collect("source", "first")
+        assert progress[-1]["component_requests_completed"] == 1
+        tools.collect("source", "second")
+        assert progress[-1]["component_requests_completed"] == 2
+
+
+def test_finished_collections_keep_measured_counts_in_progress():
+    from dogopencli.progress import observe
+
+    script = Script({"rows": [{"id": "one"}], "total": 1}, {"rows": [], "total": 0})
+    tools, _, _ = setup(script)
+    latest = {}
+    with observe(latest.update):
+        tools.collect("source", "first")
+        assert latest["component_requests_completed"] == 1
+        assert latest["request_attempts"] == 1
+        assert latest["operation_request_attempts"] == 1
+        assert latest["source_pages"] == 1
+        assert latest["source_rows_received"] == 1
+        assert latest["source_rows_selected"] == 1
+        assert latest["source_total_rows"] == 1
+
+        tools.collect("source", "second")
+        assert latest["component_requests_completed"] == 2
+        assert latest["request_attempts"] == 1
+        assert latest["operation_request_attempts"] == 2
+        assert latest["source_pages"] == 1
+        assert latest["source_rows_received"] == 0
+        assert latest["source_rows_selected"] == 0
+        assert latest["source_total_rows"] == 0

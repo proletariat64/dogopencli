@@ -334,7 +334,14 @@ def test_short_page_acquisition_retains_successful_native_page_metadata(metadata
             response([], 0, {"terminal": "second"}),
         ]
     )
-    result = cli("collection", "refresh", "sample.records")
+    from dogopencli.progress import observe
+
+    progress = {}
+    with observe(lambda facts: progress.update(facts)):
+        result = cli("collection", "refresh", "sample.records")
+    assert progress["source_pages"] == 3
+    assert progress["source_rows_received"] == 2
+    assert progress["source_total_rows"] is None
     assert result["meta"]["acquisition"]["native_metadata"] == [
         {"position": 0, "page_size": 2, "metadata": {"totalAmount": "10.00"}},
         {"position": 2, "page_size": 2, "metadata": {"terminal": "first"}},
@@ -351,7 +358,16 @@ def test_width_fallback_discards_rejected_candidate_metadata(metadata_cli):
             response([{"id": "two"}], 2, {"totalAmount": "accepted-second"}),
         ]
     )
-    result = cli("collection", "refresh", "sample.records")
+    from dogopencli.progress import observe
+
+    progress = {}
+    with observe(lambda facts: progress.update(facts)):
+        result = cli("collection", "refresh", "sample.records")
+    assert progress["candidate"] == 2
+    assert progress["request_attempts"] == 2
+    assert progress["source_pages"] == 2
+    assert progress["source_rows_received"] == 2
+    assert progress["source_total_rows"] == 2
     assert result["meta"]["acquisition"]["native_metadata"] == [
         {"position": 0, "page_size": 1, "metadata": {"totalAmount": "accepted-first"}},
         {"position": 1, "page_size": 1, "metadata": {"totalAmount": "accepted-second"}},

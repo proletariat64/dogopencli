@@ -53,7 +53,13 @@ def export(run_cli, browser, rows, start="20260918", end="20260920", alias="ACCO
         json.dumps({"account-alias": alias, "from-date": start, "to-date": end}),
     )
     browser.business_script.append(page(rows))
-    return call(run_cli, "export", "run", "--plan", plan["id"])
+    return call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
 
 
 def merge(run_cli, artifact):

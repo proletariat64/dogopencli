@@ -74,7 +74,8 @@ def test_history_resumes_successes_retains_failure_and_imports_exact_packages(
             page([]),
         ]
     )
-    code, output, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    plan_run = call(run_cli, "export", "create", "--plan", plan["id"])
+    code, output, _ = run_cli(["workflow", "export", "run", "--run", plan_run["id"]])
     assert code == 1, output
     status = call(run_cli, "history", "show", "--plan", plan["id"])
     assert [p["state"] for p in status["packages"]] == [
@@ -87,7 +88,7 @@ def test_history_resumes_successes_retains_failure_and_imports_exact_packages(
     original = call(run_cli, "export", "show", "--export", original_id)
     count = len(browser.business_requests)
     browser.business_script.append(page([row(valueDate="20260919")]))
-    resumed = call(run_cli, "export", "run", "--plan", plan["id"])
+    resumed = call(run_cli, "export", "run", "--run", plan_run["id"])
     assert resumed["complete"] is True
     assert len(browser.business_requests) == count + 1
     assert resumed["packages"][0]["export_id"] == original_id
@@ -126,7 +127,8 @@ def test_overlapping_complete_range_never_hides_failed_requested_package(
         '[{"from":"2026-09-18","to":"2026-09-20"},{"from":"2026-09-19","to":"2026-09-19"}]',
     )
     browser.business_script.extend([page([]), {"status": 500, "body": {}}])
-    code, output, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    plan_run = call(run_cli, "export", "create", "--plan", plan["id"])
+    code, output, _ = run_cli(["workflow", "export", "run", "--run", plan_run["id"]])
     assert code == 1, output
     status = call(run_cli, "history", "show", "--plan", plan["id"])
     assert status["complete"] is False
@@ -190,7 +192,8 @@ def test_interruption_retains_completed_package_and_unqueried_tail(run_cli, inst
         return page([row()])
 
     browser.business_handler = interrupted
-    code, output, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    plan_run = call(run_cli, "export", "create", "--plan", plan["id"])
+    code, output, _ = run_cli(["workflow", "export", "run", "--run", plan_run["id"]])
     assert code == 130, output
     state = call(run_cli, "history", "show", "--plan", plan["id"])
     assert [item["state"] for item in state["packages"]] == [
@@ -201,7 +204,7 @@ def test_interruption_retains_completed_package_and_unqueried_tail(run_cli, inst
     assert state["packages"][1]["attempts"][0]["error"]["code"] == "INTERRUPTED"
     assert state["unqueried_ranges"] == [{"from": "2026-09-20", "to": "2026-09-20"}]
     browser.business_handler = lambda body, _: page([row(valueDate=body["startDate"])])
-    resumed = call(run_cli, "export", "run", "--plan", plan["id"])
+    resumed = call(run_cli, "export", "run", "--run", plan_run["id"])
     assert resumed["complete"] is True
     assert len(browser.business_requests) == 4
 
@@ -218,13 +221,14 @@ def test_selected_package_exposes_incomplete_and_unqueried_separately(
         '[{"from":"2026-09-18","to":"2026-09-18"},{"from":"2026-09-19","to":"2026-09-20"}]',
     )
     browser.business_script.append(page([row()], total=2))
+    plan_run = call(run_cli, "export", "create", "--plan", plan["id"])
     code, out, _ = run_cli(
         [
             "workflow",
             "export",
             "run",
-            "--plan",
-            plan["id"],
+            "--run",
+            plan_run["id"],
             "--package",
             plan["packages"][0]["id"],
         ]
@@ -263,12 +267,13 @@ def test_default_history_package_preserves_native_range_without_daily_stitching(
     plan = create(run_cli)
     assert len(plan["packages"]) == 1
     browser.business_script.append(page([]))
-    completed = call(run_cli, "export", "run", "--plan", plan["id"])
+    plan_run = call(run_cli, "export", "create", "--plan", plan["id"])
+    completed = call(run_cli, "export", "run", "--run", plan_run["id"])
     assert completed["complete"] is True
     assert browser.business_requests[0]["startDate"] == "20260918"
     assert browser.business_requests[0]["endDate"] == "20260920"
     count = len(browser.business_requests)
-    call(run_cli, "export", "run", "--plan", plan["id"])
+    call(run_cli, "export", "run", "--run", plan_run["id"])
     assert len(browser.business_requests) == count
 
 
@@ -308,7 +313,8 @@ def test_changed_native_time_contract_requires_new_plan_before_requests(
             '"time_basis": "valueDate"', '"time_basis": "updateTime"'
         )
     )
-    code, output, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    plan_run = call(run_cli, "export", "create", "--plan", plan["id"])
+    code, output, _ = run_cli(["workflow", "export", "run", "--run", plan_run["id"]])
     assert code == 1, output
     assert not browser.business_requests
     status = call(run_cli, "history", "show", "--plan", plan["id"])
@@ -316,6 +322,34 @@ def test_changed_native_time_contract_requires_new_plan_before_requests(
     assert (
         "history contract changed"
         in status["packages"][0]["attempts"][0]["error"]["message"]
+    )
+
+
+def test_fresh_history_run_has_no_packages_from_another_run(run_cli, installed):
+    from leaves.liquidity.test_cash_balances_cli import page
+
+    from dogopencli.workflow_tasks import snapshot
+
+    _, browser, config = installed
+    plan = create(run_cli)
+    first = call(run_cli, "export", "create", "--plan", plan["id"])
+    browser.business_script.append(page([]))
+    complete = call(run_cli, "export", "run", "--run", first["id"])
+    second = call(run_cli, "export", "create", "--plan", plan["id"])
+    pending = snapshot(config / "config.toml", "export", second["id"])
+    assert pending["effective_state"] == "pending"
+    assert pending["progress"]["packages"]["complete"] == 0
+    browser.business_script.append({"status": 500, "body": {}})
+    code, _, _ = run_cli(["workflow", "export", "run", "--run", second["id"]])
+    assert code == 1
+    repair = call(run_cli, "repair", "plan", "--run", second["id"])
+    assert repair["baseline_exports"] == []
+    assert repair["baseline_gaps"] == [plan["desired_range"]]
+    assert (
+        snapshot(config / "config.toml", "export", first["id"])["result"]["packages"][
+            0
+        ]["export_id"]
+        == complete["packages"][0]["export_id"]
     )
 
 

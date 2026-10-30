@@ -45,7 +45,13 @@ def test_history_entity_scope_enumerates_accounts_only_during_export(
         return page([row(entity="ALIPAYGM")])
 
     browser.business_handler = native
-    exported = call(run_cli, "export", "run", "--plan", plan["id"])
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     artifact = call(
         run_cli, "export", "show", "--export", exported["packages"][0]["export_id"]
     )
@@ -82,7 +88,15 @@ def test_any_selection_is_frozen_offline_and_changed_selector_rejected(
     assert not browser.business_requests
     with duckdb.connect(str(database)) as db:
         db.execute("DELETE FROM entities WHERE instId='OTHER'")
-    code, output, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    code, output, _ = run_cli(
+        [
+            "workflow",
+            "export",
+            "run",
+            "--run",
+            call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        ]
+    )
     assert code == 1, output
     status = call(run_cli, "history", "show", "--plan", plan["id"])
     assert (
@@ -121,7 +135,13 @@ def test_local_selection_retains_source_evidence_and_exact_selected_scope(
             "body": {"resultFlag": True, "count": 2, "result": {"bankVoList": rows}},
         }
     )
-    exported = call(run_cli, "export", "run", "--plan", plan["id"])
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     saved = call(run_cli, "export", "show", "--export", exported["id"])
     assert saved["records"] == rows[:1]
     assert saved["metadata"]["scope"] == {
@@ -205,7 +225,13 @@ def test_unrelated_synthetic_variant_uses_common_full_and_range_import(
                 },
             }
         )
-        exported = call(run_cli, "export", "run", "--plan", plan["id"])
+        exported = call(
+            run_cli,
+            "export",
+            "run",
+            "--run",
+            call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        )
         identity = (
             exported["packages"][0]["export_id"]
             if mode == "history"
@@ -255,7 +281,13 @@ def test_declared_custom_get_components_are_durable_without_extra_queries(
     versions = [row("OLDER", version=1)]
     pilots.business_script.extend([detail(), history(versions)])
     exported = call(
-        run_cli, "export", "run", "--plan", plan["id"], "--fields", "detail"
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        "--fields",
+        "detail",
     )
     prepared = call(
         run_cli, "import", "plan", "--export", exported["id"], "--action", "preserve"
@@ -411,7 +443,13 @@ def test_synthetic_get_only_export_is_durable_without_dataset_binding(
     versions = [row("OLDER", version=1)]
     pilots.business_script.extend([detail(), history(versions)])
     exported = call(
-        run_cli, "export", "run", "--plan", plan["id"], "--fields", "detail"
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        "--fields",
+        "detail",
     )
     assert exported["binding"] is None
     assert len(pilots.business_requests) == 2
@@ -433,11 +471,12 @@ def test_synthetic_get_only_export_is_durable_without_dataset_binding(
         "PHYSICAL-1",
     )
     pilots.business_script.append({"status": 500, "body": {}})
-    code, _, _ = run_cli(["workflow", "export", "run", "--plan", failed_plan["id"]])
+    failed_plan_run = call(run_cli, "export", "create", "--plan", failed_plan["id"])
+    code, _, _ = run_cli(["workflow", "export", "run", "--run", failed_plan_run["id"]])
     assert code == 1
-    repair = call(run_cli, "repair", "plan", "--plan", failed_plan["id"])
+    repair = call(run_cli, "repair", "plan", "--run", failed_plan_run["id"])
     pilots.business_script.extend([detail(), history(versions)])
-    repaired = call(run_cli, "export", "run", "--plan", repair["id"])
+    repaired = call(run_cli, "repair", "run", "--repair", repair["id"])
     assert repaired["complete"] is True
     code, output, _ = run_cli(
         ["workflow", "import", "plan", "--repair", repair["id"], "--action", "preserve"]

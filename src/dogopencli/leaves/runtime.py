@@ -23,13 +23,19 @@ from dogopencli.config import cache_ttl_hours
 from dogopencli.errors import CliError
 from dogopencli.inquiry import inquiry_session
 from dogopencli.jsonutil import canonical, parse
+from dogopencli.progress import report
 from dogopencli.result_policy import (
     SOURCE_ROW_OCCURRENCES,
     AcquisitionEvidence,
     check_complete,
     prepare_result,
 )
-from dogopencli.temporary_query import display_options, is_stale, window_rows
+from dogopencli.temporary_query import (
+    display_options,
+    is_stale,
+    list_preview_metadata,
+    window_rows,
+)
 
 from .query import (
     CustomGetResult,
@@ -201,6 +207,17 @@ def get_detail(
             inspect.signature(method).bind(*arguments)
         except (TypeError, ValueError) as error:
             raise CliError("INVALID_LEAF", "invalid detail capability hooks") from error
+    report(
+        phase="get",
+        source=capability.name,
+        candidate=None,
+        request_attempts=0,
+        root_rows_received=None,
+        source_rows_selected=None,
+        source_pages=None,
+        source_rows_received=None,
+        source_total_rows=None,
+    )
     transport = session.transport(capability)
     try:
         response = execute_bounded(
@@ -213,6 +230,7 @@ def get_detail(
         transport.close()
     result = capability.parse_detail(response.body, parameters, identity)
     validate_detail_result(result, leaf.manifest["operations"]["get"])
+    report(root_rows_received=len(result) if isinstance(result, list) else 1)
     return CustomGetResult(
         result,
         AcquisitionEvidence.for_collection(
@@ -251,6 +269,7 @@ def _compose_details(
             min(deadline, _monotonic() + get_specification["budget_seconds"]),
             get_specification["max_requests"],
         )
+    report(phase="detail", detail_rows_completed=0, detail_rows_expected=len(rows))
     for index, row in enumerate(rows, offset + 1):
         try:
             identity = row.get(binding["identity_field"])
@@ -311,6 +330,11 @@ def _compose_details(
             )
             check_complete(record.evidence, require_complete=False, mode="get")
             acquisitions.append(record.evidence)
+            report(
+                phase="detail",
+                detail_rows_completed=len(acquisitions),
+                detail_rows_expected=len(rows),
+            )
             combined.append(
                 {"record": _project([row], fields)[0], "detail": record.data}
             )
@@ -963,40 +987,29 @@ def execute(
             "contract_id": contract_id,
             "fetched_at": fetched_at,
             "stale": stale,
-            "matched_total": matched,
-            "returned_count": len(displayed),
-            "has_more": offset + len(displayed) < matched,
             **evidence.meta(),
             "unique_count": evidence.unique_count,
             "duplicate_count": evidence.duplicate_count,
             "total_semantics": evidence.total_semantics,
         }
         if args.with_detail:
-            custom_detail = (
-                leaf.manifest["operations"]["get"].get("execution") == "custom"
-            )
             meta.update(
-                {
-                    "source_acquisition": source_list_acquisition,
-                    "detail_acquisition": [
-                        item.record() for item in detail_acquisitions
-                    ],
-                    "with_detail": True,
-                    "detail_scope": "custom" if custom_detail else "native_root",
-                    "detail_count": len(displayed),
-                    "detail_window": {"offset": offset, "limit": limit},
-                    "detail_coverage": (
-                        "Only selected List rows; each custom Get follows its "
-                        "declared leaf relationship and coverage contract. "
-                        "Detail success does not expand List coverage."
-                        if custom_detail
-                        else "Only selected List rows; "
-                        "one native root response per row. "
-                        "Separate histories, logs and child pages are not acquired. "
-                        "Detail success does not expand List coverage."
-                    ),
-                }
+                source_acquisition=source_list_acquisition,
+                detail_acquisition=[item.record() for item in detail_acquisitions],
             )
+        meta.update(
+            list_preview_metadata(
+                matched,
+                len(displayed),
+                limit,
+                offset,
+                custom_detail=(
+                    leaf.manifest["operations"]["get"].get("execution") == "custom"
+                    if args.with_detail
+                    else None
+                ),
+            )
+        )
         if not live:
             meta["source_acquisition"] = source_acquisition
             meta["requested_coverage"] = requested_coverage

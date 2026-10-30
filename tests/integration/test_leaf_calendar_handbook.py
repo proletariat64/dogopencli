@@ -113,7 +113,8 @@ def test_calendar_sample_keeps_compact_leaf_inputs_and_iso_plan(handbook):
         }
     )
     # Desired February 28 remains uncovered even though selected March 1 succeeds.
-    cli("workflow", "export", "run", "--plan", plan["id"], code=1)
+    run = cli("workflow", "export", "create", "--plan", plan["id"])["data"]
+    cli("workflow", "export", "run", "--run", run["id"], code=1)
     status = cli("workflow", "history", "show", "--plan", plan["id"])["data"]
     assert status["uncovered_ranges"] == [{"from": "2026-02-28", "to": "2026-02-28"}]
     export_id = status["packages"][0]["export_id"]

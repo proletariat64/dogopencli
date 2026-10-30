@@ -12,7 +12,13 @@ pytest_plugins = ["integration.test_leaf_pilots_cli"]
 def test_status_does_not_read_retained_export_records(run_cli, pilots, monkeypatch):
     plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     pilots.business_script.append(payment_page([{"id": "retained"}]))
-    exported = call(run_cli, "export", "run", "--plan", plan["id"])
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     original = Path.read_bytes
 
     def metadata_only(path):
@@ -39,6 +45,7 @@ def test_resume_after_durable_batch_before_publication(
     run_cli, pilots, monkeypatch, stop
 ):
     from dogopencli import workflow_storage
+    from dogopencli.workflow_tasks import snapshot
 
     plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     rows = [{"id": str(i), "nested": [None, "1.0000"]} for i in range(25001)]
@@ -46,7 +53,15 @@ def test_resume_after_durable_batch_before_publication(
         response = payment_page(rows[page * 10000 : (page + 1) * 10000])
         response["body"].update(pageNo=page, totalCount=len(rows))
         pilots.business_script.append(response)
-    exported = call(run_cli, "export", "run", "--plan", plan["id"], "--limit", "1")
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        "--limit",
+        "1",
+    )
     prepared = call(
         run_cli, "import", "plan", "--export", exported["id"], "--action", "preserve"
     )
@@ -60,8 +75,22 @@ def test_resume_after_durable_batch_before_publication(
 
     monkeypatch.setattr(workflow_storage, "stage_checkpoint", interrupted)
     result = run_cli(["workflow", "import", "apply", "--plan", prepared["id"]])
+    progress = snapshot(
+        Path(os.environ["DOGOPENCLI_CONFIG"]), "import", prepared["id"]
+    )["progress"]
     assert result[0] != 0, result
     assert batches, result
+    assert progress["expected_rows"] == 25001
+    assert progress["staged_rows"] == (
+        0
+        if stop == "before_batch_commit"
+        else 10000
+        if stop == "after_batch_commit"
+        else 25001
+    )
+    assert progress.get("committed_rows", 0) == (
+        25001 if stop == "after_publication_commit" else 0
+    )
     before_status = {
         path: path.read_bytes()
         for path in Path(os.environ["DOGOPENCLI_CONFIG"]).parent.rglob("*")
@@ -169,7 +198,15 @@ def test_million_row_synthetic_history_measurement(
         '{"from-date":"20260918","to-date":"20260920"}',
     )
     started = time.perf_counter()
-    exported = call(run_cli, "export", "run", "--plan", plan["id"], "--limit", "1")
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        "--limit",
+        "1",
+    )
     export_seconds = time.perf_counter() - started
     identity = exported["packages"][0]["export_id"]
     prepared = call(
@@ -250,7 +287,13 @@ def test_million_row_synthetic_history_measurement(
         '{"from-date":"20260921","to-date":"20260921"}',
     )
     next_export = call(
-        run_cli, "export", "run", "--plan", next_plan["id"], "--limit", "1"
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", next_plan["id"])["id"],
+        "--limit",
+        "1",
     )
     next_identity = next_export["packages"][0]["export_id"]
     next_import = call(
@@ -305,7 +348,13 @@ def test_full_current_stays_atomic_across_durable_staging(
 
     plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     pilots.business_script.append(payment_page([{"id": "previous"}]))
-    first = call(run_cli, "export", "run", "--plan", plan["id"])
+    first = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     initial = call(
         run_cli, "import", "plan", "--export", first["id"], "--action", "replace-full"
     )
@@ -315,7 +364,15 @@ def test_full_current_stays_atomic_across_durable_staging(
         response = payment_page(rows[page * 10000 : (page + 1) * 10000])
         response["body"].update(pageNo=page, totalCount=len(rows))
         pilots.business_script.append(response)
-    second = call(run_cli, "export", "run", "--plan", plan["id"], "--limit", "1")
+    second = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        "--limit",
+        "1",
+    )
     replacement = call(
         run_cli, "import", "plan", "--export", second["id"], "--action", "replace-full"
     )
@@ -346,7 +403,13 @@ def test_uninstall_retains_imported_history_and_unrelated_data(run_cli, pilots):
 
     plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     pilots.business_script.append(payment_page([{"id": "retained"}]))
-    exported = call(run_cli, "export", "run", "--plan", plan["id"])
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     binding = exported["binding"]
     with duckdb.connect(binding["database"]) as db:
         db.execute("CREATE TABLE unrelated_data(value VARCHAR)")

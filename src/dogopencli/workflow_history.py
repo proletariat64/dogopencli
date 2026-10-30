@@ -166,11 +166,18 @@ def overlaps(packages: list[dict], contract: dict) -> tuple[list[list[str]], boo
 def coverage(store: "Store", plan: dict) -> dict:
     if plan.get("mode") != "history":
         invalid("Selected plan is not bounded history")
-    exports = store.list("exports")
+    exports = (
+        store.exports_for(plan["run_id"]) if "run_id" in plan else store.list("exports")
+    )
     packages = []
     for package in plan["packages"]:
         attempts = sorted(
-            (item for item in exports if item["plan"] == package["id"]),
+            (
+                item
+                for item in exports
+                if item["plan"] == package["id"]
+                and ("run_id" not in plan or item.get("run_id") == plan["run_id"])
+            ),
             key=lambda item: (item["completed_at"], item["id"]),
         )
         completed = [
@@ -241,6 +248,9 @@ def run(invocation: "Invocation", store: "Store", plan: dict) -> tuple[dict, dic
             "mode": "full",
             "history_plan": plan["id"],
         }
+        from .progress import report
+
+        report(phase="exporting", current_package_id=package["id"])
         try:
             run_export(invocation, store, child)
         except CliError:

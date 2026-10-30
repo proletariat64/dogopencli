@@ -254,12 +254,26 @@ def test_failed_and_incomplete_refresh_cannot_clear_owned_history(run_cli, range
         '{"account-alias":"ACCOUNT","from-date":"20260918","to-date":"20260918"}',
     )
     browser.business_script.append(page([row(valueDate="20260920")]))
-    code, _, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    code, _, _ = run_cli(
+        [
+            "workflow",
+            "export",
+            "run",
+            "--run",
+            call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        ]
+    )
     assert code == 1
     failed = call(run_cli, "status")["latest_attempt"]
     assert failed["state"] == "failed"
     browser.business_script.append(page([row()], total=2))
-    partial = call(run_cli, "export", "run", "--plan", plan["id"])
+    partial = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     assert partial["state"] == "incomplete"
     for artifact in (failed, partial):
         code, output, _ = run_cli(
@@ -352,3 +366,38 @@ def test_range_replay_in_new_process_uses_committed_receipt(run_cli, ranged):
             process.join(5)
     assert current(run_cli, artifact)["export_id"] == empty["id"]
     assert current(run_cli, artifact)["records"] == []
+
+
+@pytest.mark.parametrize("action", ["replace-range", "keyed"])
+def test_import_status_requires_exact_action_receipt_after_preserve(
+    run_cli, ranged, action
+):
+    from leaves.liquidity.test_cash_balances_cli import row
+
+    from dogopencli.browser import cdp
+
+    browser, _ = ranged
+    artifact = export(run_cli, browser, [row()])
+    apply(run_cli, prepare(run_cli, artifact, "preserve"))
+    plan = prepare(run_cli, artifact, action)
+    cdp.set_transport_factory(
+        lambda *a, **k: pytest.fail("Observation and import must stay offline")
+    )
+    pending = call(run_cli, "import", "status", "--plan", plan["id"])
+    assert pending["effective_state"] == "pending"
+    assert pending["result"]["action_completed"] is False
+
+    apply(run_cli, plan)
+    committed = call(run_cli, "import", "status", "--plan", plan["id"])
+    assert committed["result"]["action"] == action
+    assert committed["effective_state"] == "completed"
+    assert committed["attempt"]["state"] == "completed"
+    assert committed["result"]["action_completed"] is True
+    assert committed["progress"]["committed_rows"] == 1
+    assert committed["observation"]["completion_verification"]["source"] == (
+        "database_receipts"
+    )
+    assert apply(run_cli, plan)["replayed"] is True
+    replayed = call(run_cli, "import", "status", "--plan", plan["id"])
+    assert replayed["effective_state"] == "completed"
+    assert replayed["result"]["action_completed"] is True

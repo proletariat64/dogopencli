@@ -117,19 +117,20 @@ def test_instant_gap_repair_and_preserve_import_keep_one_millisecond(handbook):
     assert frozen["contract"]["precision"] == "millisecond"
     assert "format" not in frozen["contract"]
     browser.business_script.extend([response([]), response([])])
-    cli("workflow", "export", "run", "--plan", frozen["id"], code=1)
+    run = cli("workflow", "export", "create", "--plan", frozen["id"])["data"]
+    cli("workflow", "export", "run", "--run", run["id"], code=1)
     status = cli("workflow", "history", "show", "--plan", frozen["id"])["data"]
     missing = [{"from": "2026-10-17T00:00:00.000Z", "to": "2026-10-17T00:00:00.000Z"}]
     assert status["uncovered_ranges"] == missing
     assert status["overlapping_packages"] == []
-    repair = cli("workflow", "repair", "plan", "--plan", frozen["id"])["data"]
+    repair = cli("workflow", "repair", "plan", "--run", run["id"])["data"]
     assert [item["range"] for item in repair["packages"]] == missing
     rows = [
         {"id": "midnight", "eventTime": "2026-10-17T00:00:00.000Z", "amount": "0.000"}
     ]
     browser.business_script.append(response(rows))
     assert (
-        cli("workflow", "export", "run", "--plan", repair["id"])["data"]["complete"]
+        cli("workflow", "repair", "run", "--repair", repair["id"])["data"]["complete"]
         is True
     )
     artifact_id = cli("workflow", "repair", "show", "--repair", repair["id"])["data"][
@@ -228,7 +229,8 @@ def test_plan_pins_leaf_defaults_and_bare_cache_replay_does_not_freeze(
     monkeypatch.setattr(workflow, "now", lambda: "2026-10-17T12:00:00+00:00")
     rows = [{"id": "one", "eventTime": "2026-10-16T01:00:00.000Z"}]
     browser.business_script.append(response(rows))
-    exported = cli("workflow", "export", "run", "--plan", frozen["id"])["data"]
+    run = cli("workflow", "export", "create", "--plan", frozen["id"])["data"]
+    exported = cli("workflow", "export", "run", "--run", run["id"])["data"]
     assert exported["records"] == rows
     assert browser.business_requests[-1]["fromDate"] == "2026-10-16T00:00:00.000Z"
     explicit = cli(

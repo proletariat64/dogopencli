@@ -94,7 +94,16 @@ def test_retained_future_coverage_cannot_extend_following_cutoff(
         "body": {"resultFlag": True, "count": 0, "result": {"bankVoList": []}},
     }
     pilots.business_script.extend([empty] * len(windows))
-    code, _, _ = run_cli(["workflow", "export", "run", "--plan", seed["id"]])
+    seed_run = call(run_cli, "export", "create", "--plan", seed["id"])
+    code, _, _ = run_cli(
+        [
+            "workflow",
+            "export",
+            "run",
+            "--run",
+            seed_run["id"],
+        ]
+    )
     assert code == 1  # Unplanned seed days remain visible.
     retained = call(run_cli, "history", "show", "--plan", seed["id"])
     assert all(item["state"] == "complete_empty" for item in retained["packages"])
@@ -129,7 +138,7 @@ def test_retained_future_coverage_cannot_extend_following_cutoff(
     assert call(run_cli, "history", "show", "--plan", seed["id"]) == retained
 
     if windows == [{"from": "2026-10-31", "to": "2026-11-01"}]:
-        repair = call(run_cli, "repair", "plan", "--plan", seed["id"])
+        repair = call(run_cli, "repair", "plan", "--run", seed_run["id"])
         assert repair["packages"][0]["range"] == {
             "from": "2026-10-01",
             "to": "2026-10-30",

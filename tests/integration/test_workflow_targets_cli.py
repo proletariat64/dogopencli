@@ -9,7 +9,7 @@ from test_workflow_history_cli import create
 pytest_plugins = ["integration.leaves.liquidity.test_cash_balances_cli"]
 
 
-def test_bounded_target_reuses_exact_saved_work_across_later_runs(
+def test_bounded_target_freezes_new_child_runs_across_later_executions(
     run_cli, installed, monkeypatch
 ):
     from leaves.liquidity.test_cash_balances_cli import page
@@ -27,8 +27,10 @@ def test_bounded_target_reuses_exact_saved_work_across_later_runs(
     monkeypatch.setattr(workflow, "now", lambda: "2026-10-29T12:00:00+00:00")
     later = call(run_cli, "target", "plan", "--target", target["id"])
     assert later["plans"] == [original["id"]]
+    assert later["runs"] != first["runs"]
+    browser.business_script.append(page([]))
     call(run_cli, "target", "run", "--execution", later["id"])
-    assert len(browser.business_requests) == 1
+    assert len(browser.business_requests) == 2
     assert call(run_cli, "plan", "show", "--plan", original["id"]) == original
     before = {p: p.read_bytes() for p in config.rglob("*") if p.is_file()}
     status = call(run_cli, "target", "show", "--target", target["id"])
@@ -132,9 +134,11 @@ def test_all_installed_enrollment_freezes_list_selection_and_keeps_limits_visibl
     repeated = call(run_cli, "target", "plan", "--target", configured["id"])
     assert repeated["plans"] == execution["plans"]
     count = len(browser.business_requests)
+    assert repeated["runs"] != execution["runs"]
+    browser.business_script.append(page([]))
     code, _, _ = run_cli(["workflow", "target", "run", "--execution", repeated["id"]])
     assert code == 1
-    assert len(browser.business_requests) == count
+    assert len(browser.business_requests) == count + 1
 
 
 def test_enrolled_export_failures_keep_independent_success_and_status_offline(
@@ -331,7 +335,15 @@ def test_following_reuses_seed_history_and_preserves_interior_gap(
         '[{"from":"2026-09-18","to":"2026-09-18"},{"from":"2026-09-20","to":"2026-09-20"}]',
     )
     browser.business_script.extend([page([]), page([])])
-    code, _, _ = run_cli(["workflow", "export", "run", "--plan", original["id"]])
+    code, _, _ = run_cli(
+        [
+            "workflow",
+            "export",
+            "run",
+            "--run",
+            call(run_cli, "export", "create", "--plan", original["id"])["id"],
+        ]
+    )
     assert code == 1
     target = call(
         run_cli,
@@ -369,7 +381,13 @@ def test_fully_covered_following_rechecks_native_contract_before_zero_work(
     monkeypatch.setattr(workflow, "now", lambda: "2026-09-20T12:00:00+00:00")
     original = create(run_cli)
     browser.business_script.append(page([]))
-    call(run_cli, "export", "run", "--plan", original["id"])
+    call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", original["id"])["id"],
+    )
     target = call(
         run_cli,
         "target",

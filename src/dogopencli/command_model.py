@@ -462,7 +462,9 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
         nodes[path] = replace(
             node,
             children=children,
-            output=OUTPUT,
+            output={**OUTPUT, "default_format": "text", "formats": ["text"]}
+            if len(path) == 3 and path[0] == "workflow" and path[-1] == "watch"
+            else OUTPUT,
             next=tuple(next_steps)
             or tuple(
                 "dogopencli " + " ".join((*path, name)) + " --help"
@@ -544,10 +546,16 @@ def resolve(argv: list[str]) -> Invocation:
     # Manifest options cannot use reserved host names, so their unknown arity is
     # one value; core flag spellings come directly from their declarations.
     from .auth.spec import GLOBALS
+    from .workflow import declarations as workflow_declarations
 
     host_flags = {
         flag
-        for option in (*COMMON, *WINDOW, WITH_DETAIL)
+        for option in (
+            *COMMON,
+            *WINDOW,
+            WITH_DETAIL,
+            *(option for node in workflow_declarations() for option in node.options),
+        )
         if option.kind == "bool"
         for flag in option.flags
     }
