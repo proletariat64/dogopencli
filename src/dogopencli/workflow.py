@@ -831,8 +831,6 @@ def run_export(invocation: "Invocation", store: Store, plan: dict) -> tuple[dict
 
     report(
         phase="export_saved",
-        source=None,
-        candidate=None,
         export_id=result["id"],
         exported_rows=len(records),
     )

@@ -249,8 +249,8 @@ class Attempt:
                     for key in (
                         "source",
                         "candidate",
-                        "export_id",
                         "current_package_id",
+                        *(("export_id",) if self.state["kind"] == "import" else ()),
                     )
                     if key in facts
                 ):
