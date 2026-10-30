@@ -1,7 +1,7 @@
 """Public temporal value parsing and normalization (Issue #127).
 
 Dates are calendar days, clocks are times of day, and datetimes are either
-explicit instants (strict ISO 8601 second precision with an offset) or
+explicit instants (second precision or opt-in milliseconds, with an offset) or
 offset-free native local values whose source timezone stays unknown. No
 timezone is ever inferred from the host, tenant, UI label or capture time.
 """

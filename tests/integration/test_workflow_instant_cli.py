@@ -245,3 +245,63 @@ def test_plan_pins_leaf_defaults_and_bare_cache_replay_does_not_freeze(
     before = len(browser.business_requests)
     assert cli("collection", "list", "sample.instant")["data"] == rows
     assert len(browser.business_requests) == before
+
+
+def test_instant_conversion_rejects_unrepresentable_windows(handbook):
+    cli, browser, config = handbook
+    adapter = config / "plugins/collection/sample.instant/adapter.py"
+    adapter.write_text(
+        adapter.read_text()
+        + """
+def rounded(bounds):
+    return {"from_time": bounds["from"][:19] + "Z",
+            "to_time": bounds["to"][:19] + "Z"}
+adapter.history_parameters = rounded
+"""
+    )
+    rejected = cli(
+        "workflow",
+        "plan",
+        "create",
+        "--leaf",
+        "collection.sample.instant",
+        "--mode",
+        "history",
+        "--parameters",
+        '{"from-time":"2026-10-16T01:00:00.123Z","to-time":"2026-10-16T01:00:00.124Z"}',
+        code=2,
+    )
+    assert "does not preserve the requested range" in rejected["error"]["message"]
+    assert not browser.business_requests
+
+
+@pytest.mark.parametrize("sample_source", ["freeze"], indirect=True)
+@pytest.mark.parametrize(
+    "body",
+    [
+        'return {**parameters, "unknown": "value"}',
+        'parameters["from_time"] = "2026-10-15T00:00:00.000Z"; return parameters',
+        'return {**parameters, "from_time": "2026-10-15T00:00:00.000Z"}',
+        'return {**parameters, "to_time": 1}',
+    ],
+)
+def test_default_freezing_rejects_mutation_unknown_keys_and_wrong_types(handbook, body):
+    cli, browser, config = handbook
+    adapter = config / "plugins/collection/sample.instant/adapter.py"
+    adapter.write_text(
+        adapter.read_text()
+        + f"\ndef bad_freeze(parameters):\n    {body}\n"
+        + "adapter.freeze_parameters = bad_freeze\n"
+    )
+    rejected = cli(
+        "workflow",
+        "plan",
+        "create",
+        "--leaf",
+        "collection.sample.instant",
+        "--parameters",
+        '{"from-time":"2026-10-16T00:00:00.000Z"}',
+        code=2,
+    )
+    assert rejected["error"]["code"] == "INVALID_ARGUMENT"
+    assert not browser.business_requests
