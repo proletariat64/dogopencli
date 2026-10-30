@@ -1,7 +1,7 @@
 """Native investment inquiry; no business storage or authentication side effects."""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from dogopencli.contracts import EndpointContract
@@ -132,8 +132,12 @@ class Adapter:
     def history_bounds(self, parameters: dict) -> dict:
         native = parse(self.scope(parameters))
         return {
-            "from": date.fromisoformat(native["valueDateStart"]).isoformat(),
-            "to": date.fromisoformat(native["valueDateEnd"]).isoformat(),
+            "from": datetime.strptime(native["valueDateStart"], "%Y%m%d")
+            .date()
+            .isoformat(),
+            "to": datetime.strptime(native["valueDateEnd"], "%Y%m%d")
+            .date()
+            .isoformat(),
         }
 
     def history_parameters(self, bounds: dict) -> dict:

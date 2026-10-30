@@ -1,6 +1,6 @@
 """Native asset trade List; trading dates remain distinct from source timestamps."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from dogopencli.contracts import EndpointContract
@@ -174,8 +174,12 @@ class Adapter:
     def history_bounds(self, parameters: dict) -> dict:
         native = native_scope(parameters)
         return {
-            "from": date.fromisoformat(native["tradingDateBegin"]).isoformat(),
-            "to": date.fromisoformat(native["tradingDateEnd"]).isoformat(),
+            "from": datetime.strptime(native["tradingDateBegin"], "%Y%m%d")
+            .date()
+            .isoformat(),
+            "to": datetime.strptime(native["tradingDateEnd"], "%Y%m%d")
+            .date()
+            .isoformat(),
         }
 
     def history_parameters(self, bounds: dict) -> dict:

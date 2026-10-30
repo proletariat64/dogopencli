@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 
 def compile_plan(invocation: "Invocation", store: "Store", baseline: dict) -> dict:
+    from .leaves.history import window_parameters
     from .leaves.runtime import planned_list_scope
     from .workflow import now
     from .workflow_history import coverage
@@ -40,11 +41,9 @@ def compile_plan(invocation: "Invocation", store: "Store", baseline: dict) -> di
         leaf = invocation.registry._load(invocation.registry.get(domain, name).path)
         packages = []
         for window in missing:
-            parameters = {
-                **baseline["parameters"],
-                baseline["contract"]["from_parameter"]: window["from"],
-                baseline["contract"]["to_parameter"]: window["to"],
-            }
+            parameters = window_parameters(
+                leaf, baseline["parameters"], window, baseline["contract"]
+            )
             scope, environment = planned_list_scope(leaf, parameters)
             if environment != baseline["environment"]:
                 invalid("Repair cannot change baseline environment")
