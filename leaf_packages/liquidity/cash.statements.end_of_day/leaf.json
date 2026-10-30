@@ -65,7 +65,7 @@
   "purpose": "Inspect bank statement records without aggregating currencies, inferring fund direction or changing source data.",
   "fields": [
     {
-      "name": "end2endid",
+      "name": "end2EndId",
       "type": "string|integer",
       "meaning": "Native statement primary key; exact value and type retained."
     },
@@ -106,9 +106,9 @@
     }
   ],
   "identity": [
-    "end2endid"
+    "end2EndId"
   ],
-  "identity_description": "Native end2endid primary key, retaining its source value and type. Account, currency and value-date scope are validated independently. Reused bank transaction numbers do not merge distinct statements.",
+  "identity_description": "Native end2EndId primary key, retaining its source value and type. Account, currency and value-date scope are validated independently. Reused bank transaction numbers do not merge distinct statements.",
   "limitations": [
     "Fixed tenant GUAPW3SG, POST rowStart pagination at pageSize=1000 and timezone GMT+08.",
     "Explicit entity/account alias/currency and inclusive date bounds are required for acquisition; cached replay needs no repeated scope.",
@@ -140,7 +140,7 @@
     "primary_id": {
       "type": "field",
       "fields": [
-        "end2endid"
+        "end2EndId"
       ]
     }
   }

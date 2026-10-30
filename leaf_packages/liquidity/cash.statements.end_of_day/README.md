@@ -16,7 +16,7 @@ dogopencli liquidity list cash.statements.end_of_day --limit 0
 
 Success requires Boolean `success=true`, object-array `data.data` and a
 nonnegative integer `data.totalCount` unchanged across pages. Coverage requires
-all arrivals to match the total with unique typed native `end2endid` primary
+all arrivals to match the total with unique typed native `end2EndId` primary
 keys. Missing, blank or invalidly typed keys fail; no composite fallback or
 new identity hash is used. `bankTransNo` remains an output field and may repeat
 for distinct statement keys. Institution, account, currency and value-date fields

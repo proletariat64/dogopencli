@@ -1,4 +1,4 @@
-"""Dated end-of-day statements with native end2endid identity and full rows."""
+"""Dated end-of-day statements with native end2EndId identity and full rows."""
 
 import re
 from dataclasses import dataclass
@@ -181,12 +181,12 @@ class StatementInquiry:
                 INVALID_RESPONSE, "reported total is not a nonnegative integer"
             )
         for row in rows:
-            identity = row.get("end2endid")
+            identity = row.get("end2EndId")
             if type(identity) not in (str, int) or (
                 isinstance(identity, str) and not identity.strip()
             ):
                 raise CliError(
-                    INVALID_RESPONSE, "statement is missing a typed native end2endid"
+                    INVALID_RESPONSE, "statement is missing a typed native end2EndId"
                 )
             values = [row.get(field) for field in ROW_SCOPE_FIELDS]
             if any(

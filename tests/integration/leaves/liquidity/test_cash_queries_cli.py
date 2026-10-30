@@ -57,7 +57,7 @@ LEAVES = {
     "cash.waterlevels": (1000, None, "aliasName"),
     "forecast.adjustments": (1000, "bankCashForecastAdjustmentQueryVO", "id"),
     "cash.statements.intraday": (1000, None, "bankTransNo"),
-    "cash.statements.end_of_day": (1000, None, "end2endid"),
+    "cash.statements.end_of_day": (1000, None, "end2EndId"),
     "cash.credit_lines": (100, "bankCreditLineQuery", "id"),
     "cash.credit_usage": (100, "bankCreditLineQuery", "id"),
     "cash.group_balances": (100, "bankAccountManageUnitQueryVO", "id"),
@@ -579,8 +579,8 @@ def test_repeated_local_filters_do_not_narrow_refresh_publication(installed, lea
 def test_eod_native_identity_retains_same_transaction_and_scope(installed):
     leaf = "cash.statements.end_of_day"
     cli, browser = installed(leaf)
-    first = {**native_row(leaf), "end2endid": "statement-1"}
-    second = {**first, "end2endid": "statement-2", "amount": None}
+    first = {**native_row(leaf), "end2EndId": "statement-1"}
+    second = {**first, "end2EndId": "statement-2", "amount": None}
     browser.business_script.append(page(leaf, [first, second]))
     result = cli(
         "liquidity", "list", leaf, "--live", "--require-complete", *scope_flags(leaf)
@@ -862,7 +862,7 @@ def test_eod_missing_native_primary_key_has_no_composite_fallback(installed):
     leaf = "cash.statements.end_of_day"
     cli, browser = installed(leaf)
     record = native_row(leaf)
-    del record["end2endid"]
+    del record["end2EndId"]
     browser.business_script.append(page(leaf, [record]))
     result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf), code=1)
     assert result["error"]["code"] == "INVALID_RESPONSE"
@@ -910,6 +910,28 @@ def test_eod_native_key_does_not_replace_required_scope_fields(installed, field,
     record = {**native_row(leaf), field: bad}
     if bad == "absent":
         del record[field]
+    browser.business_script.append(page(leaf, [record]))
+    result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf), code=1)
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+
+
+def test_eod_uses_exact_native_end2EndId_spelling(installed):
+    leaf = "cash.statements.end_of_day"
+    cli, browser = installed(leaf)
+    record = native_row(leaf)
+    record["end2EndId"] = "native-key"
+    browser.business_script.append(page(leaf, [record]))
+    result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf))
+    assert result["data"] == [record]
+    assert result["meta"]["complete"] is True
+
+
+@pytest.mark.parametrize("wrong_case", ["end2endid", "endToEndId"])
+def test_eod_does_not_alias_native_primary_key_spelling(installed, wrong_case):
+    leaf = "cash.statements.end_of_day"
+    cli, browser = installed(leaf)
+    record = native_row(leaf)
+    record[wrong_case] = record.pop("end2EndId")
     browser.business_script.append(page(leaf, [record]))
     result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf), code=1)
     assert result["error"]["code"] == "INVALID_RESPONSE"
