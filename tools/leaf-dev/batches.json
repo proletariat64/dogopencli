@@ -145,7 +145,7 @@
       "id": "B05",
       "title": "投资持仓、台账与收益",
       "issue": 264,
-      "status": "blocked",
+      "status": "delivered",
       "members": [
         {
           "identity": "liquidity.investment.holdings",
@@ -183,14 +183,14 @@
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         },
         {
           "identity": "liquidity.investment.settlement",
           "operations": [
             "list"
           ],
-          "status": "blocked"
+          "status": "delivered"
         }
       ]
     },
