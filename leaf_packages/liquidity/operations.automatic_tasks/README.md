@@ -5,8 +5,8 @@
 from the funding-demand inquiry at `/riskActionTaskQuery.json`.
 
 ```bash
-dogopencli liquidity list operations.automatic_tasks --live --created-from 2026-10-23T00:00:00 --created-to 2026-10-23T23:59:59 --limit 0 --require-complete
-dogopencli liquidity refresh operations.automatic_tasks --created-from 2026-10-23T00:00:00 --created-to 2026-10-23T23:59:59 --require-complete
+dogopencli liquidity list operations.automatic_tasks --live --from-time 2026-10-23T00:00:00 --to-time 2026-10-23T23:59:59 --limit 0 --require-complete
+dogopencli liquidity refresh operations.automatic_tasks --from-time 2026-10-23T00:00:00 --to-time 2026-10-23T23:59:59 --require-complete
 dogopencli liquidity list operations.automatic_tasks --limit 0 --require-complete
 ```
 
@@ -31,3 +31,8 @@ Live reads do not replace the saved capture. Complete nonempty explicit refresh
 can publish a capture for offline replay. Empty, failed or incomplete refresh
 preserves the previous rows and capture time. No automatic Duckdog import, Get,
 detail fanout, strategy joins, confirmations, edits or task execution is included.
+
+The manifest declares gmtCreate as an inclusive instant history axis. Public
+--from-time/--to-time remain offset-free GMT+8 whole seconds. The leaf converts
+these to SDK UTC millisecond boundaries, and rejects fractional-second planned
+windows that the native public contract cannot represent.

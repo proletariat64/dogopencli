@@ -187,6 +187,21 @@ class Inquiry:
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = values(parameters)
+        return {
+            "from": datetime.strptime(native["beginValueDay"], "%Y%m%d")
+            .date()
+            .isoformat(),
+            "to": datetime.strptime(native["endValueDay"], "%Y%m%d").date().isoformat(),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {
+            "from_date": bounds["from"].replace("-", ""),
+            "to_date": bounds["to"].replace("-", ""),
+        }
+
     def capability(self, parameters: dict) -> Inquiry:
         values(parameters)
         return Inquiry()

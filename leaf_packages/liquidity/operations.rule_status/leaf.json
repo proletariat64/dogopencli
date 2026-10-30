@@ -7,18 +7,31 @@
       "description": "Read native summary transfer-rule run overview records in one fixed response.",
       "parameters": [
         {
-          "name": "trigger-from",
+          "name": "from-time",
           "type": "string",
           "required": true,
-          "description": "Inclusive expected-trigger UTC lower second, YYYY-MM-DDTHH:mm:ssZ or explicit numeric offset normalized to UTC."
+          "description": "Inclusive expected-trigger UTC lower second, YYYY-MM-DDTHH:mm:ssZ or explicit numeric offset normalized to UTC.",
+          "temporal_role": "history_from"
         },
         {
-          "name": "trigger-to",
+          "name": "to-time",
           "type": "string",
           "required": true,
-          "description": "Inclusive expected-trigger UTC upper second, YYYY-MM-DDTHH:mm:ssZ or numeric offset; entire final second through .999 is included."
+          "description": "Inclusive expected-trigger UTC upper second, YYYY-MM-DDTHH:mm:ssZ or numeric offset; entire final second through .999 is included.",
+          "temporal_role": "history_to"
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "instant",
+        "time_basis": "expectTriggerTime",
+        "boundary": "inclusive",
+        "timezone": "UTC",
+        "precision": "millisecond",
+        "from_parameter": "from-time",
+        "to_parameter": "to-time",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     }
   },
   "summary": "Transfer-rule run overview.",
@@ -54,7 +67,7 @@
   "examples": [
     {
       "title": "Read bounded UTC run overview",
-      "command": "dogopencli liquidity list operations.rule_status --live --require-complete --limit 0 --trigger-from 2026-01-01T00:00:00Z --trigger-to 2026-10-06T23:59:59Z"
+      "command": "dogopencli liquidity list operations.rule_status --live --require-complete --limit 0 --from-time 2026-01-01T00:00:00Z --to-time 2026-10-06T23:59:59Z"
     }
   ],
   "dataset": {

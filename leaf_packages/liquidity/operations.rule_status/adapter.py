@@ -1,6 +1,6 @@
 """One fixed-width native transfer-rule run overview with explicit UTC scope."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from dogopencli.contracts import EndpointContract, ParsedPage
@@ -13,7 +13,11 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
-from dogopencli.temporal import parse_iso_instant
+from dogopencli.temporal import (
+    normalize_utc_milliseconds,
+    parse_iso_instant,
+    parse_iso_millisecond_instant,
+)
 
 TENANT = "GUAPW3SG"
 PAGE_SIZE = 5000
@@ -47,8 +51,8 @@ def selection(parameters: dict[str, Any]) -> dict[str, str]:
             .astimezone(timezone.utc)
             .strftime(TIME_FORMAT)
             for name, field in (
-                ("trigger_from", "triggerStartTime"),
-                ("trigger_to", "triggerEndTime"),
+                ("from_time", "triggerStartTime"),
+                ("to_time", "triggerEndTime"),
             )
         }
         if result["triggerStartTime"] > result["triggerEndTime"]:
@@ -231,6 +235,34 @@ LIST = Inquiry()
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = selection(parameters)
+        start = datetime.strptime(native["triggerStartTime"], TIME_FORMAT).replace(
+            tzinfo=timezone.utc
+        )
+        end = datetime.strptime(native["triggerEndTime"], TIME_FORMAT).replace(
+            tzinfo=timezone.utc
+        ) + timedelta(milliseconds=999)
+        return {
+            "from": normalize_utc_milliseconds(start),
+            "to": normalize_utc_milliseconds(end),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        start, end = (
+            parse_iso_millisecond_instant(bounds[key]) for key in ("from", "to")
+        )
+        if start.microsecond != 0 or end.microsecond != 999000:
+            raise CliError(
+                INVALID_ARGUMENT,
+                "rule-status windows must preserve complete selected seconds",
+                exit_code=2,
+            )
+        return {
+            "from_time": start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "to_time": end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
     def capability(self, parameters: dict[str, Any]) -> Inquiry:
         selection(parameters)
         return LIST

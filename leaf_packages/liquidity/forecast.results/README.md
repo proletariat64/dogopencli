@@ -1,6 +1,7 @@
 # Forecast results
 
-Native forecast records via the standard List SDK. Acquire with paired inclusive
+Native forecast records and their required request-bound intraday curves use
+custom List orchestration with the host restricted query tools. Acquire with paired inclusive
 `--from-date` / `--to-date` (ISO or compact). Optional repeated `--account-alias`
 values use OR; account, date and creation-time bounds combine with AND.
 `--record-from-time` / `--record-to-time` accept HH:mm:ss or HHmmss and default
@@ -20,4 +21,10 @@ maximum-capacity claim. Full native values and arrival order remain unchanged.
 Bare offline reads replay saved scope. Explicit local filters retain acquisition
 provenance; a changed source query has unproved coverage and strict reads reject it.
 Incomplete, duplicate or drifting native totals never replace complete cache.
-No Get, accuracy, cashflow, dependent query or local forecast calculation.
+No Get, accuracy, cashflow or local forecast calculation. Each acquired parent
+requires its own curve evidence; missing required curves reject the result.
+
+The manifest declares valueDate as the only calendar history axis. Record bounds
+are daily clock filters, not another history axis. Their existing full-day
+defaults are materialized when planning/acquiring; bare cached replay retains
+the saved scope. Explicit clock filters remain frozen while date windows vary.

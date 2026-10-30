@@ -594,6 +594,19 @@ def resolve(native: dict, tools: Any) -> tuple[dict, dict]:
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = values(parameters)
+        return {
+            "from": datetime.strptime(native["startDate"], "%Y%m%d").date().isoformat(),
+            "to": datetime.strptime(native["endDate"], "%Y%m%d").date().isoformat(),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {
+            "from_date": bounds["from"].replace("-", ""),
+            "to_date": bounds["to"].replace("-", ""),
+        }
+
     def query_capability(self, operation: str, name: str, parameters: dict) -> Any:
         values(parameters)
         if operation != "list" or name not in {

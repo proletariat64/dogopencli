@@ -115,7 +115,24 @@
         }
       },
       "max_requests": 1000,
-      "budget_seconds": 300
+      "budget_seconds": 300,
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "effectiveDate (market); quoteDate (bank)",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false,
+        "applicability": {
+          "parameter": "source",
+          "values": [
+            "market",
+            "bank"
+          ]
+        }
+      }
     },
     "get": {
       "description": "Read one genuine external financial-institution expectation rule.",

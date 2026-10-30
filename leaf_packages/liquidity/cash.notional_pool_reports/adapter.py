@@ -24,7 +24,7 @@ def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
     if parameters.get("timezone") != "GMT+08":
         raise CliError(INVALID_ARGUMENT, "unsupported source timezone", exit_code=2)
     dates = []
-    for key in ("start_date", "end_date"):
+    for key in ("from_date", "to_date"):
         value = parameters.get(key)
         try:
             parsed = date.fromisoformat(value)
@@ -146,6 +146,20 @@ class Inquiry:
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = native_scope(parameters)
+        return {
+            "from": datetime.strptime(native["valueDateStart"], "%Y%m%d")
+            .date()
+            .isoformat(),
+            "to": datetime.strptime(native["valueDateEnd"], "%Y%m%d")
+            .date()
+            .isoformat(),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {"from_date": bounds["from"], "to_date": bounds["to"]}
+
     def capability(self, parameters: dict[str, Any]) -> Inquiry:
         return Inquiry(native_scope(parameters))
 

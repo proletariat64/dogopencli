@@ -1,12 +1,15 @@
 """Finite native query packages and observation coverage; no inferred timeline."""
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from .errors import CliError
 from .jsonutil import parse
+from .leaves.history import boundary as parse_boundary
+from .leaves.history import resolve, window_parameters
 from .leaves.runtime import planned_list_scope
+from .temporal import normalize_utc_milliseconds
 
 if TYPE_CHECKING:
     from .command_model import Invocation
@@ -30,22 +33,31 @@ def calendar(value: str, contract: dict) -> date:
         ) from error
 
 
+def boundary(value: str, contract: dict) -> date | datetime:
+    if contract["interpretation"] == "instant":
+        return parse_boundary(value, contract)
+    return calendar(value, contract)
+
+
+def format_boundary(value: date | datetime, contract: dict) -> str:
+    if contract["interpretation"] == "instant":
+        return normalize_utc_milliseconds(value)
+    return value.strftime(contract["format"])
+
+
+def step(contract: dict) -> timedelta:
+    return (
+        timedelta(milliseconds=1)
+        if contract["interpretation"] == "instant"
+        else timedelta(days=1)
+    )
+
+
 def compile_plan(plan: dict, leaf: "Leaf", windows: str | None) -> dict:
-    method = getattr(leaf.adapter, "history_contract", None)
-    if not callable(method):
-        invalid(
-            "Leaf has no native history range contract; "
-            "preserve a full scoped observation instead"
-        )
-    contract = method(plan["parameters"])
-    if (
-        contract.get("interpretation") != "calendar_date"
-        or contract.get("boundary") != "inclusive"
-    ):
-        invalid("History planner requires a declared inclusive calendar range")
+    contract = resolve(leaf, plan["parameters"])
     start, end = (
-        calendar(contract["from"], contract),
-        calendar(contract["to"], contract),
+        boundary(contract["from"], contract),
+        boundary(contract["to"], contract),
     )
     if start > end:
         invalid("Native history range is reversed")
@@ -66,16 +78,12 @@ def compile_plan(plan: dict, leaf: "Leaf", windows: str | None) -> dict:
         if not isinstance(window, dict) or set(window) != {"from", "to"}:
             invalid("Each history window requires only from and to")
         left, right = (
-            calendar(window["from"], contract),
-            calendar(window["to"], contract),
+            boundary(window["from"], contract),
+            boundary(window["to"], contract),
         )
         if not start <= left <= right <= end:
             invalid("History window is outside the frozen desired range or reversed")
-        parameters = {
-            **plan["parameters"],
-            contract["from_parameter"]: window["from"],
-            contract["to_parameter"]: window["to"],
-        }
+        parameters = window_parameters(leaf, plan["parameters"], window, contract)
         scope, environment = planned_list_scope(leaf, parameters)
         if environment != plan["environment"]:
             invalid("History windows cannot change inquiry environment")
@@ -99,37 +107,35 @@ def compile_plan(plan: dict, leaf: "Leaf", windows: str | None) -> dict:
 
 
 def gaps(plan: dict, ranges: list[dict]) -> list[dict]:
-    """Subtract queried calendar intervals without reading record maxima."""
+    """Subtract inclusive query intervals at the model's exact discrete unit."""
     contract = plan["contract"]
-    start = calendar(plan["desired_range"]["from"], contract).toordinal()
+    start = boundary(plan["desired_range"]["from"], contract)
     cursor = start
-    end = calendar(plan["desired_range"]["to"], contract).toordinal()
+    end = boundary(plan["desired_range"]["to"], contract)
+    unit = step(contract)
     result = []
     for left, right in sorted(
-        (
-            calendar(item["from"], contract).toordinal(),
-            calendar(item["to"], contract).toordinal(),
-        )
+        (boundary(item["from"], contract), boundary(item["to"], contract))
         for item in ranges
     ):
         left, right = max(start, left), min(end, right)
         if right < left:
             continue
-        if cursor > end:
-            break
         if left > cursor:
             result.append(
                 {
-                    "from": date.fromordinal(cursor).strftime(contract["format"]),
-                    "to": date.fromordinal(left - 1).strftime(contract["format"]),
+                    "from": format_boundary(cursor, contract),
+                    "to": format_boundary(left - unit, contract),
                 }
             )
-        cursor = max(cursor, right + 1)
+        if right >= end:
+            return result
+        cursor = max(cursor, right + unit)
     if cursor <= end:
         result.append(
             {
-                "from": date.fromordinal(cursor).strftime(contract["format"]),
-                "to": date.fromordinal(end).strftime(contract["format"]),
+                "from": format_boundary(cursor, contract),
+                "to": format_boundary(end, contract),
             }
         )
     return result
@@ -139,8 +145,8 @@ def overlaps(packages: list[dict], contract: dict) -> tuple[list[list[str]], boo
     """Bound diagnostics even when every explicitly selected query overlaps."""
     intervals = sorted(
         (
-            calendar(item["range"]["from"], contract),
-            calendar(item["range"]["to"], contract),
+            boundary(item["range"]["from"], contract),
+            boundary(item["range"]["to"], contract),
             item["id"],
         )
         for item in packages

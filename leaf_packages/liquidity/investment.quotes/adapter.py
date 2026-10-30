@@ -174,6 +174,23 @@ DETAIL = DetailInquiry()
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = native_dates(parameters)
+        return {
+            "from": datetime.strptime(native["startValueDate"], "%Y%m%d")
+            .date()
+            .isoformat(),
+            "to": datetime.strptime(native["endValueDate"], "%Y%m%d")
+            .date()
+            .isoformat(),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {
+            "from_date": bounds["from"].replace("-", ""),
+            "to_date": bounds["to"].replace("-", ""),
+        }
+
     def scope(self, parameters: dict[str, Any]) -> str:
         return canonical(native_dates(parameters))
 

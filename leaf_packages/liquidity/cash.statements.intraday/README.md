@@ -8,7 +8,11 @@ YYYY-MM-DD or YYYYMMDD and are sent as inclusive compact date bounds. Account
 alias and institution are sent as arrays containing one string each.
 
 Boolean `success=true`, `data.data` object rows and integer `data.totalCount`
-are required. Fixed totals and typed `bankTransNo` identities establish coverage.
+are required. Fixed totals and typed native `end2EndId` primary keys establish
+coverage. The exact native spelling, value and type are retained. Missing,
+blank or invalidly typed keys fail without a composite or alternative-field
+fallback; no generated hash is used. `bankTransNo` remains output and may repeat
+for distinct statement keys. Identity does not replace the independent scope checks.
 Contradictory account/currency/date scope is rejected; duplicate identities
 leave collection incomplete.
 Native amount, fundDirection, transDate, transTime, valueDate and unknown fields

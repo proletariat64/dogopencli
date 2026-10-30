@@ -246,6 +246,21 @@ class Detail:
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = scope_values(parameters)
+        if native["source"] not in {"market", "bank"}:
+            fail("calendar history is unavailable for rule sources", "INVALID_ARGUMENT")
+        return {
+            "from": datetime.strptime(native["beginDate"], "%Y%m%d").date().isoformat(),
+            "to": datetime.strptime(native["endDate"], "%Y%m%d").date().isoformat(),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {
+            "from_date": bounds["from"].replace("-", ""),
+            "to_date": bounds["to"].replace("-", ""),
+        }
+
     def query_capability(self, operation: str, name: str, parameters: dict) -> Inquiry:
         scope = scope_values(parameters)
         source = name.replace("_", "-")

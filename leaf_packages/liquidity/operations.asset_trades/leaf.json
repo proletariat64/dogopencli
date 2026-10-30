@@ -28,7 +28,17 @@
           ],
           "description": "Verified native acquisition timezone GMT+08."
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "tradingDate",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     },
     "get": {
       "description": "Read one complete native detail root; separate histories and child endpoints are unqueried.",

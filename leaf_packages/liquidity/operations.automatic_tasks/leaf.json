@@ -7,18 +7,31 @@
       "description": "Read native automatic-operation tasks within an explicit created-time scope.",
       "parameters": [
         {
-          "name": "created-from",
+          "name": "from-time",
           "type": "string",
           "required": true,
-          "description": "Native GMT+8 created-time lower bound YYYY-MM-DDTHH:mm:ss, without offset."
+          "description": "Native GMT+8 created-time lower bound YYYY-MM-DDTHH:mm:ss, without offset.",
+          "temporal_role": "history_from"
         },
         {
-          "name": "created-to",
+          "name": "to-time",
           "type": "string",
           "required": true,
-          "description": "Native GMT+8 created-time upper bound YYYY-MM-DDTHH:mm:ss, without offset; fewer than 31 elapsed days after created-from."
+          "description": "Native GMT+8 created-time upper bound YYYY-MM-DDTHH:mm:ss, without offset; fewer than 31 elapsed days after from-time.",
+          "temporal_role": "history_to"
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "instant",
+        "time_basis": "gmtCreate",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "precision": "millisecond",
+        "from_parameter": "from-time",
+        "to_parameter": "to-time",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     }
   },
   "summary": "Native automatic-operation task records.",
@@ -96,7 +109,7 @@
   "examples": [
     {
       "title": "Read automatic-operation tasks",
-      "command": "dogopencli liquidity list operations.automatic_tasks --live --created-from 2026-10-23T00:00:00 --created-to 2026-10-23T23:59:59 --limit 0 --require-complete"
+      "command": "dogopencli liquidity list operations.automatic_tasks --live --from-time 2026-10-23T00:00:00 --to-time 2026-10-23T23:59:59 --limit 0 --require-complete"
     }
   ],
   "dataset": {

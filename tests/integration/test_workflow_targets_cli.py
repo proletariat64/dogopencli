@@ -61,23 +61,23 @@ def test_following_explicitly_freezes_cutoff_and_refreshes_lookback(
         "2",
     )
     first = call(run_cli, "target", "plan", "--target", target["id"])
-    assert first["cutoff"] == "20260920"
+    assert first["cutoff"] == "2026-09-20"
     monkeypatch.setattr(workflow, "now", lambda: "2026-09-22T12:00:00+00:00")
     browser.business_script.append(page([]))
     call(run_cli, "target", "run", "--execution", first["id"])
     assert browser.business_requests[-1]["endDate"] == "20260920"
     later = call(run_cli, "target", "plan", "--target", target["id"])
-    assert later["cutoff"] == "20260922"
+    assert later["cutoff"] == "2026-09-22"
     native = call(run_cli, "plan", "show", "--plan", later["plans"][0])
     assert [p["range"] for p in native["packages"]] == [
-        {"from": "20260921", "to": "20260922"}
+        {"from": "2026-09-21", "to": "2026-09-22"}
     ]
     browser.business_script.append(page([]))
     call(run_cli, "target", "run", "--execution", later["id"])
     repeated = call(run_cli, "target", "plan", "--target", target["id"])
     refresh = call(run_cli, "plan", "show", "--plan", repeated["plans"][0])
     assert [p["range"] for p in refresh["packages"]] == [
-        {"from": "20260921", "to": "20260922"}
+        {"from": "2026-09-21", "to": "2026-09-22"}
     ]
     assert call(run_cli, "target", "show", "--target", target["id"])["target"] == target
 
@@ -306,7 +306,7 @@ def test_following_retries_incomplete_interval_despite_newer_row_date(
     assert code == 1
     retry = call(run_cli, "target", "plan", "--target", target["id"])
     native = call(run_cli, "plan", "show", "--plan", retry["plans"][0])
-    assert native["desired_range"] == {"from": "20260918", "to": "20260920"}
+    assert native["desired_range"] == {"from": "2026-09-18", "to": "2026-09-20"}
     browser.business_script.append(page([]))
     call(run_cli, "target", "run", "--execution", retry["id"])
     finished = call(run_cli, "target", "plan", "--target", target["id"])
@@ -328,7 +328,7 @@ def test_following_reuses_seed_history_and_preserves_interior_gap(
     original = create(
         run_cli,
         "--windows",
-        '[{"from":"20260918","to":"20260918"},{"from":"20260920","to":"20260920"}]',
+        '[{"from":"2026-09-18","to":"2026-09-18"},{"from":"2026-09-20","to":"2026-09-20"}]',
     )
     browser.business_script.extend([page([]), page([])])
     code, _, _ = run_cli(["workflow", "export", "run", "--plan", original["id"]])
@@ -346,7 +346,7 @@ def test_following_reuses_seed_history_and_preserves_interior_gap(
     )
     frozen = call(run_cli, "target", "plan", "--target", target["id"])
     native = call(run_cli, "plan", "show", "--plan", frozen["plans"][0])
-    assert native["desired_range"] == {"from": "20260919", "to": "20260919"}
+    assert native["desired_range"] == {"from": "2026-09-19", "to": "2026-09-19"}
     browser.business_script.append(page([]))
     assert call(run_cli, "target", "run", "--execution", frozen["id"])["complete"]
     assert [r["startDate"] for r in browser.business_requests] == [
@@ -393,6 +393,8 @@ def test_fully_covered_following_rechecks_native_contract_before_zero_work(
             'return canonical({**resolve(parameters), "source": "changed"})',
         ),
     }[drift]
+    if drift == "history":
+        adapter = config / "plugins/liquidity/cash.balances/leaf.json"
     assert old in adapter.read_text()
     adapter.write_text(adapter.read_text().replace(old, new))
     cdp.set_transport_factory(

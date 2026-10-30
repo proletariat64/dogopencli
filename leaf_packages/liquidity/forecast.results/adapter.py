@@ -373,6 +373,31 @@ class CurveInquiry:
 
 
 class Adapter:
+    def freeze_parameters(self, parameters: dict) -> dict:
+        frozen = dict(parameters)
+        for key, default in (
+            ("record_from_time", "000000"),
+            ("record_to_time", "235959"),
+        ):
+            if frozen.get(key) is None:
+                frozen[key] = default
+        return frozen
+
+    def history_bounds(self, parameters: dict) -> dict:
+        native = selection(parameters, required=True)
+        return {
+            "from": datetime.strptime(native["valueStartDay"], "%Y%m%d")
+            .date()
+            .isoformat(),
+            "to": datetime.strptime(native["valueEndDay"], "%Y%m%d").date().isoformat(),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {
+            "from_date": bounds["from"].replace("-", ""),
+            "to_date": bounds["to"].replace("-", ""),
+        }
+
     def query_capability(
         self, operation: str, name: str, parameters: dict[str, Any]
     ) -> Inquiry | CurveInquiry:
