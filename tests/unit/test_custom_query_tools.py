@@ -930,3 +930,19 @@ def test_frozen_empty_selector_keeps_host_proof_without_resolving_again(
     trace = candidate.evidence.attempts[-1]
     assert trace["request_count"] == 0
     assert trace["queries"]["entity_selector"]["selected_count"] == 0
+
+
+def test_collect_progress_counts_each_successful_named_component():
+    from dogopencli.progress import observe
+
+    script = Script(
+        {"rows": [{"id": "one"}], "total": 1},
+        {"rows": [{"id": "two"}], "total": 1},
+    )
+    tools, _, _ = setup(script)
+    progress = []
+    with observe(progress.append):
+        tools.collect("source", "first")
+        assert progress[-1]["component_requests_completed"] == 1
+        tools.collect("source", "second")
+        assert progress[-1]["component_requests_completed"] == 2

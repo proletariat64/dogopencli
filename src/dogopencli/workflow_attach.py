@@ -76,7 +76,6 @@ def attach_watch(
     if caller == pane:
         raise CliError(INVALID_ARGUMENT, "cannot attach to the caller pane")
     _require_idle(pane)
-    _require_idle(pane)
     launch = f"cd -- {shlex.quote(str(cwd))} && {shlex.join(command)}"
     _herdr_run("pane", "run", pane, launch)
     _confirm_startup(pane, command)

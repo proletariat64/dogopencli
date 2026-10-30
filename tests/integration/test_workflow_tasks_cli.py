@@ -285,7 +285,14 @@ def test_independent_reader_uses_durable_stage_summary_and_reconciles_killed_com
         received, sent = context.Pipe(duplex=False)
 
         def independent_read():
-            sent.send(snapshot(config, "import", plan["id"]))
+            deadline = time.monotonic() + 5
+            while True:
+                current = snapshot(config, "import", plan["id"])
+                if current["progress"].get("staged_rows") == 1:
+                    break
+                assert time.monotonic() < deadline, "Heartbeat did not publish staging"
+                time.sleep(0.05)
+            sent.send(current)
             sent.close()
 
         reader = context.Process(target=independent_read)
@@ -551,3 +558,73 @@ def test_settled_repair_and_target_gaps_retain_established_negative_quality(
             assert settled["progress"]["packages"]["incomplete"] == 1
             assert settled["progress"]["packages"]["pending"] == 0
             assert settled["progress"]["packages"]["failed"] == 0
+
+
+def test_detail_export_coalesces_durable_progress_and_heartbeat_flushes_latest_facts(
+    run_cli, pilots, monkeypatch
+):
+    import math
+    import time
+
+    from integration.test_workflow_watch_cli import isolated_cli
+
+    inquiry = call(
+        run_cli, "plan", "create", "--leaf", "payment.sla.baselines", "--with-detail"
+    )
+    task = call(run_cli, "export", "create", "--plan", inquiry["id"])
+    publications = []
+    original_replace = os.replace
+    task_file = (
+        Path(os.environ["DOGOPENCLI_CONFIG"]).parent
+        / "workflow"
+        / "task-state"
+        / "export"
+        / (task["id"] + ".json")
+    )
+
+    def recorded_replace(source, destination):
+        if Path(destination) == task_file:
+            publications.append(time.monotonic())
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", recorded_replace)
+    rows = [{"id": str(i)} for i in range(80)]
+    observed = []
+
+    def native_reply(payload, index):
+        if index == 0:
+            initial = call(isolated_cli, "export", "status", "--run", task["id"])
+            assert initial["effective_state"] == "running"
+            assert initial["attempt"]["id"]
+            return payment_page(rows)
+        if index == 11:
+            deadline = time.monotonic() + 5
+            while True:
+                status = call(isolated_cli, "export", "status", "--run", task["id"])
+                if status["progress"].get("detail_rows_completed", 0) >= 10:
+                    break
+                assert time.monotonic() < deadline, "Heartbeat did not flush progress"
+                time.sleep(0.05)
+            assert status["effective_state"] == "running"
+            observed.append(status)
+        return {
+            "status": 200,
+            "body": {"success": True, "resultData": {"id": str(index - 1)}},
+        }
+
+    pilots.business_handler = native_reply
+    started = time.monotonic()
+    code, out, err = run_cli(["workflow", "export", "run", "--run", task["id"]])
+    assert code == 0, out
+    import json
+
+    exported = json.loads(out)["data"]
+    elapsed = time.monotonic() - started
+    assert observed
+    final = call(run_cli, "export", "status", "--run", task["id"])
+    assert final["effective_state"] == "completed"
+    assert final["progress"]["detail_rows_completed"] == 80
+    assert final["progress"]["exported_rows"] == exported["record_count"] == 80
+    assert len(publications) <= math.ceil(elapsed) + 3
+    assert err.count("phase=") <= math.floor(elapsed / 3) + 2
+    assert "state=completed" in err
