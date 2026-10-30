@@ -22,6 +22,7 @@ from dogopencli.config import cache_ttl_hours
 from dogopencli.errors import CliError
 from dogopencli.inquiry import inquiry_session
 from dogopencli.jsonutil import canonical, parse
+from dogopencli.progress import report
 from dogopencli.result_policy import (
     SOURCE_ROW_OCCURRENCES,
     AcquisitionEvidence,
@@ -200,6 +201,17 @@ def get_detail(
             inspect.signature(method).bind(*arguments)
         except (TypeError, ValueError) as error:
             raise CliError("INVALID_LEAF", "invalid detail capability hooks") from error
+    report(
+        phase="get",
+        source=capability.name,
+        candidate=None,
+        request_attempts=0,
+        root_rows_received=None,
+        source_rows_selected=None,
+        source_pages=None,
+        source_rows_received=None,
+        source_total_rows=None,
+    )
     transport = session.transport(capability)
     try:
         response = execute_bounded(
@@ -212,6 +224,7 @@ def get_detail(
         transport.close()
     result = capability.parse_detail(response.body, parameters, identity)
     validate_detail_result(result, leaf.manifest["operations"]["get"])
+    report(root_rows_received=len(result) if isinstance(result, list) else 1)
     return CustomGetResult(
         result,
         AcquisitionEvidence.for_collection(
@@ -250,6 +263,7 @@ def _compose_details(
             min(deadline, _monotonic() + get_specification["budget_seconds"]),
             get_specification["max_requests"],
         )
+    report(phase="detail", detail_rows_completed=0, detail_rows_expected=len(rows))
     for index, row in enumerate(rows, offset + 1):
         try:
             identity = row.get(binding["identity_field"])
@@ -310,6 +324,11 @@ def _compose_details(
             )
             check_complete(record.evidence, require_complete=False, mode="get")
             acquisitions.append(record.evidence)
+            report(
+                phase="detail",
+                detail_rows_completed=len(acquisitions),
+                detail_rows_expected=len(rows),
+            )
             combined.append(
                 {"record": _project([row], fields)[0], "detail": record.data}
             )

@@ -39,6 +39,7 @@ def test_resume_after_durable_batch_before_publication(
     run_cli, pilots, monkeypatch, stop
 ):
     from dogopencli import workflow_storage
+    from dogopencli.progress import observe
 
     plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     rows = [{"id": str(i), "nested": [None, "1.0000"]} for i in range(25001)]
@@ -59,9 +60,22 @@ def test_resume_after_durable_batch_before_publication(
             raise KeyboardInterrupt
 
     monkeypatch.setattr(workflow_storage, "stage_checkpoint", interrupted)
-    result = run_cli(["workflow", "import", "apply", "--plan", prepared["id"]])
+    progress = {}
+    with observe(lambda facts: progress.update(facts)):
+        result = run_cli(["workflow", "import", "apply", "--plan", prepared["id"]])
     assert result[0] != 0, result
     assert batches, result
+    assert progress["expected_rows"] == 25001
+    assert progress["staged_rows"] == (
+        0
+        if stop == "before_batch_commit"
+        else 10000
+        if stop == "after_batch_commit"
+        else 25001
+    )
+    assert progress.get("committed_rows", 0) == (
+        25001 if stop == "after_publication_commit" else 0
+    )
     before_status = {
         path: path.read_bytes()
         for path in Path(os.environ["DOGOPENCLI_CONFIG"]).parent.rglob("*")

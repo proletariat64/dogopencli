@@ -288,7 +288,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
         invalid("Keyed plan namespace differs from frozen export")
     with lifecycle_lock(Registry(config_file)):
         with connection(binding, write=True) as db:
-            from .workflow_storage import stage_rows
+            from .workflow_storage import publication_progress, stage_rows
 
             stage_rows(db, artifact)
             db.execute("BEGIN TRANSACTION")
@@ -317,6 +317,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 if not saved or not metadata_match(saved[0], artifact):
                     invalid("Exact export differs from keyed receipt")
                 db.execute("ROLLBACK")
+                publication_progress(artifact, replayed=True, inserted_count=0)
                 return {
                     **parse(replay[0]),
                     "replayed": True,
@@ -376,4 +377,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 [artifact["id"], binding["relation"], canonical(receipt)],
             )
             db.execute("COMMIT")
+            publication_progress(
+                artifact, replayed=False, inserted_count=receipt["inserted_count"]
+            )
             return {**receipt, "replayed": False}

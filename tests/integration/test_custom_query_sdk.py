@@ -127,3 +127,25 @@ def test_custom_get_binding_cannot_reset_request_budget_for_each_row(
     assert failed["meta"]["detail_row"] == 2
     assert len(browser.business_requests) == 2
     assert not (config / "leaf-cache.sqlite3").exists()
+
+
+def test_custom_get_reports_physical_retry_without_inventing_list_pages(
+    detail_cli, tmp_path
+):
+    from dogopencli.progress import observe
+
+    cli, browser, _ = detail_cli
+    cli("plugins", "install", str(custom_get(get_only_package(tmp_path))))
+    record = {"reference": "REF", "account": "ACCOUNT", "nativeId": 7}
+    browser.business_script.extend(
+        [{"status": 503, "body": {}}, {"status": 200, "body": record}]
+    )
+    progress = {}
+    with observe(lambda facts: progress.update(facts)):
+        result = cli("payment", "get", "synthetic.detail", "REF", "--id", "ACCOUNT")
+    assert result["data"] == record
+    assert progress["operation_request_attempts"] == 2
+    assert progress["root_rows_received"] == 1
+    assert progress["source_pages"] is None
+    assert progress["component_requests_completed"] == 1
+    assert "ACCOUNT" not in repr(progress)

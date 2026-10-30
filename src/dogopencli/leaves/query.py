@@ -23,6 +23,7 @@ from dogopencli.errors import (
     normalize_warnings,
 )
 from dogopencli.jsonutil import canonical
+from dogopencli.progress import advance, report
 from dogopencli.result_policy import AcquisitionEvidence
 
 
@@ -188,12 +189,16 @@ class QueryBudget:
 
 
 class _QueryTransport:
+    reports_request_attempts = True
+
     def __init__(self, transport: Any, budget: QueryBudget):
         self._transport = transport
         self._budget = budget
 
     def execute(self, request: Any, *, timeout: float) -> Any:
         self._budget.reserve()
+        advance(request_attempts=1)
+        report(operation_request_attempts=self._budget.requests)
         return self._transport.execute(
             request,
             timeout=min(timeout, collection.remaining_seconds(self._budget.deadline)),
@@ -307,6 +312,19 @@ class QueryTools:
             )
             raise self._fatal
         trace["calls"] += 1
+        report(
+            phase="query",
+            source=name,
+            candidate=trace["calls"],
+            request_attempts=0,
+            candidate_page_size=None,
+            root_rows_received=None,
+            source_pages=None,
+            source_rows_received=None,
+            source_rows_selected=None,
+            source_total_rows=None,
+            component_requests_completed=trace["succeeded"],
+        )
         return self._capabilities[name], declaration, trace
 
     def collect(self, name: str, scope: str = "") -> collection.CollectedScope:
@@ -383,6 +401,7 @@ class QueryTools:
                 raise
             validate_detail_result(result, declaration)
             trace["succeeded"] += 1
+            report(component_requests_completed=trace["succeeded"])
             return result
         except (QueryRefused, QueryFailed) as error:
             if parsed_business_error:
@@ -451,6 +470,7 @@ class QueryTools:
                     INVALID_RESPONSE, "custom inquiry has invalid native shape"
                 )
             trace["succeeded"] += 1
+            report(component_requests_completed=trace["succeeded"])
             return result
         except CliError as error:
             self._fatal = error
@@ -714,4 +734,8 @@ class QueryTools:
                 self._declarations["lookup"]["name"]: identity,
             }
         validate_detail_result(result, self._declarations, context)
+        report(
+            phase="get",
+            root_rows_received=len(result) if isinstance(result, list) else 1,
+        )
         return result

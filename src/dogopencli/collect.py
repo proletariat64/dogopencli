@@ -21,6 +21,7 @@ from .errors import (
     CliError,
 )
 from .jsonutil import canonical
+from .progress import advance, report, scoped
 from .result_policy import AcquisitionEvidence, check_complete
 from .transport import QueryRequest, TransportResponse, validate_request
 from .transport.cdp import FetchFailed
@@ -102,6 +103,8 @@ def execute_bounded(
         response: TransportResponse | None = None
         failure: CliError | None = None
         try:
+            if not getattr(transport, "reports_request_attempts", False):
+                advance(request_attempts=1)
             response = execute_before_deadline(transport, request, deadline)
         except FetchFailed as error:
             failure = CliError(
@@ -374,6 +377,7 @@ def _short_page_candidate(
                 short_pages[width] = page
             else:
                 short_pages.pop(width, None)
+        advance(source_pages=1, source_rows_received=len(rows))
         return rows
 
     def fingerprint(row: dict) -> str:
@@ -603,6 +607,12 @@ def _list_candidate(
             duplicate_count += duplicate
             conflict_count += conflict
 
+        report(
+            source_pages=pages,
+            source_rows_received=arrivals,
+            source_total_rows=reported,
+            source_rows_selected=len(ordered),
+        )
         if progress is not None:
             progress(
                 pages,
@@ -803,18 +813,30 @@ def collect_list(
         pages_before = page_budget.remaining
         observations.clear()
         try:
-            result = _list_candidate(
-                capability,
-                transport,
-                scope,
-                collection,
-                size,
-                attempt_deadline,
-                page_budget,
-                progress,
-                previous_holes,
-                observations,
-            )
+            with scoped(
+                phase="acquisition",
+                source=capability.name,
+                candidate=number + 1,
+                candidate_page_size=size,
+                source_pages=0,
+                source_rows_received=0,
+                source_rows_selected=0,
+                source_total_rows=None,
+                request_attempts=0,
+            ):
+                result = _list_candidate(
+                    capability,
+                    transport,
+                    scope,
+                    collection,
+                    size,
+                    attempt_deadline,
+                    page_budget,
+                    progress,
+                    previous_holes,
+                    observations,
+                )
+                report(source_rows_selected=len(result.records))
         except CliError as error:
             attempts.append(
                 {

@@ -147,7 +147,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
         )
     with lifecycle_lock(Registry(config_file)):
         with connection(binding, write=True) as db:
-            from .workflow_storage import stage_rows
+            from .workflow_storage import publication_progress, stage_rows
 
             stage_rows(db, artifact)
             db.execute("BEGIN TRANSACTION")
@@ -178,6 +178,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                         "Exact export differs from committed publication",
                     )
                 db.execute("ROLLBACK")
+                publication_progress(artifact, replayed=True, inserted_count=0)
                 return {**parse(replay[0]), "replayed": True, "inserted_count": 0}
             previous = pointer(db, binding, key)
             if previous != plan["expected_current"]:
@@ -277,6 +278,9 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
 
             stage_checkpoint("before_publication_commit", artifact["record_count"])
             db.execute("COMMIT")
+            publication_progress(
+                artifact, replayed=False, inserted_count=artifact["record_count"]
+            )
             stage_checkpoint("after_publication_commit", artifact["record_count"])
             return {
                 **receipt,

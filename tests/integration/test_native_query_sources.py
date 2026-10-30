@@ -355,3 +355,30 @@ def test_invalid_source_and_qualified_response_declarations_fail_static_install(
     assert not browser.business_requests
     assert not (config / "leaf-cache.sqlite3").exists()
     assert not (config / "duckdog.duckdb").exists()
+
+
+def test_progress_keeps_source_arrivals_separate_from_assembled_roots(
+    detail_cli, tmp_path
+):
+    from dogopencli.progress import observe
+
+    cli, browser, _ = detail_cli
+    install(cli, package(tmp_path), tmp_path)
+    left, right = sources()
+    browser.business_script.extend([response(left), response(right)])
+    latest = {}
+
+    def receive(facts):
+        latest.setdefault(facts.get("source"), {}).update(facts)
+
+    with observe(receive):
+        result = query(cli, "refresh", *FLAGS, "--require-complete")
+    assert result["data"]["row_count"] == 2
+    for name in ("left", "right"):
+        facts = latest["payment.synthetic.sources." + name]
+        assert facts["source_pages"] == 1
+        assert facts["source_rows_received"] == 1
+        assert facts["source_total_rows"] == 1
+        assert facts["request_attempts"] == 1
+    assert "LEFT" not in repr(latest)
+    assert "amount" not in repr(latest)
