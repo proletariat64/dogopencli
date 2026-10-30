@@ -186,9 +186,44 @@ def test_exact_task_lock_rejects_competitor_and_hard_exit_is_interrupted(
             uncertain = snapshot(config, "export", task["id"])
             assert uncertain["effective_state"] == "unknown"
             assert uncertain["observation"]["ownership"] == "unknown"
-        code, output, _ = run_cli(["workflow", "export", "run", "--run", task["id"]])
+        for hidden in ("missing", "mismatched"):
+
+            def hidden_proc(path, *args, _visibility=hidden, **kwargs):
+                if str(path).startswith("/proc/") and path.name == "stat":
+                    if _visibility == "missing":
+                        raise FileNotFoundError("process outside observer namespace")
+                    prefix, fields = original_read(path, *args, **kwargs).rsplit(")", 1)
+                    fields = fields.split()
+                    fields[19] = str(int(fields[19]) + 1)
+                    return prefix + ") " + " ".join(fields)
+                return original_read(path, *args, **kwargs)
+
+            with monkeypatch.context() as invisible:
+                invisible.setattr(Path, "read_text", hidden_proc)
+                uncertain = snapshot(config, "export", task["id"])
+                assert uncertain["effective_state"] == "unknown", hidden
+                assert uncertain["observation"]["ownership"] == "unknown", hidden
+        unrelated = config.parent / "unrelated-lock"
+        unrelated.touch()
+        unrelated_stat = unrelated.stat()
+        original_stat = Path.stat
+
+        def wrong_descriptor(path, *args, **kwargs):
+            if str(path).startswith("/proc/") and "/fd/" in str(path):
+                return unrelated_stat
+            return original_stat(path, *args, **kwargs)
+
+        with monkeypatch.context() as other_lock:
+            other_lock.setattr(Path, "stat", wrong_descriptor)
+            assert (
+                snapshot(config, "export", task["id"])["effective_state"] == "unknown"
+            )
+        code, output, error = run_cli(
+            ["workflow", "export", "run", "--run", task["id"]]
+        )
         assert code == 1
         assert json.loads(output)["error"]["code"] == "WORKFLOW_BUSY"
+        assert "attempt " not in error
         process.kill()
         process.join(10)
         lost = snapshot(config, "export", task["id"])
@@ -312,3 +347,21 @@ def test_import_polling_reads_bounded_metadata_without_changing_files(
     assert snapshot(config, "import", plan["id"])["effective_state"] == "pending"
     assert snapshot(config, "export", run["id"])["progress"]["exported_rows"] == 1
     assert all(original(p) == content for p, content in before.items())
+
+
+def test_runner_emits_actual_identity_and_safe_progress_only_on_stderr(run_cli, pilots):
+    import json
+
+    from dogopencli.workflow_tasks import snapshot
+
+    config = Path(os.environ["DOGOPENCLI_CONFIG"])
+    plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
+    task = call(run_cli, "export", "create", "--plan", plan["id"])
+    pilots.business_script.append(payment_page([{"id": "private-business-row"}]))
+    code, output, error = run_cli(["workflow", "export", "run", "--run", task["id"]])
+    assert code == 0
+    assert json.loads(output)["error"] is None
+    current = snapshot(config, "export", task["id"])["attempt"]
+    assert f"export {task['id']} attempt {current['number']} {current['id']}" in error
+    assert "phase=" in error
+    assert "private-business-row" not in error
