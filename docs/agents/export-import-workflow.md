@@ -243,7 +243,9 @@ external actor occupying the pane concurrently. Use an uncontended target.
 Status and watch read bounded metadata offline and initialize no schema. Runner
 ownership, heartbeat, last progress and observation time are separate facts.
 Unknown totals stay unknown; physical requests, source pages, received rows and
-saved rows have different units. Degraded/stale observations expose read quality
+saved rows have different units. Settled tasks retain measured source rates as
+historical facts; forward source ETA is not applicable until execution is running.
+Degraded/stale observations expose read quality
 and age. Import staging means durable hidden batches; exact action/destination
 receipts prove committed observations/publication. An old successful publication
 can remain proven after another export becomes current. Legacy artifacts expose
