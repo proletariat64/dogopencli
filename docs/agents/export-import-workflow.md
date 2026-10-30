@@ -240,7 +240,9 @@ it does not create panes. Herdr exposes separate idle inspection and command
 submission, so the preflight check cannot promise atomic exclusion against an
 external actor occupying the pane concurrently. Use an uncontended target.
 
-Status and watch read bounded metadata offline and initialize no schema. Runner
+Status and watch read bounded metadata offline and initialize no schema. Progress
+summaries are coalesced and persisted by the runner's one-second heartbeat;
+initial ownership and final/exception outcomes are saved immediately. Runner
 ownership, heartbeat, last progress and observation time are separate facts.
 Unknown totals stay unknown; physical requests, source pages, received rows and
 saved rows have different units. Settled tasks retain measured source rates as

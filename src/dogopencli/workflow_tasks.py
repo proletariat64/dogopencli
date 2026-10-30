@@ -180,7 +180,7 @@ class Attempt:
         self.last_diagnostic = None
         self.last_diagnostic_at = 0.0
 
-    def diagnostic(self, progress: dict) -> None:
+    def diagnostic(self, progress: dict, *, final: bool = False) -> None:
         phase = progress.get("phase")
         if phase not in {
             "starting",
@@ -216,18 +216,15 @@ class Attempt:
         previous = self.last_diagnostic
         if (
             self.diagnostics_enabled
-            and signature != previous
-            and (
-                previous is None
-                or phase != previous[0]
-                or tick - self.last_diagnostic_at >= 3
-            )
+            and (signature != previous or final)
+            and (previous is None or final or tick - self.last_diagnostic_at >= 3)
         ):
             counts = " ".join(f"{key}={value}" for key, value in metrics)
             try:
                 print(
                     f"{self.state['kind']} {self.state['id']} "
-                    f"attempt {self.attempt['number']} phase={phase} {counts}".rstrip(),
+                    f"attempt {self.attempt['number']} phase={phase} {counts}".rstrip()
+                    + (f" state={self.attempt['state']}" if final else ""),
                     file=sys.stderr,
                     flush=True,
                 )
@@ -235,7 +232,7 @@ class Attempt:
                 return
             self.last_diagnostic, self.last_diagnostic_at = signature, tick
 
-    def publish(self, facts: dict) -> None:
+    def publish(self, facts: dict, *, flush: bool = False) -> None:
         with self.mutex:
             if not self.active:
                 return
@@ -320,8 +317,11 @@ class Attempt:
                 if "phase" in facts:
                     self.attempt["phase"] = facts["phase"]
             self.state["heartbeat_at"] = stamp
-            self.state["updated_at"] = stamp
-            _atomic(self.path, self.state)
+            # Coalesce hot-path facts; the existing heartbeat flushes at one
+            # second intervals. Ownership and final outcomes remain immediate.
+            if flush:
+                self.state["updated_at"] = stamp
+                _atomic(self.path, self.state)
             if facts:
                 self.diagnostic(self.state.get("progress", {}))
 
@@ -366,7 +366,7 @@ def attempt(store: Store, kind: str, identity: str) -> Iterator[Attempt]:
         state["attempts"] = [*state["attempts"][-4:], current]
         state["progress"] = {}
         writer = Attempt(path, state, current)
-        writer.publish({"phase": "starting"})
+        writer.publish({"phase": "starting"}, flush=True)
         print(
             f"{kind} {identity} attempt {current['number']} {current['id']}",
             file=sys.stderr,
@@ -378,7 +378,7 @@ def attempt(store: Store, kind: str, identity: str) -> Iterator[Attempt]:
 
         def heartbeat() -> None:
             while not stop.wait(1):
-                writer.publish({})
+                writer.publish({}, flush=True)
 
         thread = threading.Thread(target=heartbeat, daemon=True)
         thread.start()
@@ -388,24 +388,26 @@ def attempt(store: Store, kind: str, identity: str) -> Iterator[Attempt]:
             with observe(writer.publish):
                 yield writer
         except BaseException as error:
-            current.update(
-                state="interrupted"
-                if isinstance(error, (KeyboardInterrupt, SystemExit))
-                else "incomplete"
-                if isinstance(error, CliError) and error.code == "INCOMPLETE_RESULT"
-                else "failed",
-                error={"code": error.code}
-                if isinstance(error, CliError)
-                else {
-                    "code": "INTERRUPTED"
+            with writer.mutex:
+                current.update(
+                    state="interrupted"
                     if isinstance(error, (KeyboardInterrupt, SystemExit))
-                    else "INTERNAL_ERROR"
-                },
-            )
+                    else "incomplete"
+                    if isinstance(error, CliError) and error.code == "INCOMPLETE_RESULT"
+                    else "failed",
+                    error={"code": error.code}
+                    if isinstance(error, CliError)
+                    else {
+                        "code": "INTERRUPTED"
+                        if isinstance(error, (KeyboardInterrupt, SystemExit))
+                        else "INTERNAL_ERROR"
+                    },
+                )
             raise
         else:
-            if current["state"] == "running":
-                current["state"] = "completed"
+            with writer.mutex:
+                if current["state"] == "running":
+                    current["state"] = "completed"
         finally:
             stop.set()
             thread.join()
@@ -418,6 +420,7 @@ def attempt(store: Store, kind: str, identity: str) -> Iterator[Attempt]:
                         k: v for k, v in current.items() if k != "owner"
                     }
                 _atomic(path, state)
+                writer.diagnostic(state.get("progress", {}), final=True)
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
@@ -459,7 +462,8 @@ def execute_export(invocation, store: Store) -> tuple[dict, dict]:
                 result, meta = run_export(invocation, store, plan)
         active.publish({"phase": "settled"})
         if meta.get("complete") is not True or meta.get("dataset_complete") is not True:
-            active.attempt["state"] = "incomplete"
+            with active.mutex:
+                active.attempt["state"] = "incomplete"
         return result, meta
 
 
@@ -485,7 +489,8 @@ def execute_import(invocation, store: Store) -> dict:
         store.save("import_headers", import_plan_header(plan))
     with attempt(store, "import", plan["id"]) as active:
         result = apply_import(invocation, store)
-        active.state["result"] = result
+        with active.mutex:
+            active.state["result"] = result
         active.publish({"phase": "settled"})
         return result
 

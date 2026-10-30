@@ -360,6 +360,7 @@ class QueryTools:
                 declaration.get("supplementary") is True and evidence.usable_incomplete
             )
             trace["succeeded"] += 1
+            report(component_requests_completed=trace["succeeded"])
             trace.setdefault("collections", []).append(
                 {"scope": scope, "acquisition": evidence.record()}
             )

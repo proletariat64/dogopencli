@@ -725,7 +725,15 @@ def test_settled_incomplete_source_keeps_last_rate_without_forward_eta(run_cli, 
 
     def native_page(payload, index):
         if index == 2:
-            current = call(isolated_cli, "export", "status", "--run", task["id"])
+            import time
+
+            deadline = time.monotonic() + 5
+            while True:
+                current = call(isolated_cli, "export", "status", "--run", task["id"])
+                if current["progress"].get("source_rows_received") == 2000:
+                    break
+                assert time.monotonic() < deadline, "Heartbeat did not publish pages"
+                time.sleep(0.05)
             assert current["effective_state"] == "running"
             assert current["progress"]["eta_seconds"] > 0
             active.append(current)
