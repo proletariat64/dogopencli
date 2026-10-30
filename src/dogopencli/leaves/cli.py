@@ -149,8 +149,29 @@ def main(argv: list[str]) -> int:
         if node.path[:1] == ("workflow",):
             from ..workflow import dispatch
 
+            if len(node.path) == 3 and node.path[-1] == "watch":
+                from ..workflow_watch import watch
+
+                if not any(
+                    token.startswith("--format=") for token in invocation.remaining
+                ):
+                    output_format = "text"
+                return watch(invocation)
             data, meta = dispatch(invocation)
-            emit(data, meta, output_format=output_format)
+            if len(node.path) == 3 and node.path[-1] == "status":
+                from ..workflow_watch import warn_if_degraded
+
+                warn_if_degraded(data)
+            if (
+                len(node.path) == 3
+                and node.path[-1] == "status"
+                and output_format == "text"
+            ):
+                from ..workflow_watch import render_frame
+
+                print(render_frame(data))
+            else:
+                emit(data, meta, output_format=output_format)
             return 0
         if len(node.path) != 3:
             raise CliError("INVALID_ARGUMENT", "Use dogopencli --help", exit_code=2)

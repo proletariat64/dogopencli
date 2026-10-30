@@ -183,12 +183,24 @@ def declarations() -> tuple[BizNode, ...]:
     from .workflow_targets import declaration_entries
 
     entries.extend(declaration_entries())
+    from .workflow_watch import declaration_entries as observation_entries
+
+    entries.extend(observation_entries())
     return tuple(
         BizNode(
             path,
             summary,
             options=options,
             handler="workflow" if len(path) == 3 or path[-1] == "status" else None,
+            constraints=(
+                "Watch accepts text only; use status for finite JSON.",
+                "--snapshot, --until-settled and --attach are mutually exclusive.",
+                "--interval is a positive integer; "
+                "default resident polling is 3 seconds.",
+                "Ctrl+C ends only the observer; no task control is sent.",
+            )
+            if path[-1] == "watch"
+            else (),
             effects={
                 **NO_EFFECTS,
                 "mutates": path[-1] in {"create", "run", "apply", "enroll"}
@@ -505,6 +517,10 @@ def dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
 def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
     store = Store(invocation.config_file)
     path = invocation.node.path[1:]
+    if len(path) == 2 and path[1] == "status":
+        from .workflow_watch import read, selector
+
+        return read(invocation.config_file, path[0], selector(invocation)), None
     if path[0] == "target":
         from .workflow_targets import dispatch as targets
 
