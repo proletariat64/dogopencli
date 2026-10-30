@@ -18,7 +18,7 @@ from dogopencli.jsonutil import canonical, parse
 
 PAGE_SIZE = 1000
 TENANT = "GUAPW3SG"
-IDENTITY = ("bankTransNo",)
+IDENTITY = ("end2EndId",)
 SCOPE_KEYS = frozenset(
     {
         "instIds",
@@ -193,7 +193,7 @@ class StatementInquiry:
             ):
                 raise CliError(
                     INVALID_RESPONSE,
-                    "statement is missing a typed composite identity field",
+                    "statement is missing a typed native end2EndId",
                 )
         return rows, total
 

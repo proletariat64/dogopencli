@@ -72,6 +72,11 @@
   "purpose": "Inspect scoped intraday bank movements, exact amounts and native fund directions.",
   "fields": [
     {
+      "name": "end2EndId",
+      "type": "string|integer",
+      "meaning": "Native intraday statement primary key; exact value and type retained."
+    },
+    {
       "name": "instId",
       "type": "string",
       "meaning": "Native institution identity."
@@ -94,7 +99,7 @@
     {
       "name": "bankTransNo",
       "type": "string",
-      "meaning": "Native transaction number; retained in composite identity."
+      "meaning": "Native bank transaction number retained as output; not the statement identity."
     },
     {
       "name": "amount",
@@ -108,14 +113,14 @@
     }
   ],
   "identity": [
-    "bankTransNo"
+    "end2EndId"
   ],
-  "identity_description": "Typed native bank transaction number within the acquired account/currency/date scope.",
+  "identity_description": "Native end2EndId primary key, retaining its source value and type. Account/currency/date scope is checked independently; repeated bank transaction numbers do not merge distinct statements.",
   "limitations": [
     "Fixed tenant GUAPW3SG, POST /bankAccountDetailQuery.json, rowStart offsets and pageSize=1000; timezone GMT+08.",
     "Explicit account alias, currency and inclusive date bounds are required for acquisition. Z21 is the default institution; no scope inference from alias.",
     "Native amounts, dates, timezones and unknown fields retain their values and types. Capture time does not replace transaction or value date.",
-    "Total is data.totalCount and must remain fixed; duplicate transaction identities and contradictory scope fail.",
+    "Total is data.totalCount and must remain fixed; duplicate native statement identities and contradictory scope fail.",
     "fund-direction is a local exact filter. Refresh saves the entire acquired scope; cached replay needs no acquisition parameters."
   ],
   "examples": [
@@ -138,7 +143,7 @@
     "primary_id": {
       "type": "field",
       "fields": [
-        "bankTransNo"
+        "end2EndId"
       ]
     }
   }

@@ -56,7 +56,7 @@ def installed(request, run_cli, tmp_path, monkeypatch):
 LEAVES = {
     "cash.waterlevels": (1000, None, "aliasName"),
     "forecast.adjustments": (1000, "bankCashForecastAdjustmentQueryVO", "id"),
-    "cash.statements.intraday": (1000, None, "bankTransNo"),
+    "cash.statements.intraday": (1000, None, "end2EndId"),
     "cash.statements.end_of_day": (1000, None, "end2EndId"),
     "cash.credit_lines": (100, "bankCreditLineQuery", "id"),
     "cash.credit_usage": (100, "bankCreditLineQuery", "id"),
@@ -115,8 +115,7 @@ def native_row(leaf, number=0):
         record["currency"] = ["USD", "EUR", "JPY"][number % 3]
         record["curAvlBal"] = Decimal("123456789.123456789123456789")
     elif leaf.startswith("cash.statements."):
-        if leaf.endswith("end_of_day"):
-            record["bankTransNo"] = f"bank-{number}"
+        record["bankTransNo"] = f"bank-{number}"
         record.update(
             instId="Z21",
             bankAccountAliasName="synthetic",
@@ -774,7 +773,9 @@ def test_intraday_missing_currency_rejects_and_preserves_cache(installed):
     browser.business_script.append(page(leaf, records))
     cli("liquidity", "refresh", leaf, *scope_flags(leaf))
     before = cli("liquidity", "list", leaf, "--limit", "0")
-    browser.business_script.append(page(leaf, [{"bankTransNo": "tx"}]))
+    browser.business_script.append(
+        page(leaf, [{"end2EndId": "statement-1", "bankTransNo": "tx"}])
+    )
     result = cli("liquidity", "refresh", leaf, *scope_flags(leaf), code=1)
     assert result["error"]["code"] == "INVALID_RESPONSE"
     after = cli("liquidity", "list", leaf, "--limit", "0")
@@ -933,5 +934,78 @@ def test_eod_does_not_alias_native_primary_key_spelling(installed, wrong_case):
     record = native_row(leaf)
     record[wrong_case] = record.pop("end2EndId")
     browser.business_script.append(page(leaf, [record]))
+    result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf), code=1)
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+
+
+def test_intraday_native_key_retains_distinct_rows_with_same_transaction_scope(
+    installed,
+):
+    leaf = "cash.statements.intraday"
+    cli, browser = installed(leaf)
+    first = {**native_row(leaf), "end2EndId": "intraday-1"}
+    second = {**first, "end2EndId": "intraday-2", "amount": None}
+    browser.business_script.append(page(leaf, [first, second]))
+    result = cli(
+        "liquidity", "list", leaf, "--live", "--require-complete", *scope_flags(leaf)
+    )
+    assert result["data"] == [first, second]
+    assert result["meta"]["complete"] is True
+
+
+@pytest.mark.parametrize("wrong_key", [None, "end2endid", "endToEndId"])
+def test_intraday_native_key_requires_exact_field_without_fallback(
+    installed, wrong_key
+):
+    leaf = "cash.statements.intraday"
+    cli, browser = installed(leaf)
+    record = native_row(leaf)
+    identity = record.pop("end2EndId")
+    if wrong_key is not None:
+        record[wrong_key] = identity
+    browser.business_script.append(page(leaf, [record]))
+    result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf), code=1)
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+
+
+def test_intraday_native_key_conflict_rejects_different_bank_transaction(installed):
+    leaf = "cash.statements.intraday"
+    cli, browser = installed(leaf)
+    first = native_row(leaf)
+    second = {**first, "bankTransNo": "another-bank-number"}
+    browser.business_script.append(page(leaf, [first, second]))
+    result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf), code=1)
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert "IDENTITY_CONTENT_CONFLICT" in result["meta"]["acquisition"]["reasons"]
+
+
+@pytest.mark.parametrize("bank_number", [None, "", "absent"])
+def test_intraday_bank_transaction_number_is_output_only(installed, bank_number):
+    leaf = "cash.statements.intraday"
+    cli, browser = installed(leaf)
+    record = {**native_row(leaf), "bankTransNo": bank_number}
+    if bank_number == "absent":
+        del record["bankTransNo"]
+    browser.business_script.append(page(leaf, [record]))
+    result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf))
+    assert result["data"] == [record]
+    assert result["meta"]["complete"] is True
+
+
+@pytest.mark.parametrize(
+    "field,bad",
+    [
+        ("instId", "outside"),
+        ("bankAccountAliasName", "outside"),
+        ("currency", "EUR"),
+        ("tntInstId", "WRONG"),
+        ("valueDate", "20260930"),
+        ("valueDate", "20261003"),
+    ],
+)
+def test_intraday_native_key_does_not_relax_scope_validation(installed, field, bad):
+    leaf = "cash.statements.intraday"
+    cli, browser = installed(leaf)
+    browser.business_script.append(page(leaf, [{**native_row(leaf), field: bad}]))
     result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf), code=1)
     assert result["error"]["code"] == "INVALID_RESPONSE"
