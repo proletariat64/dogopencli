@@ -7,16 +7,18 @@
       "description": "Read native physical cash pool report rows without business operations.",
       "parameters": [
         {
-          "name": "start-date",
+          "name": "from-date",
           "type": "string",
           "required": true,
-          "description": "Inclusive source value-date start, YYYY-MM-DD."
+          "description": "Inclusive source value-date start, YYYY-MM-DD.",
+          "temporal_role": "history_from"
         },
         {
-          "name": "end-date",
+          "name": "to-date",
           "type": "string",
           "required": true,
-          "description": "Inclusive source value-date end, YYYY-MM-DD; earlier than one calendar month after start."
+          "description": "Inclusive source value-date end, YYYY-MM-DD; earlier than one calendar month after start.",
+          "temporal_role": "history_to"
         },
         {
           "name": "timezone",
@@ -27,7 +29,17 @@
           ],
           "description": "Explicit native source timezone; currently qualified GMT+08."
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "valueDate",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     }
   },
   "summary": "Native physical cash pool operating report records.",
@@ -91,7 +103,7 @@
   "examples": [
     {
       "title": "Read physical cash pool reports",
-      "command": "dogopencli liquidity list cash.physical_pool_reports --start-date 2026-10-17 --end-date 2026-10-23 --timezone GMT+08 --live --limit 0"
+      "command": "dogopencli liquidity list cash.physical_pool_reports --from-date 2026-10-17 --to-date 2026-10-23 --timezone GMT+08 --live --limit 0"
     }
   ],
   "dataset": {

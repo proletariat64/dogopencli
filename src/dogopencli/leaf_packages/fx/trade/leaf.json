@@ -65,18 +65,32 @@
           ]
         },
         {
-          "name": "transact-from",
+          "name": "from-time",
           "type": "string",
           "required": false,
-          "description": "Inclusive YYYY-MM-DD in UTC+08 or explicit-offset ISO instant."
+          "description": "Inclusive ISO calendar date (UTC+08 full-day expansion) or explicit-offset/Z instant with seconds and 1–3 fractional digits; unknown offsets and higher precision are rejected. Paired bounds required; omitted ID and bounds freezes yesterday before persistence.",
+          "temporal_role": "history_from"
         },
         {
-          "name": "transact-to",
+          "name": "to-time",
           "type": "string",
           "required": false,
-          "description": "Inclusive bound paired with transact-from. Omitted ID and dates uses the previous complete UTC+08 day."
+          "description": "Inclusive ISO calendar date (UTC+08 full-day expansion) or explicit-offset/Z instant with seconds and 1–3 fractional digits; unknown offsets and higher precision are rejected. Paired bounds required; omitted ID and bounds freezes yesterday before persistence.",
+          "temporal_role": "history_to"
         }
-      ]
+      ],
+      "freeze_parameters": true,
+      "history": {
+        "interpretation": "instant",
+        "time_basis": "transactTime",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "precision": "millisecond",
+        "from_parameter": "from-time",
+        "to_parameter": "to-time",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     }
   },
   "summary": "Native individual FX trades from RiskStandardTrade.",
@@ -237,7 +251,7 @@
   "examples": [
     {
       "title": "Query live",
-      "command": "dogopencli fx list trade --live --transact-from 2026-10-03 --transact-to 2026-10-03 --bcode BCODE --scene 'A+前报价' --symbol USD/PHP --transaction-type SALE --fulfilled 1"
+      "command": "dogopencli fx list trade --live --from-time 2026-10-03 --to-time 2026-10-03 --bcode BCODE --scene 'A+前报价' --symbol USD/PHP --transaction-type SALE --fulfilled 1"
     }
   ],
   "dataset": {

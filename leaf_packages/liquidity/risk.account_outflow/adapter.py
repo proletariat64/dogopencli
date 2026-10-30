@@ -15,37 +15,29 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
+from dogopencli.temporal import parse_iso_millisecond_instant
 
 TENANT = "GUAPW3SG"
 REASON = "EXPECTED_BAL_NOT_ENOUGH"
 PAGE_SIZE = 1000
 NATIVE_TIME_ZONE = timezone(timedelta(hours=8))
-INSTANT_PATTERN = re.compile(
-    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
-    r"(?:\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})"
-)
 
 
 def warning_instant(value: Any) -> datetime:
     try:
-        if not isinstance(value, str) or not INSTANT_PATTERN.fullmatch(value):
-            raise ValueError
-        instant = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if instant.utcoffset() is None or instant.microsecond % 1000:
-            raise ValueError
-        return instant.astimezone(timezone.utc)
+        return parse_iso_millisecond_instant(value).astimezone(timezone.utc)
     except (AttributeError, TypeError, ValueError) as error:
         raise CliError(
             INVALID_ARGUMENT,
-            "warning bounds require ISO8601 timestamps with explicit offsets "
+            "warning bounds require known ISO8601 offsets "
             "and at most millisecond precision",
             exit_code=2,
         ) from error
 
 
 def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
-    start = warning_instant(parameters.get("warning_from"))
-    end = warning_instant(parameters.get("warning_to"))
+    start = warning_instant(parameters.get("from_time"))
+    end = warning_instant(parameters.get("to_time"))
     if start > end:
         raise CliError(INVALID_ARGUMENT, "warning bounds are reversed", exit_code=2)
     values = {
@@ -203,6 +195,13 @@ class Inquiry:
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = native_scope(parameters)
+        return {"from": native["warningTimeStart"], "to": native["warningTimeEnd"]}
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {"from_time": bounds["from"], "to_time": bounds["to"]}
+
     def capability(self, parameters: dict[str, Any]) -> Inquiry:
         return Inquiry(native_scope(parameters))
 

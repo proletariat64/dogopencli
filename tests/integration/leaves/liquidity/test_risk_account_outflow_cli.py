@@ -20,9 +20,9 @@ ROOT = Path(__file__).resolve().parents[4]
 LEAF = "risk.account_outflow"
 VO = "accountflowMonitorQueryRequest"
 FLAGS = (
-    "--warning-from",
+    "--from-time",
     "2026-10-23T08:00:00+08:00",
-    "--warning-to",
+    "--to-time",
     "2026-10-24T23:59:59.999+08:00",
 )
 
@@ -152,35 +152,35 @@ def test_native_warning_time_contradictions_fail(installed, warning_time):
     "bounds",
     [
         (),
-        ("--warning-from", "2026-10-23T00:00:00Z"),
+        ("--from-time", "2026-10-23T00:00:00Z"),
         (
-            "--warning-from",
+            "--from-time",
             "2026-10-23T00:00:00",
-            "--warning-to",
+            "--to-time",
             "2026-10-24T00:00:00",
         ),
         (
-            "--warning-from",
+            "--from-time",
             "2026-10-23 00:00:00Z",
-            "--warning-to",
+            "--to-time",
             "2026-10-24T00:00:00Z",
         ),
         (
-            "--warning-from",
+            "--from-time",
             "2026-02-30T00:00:00Z",
-            "--warning-to",
+            "--to-time",
             "2026-10-24T00:00:00Z",
         ),
         (
-            "--warning-from",
+            "--from-time",
             "2026-10-23T00:00:00.000001Z",
-            "--warning-to",
+            "--to-time",
             "2026-10-24T00:00:00Z",
         ),
         (
-            "--warning-from",
+            "--from-time",
             "2026-10-25T00:00:00Z",
-            "--warning-to",
+            "--to-time",
             "2026-10-24T00:00:00Z",
         ),
     ],
@@ -455,8 +455,8 @@ def test_unqualified_selectors_width_and_composition_fail_before_browser(
 def test_restricted_transport_rejects_changed_inquiry_contract(installed, change):
     _, browser, config = installed
     parameters = {
-        "warning_from": "2026-10-23T00:00:00Z",
-        "warning_to": "2026-10-24T15:59:59.999Z",
+        "from_time": "2026-10-23T00:00:00Z",
+        "to_time": "2026-10-24T15:59:59.999Z",
         "entity": ["ENTITY"],
     }
     adapter = Registry(config / "config.toml").scan().get("liquidity", LEAF).adapter

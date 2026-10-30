@@ -7,16 +7,18 @@
       "description": "Read native account-outflow risk observations for explicit warning instants.",
       "parameters": [
         {
-          "name": "warning-from",
+          "name": "from-time",
           "type": "string",
           "required": true,
-          "description": "Inclusive warning start instant: ISO8601 timestamp with explicit offset, at most millisecond precision."
+          "description": "Inclusive warning start instant: ISO8601 timestamp with explicit offset, at most millisecond precision.",
+          "temporal_role": "history_from"
         },
         {
-          "name": "warning-to",
+          "name": "to-time",
           "type": "string",
           "required": true,
-          "description": "Inclusive warning end instant: ISO8601 timestamp with explicit offset, at most millisecond precision."
+          "description": "Inclusive warning end instant: ISO8601 timestamp with explicit offset, at most millisecond precision.",
+          "temporal_role": "history_to"
         },
         {
           "name": "entity",
@@ -32,7 +34,18 @@
           "multiple": true,
           "description": "Exact native bankId selector sent as bankIds array; repeat for OR within bank, AND with entity. This changes native acquisition scope."
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "instant",
+        "time_basis": "warningTime",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "precision": "millisecond",
+        "from_parameter": "from-time",
+        "to_parameter": "to-time",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     }
   },
   "summary": "Account-outflow risk observations.",
@@ -141,7 +154,7 @@
   "examples": [
     {
       "title": "Read bounded account-outflow warnings",
-      "command": "dogopencli liquidity list risk.account_outflow --live --warning-from 2026-10-23T00:00:00Z --warning-to 2026-10-24T23:59:59.999Z --require-complete"
+      "command": "dogopencli liquidity list risk.account_outflow --live --from-time 2026-10-23T00:00:00Z --to-time 2026-10-24T23:59:59.999Z --require-complete"
     }
   ],
   "dataset": {

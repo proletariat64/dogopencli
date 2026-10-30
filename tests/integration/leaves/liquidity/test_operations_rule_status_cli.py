@@ -15,9 +15,9 @@ LEAF = "operations.rule_status"
 SOURCE = ROOT / "leaf_packages/liquidity" / LEAF
 VO = "transferRuleRecordQueryRequesVO"
 FLAGS = (
-    "--trigger-from",
+    "--from-time",
     "2026-01-01T00:00:00Z",
-    "--trigger-to",
+    "--to-time",
     "2026-01-01T00:00:00Z",
 )
 EPOCH = 1767225600000
@@ -128,9 +128,9 @@ def test_summary_projection_native_order_exact_string_vo_and_utc_offsets(install
     ]
     browser.business_script.append(page(rows))
     flags = (
-        "--trigger-from",
+        "--from-time",
         "2026-01-01T08:00:00+08:00",
-        "--trigger-to",
+        "--to-time",
         "2025-12-31T19:00:00-05:00",
     )
     got = cli("list", *flags, "--live", "--limit", "0", "--require-complete")
@@ -177,7 +177,7 @@ def test_summary_projection_native_order_exact_string_vo_and_utc_offsets(install
 def test_invalid_or_reversed_scope_before_browser(installed, bad):
     cli, browser, _ = installed
     assert (
-        cli("list", "--trigger-from", bad, "--trigger-to", FLAGS[3], "--live", code=2)[
+        cli("list", "--from-time", bad, "--to-time", FLAGS[3], "--live", code=2)[
             "error"
         ]["code"]
         == "INVALID_ARGUMENT"

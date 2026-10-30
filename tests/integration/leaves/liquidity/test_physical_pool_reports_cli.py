@@ -72,7 +72,7 @@ def native(rows, total=None, amount="123.0000000000000001"):
 
 
 def flags(start="2026-10-17", end="2026-10-23"):
-    return ["--start-date", start, "--end-date", end, "--timezone", "GMT+08"]
+    return ["--from-date", start, "--to-date", end, "--timezone", "GMT+08"]
 
 
 def test_each_independent_leaf_queries_its_fixed_native_pool_scope(installed):
@@ -163,7 +163,7 @@ def test_valid_calendar_month_range_sends_exact_source_dates(installed, start, e
         ["--execute"],
         ["--tnt-inst-id", "OTHER"],
         ["--timezone", "Asia/Singapore"],
-        ["--end-date", "9999-99-99"],
+        ["--to-date", "9999-99-99"],
     ],
 )
 def test_unverified_arguments_do_not_query(installed, extra):

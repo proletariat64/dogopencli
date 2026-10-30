@@ -3,7 +3,7 @@
 Read native `/cashPoolReportList.json` records with fixed `cashPoolType=Sweeping_Agreement`. Native `id` identifies one report record. The standard List SDK owns complete offset acquisition, native total checks and cache publication.
 
 ```bash
-dogopencli liquidity list cash.sweeping_reports --start-date 2026-10-17 --end-date 2026-10-23 --timezone GMT+08 --live --limit 0 --require-complete
+dogopencli liquidity list cash.sweeping_reports --from-date 2026-10-17 --to-date 2026-10-23 --timezone GMT+08 --live --limit 0 --require-complete
 ```
 
 Dates are required ISO `YYYY-MM-DD`; requests use source `YYYYMMDD`. End date must be on or after start and before the one-calendar-month boundary, including month-end clipping. `--timezone GMT+08` explicitly selects the verified native environment option. Scope retains tenant, report type, dates and selected timezone.
