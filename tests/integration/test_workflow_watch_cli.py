@@ -760,3 +760,22 @@ def test_settled_incomplete_source_keeps_last_rate_without_forward_eta(run_cli, 
     assert "Last source row rate:" in text
     assert "ETA: not applicable" in text
     assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+
+
+def test_watch_errors_keep_default_text_and_explicit_json_envelopes(run_cli, pilots):
+    task = prepare(run_cli)
+    command = ["workflow", "export", "watch", "--run", task["id"]]
+    for flags in (["--interval", "0"], ["--snapshot", "--until-settled"]):
+        code, out, err = run_cli([*command, *flags])
+        assert code == 2
+        assert "Error:\n" in out
+        assert "INVALID_ARGUMENT" in out
+        code, out, _ = run_cli([*command, *flags, "--format", "json"])
+        assert code == 2
+        assert json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+    code, out, err = run_cli(
+        ["workflow", "export", "watch", "--run", "0" * 32, "--snapshot"]
+    )
+    assert code == 1
+    assert "Error:\n" in out
+    assert "WORKFLOW_ERROR" in out

@@ -152,6 +152,11 @@ def main(argv: list[str]) -> int:
             if len(node.path) == 3 and node.path[-1] == "watch":
                 from ..workflow_watch import watch
 
+                # The shared exception handlers must use watch's text default.
+                if not any(
+                    token.startswith("--format=") for token in invocation.remaining
+                ):
+                    output_format = "text"
                 return watch(invocation)
             data, meta = dispatch(invocation)
             if len(node.path) == 3 and node.path[-1] == "status":
