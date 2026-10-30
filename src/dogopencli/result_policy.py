@@ -298,6 +298,18 @@ class AcquisitionEvidence:
                 and evidence.duplicate_count != 0
                 and evidence.selection is None
             )
+            or (
+                evidence.scope_complete
+                and evidence.duplicate_count != 0
+                and (
+                    coverage_basis == "qualified_short_page"
+                    or (
+                        coverage_basis == "accepted_short_page"
+                        and evidence.selection is not None
+                        and evidence.selection["resolved_version_count"] != 0
+                    )
+                )
+            )
         ):
             raise CliError(
                 INVALID_RESPONSE, "cached single-response coverage conflicts"

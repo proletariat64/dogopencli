@@ -1,6 +1,7 @@
 """Transfer business calendar and version selection through the public CLI."""
 
 import json
+import zoneinfo
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,41 @@ from dogopencli.jsonutil import parse
 installed = operations_installed
 
 ROOT = Path(__file__).resolve().parents[4]
+
+
+def test_transfer_plan_uses_packaged_timezone_data_without_system_database(run_cli):
+    previous_path = zoneinfo.TZPATH
+    try:
+        zoneinfo.reset_tzpath([])
+        zoneinfo.ZoneInfo.clear_cache()
+        code, out, error = run_cli(
+            [
+                "plugins",
+                "install",
+                str(ROOT / "leaf_packages/liquidity/operations.transfers"),
+            ]
+        )
+        assert code == 0, out + error
+        code, out, error = run_cli(
+            [
+                "workflow",
+                "plan",
+                "create",
+                "--leaf",
+                "liquidity.operations.transfers",
+                "--mode",
+                "history",
+                "--parameters",
+                '{"from-date":"2026-03-08","to-date":"2026-03-08"}',
+            ]
+        )
+        assert code == 0, out + error
+        plan = json.loads(out)["data"]
+        assert plan["native_scope"]["transactionStartDate"] == "2026-03-07 08:00:00"
+        assert plan["native_scope"]["transactionEndDate"] == "2026-03-08 08:59:59"
+    finally:
+        zoneinfo.reset_tzpath(previous_path)
+        zoneinfo.ZoneInfo.clear_cache()
 
 
 @pytest.mark.parametrize(

@@ -134,6 +134,52 @@ def acquire(source, dataset, state=None, scope="private-scope", **kwargs):
 
 
 @pytest.mark.parametrize(
+    "duplicate_policy", ["conservative", "allow_identical_overlap"]
+)
+@pytest.mark.parametrize("changed_version", [False, True])
+def test_latest_selection_does_not_prove_short_page_overlap_coverage(
+    duplicate_policy, changed_version
+):
+    source = Native(size=2)
+    source.contract = replace(
+        source.contract, duplicate_policy=duplicate_policy, allowed_page_sizes=(2,)
+    )
+    data = Dataset(source, length=0)
+    data.rows = [
+        {"id": "a", "version": 1},
+        {"id": "b", "version": 1},
+        {"id": "b", "version": 2 if changed_version else 1},
+        {"id": "c", "version": 1},
+    ]
+    result = collect_list(
+        source,
+        data,
+        "private-scope",
+        {**settings(source), "latest_by": "version"},
+        domain="liquidity",
+        leaf_id="liquidity.fixture",
+    )
+    expected_complete = (
+        duplicate_policy == "allow_identical_overlap" and not changed_version
+    )
+    assert result.complete is expected_complete
+    assert result.records == [data.rows[0], data.rows[2], data.rows[3]]
+    restored = AcquisitionEvidence.from_record(result.evidence.record())
+    assert restored.scope_complete is expected_complete
+    assert "CROSS_PAGE_OR_INTRA_PAGE_DUPLICATES" in restored.reasons
+    assert restored.selection["resolved_version_count"] == int(changed_version)
+    decision = evaluate_result(restored, mode="refresh", require_complete=True)
+    assert decision.exit_code == (0 if expected_complete else 1)
+    assert decision.publishable is expected_complete
+    if not expected_complete:
+        unsafe = replace(
+            result.evidence, scope_complete=True, dataset_complete=True
+        ).record()
+        with pytest.raises(CliError, match="coverage"):
+            AcquisitionEvidence.from_record(unsafe)
+
+
+@pytest.mark.parametrize(
     "mode,one_based", [("offset", False), ("page_number", False), ("page_number", True)]
 )
 @pytest.mark.parametrize("holes", [(), (0, 3, 4, 15, 16), (23, 24)])

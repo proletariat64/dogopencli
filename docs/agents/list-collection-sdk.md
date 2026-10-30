@@ -118,6 +118,13 @@ not qualify this mode. See
 
 ## Qualified short-page termination and hole recovery
 
+For short-page traversal without a native total, `latest_by` selects a document
+version but does not qualify overlapping page identities as complete coverage.
+Such overlaps retain their traversal gap and fail strict acceptance. An explicit
+`allow_identical_overlap` endpoint guarantee covers only identical repeated rows;
+it does not cover differing versions of the same identity. Cache replay enforces
+the same distinction.
+
 Declare `paging.termination: "short_page"` for a separately qualified positional
 endpoint with stable ordering across its allowed widths. Use `mode: "offset"`
 or `"page_number"`, positive endpoint-qualified widths and verified native

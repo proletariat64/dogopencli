@@ -449,8 +449,10 @@ def _short_page_candidate(
         complete=(not conflicts or latest_by is not None)
         and (
             not duplicates
-            or latest_by is not None
-            or capability.contract.duplicate_policy == "allow_identical_overlap"
+            or (
+                capability.contract.duplicate_policy == "allow_identical_overlap"
+                and not conflicts
+            )
         ),
         reported_total=None,
         collected_total=len(ordered),
