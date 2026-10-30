@@ -139,6 +139,22 @@ def exact_match(left: dict, right: dict) -> bool:
     )
 
 
+def publication_progress(
+    artifact: dict, *, replayed: bool, inserted_count: int
+) -> None:
+    """Report only after an exact publication commit or validated receipt replay."""
+    from .progress import report
+
+    report(
+        phase="publication",
+        export_id=artifact["id"],
+        expected_rows=artifact["record_count"],
+        committed_rows=artifact["record_count"],
+        replayed=replayed,
+        inserted_count=inserted_count,
+    )
+
+
 BATCH_ROWS = 10000
 
 
@@ -152,6 +168,18 @@ def stage_rows(db: Any, artifact: dict) -> None:
     Observation/publication receipts alone expose data. Staged rows survive an
     interruption but never appear in observations or registered current tables.
     """
+    from .progress import report
+
+    report(
+        phase="staging",
+        export_id=artifact["id"],
+        expected_rows=artifact["record_count"],
+        staged_rows=0,
+        resumed_staged_rows=0,
+        committed_rows=0,
+        replayed=False,
+        inserted_count=0,
+    )
     db.execute(
         "CREATE TABLE IF NOT EXISTS _dogopencli_observation_rows "
         "(export_id VARCHAR NOT NULL, ordinal BIGINT NOT NULL, _record "
@@ -191,6 +219,7 @@ def stage_rows(db: Any, artifact: dict) -> None:
                 raise CliError(
                     "WORKFLOW_ERROR", "Exact export differs from staged rows"
                 )
+            report(staged_rows=end, resumed_staged_rows=end)
             continue
         with NamedTemporaryFile(mode="w+", encoding="utf-8", suffix=".jsonl") as stream:
             for ordinal, row in enumerate(rows, start):
@@ -205,6 +234,7 @@ def stage_rows(db: Any, artifact: dict) -> None:
             )
             stage_checkpoint("before_batch_commit", end)
             db.execute("COMMIT")
+            report(staged_rows=end)
             stage_checkpoint("after_batch_commit", end)
 
 
@@ -237,6 +267,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                         "Exact export differs from committed observation",
                     )
                 db.execute("ROLLBACK")
+                publication_progress(artifact, replayed=True, inserted_count=0)
                 return {
                     **parse(previous[1]),
                     "action": "preserve",
@@ -269,6 +300,9 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
             )
             stage_checkpoint("before_publication_commit", artifact["record_count"])
             db.execute("COMMIT")
+            publication_progress(
+                artifact, replayed=False, inserted_count=artifact["record_count"]
+            )
             stage_checkpoint("after_publication_commit", artifact["record_count"])
             return {
                 **receipt,

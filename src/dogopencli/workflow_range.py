@@ -203,7 +203,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
         invalid("Replacement plan differs from frozen native range")
     with lifecycle_lock(Registry(config_file)):
         with connection(binding, write=True) as db:
-            from .workflow_storage import stage_rows
+            from .workflow_storage import publication_progress, stage_rows
 
             stage_rows(db, artifact)
             db.execute("BEGIN TRANSACTION")
@@ -238,6 +238,7 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 if not saved or not metadata_match(saved[0], artifact):
                     invalid("Exact export differs from committed range publication")
                 db.execute("ROLLBACK")
+                publication_progress(artifact, replayed=True, inserted_count=0)
                 return {**parse(replay[0]), "replayed": True, "inserted_count": 0}
             compatible(db, artifact)
             previous = pointer(db, artifact)
@@ -327,6 +328,9 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
                 ],
             )
             db.execute("COMMIT")
+            publication_progress(
+                artifact, replayed=False, inserted_count=artifact["record_count"]
+            )
             return {
                 **receipt,
                 "replayed": False,
