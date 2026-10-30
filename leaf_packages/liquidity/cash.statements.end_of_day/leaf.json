@@ -48,7 +48,17 @@
           ],
           "description": "Only verified source timezone."
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "valueDate",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     }
   },
   "summary": "Dated native end-of-day cash statements.",

@@ -113,6 +113,17 @@
             "description": "Native selected account alias returned by baseline detail."
           }
         }
+      },
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "selected query day (startDate/endDate); statisticalDate is an HH:mm slot",
+        "boundary": "inclusive",
+        "timezone": null,
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false,
+        "max_day_difference": 0
       }
     }
   },

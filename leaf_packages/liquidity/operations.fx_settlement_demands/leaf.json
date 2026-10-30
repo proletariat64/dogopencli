@@ -58,7 +58,18 @@
           "local_field": "subBizType",
           "description": "Native sub-business type; exact local filter after complete acquisition; OR within this selector, AND across selectors."
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "valueDate",
+        "boundary": "inclusive",
+        "timezone": null,
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false,
+        "max_day_difference": 31
+      }
     }
   },
   "summary": "FX settlement demands for explicit value dates.",

@@ -171,6 +171,19 @@ DETAIL = DetailInquiry()
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = native_scope(parameters)
+        return {
+            "from": date.fromisoformat(native["tradingDateBegin"]).isoformat(),
+            "to": date.fromisoformat(native["tradingDateEnd"]).isoformat(),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {
+            "from_date": bounds["from"],
+            "to_date": bounds["to"],
+        }
+
     def detail_capability(self, parameters: dict[str, Any]) -> DetailInquiry:
         return DETAIL
 

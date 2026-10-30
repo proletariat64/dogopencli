@@ -202,6 +202,23 @@ CAPABILITY = StatementInquiry()
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = request_scope(parameters)
+        return {
+            "from": datetime.strptime(native["queryDateBegin"], "%Y%m%d")
+            .date()
+            .isoformat(),
+            "to": datetime.strptime(native["queryDateEnd"], "%Y%m%d")
+            .date()
+            .isoformat(),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {
+            "from_date": bounds["from"].replace("-", ""),
+            "to_date": bounds["to"].replace("-", ""),
+        }
+
     def capability(self, parameters: dict[str, Any]) -> Any:
         request_scope(parameters)
         return CAPABILITY

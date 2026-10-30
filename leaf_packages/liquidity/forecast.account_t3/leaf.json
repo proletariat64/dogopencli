@@ -27,7 +27,17 @@
           "local_field": "forecastDate",
           "description": "Inclusive forecastDate upper bound, YYYYMMDD."
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "forecastDate",
+        "boundary": "inclusive",
+        "timezone": null,
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     }
   },
   "summary": "Single-account T3 forecast demands.",
@@ -86,7 +96,7 @@
   ],
   "identity_description": "Eight native business dimensions; no synthetic output ID.",
   "limitations": [
-    "POST JSON /t3ForecastDemandList.json with one alias, startDate/endDate, rowStart and qualified pageSize 10 only.",
+    "POST JSON /t3ForecastDemandList.json with one alias, startDate/endDate, rowStart and qualified pageSize 1000 only.",
     "Forecast-date bounds select forecastDate, not expectValueDate. Native timezone, amounts, unknown fields and response order remain unchanged.",
     "Normal SDK total and identity completeness replaces the historical extra terminal-empty probe. No Get, account resolver, T0 inquiry or related-source acquisition.",
     "Bare offline List replays the saved scope. Explicit alias/date filters select local rows; changed source scopes have unproved coverage and strict reads reject them."

@@ -129,6 +129,19 @@ NAME = "liquidity.investment.benchmark_values"
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = parse(self.scope(parameters))
+        return {
+            "from": date.fromisoformat(native["valueDateStart"]).isoformat(),
+            "to": date.fromisoformat(native["valueDateEnd"]).isoformat(),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {
+            "from_date": bounds["from"],
+            "to_date": bounds["to"],
+        }
+
     def scope(self, parameters: dict[str, Any]) -> str:
         values = {"tntInstId": TENANT}
         start = compact_day(parameters.get("from_date"))

@@ -178,6 +178,19 @@ class Inquiry:
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = native_scope(parameters)
+        return {
+            "from": date.fromisoformat(native["valueDateStart"]).isoformat(),
+            "to": date.fromisoformat(native["valueDateEnd"]).isoformat(),
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {
+            "from_date": bounds["from"],
+            "to_date": bounds["to"],
+        }
+
     def capability(self, parameters: dict[str, Any]) -> Inquiry:
         local_filters(parameters)
         return Inquiry(native_scope(parameters))
