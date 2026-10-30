@@ -1,8 +1,8 @@
 {
   "parent_issue": 218,
   "tools_issue": 261,
-  "expected_packages": 79,
-  "expected_actions": 106,
+  "expected_packages": 80,
+  "expected_actions": 107,
   "reference_commit": "a7e5c5ead675487646eb9a53d73ec9e0aeb944f9",
   "batches": [
     {
@@ -145,40 +145,52 @@
       "id": "B05",
       "title": "投资持仓、台账与收益",
       "issue": 264,
-      "status": "delivered",
+      "status": "blocked",
       "members": [
         {
           "identity": "liquidity.investment.holdings",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.investment.transactions",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.investment.compound_ledger",
           "operations": [
             "list",
             "get"
-          ]
+          ],
+          "status": "delivered"
         },
         {
           "identity": "liquidity.investment.benchmark_values",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "delivered"
         },
         {
-          "identity": "liquidity.investment.returns",
+          "identity": "liquidity.investment.accrual",
           "operations": [
             "list"
-          ]
+          ],
+          "status": "blocked"
+        },
+        {
+          "identity": "liquidity.investment.settlement",
+          "operations": [
+            "list"
+          ],
+          "status": "blocked"
         }
       ]
     },

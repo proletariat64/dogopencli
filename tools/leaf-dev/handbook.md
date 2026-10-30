@@ -84,12 +84,16 @@ declarations, shared budgets, leaf-qualified detail refusals/failures and
 source/relationship evidence.
 Standard and custom execution may coexist across List and Get.
 
-For a qualified inclusive calendar inquiry, opt in through
-`operations.list.history` and implement the two pure date conversion methods.
-The leaf chooses its accepted public formats; the host only accepts ISO
-`YYYY-MM-DD` across this SDK boundary, constructs the contract, and validates
-explicit windows without changing native acquisition. Follow
-[bounded history](../../docs/agents/bounded-history.md#native-declaration-and-date-boundary)
+For a qualified inclusive single calendar or instant inquiry, opt in through
+`operations.list.history` and implement the two pure temporal conversion methods.
+The leaf chooses public formats and native precision; the host accepts only
+`YYYY-MM-DD` calendar bounds or UTC millisecond `YYYY-MM-DDTHH:mm:ss.SSSZ` instant
+bounds. It constructs the contract and validates exact windows without changing
+native acquisition. A calendar axis uses `from-date`/`to-date`; an instant axis
+uses `from-time`/`to-time`. Date-only expansion requires a verified leaf timezone;
+daily clock filters remain fixed selectors. Do not truncate or widen requested
+windows to fit native precision.
+Follow [bounded history](../../docs/agents/bounded-history.md#native-declaration-and-temporal-boundary)
 and the executable [calendar sample](example-history/). Do not copy a
 `history_contract` dictionary into each adapter. Full observations require no
 history declaration or conversion methods and keep their existing parameters.

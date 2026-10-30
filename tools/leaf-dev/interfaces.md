@@ -15,7 +15,8 @@ fields. Start from [leaf.json](example/leaf.json), then run `leaf.py verify`.
 | `adapter` | Root Python file and exported object, e.g. `adapter.py:adapter`. |
 | `operations` | Verified `list` and/or `get`, each with description and parameters. Host provides describe/help, plus refresh/prune for List. |
 | `operations.<action>.execution` | `standard` (also the omission convention) or explicit `custom`; chosen independently for List/Get. |
-| `operations.list.history` | Optional verified inclusive calendar axis; independent of standard/custom execution. Declaration and conversion boundary: [bounded history](../../docs/agents/bounded-history.md#native-declaration-and-date-boundary). |
+| `operations.list.freeze_parameters` | Optional explicit opt-in to a pure List default-freezing hook before persisted planning; the hook cannot overwrite supplied values. |
+| `operations.list.history` | Optional verified inclusive single calendar or instant axis; independent of standard/custom execution. Declaration and conversion boundary: [bounded history](../../docs/agents/bounded-history.md#native-declaration-and-temporal-boundary). |
 | Custom operation `queries`, `max_requests`, `budget_seconds` | Named List/detail inquiries and shared execution bounds; see [Custom query SDK](../../docs/agents/custom-query-sdk.md). |
 | `summary`, `purpose`, `fields` | Discovery and business field meanings; preserve unknown native fields in output. |
 | `identity`, `identity_description` | Native List identity and its meaning; Get-only may use an empty List identity. |
@@ -96,13 +97,31 @@ verified mapping; it does not filter automatically or extend saved coverage.
 Help/describe/GUI prose comes from this manifest without activating adapters.
 Reconcile desired GUI edits into source before reinstallation.
 
-Calendar history is opt-in. A declared single calendar axis uses `from-date` and
-`to-date`; each remains a scalar string parameter whose accepted public formats
-belong to the leaf. The host accepts only ISO dates returned across the temporal
-boundary and supplied as workflow windows. This rule does not constrain arbitrary
-parameters or require full-only leaves to acquire a time declaration. Instant and
-multi-axis naming/models need their own scoped contracts, not a forced calendar
-declaration. See the [calendar sample](example-history/).
+History is opt-in. A declared single calendar axis uses `from-date` and
+`to-date`; a declared single instant axis uses `from-time` and `to-time`. Each is
+a scalar string parameter whose accepted public formats belong to the leaf.
+The host accepts only `YYYY-MM-DD` for calendar bounds and
+`YYYY-MM-DDTHH:mm:ss.SSSZ` for UTC millisecond instant bounds. Public date/datetime
+parsing and native encoding remain leaf-owned, with shared temporal helpers.
+Do not infer a timezone from the host or turn daily clock filters into instants.
+
+A parameter may explicitly declare `temporal_role`: `history_from`, `history_to`,
+`clock_from` or `clock_to`. History roles occur as a pair and must match the
+operation's history mapping. Clock roles occur as a pair with the same semantic
+prefix, for example `record-from-time`/`record-to-time`. Clock parameters are
+ordinary daily-time selectors, not a second history axis. Omitting roles remains
+valid for existing packages; declaration opt-in does not force migration of
+full-only leaves or the existing calendar packages.
+
+Helper validation checks explicit roles and model naming during verify/pack
+rather than guessing from arbitrary string names. A native whole-second restriction
+remains in force even when the host uses a millisecond representation. Every requested window must round-trip
+without widening or truncation. These rules do not require full-only leaves to
+acquire a temporal declaration or change their existing parameters. Multiple time
+axes and business joins are outside the standard history contract; use the
+existing custom query interface for qualified dependent orchestration.
+See [bounded history](../../docs/agents/bounded-history.md#native-declaration-and-temporal-boundary)
+and the [calendar sample](example-history/).
 
 ## Adapter
 
@@ -114,10 +133,11 @@ The [runtime](../../src/dogopencli/leaves/runtime.py) invokes these methods:
 | `source_capability(name, parameters)` | Declared multi-source List: return that source's independent restricted capability. No inquiry. |
 | `source_scope(name, parameters)` | Declared multi-source List: exact stable native scope for that source. |
 | `assemble(records_by_source, parameters)` | Pure leaf-owned mapping of all complete sources to reviewed aggregate roots; no queries. |
+| `freeze_parameters(parameters)` | With explicit List opt-in: return the full parameter dictionary with dynamic defaults materialized before planning. Preserve every explicit input; no inquiry or side effects. |
 | `scope(parameters)` | Stable string describing the native acquisition scope; canonical JSON suits structured inputs. |
 | `filter(records, parameters)` | Supported local filters only; return unchanged records when none are supported. |
-| `history_bounds(parameters)` | With a history declaration: pure conversion of leaf date parameters to only ISO `from`/`to` bounds. |
-| `history_parameters(bounds)` | With a history declaration: pure conversion of validated ISO bounds to only the declared adapter date keys. |
+| `history_bounds(parameters)` | With a history declaration: pure conversion of leaf parameters to only canonical `from`/`to` bounds for its declared model. |
+| `history_parameters(bounds)` | With a history declaration: pure conversion of validated canonical bounds to only the declared adapter range keys. |
 | `detail_capability(parameters)` | For standard Get: independent endpoint and pure native request/parser hooks. No inquiry. |
 | `query_capability(operation, name, parameters)` | Custom operation: pure capability for one declared named inquiry. |
 | `query_list(parameters, tools)` | Custom List: Python orchestration returning `CustomListResult` with records and business coverage. |

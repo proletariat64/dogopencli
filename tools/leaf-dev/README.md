@@ -14,9 +14,9 @@
 需要根据前一查询结果取得详情等依赖编排时，按操作显式选择 `execution: "custom"`；
 leaf 用 Python 调用宿主命名查询工具，宿主共享请求预算并保留失败和采集证据。
 声明、入口与覆盖责任见 [Custom SDK](../../docs/agents/custom-query-sdk.md)。
-已验证的自然日范围可通过 `operations.list.history` 显式启用共享时间能力，
-standard/custom List 均可使用。leaf 决定公开日期格式并负责双向转换；宿主只接受
-ISO `YYYY-MM-DD` 时间边界。全量观察无需时间声明，现有参数不受该格式限制。
+已验证的单自然日或时间点范围可通过 `operations.list.history` 显式启用共享时间能力，
+standard/custom List 均可使用。leaf 决定公开日期／时间格式并负责双向转换；宿主自然日
+只接受 `YYYY-MM-DD`，时间点只接受 UTC 毫秒 `YYYY-MM-DDTHH:mm:ss.SSSZ`。全量观察无需时间声明，现有参数不受该格式限制。
 声明与限制见[有界历史](../../docs/agents/bounded-history.md)，
 可执行示例见[日期范围](example-history/)。
 Get 使用独立详情 capability，只实现原生请求构造和解析验证。已确认关联可声明

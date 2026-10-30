@@ -315,9 +315,9 @@ def test_capture_summary_preserves_underlying_cli_diagnostic(
 def test_batch_handoff_covers_remaining_scope_once(tmp_path):
     path = ROOT / "tools/leaf-dev/batches.json"
     result = migration.batches(path)
-    assert (result["packages"], result["actions"]) == (79, 106)
-    assert (result["delivered_packages"], result["delivered_actions"]) == (79, 106)
-    assert (result["remaining_packages"], result["remaining_actions"]) == (0, 0)
+    assert (result["packages"], result["actions"]) == (80, 107)
+    assert (result["delivered_packages"], result["delivered_actions"]) == (78, 105)
+    assert (result["remaining_packages"], result["remaining_actions"]) == (2, 2)
     assert len(result["batches"]) == 24
     plan = json.loads(path.read_text())
     plan["batches"][3]["members"][0] = plan["batches"][2]["members"][0]

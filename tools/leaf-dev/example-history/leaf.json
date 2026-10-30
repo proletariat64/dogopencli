@@ -10,13 +10,15 @@
           "name": "from-date",
           "type": "string",
           "required": true,
-          "description": "Inclusive synthetic value date in compact YYYYMMDD format."
+          "description": "Inclusive synthetic value date in compact YYYYMMDD format.",
+          "temporal_role": "history_from"
         },
         {
           "name": "to-date",
           "type": "string",
           "required": true,
-          "description": "Inclusive synthetic value date in compact YYYYMMDD format."
+          "description": "Inclusive synthetic value date in compact YYYYMMDD format.",
+          "temporal_role": "history_to"
         }
       ],
       "history": {
