@@ -367,9 +367,11 @@ def test_progress_keeps_source_arrivals_separate_from_assembled_roots(
     left, right = sources()
     browser.business_script.extend([response(left), response(right)])
     latest = {}
+    current = {}
 
     def receive(facts):
-        latest.setdefault(facts.get("source"), {}).update(facts)
+        current.update(facts)
+        latest.setdefault(current.get("source"), {}).update(current)
 
     with observe(receive):
         result = query(cli, "refresh", *FLAGS, "--require-complete")

@@ -263,9 +263,9 @@ class Attempt:
                     ):
                         progress.pop(key, None)
                 progress.update(facts)
-                if self.state["kind"] == "import" and facts.get("export_id"):
+                if self.state["kind"] == "import" and progress.get("export_id"):
                     item = self.state.setdefault("input_progress", {}).setdefault(
-                        facts["export_id"], {}
+                        progress["export_id"], {}
                     )
                     item.update(
                         {
@@ -280,7 +280,7 @@ class Attempt:
                             if key in facts
                             and (
                                 key in {"expected_rows", "staged_rows"}
-                                or facts.get("phase") == "publication"
+                                or progress.get("phase") == "publication"
                             )
                         }
                     )

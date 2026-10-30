@@ -32,7 +32,7 @@ def observe(callback: Callable[[dict[str, Any]], None]) -> Iterator[None]:
 
 
 def report(**values: Any) -> None:
-    """Publish safe scalar facts; observation cannot change operation success."""
+    """Publish changed facts without replaying counters from a restored scope."""
     observer = _observer.get()
     if observer is None or not observer.active:
         return
@@ -41,7 +41,7 @@ def report(**values: Any) -> None:
         facts = {}
     facts.update(values)
     try:
-        observer.callback(dict(facts))
+        observer.callback(dict(values))
     except Exception:
         # Telemetry failure must not change query acceptance or commit semantics.
         pass

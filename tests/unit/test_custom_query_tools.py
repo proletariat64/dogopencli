@@ -946,3 +946,29 @@ def test_collect_progress_counts_each_successful_named_component():
         assert progress[-1]["component_requests_completed"] == 1
         tools.collect("source", "second")
         assert progress[-1]["component_requests_completed"] == 2
+
+
+def test_finished_collections_keep_measured_counts_in_progress():
+    from dogopencli.progress import observe
+
+    script = Script({"rows": [{"id": "one"}], "total": 1}, {"rows": [], "total": 0})
+    tools, _, _ = setup(script)
+    latest = {}
+    with observe(latest.update):
+        tools.collect("source", "first")
+        assert latest["component_requests_completed"] == 1
+        assert latest["request_attempts"] == 1
+        assert latest["operation_request_attempts"] == 1
+        assert latest["source_pages"] == 1
+        assert latest["source_rows_received"] == 1
+        assert latest["source_rows_selected"] == 1
+        assert latest["source_total_rows"] == 1
+
+        tools.collect("source", "second")
+        assert latest["component_requests_completed"] == 2
+        assert latest["request_attempts"] == 1
+        assert latest["operation_request_attempts"] == 2
+        assert latest["source_pages"] == 1
+        assert latest["source_rows_received"] == 0
+        assert latest["source_rows_selected"] == 0
+        assert latest["source_total_rows"] == 0

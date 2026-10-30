@@ -166,6 +166,29 @@ def coverage(result):
     )
 
 
+@pytest.mark.parametrize("cash", [[], [account("CASH-ONLY")]])
+def test_export_status_keeps_finished_empty_baseline_source_counts(installed, cash):
+    cli, browser, _ = installed
+    scripted(browser, cash, [])
+    plan = cli("workflow", "plan", "create", "--leaf", "liquidity.cash.accounts")[
+        "data"
+    ]
+    run = cli("workflow", "export", "create", "--plan", plan["id"])["data"]
+    exported = cli("workflow", "export", "run", "--run", run["id"])["data"]
+    status = cli("workflow", "export", "status", "--run", run["id"])["data"]
+    progress = status["progress"]
+    assert len(browser.business_requests) > 1
+    assert progress["operation_request_attempts"] == len(browser.business_requests)
+    assert progress["source"] == "liquidity.cash.accounts.baseline"
+    assert progress["request_attempts"] == 1
+    assert progress["source_pages"] == 1
+    assert progress["source_rows_received"] == 0
+    assert progress["source_rows_selected"] == 0
+    assert progress["source_total_rows"] == 0
+    assert progress["component_requests_completed"] == 1
+    assert progress["exported_rows"] == exported["record_count"] == len(cash)
+
+
 @pytest.mark.parametrize("installed", ["directory", "zip"], indirect=True)
 def test_three_native_sources_live_refresh_offline_and_local_filters(installed):
     cli, browser, _ = installed
