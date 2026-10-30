@@ -35,16 +35,16 @@ def test_history_freezes_exact_queries_and_reports_interior_unqueried_scope(
     plan = create(
         run_cli,
         "--windows",
-        '[{"from":"20260918","to":"20260918"},{"from":"20260920","to":"20260920"}]',
+        '[{"from":"2026-09-18","to":"2026-09-18"},{"from":"2026-09-20","to":"2026-09-20"}]',
     )
     assert plan["mode"] == "history"
-    assert plan["desired_range"] == {"from": "20260918", "to": "20260920"}
+    assert plan["desired_range"] == {"from": "2026-09-18", "to": "2026-09-20"}
     assert plan["cutoff"] == "20260920"
     assert plan["created_at"] == "2026-10-29T00:00:00+00:00"
     before = {p: p.read_bytes() for p in config.rglob("*") if p.is_file()}
     status = call(run_cli, "history", "show", "--plan", plan["id"])
-    assert status["unqueried_ranges"] == [{"from": "20260918", "to": "20260920"}]
-    assert status["unplanned_ranges"] == [{"from": "20260919", "to": "20260919"}]
+    assert status["unqueried_ranges"] == [{"from": "2026-09-18", "to": "2026-09-20"}]
+    assert status["unplanned_ranges"] == [{"from": "2026-09-19", "to": "2026-09-19"}]
     assert [p["state"] for p in status["packages"]] == ["unqueried", "unqueried"]
     assert status["current_history_effect"] == "separate_observations"
     assert status["complete"] is False
@@ -63,9 +63,9 @@ def test_history_resumes_successes_retains_failure_and_imports_exact_packages(
     plan = create(
         run_cli,
         "--windows",
-        '[{"from":"20260918","to":"20260918"},'
-        '{"from":"20260919","to":"20260919"},'
-        '{"from":"20260920","to":"20260920"}]',
+        '[{"from":"2026-09-18","to":"2026-09-18"},'
+        '{"from":"2026-09-19","to":"2026-09-19"},'
+        '{"from":"2026-09-20","to":"2026-09-20"}]',
     )
     browser.business_script.extend(
         [
@@ -82,7 +82,7 @@ def test_history_resumes_successes_retains_failure_and_imports_exact_packages(
         "failed",
         "complete_empty",
     ]
-    assert status["uncovered_ranges"] == [{"from": "20260919", "to": "20260919"}]
+    assert status["uncovered_ranges"] == [{"from": "2026-09-19", "to": "2026-09-19"}]
     original_id = status["packages"][0]["export_id"]
     original = call(run_cli, "export", "show", "--export", original_id)
     count = len(browser.business_requests)
@@ -123,7 +123,7 @@ def test_overlapping_complete_range_never_hides_failed_requested_package(
     plan = create(
         run_cli,
         "--windows",
-        '[{"from":"20260918","to":"20260920"},{"from":"20260919","to":"20260919"}]',
+        '[{"from":"2026-09-18","to":"2026-09-20"},{"from":"2026-09-19","to":"2026-09-19"}]',
     )
     browser.business_script.extend([page([]), {"status": 500, "body": {}}])
     code, output, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
@@ -143,10 +143,10 @@ def test_overlapping_complete_range_never_hides_failed_requested_package(
         "[]",
         "{}",
         "bad-json",
-        '[{"from":"20260917","to":"20260918"}]',
-        '[{"from":"20260920","to":"20260919"}]',
-        '[{"from":"20260919","to":"20260931"}]',
-        '[{"from":"20260919","to":"20260919","extra":true}]',
+        '[{"from":"2026-09-17","to":"2026-09-18"}]',
+        '[{"from":"2026-09-20","to":"2026-09-19"}]',
+        '[{"from":"2026-09-19","to":"2026-09-31"}]',
+        '[{"from":"2026-09-19","to":"2026-09-19","extra":true}]',
     ],
 )
 def test_history_rejects_invalid_or_outside_windows_offline(
@@ -181,7 +181,7 @@ def test_interruption_retains_completed_package_and_unqueried_tail(run_cli, inst
     plan = create(
         run_cli,
         "--windows",
-        '[{"from":"20260918","to":"20260918"},{"from":"20260919","to":"20260919"},{"from":"20260920","to":"20260920"}]',
+        '[{"from":"2026-09-18","to":"2026-09-18"},{"from":"2026-09-19","to":"2026-09-19"},{"from":"2026-09-20","to":"2026-09-20"}]',
     )
 
     def interrupted(body, _):
@@ -199,7 +199,7 @@ def test_interruption_retains_completed_package_and_unqueried_tail(run_cli, inst
         "unqueried",
     ]
     assert state["packages"][1]["attempts"][0]["error"]["code"] == "INTERRUPTED"
-    assert state["unqueried_ranges"] == [{"from": "20260920", "to": "20260920"}]
+    assert state["unqueried_ranges"] == [{"from": "2026-09-20", "to": "2026-09-20"}]
     browser.business_handler = lambda body, _: page([row(valueDate=body["startDate"])])
     resumed = call(run_cli, "export", "run", "--plan", plan["id"])
     assert resumed["complete"] is True
@@ -215,7 +215,7 @@ def test_selected_package_exposes_incomplete_and_unqueried_separately(
     plan = create(
         run_cli,
         "--windows",
-        '[{"from":"20260918","to":"20260918"},{"from":"20260919","to":"20260920"}]',
+        '[{"from":"2026-09-18","to":"2026-09-18"},{"from":"2026-09-19","to":"2026-09-20"}]',
     )
     browser.business_script.append(page([row()], total=2))
     code, out, _ = run_cli(
@@ -232,13 +232,13 @@ def test_selected_package_exposes_incomplete_and_unqueried_separately(
     assert code == 1, out
     state = call(run_cli, "history", "show", "--plan", plan["id"])
     assert [item["state"] for item in state["packages"]] == ["incomplete", "unqueried"]
-    assert state["unqueried_ranges"] == [{"from": "20260919", "to": "20260920"}]
+    assert state["unqueried_ranges"] == [{"from": "2026-09-19", "to": "2026-09-20"}]
     artifact = call(
         run_cli, "export", "show", "--export", state["packages"][0]["export_id"]
     )
     assert artifact["record_count"] == 1
     assert artifact["history_plan"] == plan["id"]
-    assert artifact["native_range"] == {"from": "20260918", "to": "20260918"}
+    assert artifact["native_range"] == {"from": "2026-09-18", "to": "2026-09-18"}
     code, out, _ = run_cli(
         [
             "workflow",
@@ -302,7 +302,7 @@ def test_changed_native_time_contract_requires_new_plan_before_requests(
 ):
     _, browser, config = installed
     plan = create(run_cli)
-    adapter = config / "plugins/liquidity/cash.balances/adapter.py"
+    adapter = config / "plugins/liquidity/cash.balances/leaf.json"
     adapter.write_text(
         adapter.read_text().replace(
             '"time_basis": "valueDate"', '"time_basis": "updateTime"'

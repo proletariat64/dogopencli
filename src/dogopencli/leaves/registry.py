@@ -60,6 +60,41 @@ PARAMETER_SCHEMA = {
         "local_field": {"type": "string"},
     },
 }
+HISTORY_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "interpretation",
+        "time_basis",
+        "boundary",
+        "timezone",
+        "from_parameter",
+        "to_parameter",
+        "splitting",
+        "cross_range_equivalence",
+    ],
+    "properties": {
+        "interpretation": {"enum": ["calendar_date"]},
+        "time_basis": {"type": "string"},
+        "boundary": {"enum": ["inclusive"]},
+        "timezone": {},
+        "from_parameter": {"enum": ["from-date"]},
+        "to_parameter": {"enum": ["to-date"]},
+        "splitting": {"enum": ["explicit_windows"]},
+        "cross_range_equivalence": {"type": "boolean", "enum": [False]},
+        "modification_time": {"type": "string"},
+        "max_day_difference": {"type": "integer", "minimum": 0},
+        "applicability": {
+            "type": "object",
+            "required": ["parameter", "values"],
+            "additionalProperties": False,
+            "properties": {
+                "parameter": {"type": "string"},
+                "values": {"type": "array", "minItems": 1},
+            },
+        },
+    },
+}
 PAGING_SCHEMA = {
     "type": "object",
     "required": ["mode", "page_sizes"],
@@ -159,6 +194,7 @@ MANIFEST_SCHEMA = {
                         "description": {"type": "string"},
                         "parameters": {"type": "array", "items": PARAMETER_SCHEMA},
                         "execution": {"enum": ["standard", "custom"]},
+                        **({"history": HISTORY_SCHEMA} if op == "list" else {}),
                         "account_directory": {"type": "boolean"},
                         "entity_selector": {"type": "boolean"},
                         "queries": {
@@ -489,6 +525,48 @@ def validate_manifest(value: Any) -> None:
                     item not in parameter["choices"] for item in values
                 ):
                     raise _invalid(f"parameter {name} default is outside choices")
+    for action, operation in value["operations"].items():
+        if "history" not in operation:
+            continue
+        if action != "list":
+            raise _invalid("history is supported only for List")
+        history = operation["history"]
+        definitions = {item["name"]: item for item in operation["parameters"]}
+        if any(
+            name not in definitions
+            or definitions[name]["type"] != "string"
+            or definitions[name].get("multiple", False)
+            for name in (history["from_parameter"], history["to_parameter"])
+        ):
+            raise _invalid("history requires distinct declared string date parameters")
+        if not history["time_basis"].strip() or (
+            history["timezone"] is not None
+            and (
+                not isinstance(history["timezone"], str)
+                or not history["timezone"].strip()
+            )
+        ):
+            raise _invalid(
+                "history requires a time basis and explicit timezone meaning"
+            )
+        applicability = history.get("applicability")
+        if applicability is not None:
+            name, choices = applicability["parameter"], applicability["values"]
+            definition = definitions.get(name)
+            if (
+                not definition
+                or name in (history["from_parameter"], history["to_parameter"])
+                or definition.get("multiple", False)
+                or not choices
+                or any(not _typed(choice, definition["type"]) for choice in choices)
+                or len({repr(choice) for choice in choices}) != len(choices)
+                or "choices" in definition
+                and any(choice not in definition["choices"] for choice in choices)
+            ):
+                raise _invalid(
+                    "history applicability must use a declared scalar selector "
+                    "and allowed values"
+                )
     detail = value["operations"].get("get")
     if detail is not None:
         if "lookup" not in detail or "result_identity" not in detail:
@@ -750,6 +828,8 @@ class Registry:
             for action, operation in value["operations"].items():
                 if action == "list":
                     required |= {"scope", "filter"}
+                    if "history" in operation:
+                        required |= {"history_bounds", "history_parameters"}
                 if operation.get("execution", "standard") == "custom":
                     required |= {"query_capability", f"query_{action}"}
                 elif action == "get":
@@ -759,6 +839,8 @@ class Registry:
                 else:
                     required.add("capability")
             arguments = {
+                "history_bounds": ({},),
+                "history_parameters": ({},),
                 "capability": ({},),
                 "scope": ({},),
                 "filter": ([], {}),

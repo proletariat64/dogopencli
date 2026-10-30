@@ -739,11 +739,12 @@ def run_export(
         ):
             result["keyed_contract"] = keyed(plan["parameters"])
         if "history_plan" in plan:
-            history_contract = getattr(leaf.adapter, "history_contract", None)
+            from .leaves.history import resolve as resolve_history
+
             expected = {**plan["contract"], **plan["range"]}
-            if not callable(history_contract) or canonical(
-                history_contract(plan["parameters"])
-            ) != canonical(expected):
+            if canonical(resolve_history(leaf, plan["parameters"])) != canonical(
+                expected
+            ):
                 raise CliError(
                     "WORKFLOW_ERROR",
                     "Native history contract changed; create a new plan",

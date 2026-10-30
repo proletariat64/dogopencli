@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .errors import CliError
 from .jsonutil import parse
+from .leaves.history import resolve, window_parameters
 from .leaves.runtime import planned_list_scope
 
 if TYPE_CHECKING:
@@ -31,18 +32,7 @@ def calendar(value: str, contract: dict) -> date:
 
 
 def compile_plan(plan: dict, leaf: "Leaf", windows: str | None) -> dict:
-    method = getattr(leaf.adapter, "history_contract", None)
-    if not callable(method):
-        invalid(
-            "Leaf has no native history range contract; "
-            "preserve a full scoped observation instead"
-        )
-    contract = method(plan["parameters"])
-    if (
-        contract.get("interpretation") != "calendar_date"
-        or contract.get("boundary") != "inclusive"
-    ):
-        invalid("History planner requires a declared inclusive calendar range")
+    contract = resolve(leaf, plan["parameters"])
     start, end = (
         calendar(contract["from"], contract),
         calendar(contract["to"], contract),
@@ -71,11 +61,7 @@ def compile_plan(plan: dict, leaf: "Leaf", windows: str | None) -> dict:
         )
         if not start <= left <= right <= end:
             invalid("History window is outside the frozen desired range or reversed")
-        parameters = {
-            **plan["parameters"],
-            contract["from_parameter"]: window["from"],
-            contract["to_parameter"]: window["to"],
-        }
+        parameters = window_parameters(leaf, plan["parameters"], window, contract)
         scope, environment = planned_list_scope(leaf, parameters)
         if environment != plan["environment"]:
             invalid("History windows cannot change inquiry environment")
