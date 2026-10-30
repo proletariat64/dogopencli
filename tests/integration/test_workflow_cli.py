@@ -53,7 +53,15 @@ def test_export_retains_full_exact_records_before_preview_and_survives_later_exp
     plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     pilots.business_script.append(payment_page(rows))
     exported = call(
-        run_cli, "export", "run", "--plan", plan["id"], "--limit", "1", "--fields", "id"
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        "--limit",
+        "1",
+        "--fields",
+        "id",
     )
     assert exported["records"] == [{"id": "0"}]
     saved = call(run_cli, "export", "show", "--export", exported["id"])
@@ -61,7 +69,13 @@ def test_export_retains_full_exact_records_before_preview_and_survives_later_exp
     assert saved["record_count"] == 103
     assert saved["state"] == "complete_nonempty"
     pilots.business_script.append(payment_page([]))
-    empty = call(run_cli, "export", "run", "--plan", plan["id"])
+    empty = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     assert empty["state"] == "complete_empty"
     assert call(run_cli, "export", "show", "--export", exported["id"]) == saved
 
@@ -72,7 +86,13 @@ def test_import_preserves_exact_observations_offline_and_replay_is_noop(
     plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     rows = [{"id": "one", "nested": {"amount": "1.0000000000000000001"}}]
     pilots.business_script.append(payment_page(rows))
-    exported = call(run_cli, "export", "run", "--plan", plan["id"])
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     import_plan = call(
         run_cli, "import", "plan", "--export", exported["id"], "--action", "preserve"
     )
@@ -80,7 +100,13 @@ def test_import_preserves_exact_observations_offline_and_replay_is_noop(
     assert import_plan["new_count"] == 1
     assert import_plan["current_effect"] == "unchanged"
     pilots.business_script.append(payment_page([]))
-    call(run_cli, "export", "run", "--plan", plan["id"])
+    call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     config_file = Path(os.environ["DOGOPENCLI_CONFIG"])
     adapter = config_file.parent / "plugins/payment/sla.baselines/adapter.py"
     adapter.write_text('raise RuntimeError("Later adapter is unavailable")')
@@ -140,7 +166,13 @@ def test_incomplete_and_failed_attempts_do_not_hide_last_success_or_import(
             },
         }
     )
-    complete = call(run_cli, "export", "run", "--plan", plan["id"])
+    complete = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     empty_plan = call(
         run_cli, "import", "plan", "--export", complete["id"], "--action", "preserve"
     )
@@ -162,7 +194,13 @@ def test_incomplete_and_failed_attempts_do_not_hide_last_success_or_import(
             },
         }
     )
-    partial = call(run_cli, "export", "run", "--plan", plan["id"])
+    partial = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     assert partial["state"] == "incomplete"
     code, out, _ = run_cli(
         [
@@ -177,7 +215,15 @@ def test_incomplete_and_failed_attempts_do_not_hide_last_success_or_import(
     )
     assert code == 1 and json.loads(out)["error"]["code"] == "WORKFLOW_ERROR"
     pilots.business_script.append({"status": 401, "body": {}})
-    code, out, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    code, out, _ = run_cli(
+        [
+            "workflow",
+            "export",
+            "run",
+            "--run",
+            call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        ]
+    )
     assert code == 1
     status = call(run_cli, "status")
     assert status["latest_attempt"]["state"] == "failed"
@@ -247,7 +293,13 @@ def test_distinct_exports_preserve_equal_rows_and_decimal_values(
         native_row = row(unknown={"precise": Decimal("123.000000000000000001")})
         for _ in range(2):
             browser.business_script.append(page([native_row]))
-            exported = call(run_cli, "export", "run", "--plan", plan["id"])
+            exported = call(
+                run_cli,
+                "export",
+                "run",
+                "--run",
+                call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+            )
             prepared = call(
                 run_cli,
                 "import",
@@ -278,13 +330,25 @@ def test_import_rejects_changed_exact_input_and_preserves_committed_observations
     plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     rows = [{"id": "stable", "amount": "1.0000"}]
     pilots.business_script.append(payment_page(rows))
-    first = call(run_cli, "export", "run", "--plan", plan["id"])
+    first = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     first_import = call(
         run_cli, "import", "plan", "--export", first["id"], "--action", "preserve"
     )
     call(run_cli, "import", "apply", "--plan", first_import["id"])
     pilots.business_script.append(payment_page([{"id": "new"}]))
-    second = call(run_cli, "export", "run", "--plan", plan["id"])
+    second = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     prepared = call(
         run_cli, "import", "plan", "--export", second["id"], "--action", "preserve"
     )
@@ -318,7 +382,13 @@ def test_transaction_failure_retains_current_rows_and_no_partial_observation(
 
     plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     pilots.business_script.append(payment_page([{"id": "stable"}]))
-    first = call(run_cli, "export", "run", "--plan", plan["id"])
+    first = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     prepared = call(
         run_cli, "import", "plan", "--export", first["id"], "--action", "preserve"
     )
@@ -333,7 +403,13 @@ def test_transaction_failure_retains_current_rows_and_no_partial_observation(
             "_dogopencli_observation_rows(ordinal)"
         )
     pilots.business_script.append(payment_page([{"id": "later"}]))
-    second = call(run_cli, "export", "run", "--plan", plan["id"])
+    second = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     prepared = call(
         run_cli, "import", "plan", "--export", second["id"], "--action", "preserve"
     )
@@ -356,7 +432,13 @@ def test_import_rejects_foreign_destination_ownership(run_cli, pilots):
 
     plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     pilots.business_script.append(payment_page([{"id": "one"}]))
-    exported = call(run_cli, "export", "run", "--plan", plan["id"])
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     prepared = call(
         run_cli, "import", "plan", "--export", exported["id"], "--action", "preserve"
     )
@@ -408,7 +490,15 @@ def test_import_preserves_repeated_native_cashflow_occurrences(run_cli, pilots):
     pilots.business_script.extend(
         [base([row()]), metric(), details([occurrence] * 103)]
     )
-    exported = call(run_cli, "export", "run", "--plan", plan["id"], "--fields", "id")
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        "--fields",
+        "id",
+    )
     prepared = call(
         run_cli, "import", "plan", "--export", exported["id"], "--action", "preserve"
     )
@@ -437,7 +527,15 @@ def test_durable_get_preserves_declared_root_before_projection(run_cli, pilots):
     pilots.business_script.append(
         {"status": 200, "body": {"success": True, "resultData": root}}
     )
-    exported = call(run_cli, "export", "run", "--plan", plan["id"], "--fields", "id")
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        "--fields",
+        "id",
+    )
     saved = call(run_cli, "export", "show", "--export", exported["id"])
     assert saved["records"] == [root]
     assert saved["operation"] == "get"
@@ -472,7 +570,15 @@ def test_durable_list_detail_composes_all_rows_before_preview(run_cli, pilots):
         ]
     )
     exported = call(
-        run_cli, "export", "run", "--plan", plan["id"], "--limit", "1", "--fields", "id"
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        "--limit",
+        "1",
+        "--fields",
+        "id",
     )
     saved = call(run_cli, "export", "show", "--export", exported["id"])
     assert saved["records"] == [
@@ -487,7 +593,13 @@ def test_get_publication_cannot_replace_wider_list_current_scope(run_cli, pilots
     list_plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
     rows = [{"id": "one"}, {"id": "two"}]
     pilots.business_script.append(payment_page(rows))
-    listed = call(run_cli, "export", "run", "--plan", list_plan["id"])
+    listed = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", list_plan["id"])["id"],
+    )
     publication = call(
         run_cli, "import", "plan", "--export", listed["id"], "--action", "replace-full"
     )
@@ -509,7 +621,13 @@ def test_get_publication_cannot_replace_wider_list_current_scope(run_cli, pilots
             "body": {"success": True, "resultData": {"id": "one", "detail": True}},
         }
     )
-    detail = call(run_cli, "export", "run", "--plan", get_plan["id"])
+    detail = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", get_plan["id"])["id"],
+    )
     publication = call(
         run_cli, "import", "plan", "--export", detail["id"], "--action", "replace-full"
     )
@@ -554,7 +672,15 @@ def test_saved_list_detail_rejects_changed_detail_contract_before_queries(
             ]
         path.write_text(json.dumps(manifest))
     pilots.business_script.append(payment_page([]))
-    code, output, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    code, output, _ = run_cli(
+        [
+            "workflow",
+            "export",
+            "run",
+            "--run",
+            call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        ]
+    )
     assert code != 0, output
     assert "detail" in json.loads(output)["error"]["message"].lower()
     assert not pilots.business_requests

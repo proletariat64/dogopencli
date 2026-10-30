@@ -18,15 +18,16 @@ def test_repair_freezes_baseline_and_imports_exact_disjoint_results_offline(
         '[{"from":"20260918","to":"20260918"},{"from":"20260920","to":"20260920"}]',
     )
     browser.business_script.extend([page([row()]), page([])])
-    code, _, _ = run_cli(["workflow", "export", "run", "--plan", baseline["id"]])
+    baseline_run = call(run_cli, "export", "create", "--plan", baseline["id"])
+    code, _, _ = run_cli(["workflow", "export", "run", "--run", baseline_run["id"]])
     assert code == 1
     before = {path: path.read_bytes() for path in (config / "workflow").rglob("*.json")}
-    repair = call(run_cli, "repair", "plan", "--plan", baseline["id"])
+    repair = call(run_cli, "repair", "plan", "--run", baseline_run["id"])
     assert repair["baseline_gaps"] == [{"from": "20260919", "to": "20260919"}]
     assert len(repair["packages"]) == 1
     assert repair["packages"][0]["parameters"]["account_alias"] == ["ACCOUNT"]
     browser.business_script.append(page([row(valueDate="20260919")]))
-    repaired = call(run_cli, "export", "run", "--plan", repair["id"])
+    repaired = call(run_cli, "repair", "run", "--repair", repair["id"])
     assert repaired["complete"] is True
     assert len(repaired["selected_exports"]) == 3
     assert all(path.read_bytes() == content for path, content in before.items())
@@ -64,18 +65,19 @@ def test_repair_retries_failed_gap_without_requerying_baseline_success(
     _, browser, _ = installed
     baseline = create(run_cli, "--windows", '[{"from":"20260920","to":"20260920"}]')
     browser.business_script.append(page([]))
-    run_cli(["workflow", "export", "run", "--plan", baseline["id"]])
-    repair = call(run_cli, "repair", "plan", "--plan", baseline["id"])
+    baseline_run = call(run_cli, "export", "create", "--plan", baseline["id"])
+    run_cli(["workflow", "export", "run", "--run", baseline_run["id"]])
+    repair = call(run_cli, "repair", "plan", "--run", baseline_run["id"])
     assert repair["baseline_gaps"] == [{"from": "20260918", "to": "20260919"}]
     browser.business_script.append({"status": 500, "body": {}})
-    code, _, _ = run_cli(["workflow", "export", "run", "--plan", repair["id"]])
+    code, _, _ = run_cli(["workflow", "repair", "run", "--repair", repair["id"]])
     assert code == 1
     code, output, _ = run_cli(
         ["workflow", "import", "plan", "--repair", repair["id"], "--action", "preserve"]
     )
     assert code == 2, output
     browser.business_script.append(page([row()]))
-    completed = call(run_cli, "export", "run", "--plan", repair["id"])
+    completed = call(run_cli, "repair", "run", "--repair", repair["id"])
     assert completed["complete"] is True
     assert len(completed["packages"][0]["attempts"]) == 2
     assert len(browser.business_requests) == 3
@@ -97,11 +99,12 @@ def test_full_repair_retries_new_capture_without_stitching_incomplete_rows(
         '{"account-alias":"ACCOUNT","from-date":"20260918","to-date":"20260918"}',
     )
     browser.business_script.append(page([row()], total=2))
-    original = call(run_cli, "export", "run", "--plan", baseline["id"])
+    baseline_run = call(run_cli, "export", "create", "--plan", baseline["id"])
+    original = call(run_cli, "export", "run", "--run", baseline_run["id"])
     assert original["state"] == "incomplete"
-    repair = call(run_cli, "repair", "plan", "--plan", baseline["id"])
+    repair = call(run_cli, "repair", "plan", "--run", baseline_run["id"])
     browser.business_script.append(page([]))
-    repaired = call(run_cli, "export", "run", "--plan", repair["id"])
+    repaired = call(run_cli, "repair", "run", "--repair", repair["id"])
     assert repaired["complete"] is True
     selected = repaired["selected_exports"]
     assert len(selected) == 1
@@ -125,7 +128,10 @@ def test_ambiguous_overlapping_baseline_cannot_select_a_repair(run_cli, installe
         '[{"from":"20260918","to":"20260918"},{"from":"20260918","to":"20260918"}]',
     )
     browser.business_script.extend([page([]), page([])])
-    run_cli(["workflow", "export", "run", "--plan", baseline["id"]])
-    code, output, _ = run_cli(["workflow", "repair", "plan", "--plan", baseline["id"]])
+    baseline_run = call(run_cli, "export", "create", "--plan", baseline["id"])
+    run_cli(["workflow", "export", "run", "--run", baseline_run["id"]])
+    code, output, _ = run_cli(
+        ["workflow", "repair", "plan", "--run", baseline_run["id"]]
+    )
     assert code == 2
     assert "overlapping baseline" in output

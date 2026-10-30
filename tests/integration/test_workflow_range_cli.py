@@ -254,12 +254,26 @@ def test_failed_and_incomplete_refresh_cannot_clear_owned_history(run_cli, range
         '{"account-alias":"ACCOUNT","from-date":"20260918","to-date":"20260918"}',
     )
     browser.business_script.append(page([row(valueDate="20260920")]))
-    code, _, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    code, _, _ = run_cli(
+        [
+            "workflow",
+            "export",
+            "run",
+            "--run",
+            call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        ]
+    )
     assert code == 1
     failed = call(run_cli, "status")["latest_attempt"]
     assert failed["state"] == "failed"
     browser.business_script.append(page([row()], total=2))
-    partial = call(run_cli, "export", "run", "--plan", plan["id"])
+    partial = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     assert partial["state"] == "incomplete"
     for artifact in (failed, partial):
         code, output, _ = run_cli(
