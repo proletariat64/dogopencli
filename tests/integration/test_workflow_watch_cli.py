@@ -690,4 +690,55 @@ def test_two_native_pages_keep_comparable_rate_and_saved_count_beyond_preview(
     assert status["progress"]["source_total_rows"] == 1002
     assert status["progress"]["exported_rows"] == 1002
     assert status["progress"]["row_rate_per_second"] > 0
-    assert status["progress"]["eta_seconds"] == 0
+    assert status["progress"]["eta_seconds"] is None
+    assert status["progress"]["eta_reason"] == "task_not_running"
+
+
+def test_settled_incomplete_source_keeps_last_rate_without_forward_eta(run_cli, pilots):
+    from integration.test_leaf_pilots_cli import fx_page
+
+    from dogopencli.domain_contracts import FX_STARTUP_URL
+
+    pilots.href = FX_STARTUP_URL
+    inquiry = call(
+        run_cli,
+        "plan",
+        "create",
+        "--leaf",
+        "fx.trade",
+        "--parameters",
+        '{"trade-id":["TEST"]}',
+    )
+    task = call(run_cli, "export", "create", "--plan", inquiry["id"])
+    rows = [{"uniqueId": str(i)} for i in range(2000)]
+    active = []
+
+    def native_page(payload, index):
+        if index == 2:
+            current = call(isolated_cli, "export", "status", "--run", task["id"])
+            assert current["effective_state"] == "running"
+            assert current["progress"]["eta_seconds"] > 0
+            active.append(current)
+        return fx_page(
+            rows[index * 1000 : (index + 1) * 1000], number=index, total=2001
+        )
+
+    pilots.business_handler = native_page
+    call(run_cli, "export", "run", "--run", task["id"])
+    assert active
+    root = Path(os.environ["DOGOPENCLI_CONFIG"]).parent
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    settled = call(run_cli, "export", "status", "--run", task["id"])
+    assert settled["effective_state"] == "incomplete"
+    assert settled["progress"]["source_rows_received"] == 2000
+    assert settled["progress"]["source_total_rows"] == 2001
+    assert settled["progress"]["row_rate_per_second"] > 0
+    assert settled["progress"]["eta_seconds"] is None
+    assert settled["progress"]["eta_reason"] == "task_not_running"
+    code, text, _ = run_cli(
+        ["workflow", "export", "status", "--run", task["id"], "--format", "text"]
+    )
+    assert code == 0
+    assert "Last source row rate:" in text
+    assert "ETA: not applicable" in text
+    assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == before

@@ -182,9 +182,16 @@ def render_frame(
                     for key, value in progress["current_input"].items()
                 )
             )
+    running = data["effective_state"] == "running"
+    rate_label = "Source row rate" if running else "Last source row rate"
+    eta = (
+        f"{_value(progress.get('eta_seconds'))} seconds"
+        if running
+        else "not applicable (task not running)"
+    )
     lines.append(
-        f"Source row rate: {_value(progress.get('row_rate_per_second'))} rows/s   "
-        f"ETA: {_value(progress.get('eta_seconds'))} seconds"
+        f"{rate_label}: {_value(progress.get('row_rate_per_second'))} rows/s   "
+        f"Source ETA: {eta}"
     )
     lines.append(
         f"Complete: {_value(data['quality']['complete'])}   "

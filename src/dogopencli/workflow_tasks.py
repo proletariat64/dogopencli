@@ -851,6 +851,9 @@ def _snapshot(config_file: Path, kind: str, identity: str) -> dict:
         "eta_seconds",
     ):
         progress.setdefault(metric, None)
+    if effective != "running":
+        progress["eta_seconds"] = None
+        progress["eta_reason"] = "task_not_running"
     observed = now()
     stamp = state.get("updated_at") if state else task["created_at"]
     age = (

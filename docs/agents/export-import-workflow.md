@@ -8,7 +8,10 @@ separate outcomes.
 ```bash
 dogopencli workflow plan create --leaf payment.sla.baselines --parameters '{}'
 dogopencli workflow plan show --plan PLAN_ID
-dogopencli workflow export run --plan PLAN_ID --limit 10 --fields id
+dogopencli workflow export create --plan PLAN_ID
+dogopencli workflow export status --run RUN_ID
+dogopencli workflow export watch --run RUN_ID --snapshot
+dogopencli workflow export run --run RUN_ID --limit 10 --fields id
 dogopencli workflow export show --export EXPORT_ID
 dogopencli workflow import plan --export EXPORT_ID --action preserve
 dogopencli workflow import apply --plan IMPORT_PLAN_ID
@@ -62,7 +65,9 @@ Exports save qualified public records before presentation limit, offset and fiel
 projection. Intentional leaf allowlists remain effective. Nested values, exact JSON
 numbers, native amount strings, row order and valid duplicate occurrences survive.
 The immutable completed artifact includes native scope, environment, acquisition
-interval, conclusions, warnings and gap evidence. Each run produces a new identity.
+interval, conclusions, warnings and gap evidence. Each deliberate acquisition
+creates a new Export Run. Retrying that Run retains its identity and starts a new
+attempt; each saved export has its own immutable identity.
 Complete-empty, complete-nonempty, usable incomplete, failed and unqueried plans are
 distinct. Incomplete records remain inspectable; normal import accepts only complete
 exports. A failed refresh does not hide the last complete export or committed data.
@@ -145,7 +150,8 @@ semantics. Read it before selecting `--action replace-range`.
 `workflow target create --plan ID` preserves an exact full/history plan as bounded
 intent. `workflow target plan --target ID` freezes an execution;
 `workflow target run --execution ID` executes that exact work and reuses completed
-exports. Repeating bounded work never advances the requested date range.
+child Runs within that execution. A fresh execution owns fresh child Run
+associations. Repeating bounded work never advances the requested date range.
 Planning writes workflow files only; it never exports or imports.
 
 Following is explicit: `workflow target create --plan ID --policy following`.
@@ -198,3 +204,49 @@ DOGOPENCLI_RUN_SCALE=1 DOGOPENCLI_SCALE_EVIDENCE=/tmp/dogopencli-scale.json \
 Focused crash tests interrupt before and after batch commit, and before/after
 publication commit. Database receipts remain authoritative after commit even
 when no success response was emitted; status performs no recovery writes.
+
+## Observe one exact task
+
+Preparation returns `data.id` before execution. An inquiry plan freezes intent and
+can prepare multiple independent Export Runs. `export create --plan PLAN_ID`
+prepares a pending Run offline; `export run --run RUN_ID` executes or retries that
+exact task. Failed/incomplete history packages retain independent successes on
+retry; a fresh Run does not inherit them as new acquisition.
+
+Use the matching typed selector for each stage:
+
+| Stage | Resident text watch | Finite JSON status |
+| --- | --- | --- |
+| Export | `workflow export watch --run RUN_ID` | `workflow export status --run RUN_ID` |
+| Repair | `workflow repair watch --repair REPAIR_PLAN_ID` | `workflow repair status --repair REPAIR_PLAN_ID` |
+| Import | `workflow import watch --plan IMPORT_PLAN_ID` | `workflow import status --plan IMPORT_PLAN_ID` |
+| Target | `workflow target watch --execution EXECUTION_ID` | `workflow target status --execution EXECUTION_ID` |
+
+Watch defaults to text every three seconds and remains after settlement to observe
+an explicit retry of the same identity. `--snapshot` prints one fresh text frame;
+`--until-settled` waits for the current settled result. `--interval SECONDS` accepts
+a positive integer. Ctrl+C stops only the observer with exit 130. Non-TTY watch
+appends plain frames; TTY watch updates the panel in place. These modes and
+`--attach PANE_ID` are mutually exclusive. Explicit JSON watch is rejected; use
+status for one machine-readable `data`/`meta`/`error` envelope. Status also supports
+`--format text`. A valid status read of a failed task exits zero with `error: null`;
+an observation failure is a command error. Invalid usage exits two.
+
+Inside Herdr, `watch ... --attach PANE_ID` starts the same text watcher in an idle
+pane and returns a finite verified-start receipt. The exact selected configuration,
+working directory, interpreter and module source survive launch. Caller, agent,
+busy, missing and unverifiable panes are rejected. Attach preserves layout/focus;
+it does not create panes. Herdr exposes separate idle inspection and command
+submission, so the preflight check cannot promise atomic exclusion against an
+external actor occupying the pane concurrently. Use an uncontended target.
+
+Status and watch read bounded metadata offline and initialize no schema. Runner
+ownership, heartbeat, last progress and observation time are separate facts.
+Unknown totals stay unknown; physical requests, source pages, received rows and
+saved rows have different units. Settled tasks retain measured source rates as
+historical facts; forward source ETA is not applicable until execution is running.
+Degraded/stale observations expose read quality
+and age. Import staging means durable hidden batches; exact action/destination
+receipts prove committed observations/publication. An old successful publication
+can remain proven after another export becomes current. Legacy artifacts expose
+only retained evidence and may have unknown telemetry.

@@ -11,8 +11,9 @@ dogopencli workflow plan create --leaf liquidity.cash.balances --mode history \
   --windows '[{"from":"20260918","to":"20260918"},{"from":"20260919","to":"20260919"},{"from":"20260920","to":"20260920"}]'
 dogopencli workflow plan show --plan PLAN_ID
 dogopencli workflow history show --plan PLAN_ID
-dogopencli workflow export run --plan PLAN_ID
-dogopencli workflow export run --plan PLAN_ID --package PACKAGE_ID
+dogopencli workflow export create --plan PLAN_ID
+dogopencli workflow export run --run RUN_ID
+dogopencli workflow export run --run RUN_ID --package PACKAGE_ID
 dogopencli workflow status
 ```
 
@@ -21,11 +22,13 @@ the format declared by the leaf. Omit it to retain one unchanged native range.
 The planner never automatically expands a query into days. A selected package run
 still returns a nonzero aggregate outcome while any desired scope or requested
 package remains unresolved. Inspect `meta.history` or use `history show` for the
-retained results. `--package` is valid only for a package belonging to that plan.
+retained results. `--package` is valid only for a package belonging to that Run's
+frozen plan.
 
 Resume runs skip complete-empty and complete-nonempty packages, retry failed or
 incomplete packages as whole new inquiries, and retain every previous exact export.
-An interrupted package is a failed attempt; the untouched tail stays unqueried.
+An interrupted attempt remains visible; the untouched tail stays unqueried.
+A new Export Run starts a fresh acquisition; retry uses the original Run ID.
 Independent package errors do not discard successful exports or prevent other
 packages from running. There is no assumed durable native cursor across attempts.
 

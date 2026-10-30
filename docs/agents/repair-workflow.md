@@ -1,15 +1,15 @@
 # Frozen acquisition repair
 
-Repair freezes the original plan, its acquisition state and the exact complete
+Repair freezes one exact baseline Export Run, its plan, acquisition state and complete
 baseline exports. It creates separately identified query packages for the uncovered
 ranges, including omitted interior work below a newer completed date. The baseline
 plans and exports remain unchanged. Native filters, environment, range boundaries
 and time meaning come from the original query contract.
 
 ```bash
-dogopencli workflow repair plan --plan ORIGINAL_PLAN_ID
+dogopencli workflow repair plan --run BASELINE_RUN_ID
 dogopencli workflow repair show --repair REPAIR_PLAN_ID
-dogopencli workflow export run --plan REPAIR_PLAN_ID
+dogopencli workflow repair run --repair REPAIR_PLAN_ID
 dogopencli workflow import plan --repair REPAIR_PLAN_ID --action preserve
 dogopencli workflow import apply --plan IMPORT_PLAN_ID
 ```
@@ -35,5 +35,5 @@ successful observations survive a later failure, and replay uses database receip
 without duplicating observations. No current rows or unrelated observations change.
 
 `repair show` and `status.repairs` report frozen baseline gaps separately from new
-repair outcomes. They perform no acquisition or storage initialization. Advancing
-the original plan later does not change an existing repair's baseline selection.
+repair outcomes. They perform no acquisition or storage initialization. Retrying
+the baseline Run later does not change an existing repair's baseline selection.
