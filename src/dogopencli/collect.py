@@ -611,6 +611,9 @@ def _list_candidate(
             source_pages=pages,
             source_rows_received=arrivals,
             source_total_rows=reported,
+            source_total_scope=(
+                "native_query_before_local_selection" if reported is not None else None
+            ),
             source_rows_selected=len(ordered),
         )
         if progress is not None:

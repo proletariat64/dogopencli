@@ -140,6 +140,9 @@ def render_frame(
         if progress.get(key) is not None:
             lines.append(f"{label}: {_value(progress[key])}")
     if data["kind"] != "import":
+        total_scope = _value(progress.get("source_total_scope"))
+        if progress.get("source_total_scope") is None:
+            total_scope += f" ({_value(progress.get('source_total_scope_reason'))})"
         lines.extend(
             [
                 f"Source pages: {_value(progress.get('source_pages'))}   "
@@ -149,7 +152,7 @@ def render_frame(
                 f"{_value(progress.get('source_rows_received'))}   "
                 f"Selected rows: {_value(progress.get('source_rows_selected'))}",
                 f"Native total rows: {_value(progress.get('source_total_rows'))}   "
-                f"scope={_value(progress.get('source_total_scope'))}",
+                f"scope={total_scope}",
             ]
         )
         for key, label in (

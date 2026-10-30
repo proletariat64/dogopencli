@@ -40,6 +40,11 @@ def test_pending_status_is_one_offline_metadata_envelope(run_cli, pilots):
     assert response["data"]["effective_state"] == "pending"
     assert response["data"]["attempt"] is None
     assert response["data"]["progress"]["source_total_rows"] is None
+    assert response["data"]["progress"]["source_total_scope"] is None
+    assert (
+        response["data"]["progress"]["source_total_scope_reason"]
+        == "native_total_unavailable"
+    )
     assert response["data"]["observation"]["ownership"] == "inactive"
     assert not pilots.business_requests
     assert not err
@@ -465,6 +470,11 @@ def test_usable_incomplete_export_keeps_native_units_and_until_settled_fails(
     assert status["progress"]["source_rows_received"] == 1
     assert status["progress"]["source_rows_selected"] == 1
     assert status["progress"]["source_total_rows"] == 1001
+    assert (
+        status["progress"]["source_total_scope"]
+        == "native_query_before_local_selection"
+    )
+    assert status["progress"]["source_total_scope_reason"] is None
     assert status["progress"]["exported_rows"] == exported["record_count"] == 1
     code, out, _ = run_cli(
         ["workflow", "export", "watch", "--run", task["id"], "--until-settled"]
