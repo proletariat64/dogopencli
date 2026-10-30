@@ -487,11 +487,13 @@ def test_workflow_detail_plan_freezes_sources_without_row_bound_values(installed
     rows = records(kind, count=1)
     detail = native_detail(kind, identity="0")
     browser.business_script.extend([list_reply(rows), reply(detail)])
-    exported = cli("workflow", "export", "run", "--plan", plan["id"])["data"]
+    run = cli("workflow", "export", "create", "--plan", plan["id"])["data"]
+    exported = cli("workflow", "export", "run", "--run", run["id"])["data"]
     assert exported["state"] == "complete_nonempty"
     assert exported["records"] == [{"record": rows[0], "detail": detail}]
     assert browser.business_requests[-1] == {"taskId": "0"}
     browser.business_script.append(list_reply([]))
-    empty = cli("workflow", "export", "run", "--plan", plan["id"])["data"]
+    fresh_run = cli("workflow", "export", "create", "--plan", plan["id"])["data"]
+    empty = cli("workflow", "export", "run", "--run", fresh_run["id"])["data"]
     assert empty["state"] == "complete_empty"
     assert empty["records"] == []

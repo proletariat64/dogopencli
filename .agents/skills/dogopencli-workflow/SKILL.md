@@ -22,12 +22,17 @@ to its registered local Duckdog asset offline. Report these outcomes separately.
    List/detail composition, use the public operation/identity/detail options and
    preserve their selected root/components; do not enroll Get-only leaves as
    datasets or discover new relationships during export.
-3. Run the saved export plan. Preserve exact export identities and acquisition
+3. Prepare `workflow export create --plan INQUIRY_PLAN_ID`; retain returned
+   `data.id` as RUN_ID. Execute `workflow export run --run RUN_ID`. Reuse that
+   Run for retry; create a new Run for deliberate fresh acquisition. Observe with
+   `export status --run RUN_ID` (one JSON envelope) or `export watch --run RUN_ID`
+   (resident text). Preserve exact export identities and acquisition
    conclusions. Preview limits/projection affect presentation only. After partial
    failure, inspect retained outcomes and continue authorized unresolved work;
    independently completed exports remain usable.
-4. For gaps, compile a repair plan from the saved baseline, inspect its frozen
-   selection, then execute it. Programs select gaps and native windows. Retain
+4. For gaps, compile `workflow repair plan --run BASELINE_RUN_ID`, inspect its
+   frozen selection, then execute `workflow repair run --repair REPAIR_PLAN_ID`.
+   Programs select gaps and native windows. Retain
    original exports unchanged. Diagnose access/source failures before expanding
    a native run.
 5. Compile an import plan from exact exports or a completed repair selection and

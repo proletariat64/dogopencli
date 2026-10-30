@@ -167,3 +167,9 @@ a complete exact export whose native contract establishes replacement coverage
 for that business namespace and range. Absence removes only owned occurrences
 inside that range; outside history and separate observations remain retained.
 A successful empty query alone does not establish deletion semantics.
+
+**查询意图计划（Inquiry Plan）**：冻结原生范围和参数，可用于多次独立采集。
+**导出运行（Export Run）**：一次主动采集任务的稳定身份；显式重试保留该身份，
+并产生独立的尝试（Attempt）。保存的导出结果是不可变采集证据，身份与任务不同。
+修复以冻结的修复计划、导入以精确导入计划、目标执行以冻结执行分别识别任务。
+_Avoid_: 用最新导出代替任务选择器，或把本地执行任务当作业务自动运营任务。
