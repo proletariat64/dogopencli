@@ -79,9 +79,11 @@ def resolve(leaf: "Leaf", parameters: dict) -> dict:
         invalid("History range exceeds the declared maximum day difference")
     return {
         **deepcopy(declaration),
-        "format": "%Y-%m-%d"
-        if declaration["interpretation"] == "calendar_date"
-        else "%Y-%m-%dT%H:%M:%S.%fZ",
+        **(
+            {"format": "%Y-%m-%d"}
+            if declaration["interpretation"] == "calendar_date"
+            else {}
+        ),
         **(
             {"precision": "millisecond"}
             if declaration["interpretation"] == "instant"

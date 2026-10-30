@@ -113,6 +113,9 @@ def test_instant_gap_repair_and_preserve_import_keep_one_millisecond(handbook):
             {"from": "2026-10-17T00:00:00.001Z", "to": "2026-10-17T00:00:00.002Z"},
         ],
     )
+    assert frozen["contract"]["interpretation"] == "instant"
+    assert frozen["contract"]["precision"] == "millisecond"
+    assert "format" not in frozen["contract"]
     browser.business_script.extend([response([]), response([])])
     cli("workflow", "export", "run", "--plan", frozen["id"], code=1)
     status = cli("workflow", "history", "show", "--plan", frozen["id"])["data"]
