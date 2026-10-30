@@ -94,6 +94,38 @@ def saved(value: dict) -> dict:
 def execution_status(store: "Store", execution: dict) -> dict:
     from .workflow_history import coverage
 
+    if "runs" in execution:
+        from .workflow_tasks import snapshot
+
+        packages = []
+        for identity in execution["runs"]:
+            child = snapshot(store.config_file, "export", identity)
+            run = store.read("runs", identity)
+            if run["plan"]["mode"] == "history":
+                packages.append({**child["result"], "run_id": identity})
+                continue
+            attempts = sorted(
+                store.exports_for(identity),
+                key=lambda item: (item["completed_at"], item["id"]),
+            )
+            successful = [
+                item for item in attempts if item["state"].startswith("complete_")
+            ]
+            packages.append(
+                {
+                    "plan_id": child["plan_id"],
+                    "run_id": identity,
+                    "complete": child["effective_state"] == "completed",
+                    "latest_attempt": attempts[-1] if attempts else None,
+                    "last_successful_export": successful[-1] if successful else None,
+                }
+            )
+        return {
+            **execution,
+            "packages": packages,
+            "complete": not execution["diagnostics"]
+            and all(item["complete"] for item in packages),
+        }
     exports = [
         {key: value for key, value in item.items() if key != "records"}
         for item in store.list("exports")
@@ -182,11 +214,17 @@ def dispatch(invocation: "Invocation", store: "Store") -> dict:
             if target["policy"] == "following"
             else {"plans": target["plans"]}
         )
+        from .workflow_tasks import create_run
+
         return store.save(
             "executions",
             saved(
                 {
                     "target_id": target["id"],
+                    "task_contract": 1,
+                    "runs": [
+                        create_run(store, identity)["id"] for identity in work["plans"]
+                    ],
                     **work,
                     "diagnostics": target["diagnostics"],
                     "policy": target["policy"],
@@ -204,33 +242,42 @@ def dispatch(invocation: "Invocation", store: "Store") -> dict:
             ],
         }
     if action == "run":
-        from .workflow import run_export
+        from .workflow_tasks import attempt, execute_export
 
         execution = store.read("executions", args.execution)
-        current = execution_status(store, execution)
-        for package in current["packages"]:
-            if package["complete"]:
-                continue
-            child = replace(
-                invocation,
-                args=Namespace(**vars(args), plan=package["plan_id"], package=None),
+        if "runs" not in execution:
+            invalid(
+                "Historical execution has no frozen child Runs; prepare a new execution"
             )
-            try:
-                run_export(child, store)
-            except CliError:
-                continue
-        result = execution_status(store, execution)
-        if not result["complete"]:
-            raise CliError(
-                "INCOMPLETE_RESULT",
-                "Saved target execution has failed, incomplete or unexecutable work",
-                meta={
-                    "execution": result,
-                    "complete": False,
-                    "dataset_complete": False,
-                },
-            )
-        return result
+        with attempt(store, "target", execution["id"]) as active:
+            current = execution_status(store, execution)
+            for package in current["packages"]:
+                if package["complete"]:
+                    continue
+                active.publish(
+                    {"phase": "exporting", "current_run_id": package["run_id"]}
+                )
+                child = replace(
+                    invocation,
+                    args=Namespace(**vars(args), run=package["run_id"], package=None),
+                )
+                try:
+                    execute_export(child, store)
+                except CliError:
+                    continue
+            result = execution_status(store, execution)
+            if not result["complete"]:
+                raise CliError(
+                    "INCOMPLETE_RESULT",
+                    "Saved target execution has failed, incomplete "
+                    "or unexecutable work",
+                    meta={
+                        "execution": result,
+                        "complete": False,
+                        "dataset_complete": False,
+                    },
+                )
+            return result
     invalid("Unknown target stage")
 
 

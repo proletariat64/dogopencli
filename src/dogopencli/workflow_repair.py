@@ -19,7 +19,7 @@ def compile_plan(invocation: "Invocation", store: "Store", baseline: dict) -> di
     from .workflow_history import coverage
 
     frozen = coverage(store, baseline) if baseline.get("mode") == "history" else None
-    exports = store.list("exports")
+    exports = store.exports_for(baseline["run_id"])
     if frozen:
         selected = [
             {"range": item["range"], "export_id": item["export_id"]}
@@ -59,7 +59,9 @@ def compile_plan(invocation: "Invocation", store: "Store", baseline: dict) -> di
     else:
         if baseline.get("mode") != "full":
             invalid("Repair requires an original full or history plan")
-        attempts = [item for item in exports if item["plan"] == baseline["id"]]
+        attempts = [
+            item for item in exports if item.get("run_id") == baseline["run_id"]
+        ]
         if not attempts or any(
             item["state"].startswith("complete_") for item in attempts
         ):
@@ -79,6 +81,8 @@ def compile_plan(invocation: "Invocation", store: "Store", baseline: dict) -> di
             "id": uuid.uuid4().hex,
             "created_at": now(),
             "mode": "repair",
+            "task_contract": 1,
+            "baseline_run": baseline["run_id"],
             "baseline_plan": baseline["id"],
             "baseline": baseline,
             "baseline_coverage": frozen,
@@ -92,7 +96,11 @@ def compile_plan(invocation: "Invocation", store: "Store", baseline: dict) -> di
 def inspect(store: "Store", plan: dict) -> dict:
     if plan.get("mode") != "repair":
         invalid("Selected plan is not a repair")
-    exports = store.list("exports")
+    exports = (
+        store.exports_for(plan["id"])
+        if plan.get("task_contract") == 1
+        else store.list("exports")
+    )
     packages = []
     for package in plan["packages"]:
         attempts = sorted(
@@ -131,6 +139,7 @@ def inspect(store: "Store", plan: dict) -> dict:
     return {
         "repair_id": plan["id"],
         "baseline_plan": plan["baseline_plan"],
+        "baseline_run": plan.get("baseline_run"),
         "baseline_gaps": plan["baseline_gaps"],
         "packages": packages,
         "selected_exports": selected,
@@ -157,11 +166,15 @@ def run(invocation: "Invocation", store: "Store", plan: dict) -> tuple[dict, dic
             **plan["baseline"],
             **package,
             "mode": "full",
+            "run_id": plan["id"],
             "repair_plan": plan["id"],
             "baseline_plan": plan["baseline_plan"],
         }
         if "range" in package:
             child["history_plan"] = plan["baseline_plan"]
+        from .progress import report
+
+        report(phase="exporting", current_package_id=package["id"])
         try:
             run_export(invocation, store, child)
         except CliError:

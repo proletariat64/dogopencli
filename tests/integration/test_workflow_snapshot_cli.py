@@ -29,7 +29,13 @@ def test_full_snapshot_initial_publication_preserves_nested_rows(run_cli, pilots
         for value in ("one", "two")
     ]
     pilots.business_script.append(payment_page(rows))
-    exported = call(run_cli, "export", "run", "--plan", plan["id"])
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     preview = call(
         run_cli,
         "import",
@@ -65,7 +71,13 @@ def test_full_snapshot_initial_publication_preserves_nested_rows(run_cli, pilots
 
 def snapshot(run_cli, pilots, plan, rows):
     pilots.business_script.append(payment_page(rows))
-    exported = call(run_cli, "export", "run", "--plan", plan["id"])
+    exported = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     prepared = call(
         run_cli,
         "import",
@@ -195,7 +207,13 @@ def test_incomplete_and_failed_refresh_cannot_replace_committed_current(
     complete_page = payment_page([row])
     complete_page["body"]["pageSize"] = 1000
     pilots.business_script.append(complete_page)
-    first = call(run_cli, "export", "run", "--plan", plan["id"])
+    first = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     prepared = call(
         run_cli, "import", "plan", "--export", first["id"], "--action", "replace-full"
     )
@@ -203,7 +221,13 @@ def test_incomplete_and_failed_refresh_cannot_replace_committed_current(
     partial_page = payment_page([row])
     partial_page["body"].update(pageSize=1000, totalCount=1001)
     pilots.business_script.append(partial_page)
-    partial = call(run_cli, "export", "run", "--plan", plan["id"])
+    partial = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+    )
     assert partial["state"] == "incomplete"
     code, output, _ = run_cli(
         [
@@ -219,7 +243,15 @@ def test_incomplete_and_failed_refresh_cannot_replace_committed_current(
     assert code == 1
     assert "complete export" in json.loads(output)["error"]["message"]
     pilots.business_script.append({"status": 401, "body": {}})
-    code, _, _ = run_cli(["workflow", "export", "run", "--plan", plan["id"]])
+    code, _, _ = run_cli(
+        [
+            "workflow",
+            "export",
+            "run",
+            "--run",
+            call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        ]
+    )
     assert code == 1
     status = call(run_cli, "status")
     failed = status["latest_attempt"]

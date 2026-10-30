@@ -82,7 +82,18 @@ def declarations() -> tuple[BizNode, ...]:
         (
             ("workflow", "repair", "plan"),
             "Save repair work from the frozen baseline gaps.",
-            (opt("plan", "Original full or history plan ID.", required=True),),
+            (opt("run", "Exact baseline Export Run ID.", required=True),),
+        ),
+        (
+            ("workflow", "repair", "run"),
+            "Execute remaining packages in one frozen repair.",
+            (
+                opt("repair", "Exact frozen repair plan ID.", required=True),
+                opt("package", "One exact frozen package ID."),
+                opt("limit", "Preview rows; zero means all.", "int", default=100),
+                opt("offset", "Preview offset.", "int", default=0),
+                opt("fields", "Preview fields only."),
+            ),
         ),
         (
             ("workflow", "repair", "show"),
@@ -100,11 +111,16 @@ def declarations() -> tuple[BizNode, ...]:
             (opt("plan", "Saved history plan ID.", required=True),),
         ),
         (
+            ("workflow", "export", "create"),
+            "Freeze one inquiry plan as a new acquisition Run, without querying.",
+            (opt("plan", "Exact full/history inquiry plan ID.", required=True),),
+        ),
+        (
             ("workflow", "export", "run"),
             "Export one planned inquiry result; display controls never truncate "
             "saved records.",
             (
-                opt("plan", "Saved plan ID.", required=True),
+                opt("run", "Exact prepared Export Run ID.", required=True),
                 opt(
                     "package",
                     "History only: execute one exact package; "
@@ -196,9 +212,31 @@ def now() -> str:
 
 class Store:
     def __init__(self, config_file: Path) -> None:
+        self.config_file = config_file
         self.root = config_file.parent / "workflow"
 
     def save(self, kind: str, value: dict) -> dict:
+        if kind == "imports":
+            from .workflow_storage import header
+
+            value = {**value, "task_contract": 1}
+            # The immutable frozen input remains in the plan; polling reads
+            # this separately published bounded header, never row arrays.
+            self.save(
+                "import_headers",
+                {
+                    **{
+                        k: v
+                        for k, v in value.items()
+                        if k not in {"input", "inputs", "coverage"}
+                    },
+                    "input_metadata": [
+                        header(item)
+                        for item in value.get("inputs", [value.get("input")])
+                        if item is not None
+                    ],
+                },
+            )
         directory = self.root / kind
         directory.mkdir(parents=True, exist_ok=True)
         if kind == "exports":
@@ -224,6 +262,17 @@ class Store:
                     os.fsync(fd)
                 finally:
                     os.close(fd)
+                if value.get("run_id"):
+                    index = self.root / "run-exports" / value["run_id"]
+                    index.mkdir(parents=True, exist_ok=True)
+                    os.link(
+                        temporary / "metadata.json", index / (value["id"] + ".json")
+                    )
+                    fd = os.open(index, os.O_RDONLY)
+                    try:
+                        os.fsync(fd)
+                    finally:
+                        os.close(fd)
                 temporary.rename(directory / value["id"])
                 fd = os.open(directory, os.O_RDONLY)
                 try:
@@ -252,14 +301,15 @@ class Store:
             temporary.unlink(missing_ok=True)
         return value
 
-    def read(self, kind: str, identity: str) -> dict:
+    def read(self, kind: str, identity: str, *, records: bool = True) -> dict:
         if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{32}", identity):
-            raise CliError("WORKFLOW_ERROR", "Invalid saved identity")
+            raise CliError("INVALID_ARGUMENT", "Invalid saved identity", exit_code=2)
         try:
             if kind == "exports":
                 bundle = self.root / kind / identity
                 value = parse((bundle / "metadata.json").read_bytes())
-                value["records"] = parse((bundle / "records.json").read_bytes())
+                if records:
+                    value["records"] = parse((bundle / "records.json").read_bytes())
             else:
                 value = parse((self.root / kind / (identity + ".json")).read_bytes())
             if (
@@ -273,6 +323,19 @@ class Store:
             raise CliError(
                 "WORKFLOW_ERROR", f"Saved {kind} is unavailable or invalid"
             ) from error
+
+    def exports_for(self, run_id: str) -> list[dict]:
+        """Read task-owned metadata; unpublished result indexes prove nothing."""
+        result = []
+        for path in sorted((self.root / "run-exports" / run_id).glob("*.json")):
+            if (self.root / "exports" / path.stem / "metadata.json").is_file():
+                value = self.read("exports", path.stem, records=False)
+                if value.get("run_id") != run_id:
+                    raise CliError(
+                        "WORKFLOW_ERROR", "Export ownership differs from Run"
+                    )
+                result.append(value)
+        return result
 
     def list(self, kind: str) -> list[dict]:
         if kind == "exports":
@@ -452,10 +515,14 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         return store.read("plans", invocation.args.plan), None
     if path == ("repair", "plan"):
         from .workflow_repair import compile_plan
+        from .workflow_tasks import run_plan
 
-        return compile_plan(
-            invocation, store, store.read("plans", invocation.args.plan)
-        ), None
+        baseline = store.read("runs", invocation.args.run)
+        return compile_plan(invocation, store, run_plan(baseline)), None
+    if path == ("repair", "run"):
+        from .workflow_tasks import execute_repair
+
+        return execute_repair(invocation, store)
     if path == ("repair", "show"):
         from .workflow_repair import inspect
 
@@ -464,8 +531,14 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         from .workflow_history import coverage
 
         return coverage(store, store.read("plans", invocation.args.plan)), None
+    if path == ("export", "create"):
+        from .workflow_tasks import create_run
+
+        return create_run(store, invocation.args.plan), None
     if path == ("export", "run"):
-        return run_export(invocation, store)
+        from .workflow_tasks import execute_export
+
+        return execute_export(invocation, store)
     if path == ("export", "show"):
         return store.read("exports", invocation.args.export), None
     if path == ("import", "plan"):
@@ -474,39 +547,9 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
         # contract rather than serializing an entire million-row input again.
         return {k: v for k, v in saved.items() if k not in {"input", "inputs"}}, None
     if path == ("import", "apply"):
-        from .workflow_storage import apply, exact_match
+        from .workflow_tasks import execute_import
 
-        plan = store.read("imports", invocation.args.plan)
-        if "repair_id" in plan:
-            from .workflow_repair import apply as apply_repair
-
-            return apply_repair(invocation.config_file, store, plan), None
-        artifact = exact_export(store, plan["export_id"])
-        # Direct comparison binds exact values and numeric representations to
-        # the reviewed plan without an adapter/configuration fingerprint.
-        if (
-            plan.get("action")
-            not in {"preserve", "replace-full", "replace-range", "keyed"}
-            or not exact_match(plan.get("input"), artifact)
-            or plan.get("binding") != artifact["binding"]
-        ):
-            raise CliError(
-                "WORKFLOW_ERROR", "Import plan differs from its exact frozen input"
-            )
-        verify_binding(invocation.config_file, artifact)
-        if plan["action"] == "keyed":
-            from .workflow_keyed import apply as reconcile
-
-            return reconcile(invocation.config_file, plan, artifact, now()), None
-        if plan["action"] == "replace-range":
-            from .workflow_range import apply as replace_range
-
-            return replace_range(invocation.config_file, plan, artifact, now()), None
-        if plan["action"] == "replace-full":
-            from .workflow_snapshot import apply as replace
-
-            return replace(invocation.config_file, plan, artifact, now()), None
-        return apply(invocation.config_file, plan, artifact, now()), None
+        return execute_import(invocation, store), None
     if path == ("current", "show"):
         from .workflow_snapshot import current
 
@@ -644,31 +687,16 @@ def binding(config_file: Path, leaf_id: str) -> dict:
         ) from error
 
 
-def run_export(
-    invocation: "Invocation", store: Store, plan: dict | None = None
-) -> tuple[dict, dict]:
+def run_export(invocation: "Invocation", store: Store, plan: dict) -> tuple[dict, dict]:
     from .domains import DomainService
     from .leaves.registry import Registry
     from .leaves.runtime import execute, planned_get_scope, planned_list_scope
 
-    if plan is None:
-        plan = store.read("plans", invocation.args.plan)
-        if plan.get("mode") == "history":
-            from .workflow_history import run
-
-            return run(invocation, store, plan)
-        if plan.get("mode") == "repair":
-            from .workflow_repair import run as repair
-
-            return repair(invocation, store, plan)
-        if invocation.args.package is not None:
-            raise CliError(
-                "INVALID_ARGUMENT", "--package requires a history plan", exit_code=2
-            )
     result = {
         "version": 1,
         "id": uuid.uuid4().hex,
         "plan": plan["id"],
+        **({"run_id": plan["run_id"]} if "run_id" in plan else {}),
         "leaf": plan["leaf"],
         "operation": plan["operation"],
         "binding": plan["binding"],
@@ -792,12 +820,22 @@ def run_export(
         captured,
         parameters=captured["metadata"]["query"],
         record_count=len(records),
+        display_shape="array" if isinstance(displayed, list) else "object",
         completed_at=now(),
         state=("complete_nonempty" if records else "complete_empty")
         if complete
         else "incomplete",
     )
     store.save("exports", result)
+    from .progress import report
+
+    report(
+        phase="export_saved",
+        source=None,
+        candidate=None,
+        export_id=result["id"],
+        exported_rows=len(records),
+    )
     return {**result, "records": displayed}, meta
 
 
@@ -897,3 +935,38 @@ def import_plan(invocation: "Invocation", store: Store) -> dict:
             ),
         },
     )
+
+
+def apply_import(invocation: "Invocation", store: Store) -> dict:
+    from .workflow_storage import apply, exact_match
+
+    plan = store.read("imports", invocation.args.plan)
+    if "repair_id" in plan:
+        from .workflow_repair import apply as apply_repair
+
+        return apply_repair(invocation.config_file, store, plan)
+    artifact = exact_export(store, plan["export_id"])
+    # Direct comparison binds exact values and numeric representations to
+    # the reviewed plan without an adapter/configuration fingerprint.
+    if (
+        plan.get("action") not in {"preserve", "replace-full", "replace-range", "keyed"}
+        or not exact_match(plan.get("input"), artifact)
+        or plan.get("binding") != artifact["binding"]
+    ):
+        raise CliError(
+            "WORKFLOW_ERROR", "Import plan differs from its exact frozen input"
+        )
+    verify_binding(invocation.config_file, artifact)
+    if plan["action"] == "keyed":
+        from .workflow_keyed import apply as reconcile
+
+        return reconcile(invocation.config_file, plan, artifact, now())
+    if plan["action"] == "replace-range":
+        from .workflow_range import apply as replace_range
+
+        return replace_range(invocation.config_file, plan, artifact, now())
+    if plan["action"] == "replace-full":
+        from .workflow_snapshot import apply as replace
+
+        return replace(invocation.config_file, plan, artifact, now())
+    return apply(invocation.config_file, plan, artifact, now())
