@@ -23,6 +23,14 @@ _Avoid_: 将需求当作 FX 逐笔交易、交割账户配置，或按结算参�
 采集时间分别解释，账户别名不替代预警身份。
 _Avoid_: 将预警等同于显式账户能力快照，或从账户别名推断主体、币种和时区。
 
+**计提口径收益（Accrual Base Yield）**：YieldMgmt 中按原生 transactionDate 查询的
+计提收益记录，以 investmentNo 与 transactionDate 共同识别。日期范围只限定该查询的计提记录。
+_Avoid_: 将计提收益等同于现金收益，或仅凭 investmentNo 推断已取得关联现金收益。
+
+**现金口径收益（Cash Base Yield）**：YieldMgmt 中按原生 settlementDate 查询的
+现金收益记录，以原生 id 识别；transactionId 是记录上的投资引用。该查询与计提收益分别观察。
+_Avoid_: 将现金口径收益称为投资全部结算流水，或从返回引用字段推断接口支持按投资查询。
+
 **采集完整性（Acquisition Completeness）**：对当前请求范围及所需数据组成的覆盖证明。
 与记录有效性、新鲜度和缓存发布分别判断；仅经显式限定可用的不完整候选可默认返回并持续告警。
 List、Get、Refresh 的 `--require-complete` 只改变接纳条件，不扩大范围或请求预算；完整结果可带恢复告警。

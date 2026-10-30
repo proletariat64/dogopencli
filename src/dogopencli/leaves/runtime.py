@@ -6,6 +6,7 @@ import math
 from argparse import Namespace
 from collections.abc import Callable
 from contextlib import nullcontext
+from copy import deepcopy
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -39,7 +40,7 @@ from .query import (
     validate_detail_lookup,
     validate_detail_result,
 )
-from .registry import Leaf
+from .registry import Leaf, _typed
 
 
 def cache_for(config_file: Path) -> Cache:
@@ -349,9 +350,51 @@ def _compose_details(
     return combined, acquisitions
 
 
-def freeze_list_parameters(leaf: Leaf, parameters: dict, config_file: Path) -> dict:
+def freeze_list_parameters(
+    leaf: Leaf, parameters: dict, config_file: Path, *, acquisition: bool = True
+) -> dict:
     """Read local selectors only, rejecting drift in an already frozen request."""
     specification = leaf.manifest["operations"].get("list", {})
+    if acquisition and specification.get("freeze_parameters"):
+        original = deepcopy(parameters)
+        supplied = deepcopy(parameters)
+        frozen = leaf.adapter.freeze_parameters(supplied)
+        definitions = {
+            item["name"].replace("-", "_"): item for item in specification["parameters"]
+        }
+        if (
+            supplied != original
+            or not isinstance(frozen, dict)
+            or any(
+                key not in frozen or frozen[key] != value
+                for key, value in original.items()
+            )
+            or any(key not in definitions for key in frozen.keys() - original.keys())
+        ):
+            raise CliError(
+                "INVALID_ARGUMENT",
+                "Parameter freezing must preserve supplied scope and declared names",
+                exit_code=2,
+            )
+        for key, value in frozen.items():
+            if key not in definitions:
+                continue
+            definition = definitions[key]
+            values = value if definition.get("multiple") else [value]
+            if not isinstance(values, list) or any(
+                not _typed(item, definition["type"])
+                or isinstance(item, float)
+                and not math.isfinite(item)
+                or "choices" in definition
+                and item not in definition["choices"]
+                for item in values
+            ):
+                raise CliError(
+                    "INVALID_ARGUMENT",
+                    "Frozen parameter has an invalid type or choice",
+                    exit_code=2,
+                )
+        parameters = deepcopy(frozen)
     if specification.get("entity_selector") is True and parameters.get("entity") == [
         "ANY"
     ]:
@@ -451,7 +494,12 @@ def execute(
             "INVALID_LEAF", "standard List requires a collection declaration"
         )
     if operation in {"list", "refresh"}:
-        parameters = freeze_list_parameters(leaf, parameters, config_file)
+        parameters = freeze_list_parameters(
+            leaf,
+            parameters,
+            config_file,
+            acquisition=operation == "refresh" or args.live,
+        )
         resolved_entities = parameters.get("_resolved_entities")
 
     store = cache_for(config_file)

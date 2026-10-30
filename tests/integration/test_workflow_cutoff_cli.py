@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from test_workflow_cli import call
-from test_workflow_generic_cli import SYNTHETIC_ADAPTER
+from test_workflow_generic_cli import SYNTHETIC_ADAPTER, SYNTHETIC_HISTORY
 
 pytest_plugins = ["integration.test_leaf_pilots_cli"]
 
@@ -15,34 +15,34 @@ pytest_plugins = ["integration.test_leaf_pilots_cli"]
     "windows,expected",
     [
         (
-            [{"from": "20261031", "to": "20261101"}],
-            [{"from": "20261001", "to": "20261029"}],
+            [{"from": "2026-10-31", "to": "2026-11-01"}],
+            [{"from": "2026-10-01", "to": "2026-10-29"}],
         ),
         (
-            [{"from": "20261028", "to": "20261101"}],
-            [{"from": "20261001", "to": "20261027"}],
+            [{"from": "2026-10-28", "to": "2026-11-01"}],
+            [{"from": "2026-10-01", "to": "2026-10-27"}],
         ),
         (
             [
-                {"from": "20261001", "to": "20261029"},
-                {"from": "20261031", "to": "20261101"},
+                {"from": "2026-10-01", "to": "2026-10-29"},
+                {"from": "2026-10-31", "to": "2026-11-01"},
             ],
             [],
         ),
         (
             [
-                {"from": "20261001", "to": "20261010"},
-                {"from": "20261020", "to": "20261101"},
+                {"from": "2026-10-01", "to": "2026-10-10"},
+                {"from": "2026-10-20", "to": "2026-11-01"},
             ],
-            [{"from": "20261011", "to": "20261019"}],
+            [{"from": "2026-10-11", "to": "2026-10-19"}],
         ),
         (
             [
-                {"from": "20261001", "to": "20261010"},
-                {"from": "20261005", "to": "20261015"},
-                {"from": "20261020", "to": "20261101"},
+                {"from": "2026-10-01", "to": "2026-10-10"},
+                {"from": "2026-10-05", "to": "2026-10-15"},
+                {"from": "2026-10-20", "to": "2026-11-01"},
             ],
-            [{"from": "20261016", "to": "20261019"}],
+            [{"from": "2026-10-16", "to": "2026-10-19"}],
         ),
     ],
 )
@@ -61,6 +61,7 @@ def test_retained_future_coverage_cannot_extend_following_cutoff(
     manifest = json.loads((source / "leaf.json").read_text())
     manifest["name"] = "synthetic.observations"
     manifest["dataset"]["relation"] = "synthetic_observations"
+    manifest["operations"]["list"]["history"] = SYNTHETIC_HISTORY
     manifest["operations"]["list"]["parameters"] = [
         {
             "name": name,
@@ -93,13 +94,14 @@ def test_retained_future_coverage_cannot_extend_following_cutoff(
         "body": {"resultFlag": True, "count": 0, "result": {"bankVoList": []}},
     }
     pilots.business_script.extend([empty] * len(windows))
+    seed_run = call(run_cli, "export", "create", "--plan", seed["id"])
     code, _, _ = run_cli(
         [
             "workflow",
             "export",
             "run",
             "--run",
-            call(run_cli, "export", "create", "--plan", seed["id"])["id"],
+            seed_run["id"],
         ]
     )
     assert code == 1  # Unplanned seed days remain visible.
@@ -118,7 +120,7 @@ def test_retained_future_coverage_cannot_extend_following_cutoff(
     )
     previous_requests = len(pilots.business_requests)
     frozen = call(run_cli, "target", "plan", "--target", target["id"])
-    assert frozen["cutoff"] == "20261029"
+    assert frozen["cutoff"] == "2026-10-29"
     planned = [
         call(run_cli, "plan", "show", "--plan", item) for item in frozen["plans"]
     ]
@@ -129,5 +131,19 @@ def test_retained_future_coverage_cannot_extend_following_cutoff(
     assert [
         {"from": item["from_date"], "to": item["to_date"]}
         for item in pilots.business_requests[previous_requests:]
-    ] == expected
+    ] == [
+        {"from": item["from"].replace("-", ""), "to": item["to"].replace("-", "")}
+        for item in expected
+    ]
     assert call(run_cli, "history", "show", "--plan", seed["id"]) == retained
+
+    if windows == [{"from": "2026-10-31", "to": "2026-11-01"}]:
+        repair = call(run_cli, "repair", "plan", "--run", seed_run["id"])
+        assert repair["packages"][0]["range"] == {
+            "from": "2026-10-01",
+            "to": "2026-10-30",
+        }
+        assert repair["packages"][0]["parameters"] == {
+            "from_date": "20261001",
+            "to_date": "20261030",
+        }

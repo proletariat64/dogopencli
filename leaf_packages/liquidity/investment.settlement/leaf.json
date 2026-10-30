@@ -1,0 +1,89 @@
+{
+  "domain": "liquidity",
+  "name": "investment.settlement",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Query native Cash Base Yield independently.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native settlementDate bound, YYYYMMDD.",
+          "temporal_role": "history_from"
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native settlementDate bound, YYYYMMDD.",
+          "temporal_role": "history_to"
+        }
+      ],
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "settlementDate",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
+    }
+  },
+  "summary": "Independent Cash Base Yield inquiry.",
+  "purpose": "Read Cash Base Yield records in one explicit date scope.",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "meaning": "Native id retained unchanged."
+    },
+    {
+      "name": "transactionId",
+      "type": "string",
+      "meaning": "Native transactionId retained unchanged."
+    },
+    {
+      "name": "settlementDate",
+      "type": "string",
+      "meaning": "Native settlementDate retained unchanged."
+    }
+  ],
+  "identity": [
+    "id"
+  ],
+  "identity_description": "Native id identifies one source occurrence.",
+  "limitations": [
+    "POST JSON /cashBaseList.json; qualified width5000 and zero-based offsets; source totals and identity conflicts remain independent acquisition evidence.",
+    "Inclusive settlementDate bounds use native compact dates and GMT+08. Unknown native fields, nesting and numeric precision are preserved.",
+    "Each query is independent; no investment-parent union, cross-leaf JOIN, amount computation, range replacement or deletion coverage is declared.",
+    "Cash Base Yield means cash-basis investment yield, not all investment settlement transactions. No unverified investment ID request filter is exposed."
+  ],
+  "examples": [
+    {
+      "title": "Read native Cash Base Yield",
+      "command": "dogopencli liquidity list investment.settlement --from-date 20261015 --to-date 20261016 --live --require-complete --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_settlement"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    }
+  }
+}

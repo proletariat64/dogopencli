@@ -19,7 +19,7 @@ from dogopencli.transport import QueryRequest, validate_request
 
 ROOT = Path(__file__).resolve().parents[4]
 LEAF = "operations.automatic_tasks"
-FLAGS = ("--created-from", "2026-10-23T00:00:00", "--created-to", "2026-10-23T23:59:59")
+FLAGS = ("--from-time", "2026-10-23T00:00:00", "--to-time", "2026-10-23T23:59:59")
 
 
 def row(index=0, **values):
@@ -140,7 +140,7 @@ def test_invalid_created_bounds_fail_before_browser(installed, bounds):
     cli, browser, _ = installed
     options = [
         item
-        for name, value in zip(("--created-from", "--created-to"), bounds, strict=False)
+        for name, value in zip(("--from-time", "--to-time"), bounds, strict=False)
         for item in (name, value)
     ]
     assert (
@@ -196,9 +196,7 @@ def test_full_acquisition_live_isolation_and_offline_replay(installed):
     assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
     assert len(browser.transports) == count
     assert (
-        cli("list", *FLAGS, "--created-to", "2026-10-24T00:00:00", code=2)["error"][
-            "code"
-        ]
+        cli("list", *FLAGS, "--to-time", "2026-10-24T00:00:00", code=2)["error"]["code"]
         == "INVALID_ARGUMENT"
     )
     assert len(browser.transports) == count
@@ -330,8 +328,8 @@ def test_page_budget_rejection_preserves_prior_capture(installed):
 def test_restricted_transport_rejects_unverified_request(installed, change):
     _, browser, config = installed
     parameters = {
-        "created_from": "2026-10-23T00:00:00",
-        "created_to": "2026-10-23T23:59:59",
+        "from_time": "2026-10-23T00:00:00",
+        "to_time": "2026-10-23T23:59:59",
     }
     adapter = Registry(config / "config.toml").scan().get("liquidity", LEAF).adapter
     capability = adapter.capability(parameters)

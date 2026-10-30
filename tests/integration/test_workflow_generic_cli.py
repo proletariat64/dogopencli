@@ -178,6 +178,7 @@ def test_unrelated_synthetic_variant_uses_common_full_and_range_import(
     manifest = json.loads((source / "leaf.json").read_text())
     manifest["name"] = "synthetic.observations"
     manifest["dataset"]["relation"] = "synthetic_observations"
+    manifest["operations"]["list"]["history"] = SYNTHETIC_HISTORY
     manifest["operations"]["list"]["parameters"] = [
         {
             "name": name,
@@ -325,7 +326,21 @@ def test_get_only_leaf_cannot_be_enrolled_as_dataset(run_cli, pilots):
     assert not pilots.business_requests
 
 
+SYNTHETIC_HISTORY = {
+    "time_basis": "eventDate",
+    "interpretation": "calendar_date",
+    "boundary": "inclusive",
+    "timezone": None,
+    "from_parameter": "from-date",
+    "to_parameter": "to-date",
+    "splitting": "explicit_windows",
+    "cross_range_equivalence": False,
+}
+
+
 SYNTHETIC_ADAPTER = r"""
+from datetime import datetime
+from dogopencli.errors import CliError
 from dataclasses import replace
 from dogopencli.jsonutil import canonical
 
@@ -349,6 +364,14 @@ class SyntheticInquiry(BankInquiry):
 
 class SyntheticAdapter(Adapter):
     def capability(self, parameters):
+        for key in ("from_date", "to_date"):
+            if key in parameters and (
+                len(parameters[key]) != 8 or not parameters[key].isdigit()
+            ):
+                raise CliError(
+                    "INVALID_ARGUMENT", "Synthetic leaf requires compact dates",
+                    exit_code=2
+                )
         return SyntheticInquiry()
 
     def scope(self, parameters):
@@ -360,19 +383,17 @@ class SyntheticAdapter(Adapter):
             }
         )
 
-    def history_contract(self, parameters):
+    def history_bounds(self, parameters):
         return {
-            "time_basis": "eventDate",
-            "interpretation": "calendar_date",
-            "format": "%Y%m%d",
-            "boundary": "inclusive",
-            "timezone": None,
-            "from_parameter": "from_date",
-            "to_parameter": "to_date",
-            "from": parameters["from_date"],
-            "to": parameters["to_date"],
-            "splitting": "explicit_windows",
-            "cross_range_equivalence": False,
+            "from": datetime.strptime(parameters["from_date"], "%Y%m%d")
+            .date().isoformat(),
+            "to": datetime.strptime(parameters["to_date"], "%Y%m%d").date().isoformat(),
+        }
+
+    def history_parameters(self, bounds):
+        return {
+            "from_date": bounds["from"].replace("-", ""),
+            "to_date": bounds["to"].replace("-", ""),
         }
 
 

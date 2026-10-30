@@ -187,6 +187,11 @@ def dispatch(invocation: "Invocation", store: "Store") -> dict:
                 "lookback/timezone require native history"
             )
         if args.policy == "following" and plan["mode"] == "history":
+            if plan["contract"]["interpretation"] == "instant":
+                invalid(
+                    "Following instant history is not supported; "
+                    "use a frozen bounded plan"
+                )
             if plan["contract"].get("splitting") != "explicit_windows":
                 invalid(
                     "Following requires a native calendar history contract "
@@ -290,11 +295,14 @@ def dispatch(invocation: "Invocation", store: "Store") -> dict:
 
 def following(invocation: "Invocation", store: "Store", target: dict) -> dict:
     """Subtract successful native query intervals; never infer row-date coverage."""
+    from .leaves.history import window_parameters
     from .leaves.runtime import planned_list_scope
     from .workflow import now
     from .workflow_history import calendar, compile_plan, gaps
 
     seed = store.read("plans", target["plans"][0])
+    if seed.get("contract", {}).get("interpretation") == "instant":
+        invalid("Following instant history is not supported; use a frozen bounded plan")
     if seed["mode"] == "full":
         plan = {**seed, "id": uuid.uuid4().hex, "created_at": now()}
         store.save("plans", plan)
@@ -359,11 +367,12 @@ def following(invocation: "Invocation", store: "Store", target: dict) -> dict:
             merged.append((left, right))
     plans = []
     for left, right in merged:
-        parameters = {
-            **seed["parameters"],
-            contract["from_parameter"]: left.strftime(contract["format"]),
-            contract["to_parameter"]: right.strftime(contract["format"]),
-        }
+        parameters = window_parameters(
+            leaf,
+            seed["parameters"],
+            {"from": left.isoformat(), "to": right.isoformat()},
+            contract,
+        )
         scope, environment = planned_list_scope(leaf, parameters)
         plan = compile_plan(
             {

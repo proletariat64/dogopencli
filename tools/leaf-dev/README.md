@@ -14,6 +14,11 @@
 需要根据前一查询结果取得详情等依赖编排时，按操作显式选择 `execution: "custom"`；
 leaf 用 Python 调用宿主命名查询工具，宿主共享请求预算并保留失败和采集证据。
 声明、入口与覆盖责任见 [Custom SDK](../../docs/agents/custom-query-sdk.md)。
+已验证的单自然日或时间点范围可通过 `operations.list.history` 显式启用共享时间能力，
+standard/custom List 均可使用。leaf 决定公开日期／时间格式并负责双向转换；宿主自然日
+只接受 `YYYY-MM-DD`，时间点只接受 UTC 毫秒 `YYYY-MM-DDTHH:mm:ss.SSSZ`。全量观察无需时间声明，现有参数不受该格式限制。
+声明与限制见[有界历史](../../docs/agents/bounded-history.md)，
+可执行示例见[日期范围](example-history/)。
 Get 使用独立详情 capability，只实现原生请求构造和解析验证。已确认关联可声明
 `list_binding`，让 `list --live --with-detail` 组合本次输出窗口的 List 行与详情；
 Get 和组合查询不保存业务缓存，也不导入 Duckdog。完整契约见 [Get SDK](../../docs/agents/get-sdk.md)。
@@ -49,6 +54,7 @@ rtk proxy uv run python tools/leaf-dev/leaf.py pack tools/leaf-dev/example --out
 
 样例的 `.invalid` 接口只在 fake CLI 测试运行：普通 List/Get 见
 `tests/integration/test_leaf_handbook.py`，单响应／多源见
-`tests/integration/test_leaf_sdk_shapes.py`。多源样例明确将 `child.parentRef`
+`tests/integration/test_leaf_sdk_shapes.py`；日期范围见
+`tests/integration/test_leaf_calendar_handbook.py`。多源样例明确将 `child.parentRef`
 归到 `parentRef` 根下，各源保留独立 scope、total、子记录顺序和完整值；
 这是样例的已确认关系，不是 SDK 的自动关联规则。

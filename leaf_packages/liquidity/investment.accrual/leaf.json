@@ -1,0 +1,92 @@
+{
+  "domain": "liquidity",
+  "name": "investment.accrual",
+  "adapter": "adapter.py:adapter",
+  "operations": {
+    "list": {
+      "description": "Query native Accrual Base Yield independently.",
+      "parameters": [
+        {
+          "name": "from-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native transactionDate bound, YYYYMMDD.",
+          "temporal_role": "history_from"
+        },
+        {
+          "name": "to-date",
+          "type": "string",
+          "required": true,
+          "description": "Inclusive native transactionDate bound, YYYYMMDD.",
+          "temporal_role": "history_to"
+        },
+        {
+          "name": "investment-no",
+          "type": "string",
+          "required": false,
+          "multiple": true,
+          "description": "Optional native investment references sent as transactionId array."
+        }
+      ],
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "transactionDate",
+        "boundary": "inclusive",
+        "timezone": "GMT+08",
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
+    }
+  },
+  "summary": "Independent Accrual Base Yield inquiry.",
+  "purpose": "Read Accrual Base Yield records in one explicit date scope.",
+  "fields": [
+    {
+      "name": "investmentNo",
+      "type": "string",
+      "meaning": "Native investmentNo retained unchanged."
+    },
+    {
+      "name": "transactionDate",
+      "type": "string",
+      "meaning": "Native transactionDate retained unchanged."
+    }
+  ],
+  "identity": [
+    "investmentNo",
+    "transactionDate"
+  ],
+  "identity_description": "Native investmentNo, transactionDate identifies one source occurrence.",
+  "limitations": [
+    "POST JSON /accrualBaseList.json; qualified width5000 and zero-based offsets; source totals and identity conflicts remain independent acquisition evidence.",
+    "Inclusive transactionDate bounds use native compact dates and GMT+08. Unknown native fields, nesting and numeric precision are preserved.",
+    "Each query is independent; no investment-parent union, cross-leaf JOIN, amount computation, range replacement or deletion coverage is declared."
+  ],
+  "examples": [
+    {
+      "title": "Read native Accrual Base Yield",
+      "command": "dogopencli liquidity list investment.accrual --from-date 20261015 --to-date 20261016 --live --require-complete --limit 0"
+    }
+  ],
+  "dataset": {
+    "relation": "liquidity_investment_accrual"
+  },
+  "collection": {
+    "provider": "general",
+    "paging": {
+      "mode": "offset",
+      "page_sizes": [
+        5000
+      ]
+    },
+    "primary_id": {
+      "type": "hash",
+      "fields": [
+        "investmentNo",
+        "transactionDate"
+      ]
+    }
+  }
+}

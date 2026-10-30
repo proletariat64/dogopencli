@@ -1,6 +1,6 @@
 """Native automatic-operation tasks through the standard List SDK."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from dogopencli.contracts import EndpointContract
@@ -13,16 +13,21 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
+from dogopencli.temporal import (
+    normalize_utc_milliseconds,
+    parse_iso_millisecond_instant,
+)
 
 TENANT = "GUAPW3SG"
 PAGE_SIZE = 10
 PUBLIC_TIME = "%Y-%m-%dT%H:%M:%S"
 NATIVE_TIME = "%Y-%m-%d %H:%M:%S"
+SOURCE_ZONE = timezone(timedelta(hours=8))
 
 
 def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
     try:
-        values = [parameters.get("created_from"), parameters.get("created_to")]
+        values = [parameters.get("from_time"), parameters.get("to_time")]
         if any(
             not isinstance(value, str) or len(value) != 19 or not value.isascii()
             for value in values
@@ -38,7 +43,7 @@ def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
     except ValueError as error:
         raise CliError(
             INVALID_ARGUMENT,
-            "automatic tasks requires ordered --created-from/--created-to "
+            "automatic tasks requires ordered --from-time/--to-time "
             "YYYY-MM-DDTHH:mm:ss in native GMT+8, fewer than 31 elapsed days apart",
             exit_code=2,
         ) from error
@@ -146,6 +151,33 @@ class Inquiry:
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native = native_scope(parameters)
+        return {
+            bound: normalize_utc_milliseconds(
+                datetime.strptime(native[field], NATIVE_TIME).replace(
+                    tzinfo=SOURCE_ZONE
+                )
+            )
+            for bound, field in (("from", "minDate"), ("to", "maxDate"))
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        values = {
+            key: parse_iso_millisecond_instant(bounds[bound])
+            for key, bound in (("from_time", "from"), ("to_time", "to"))
+        }
+        if any(value.microsecond for value in values.values()):
+            raise CliError(
+                INVALID_ARGUMENT,
+                "automatic tasks cannot express fractional-second windows",
+                exit_code=2,
+            )
+        return {
+            key: value.astimezone(SOURCE_ZONE).strftime(PUBLIC_TIME)
+            for key, value in values.items()
+        }
+
     def capability(self, parameters: dict[str, Any]) -> Inquiry:
         return Inquiry(native_scope(parameters))
 

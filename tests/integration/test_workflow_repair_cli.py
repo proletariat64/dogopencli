@@ -15,7 +15,7 @@ def test_repair_freezes_baseline_and_imports_exact_disjoint_results_offline(
     baseline = create(
         run_cli,
         "--windows",
-        '[{"from":"20260918","to":"20260918"},{"from":"20260920","to":"20260920"}]',
+        '[{"from":"2026-09-18","to":"2026-09-18"},{"from":"2026-09-20","to":"2026-09-20"}]',
     )
     browser.business_script.extend([page([row()]), page([])])
     baseline_run = call(run_cli, "export", "create", "--plan", baseline["id"])
@@ -23,7 +23,7 @@ def test_repair_freezes_baseline_and_imports_exact_disjoint_results_offline(
     assert code == 1
     before = {path: path.read_bytes() for path in (config / "workflow").rglob("*.json")}
     repair = call(run_cli, "repair", "plan", "--run", baseline_run["id"])
-    assert repair["baseline_gaps"] == [{"from": "20260919", "to": "20260919"}]
+    assert repair["baseline_gaps"] == [{"from": "2026-09-19", "to": "2026-09-19"}]
     assert len(repair["packages"]) == 1
     assert repair["packages"][0]["parameters"]["account_alias"] == ["ACCOUNT"]
     browser.business_script.append(page([row(valueDate="20260919")]))
@@ -49,7 +49,7 @@ def test_repair_freezes_baseline_and_imports_exact_disjoint_results_offline(
         path: path.read_bytes() for path in config.rglob("*") if path.is_file()
     }
     status = call(run_cli, "repair", "show", "--repair", repair["id"])
-    assert status["baseline_gaps"] == [{"from": "20260919", "to": "20260919"}]
+    assert status["baseline_gaps"] == [{"from": "2026-09-19", "to": "2026-09-19"}]
     assert status["uncovered_ranges"] == []
     assert {
         path: path.read_bytes() for path in config.rglob("*") if path.is_file()
@@ -63,12 +63,12 @@ def test_repair_retries_failed_gap_without_requerying_baseline_success(
     from leaves.liquidity.test_cash_balances_cli import page, row
 
     _, browser, _ = installed
-    baseline = create(run_cli, "--windows", '[{"from":"20260920","to":"20260920"}]')
+    baseline = create(run_cli, "--windows", '[{"from":"2026-09-20","to":"2026-09-20"}]')
     browser.business_script.append(page([]))
     baseline_run = call(run_cli, "export", "create", "--plan", baseline["id"])
     run_cli(["workflow", "export", "run", "--run", baseline_run["id"]])
     repair = call(run_cli, "repair", "plan", "--run", baseline_run["id"])
-    assert repair["baseline_gaps"] == [{"from": "20260918", "to": "20260919"}]
+    assert repair["baseline_gaps"] == [{"from": "2026-09-18", "to": "2026-09-19"}]
     browser.business_script.append({"status": 500, "body": {}})
     code, _, _ = run_cli(["workflow", "repair", "run", "--repair", repair["id"]])
     assert code == 1
@@ -125,7 +125,7 @@ def test_ambiguous_overlapping_baseline_cannot_select_a_repair(run_cli, installe
     baseline = create(
         run_cli,
         "--windows",
-        '[{"from":"20260918","to":"20260918"},{"from":"20260918","to":"20260918"}]',
+        '[{"from":"2026-09-18","to":"2026-09-18"},{"from":"2026-09-18","to":"2026-09-18"}]',
     )
     browser.business_script.extend([page([]), page([])])
     baseline_run = call(run_cli, "export", "create", "--plan", baseline["id"])

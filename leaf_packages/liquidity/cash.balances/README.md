@@ -105,8 +105,11 @@ mutation is added.
 
 ## Bounded workflow history
 
-The adapter's `history_contract` declares inclusive calendar `valueDate` bounds
+The manifest's `operations.list.history` declares inclusive calendar `valueDate` bounds
 for explicit aliases, selected entities, or the frozen ANY entity selector.
+The leaf converts its accepted ISO/compact dates to the SDK's ISO boundaries
+through `history_bounds`, and converts planned windows back through
+`history_parameters`; the host constructs and validates the shared contract.
 Entity-wide exports enumerate accounts through the existing exporter directory
 contract and retain its quality and current-ownership limitations. Explicit
 windows retain separately labeled native observations; no multi-day/daily query

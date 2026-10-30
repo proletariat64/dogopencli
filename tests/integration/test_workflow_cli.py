@@ -247,7 +247,7 @@ def test_plan_reuses_native_semantic_validation_without_browser(run_cli, pilots)
             "--leaf",
             "fx.trade",
             "--parameters",
-            '{"transact-from":"bad-date"}',
+            '{"from-time":"bad-date"}',
         ]
     )
     assert code == 2, out

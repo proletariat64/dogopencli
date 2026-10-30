@@ -2,7 +2,8 @@
 
 [机器清单](batches.json)定义批次成员和原始 list/get 范围；[流程](workflow.md)定义开发与验收。
 清单随已验收的 SDK 实现合并，未合并的历史 WIP 不计交付。
-四个 bundled pilots 单独统计，当前清单为 **79 packages / 106 actions**。
+四个 bundled pilots 单独统计，当前清单为 **80 packages / 107 actions**，全操作已验收。
+新增 accrual、settlement 两个独立 List 已完成各自候选 ZIP 验收。
 B07 的两个风险指标各自保留独立 List；B24 产品历史属于 products Get，不单独计为 leaf/action。
 
 ## 基础能力
@@ -30,11 +31,11 @@ Get 和 `list --live --with-detail` 不发布业务缓存或导入 Duckdog。
 ## B01–B10 交付
 
 B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issues/262)。
-这九个批次共 **42 leaves / 62 actions**：
+原始交付时，这九个批次共 **42 leaves / 62 actions**：
 
 - **39/39 Lists、23/23 Gets**，合计 **62/62 actions**；**42/42 leaves** 全操作完成。
-- 整批完成 B01、B02、B03、B05、B06、B07、B08、B09、B10；当前范围无 HOLD。
-- 全局逐 leaf/action 累计为 **79/79 完整 leaves、106/106 actions**；当前清单无未完成 leaf 或 action。
+- 原始范围整批完成 B01、B02、B03、B05、B06、B07、B08、B09、B10。B05 拆分后的两个新增 leaf 也已完成独立验收。
+- 原始交付时全局为 **79/79 完整 leaves、106/106 actions**。当前拆分后的成员与验收状态以本文开头与机器清单为准。
 - 进度工具按完整 leaf 累计；部分完成批次仍保留 HOLD 范围。
 
 | Batch | SDK List / 原范围 | SDK Get / 原范围 | 全操作完成 leaves | 范围依据 |
@@ -59,9 +60,19 @@ B04 已并入 B03，见 [#262](https://github.com/proletariat64/dogopencli/issue
 不据此证明所有银行或历史时点均有记录。两项分别完成原生结果比较、独立缓存和安装验收，B07 全范围完成。
 
 已确认的复杂关系由 leaf 表达：waterlevel Get 返回按账户 alias 查询的完整配置数组，
-不绑定当前 List 行；quotes Get 保留完整根和嵌套身份；returns 以 `investmentNo` 为根，
-保留 accrual/cash 原生子记录及各源独立范围。源内无记录不证明该父对象全部历史无记录。
+不绑定当前 List 行；quotes Get 保留完整根和嵌套身份。
 后续复杂关系继续经 helper 发现、实验和 HIL 确认后开发。
+
+## B05 收益查询拆分
+
+[#402](https://github.com/proletariat64/dogopencli/issues/402) 将原复合收益查询拆为两个独立 standard Lists：
+`liquidity.investment.accrual` 对应 Accrual Base Yield，以 transactionDate 为日期轴；
+`liquidity.investment.settlement` 对应 Cash Base Yield，以 settlementDate 为日期轴。
+二者分别使用 from-date/to-date、原生分页和身份，不关联或合并结果。
+Cash Base Yield 是现金口径收益，不声明为投资全部结算流水。
+旧 investment.returns 不再作为当前开发入口；既有保存数据不自动迁移或删除。
+B05 原有四个 leaf 的交付状态保留；两个新 List 已分别完成只读 export、preserve/import 与离线逐值、逐类型读回验收。
+本节仅确认 B05 成员交付，不代表 #402 其余时间能力升级的整批验收完成。
 
 ## B11–B20 后续迁移
 
@@ -93,9 +104,9 @@ B11–B20 累计交付 25 leaves / 29 actions；原有 #332 范围全部完成�
 
 产品／决策 history 和 realtime Get 的 operationHistory 均以原生接口成功返回的整个历史数组为完成边界，原生 total 保持未知，不拼当前记录、不推定后台未返回版本。realtime 根与历史各自保留原生值，不要求跨接口字段对齐，也不承诺原子快照。
 
-## 原始批次范围
+## 当前批次成员
 
-L = list，G = get。原始 action 集合保持完整；全操作通过前不将整个 leaf 或 batch 记为 delivered。
+L = list，G = get。当前 action 集合按已批准拆分更新；全操作通过前不将整个 leaf 或 batch 记为 delivered。
 成员默认继承批次 `status`；部分完成时，在成员上分别标记 `delivered` 或 `blocked`，
 批次保持未完成。工具按完整 leaf 累计 packages/actions，同时显示每批已完成数量。
 整批 `delivered` 不得含未完成成员；HOLD 的范围保留在原票及集中 HIL 清单中。
@@ -110,7 +121,7 @@ rtk proxy /path/to/host/bin/python -I tools/leaf-dev/leaf.py batches
 | B01 | [#257](https://github.com/proletariat64/dogopencli/issues/257) | `liquidity.reference.banks` L; `liquidity.investment.benchmarks` L; `liquidity.rules.forecast` L | 3/3 | delivered |
 | B02 | [#259](https://github.com/proletariat64/dogopencli/issues/259) | `liquidity.rules.action_mapping` L; `liquidity.rules.funding` L; `liquidity.rules.fx_settlement` L; `liquidity.rules.operation` LG; `liquidity.rules.realtime` LG; `liquidity.risk.thresholds` LG | 6/9 | delivered |
 | B03 | [#262](https://github.com/proletariat64/dogopencli/issues/262) | `liquidity.cash.waterlevels` L; `liquidity.forecast.adjustments` L; `liquidity.cash.statements.intraday` L; `liquidity.cash.statements.end_of_day` L; `liquidity.cash.credit_lines` L; `liquidity.cash.credit_usage` L; `liquidity.cash.group_balances` L; `liquidity.cash.pool_balances` L; `liquidity.cash.pools` LG | 9/10 | delivered |
-| B05 | [#264](https://github.com/proletariat64/dogopencli/issues/264) | `liquidity.investment.holdings` LG; `liquidity.investment.transactions` LG; `liquidity.investment.compound_ledger` LG; `liquidity.investment.benchmark_values` L; `liquidity.investment.returns` L | 5/8 | delivered |
+| B05 | [#264](https://github.com/proletariat64/dogopencli/issues/264) | `liquidity.investment.holdings` LG; `liquidity.investment.transactions` LG; `liquidity.investment.compound_ledger` LG; `liquidity.investment.benchmark_values` L; `liquidity.investment.accrual` L; `liquidity.investment.settlement` L | 6/9 | delivered |
 | B06 | [#265](https://github.com/proletariat64/dogopencli/issues/265) | `liquidity.rules.notification` G; `liquidity.rules.transfer` LG; `liquidity.rules.waterlevel` LG | 3/5 | delivered |
 | B07 | [#266](https://github.com/proletariat64/dogopencli/issues/266) | `liquidity.risk.anomalies` LG; `liquidity.risk.events` LG; `liquidity.risk.deposit_concentration` L; `liquidity.risk.credit_usage` L; `liquidity.risk.sla` LG | 5/8 | delivered |
 | B08 | [#267](https://github.com/proletariat64/dogopencli/issues/267) | `liquidity.operations.asset_trades` LG; `liquidity.operations.forwards` LG; `liquidity.operations.prefunds` LG; `liquidity.operations.demands` LG; `liquidity.operations.transfers` LG; `liquidity.operations.swaps` L | 6/11 | delivered |

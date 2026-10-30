@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 
@@ -15,7 +15,7 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
-from dogopencli.temporal import parse_iso_instant
+from dogopencli.temporal import normalize_utc_milliseconds, parse_date_or_instant
 
 QUERY_FIELDS = frozenset(
     {
@@ -39,6 +39,7 @@ ARRAY_FILTERS = (
     ("account_id", "subCustomerIds"),
 )
 UTC8 = timezone(timedelta(hours=8))
+EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def argument_error(message: str) -> CliError:
@@ -47,23 +48,25 @@ def argument_error(message: str) -> CliError:
 
 def time_bound(value: str, *, end: bool) -> int:
     try:
-        if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
-            instant = datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC8)
+        parsed = parse_date_or_instant(value)
+        if type(parsed) is date:
+            instant = datetime.combine(parsed, datetime.min.time(), UTC8)
             if end:
                 instant += timedelta(days=1, milliseconds=-1)
         else:
-            instant = parse_iso_instant(value)
-        return int(instant.timestamp() * 1000)
-    except (ValueError, OverflowError) as error:
+            instant = parsed
+        delta = instant.astimezone(timezone.utc) - EPOCH
+        return (delta.days * 86400 + delta.seconds) * 1000 + delta.microseconds // 1000
+    except (ValueError, OverflowError, TypeError) as error:
         raise argument_error(
-            "trade time must be YYYY-MM-DD (UTC+08:00) or ISO 8601 "
-            "with seconds and an explicit offset"
+            "trade time must be YYYY-MM-DD (UTC+08:00) or an explicit-offset "
+            "ISO instant with seconds and at most millisecond precision"
         ) from error
 
 
 def query_request(args: Any) -> dict[str, Any]:
     query: dict[str, Any] = {}
-    if not args.trade_id and args.transact_from is None and args.transact_to is None:
+    if not args.trade_id and args.from_time is None and args.to_time is None:
         yesterday = (datetime.now(UTC8) - timedelta(days=1)).date().isoformat()
         query["transactTimeRange"] = {
             "start": time_bound(yesterday, end=False),
@@ -89,12 +92,12 @@ def query_request(args: Any) -> dict[str, Any]:
         query["quoteOperationScene"] = args.scene
     if args.fulfilled is not None:
         query["p5TimeOverDue"] = int(args.fulfilled)
-    if bool(args.transact_from) != bool(args.transact_to):
-        raise argument_error("--transact-from and --transact-to must be paired")
-    if args.transact_from is not None and args.transact_to is not None:
+    if bool(args.from_time) != bool(args.to_time):
+        raise argument_error("--from-time and --to-time must be paired")
+    if args.from_time is not None and args.to_time is not None:
         start, end = (
-            time_bound(args.transact_from, end=False),
-            time_bound(args.transact_to, end=True),
+            time_bound(args.from_time, end=False),
+            time_bound(args.to_time, end=True),
         )
         if start > end:
             raise argument_error("trade time start must not follow end")
@@ -180,6 +183,36 @@ FX_TRADE = TradeInquiry()
 
 
 class Adapter:
+    def freeze_parameters(self, parameters: dict) -> dict:
+        frozen = dict(parameters)
+        if not frozen.get("trade_id") and all(
+            frozen.get(key) is None for key in ("from_time", "to_time")
+        ):
+            native = parse(self.scope(frozen))["transactTimeRange"]
+            frozen.update(
+                {
+                    key: normalize_utc_milliseconds(
+                        EPOCH + timedelta(milliseconds=native[bound])
+                    )
+                    for key, bound in (("from_time", "start"), ("to_time", "end"))
+                }
+            )
+        return frozen
+
+    def history_bounds(self, parameters: dict) -> dict:
+        native = parse(self.scope(parameters)).get("transactTimeRange")
+        if native is None:
+            raise argument_error("ID-only trade inquiry has no bounded history range")
+        return {
+            key: normalize_utc_milliseconds(
+                EPOCH + timedelta(milliseconds=native[bound])
+            )
+            for key, bound in (("from", "start"), ("to", "end"))
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {"from_time": bounds["from"], "to_time": bounds["to"]}
+
     def capability(self, parameters: dict[str, Any]) -> Any:
         return FX_TRADE
 
@@ -189,7 +222,7 @@ class Adapter:
             values.setdefault(flag, [])
             if values[flag] is None:
                 values[flag] = []
-        for flag in ("scene", "fulfilled", "transact_from", "transact_to"):
+        for flag in ("scene", "fulfilled", "from_time", "to_time"):
             values.setdefault(flag, None)
         return canonical(query_request(SimpleNamespace(**values)))
 
