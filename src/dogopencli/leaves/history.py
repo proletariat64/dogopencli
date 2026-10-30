@@ -1,10 +1,11 @@
 """Opt-in calendar declarations; native date codecs remain leaf-owned."""
 
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from ..errors import CliError
+from ..temporal import normalize_utc_milliseconds, parse_iso_millisecond_instant
 
 if TYPE_CHECKING:
     from .registry import Leaf
@@ -31,6 +32,22 @@ def calendar(value: str) -> date:
         ) from error
 
 
+def boundary(value: str, contract: dict) -> date | datetime:
+    """Parse a declared host boundary without coercing precision or timezone."""
+    if contract["interpretation"] == "calendar_date":
+        return calendar(value)
+    try:
+        if not isinstance(value, str) or normalize_utc_milliseconds(value) != value:
+            raise ValueError
+        return parse_iso_millisecond_instant(value)
+    except (ValueError, TypeError) as error:
+        raise CliError(
+            "INVALID_ARGUMENT",
+            "Instant history requires UTC millisecond bounds",
+            exit_code=2,
+        ) from error
+
+
 def resolve(leaf: "Leaf", parameters: dict) -> dict:
     declaration = leaf.manifest["operations"]["list"].get("history")
     if declaration is None:
@@ -51,7 +68,10 @@ def resolve(leaf: "Leaf", parameters: dict) -> dict:
         invalid("History date conversion changed query parameters")
     if not isinstance(bounds, dict) or set(bounds) != {"from", "to"}:
         invalid("History date conversion must return only from and to")
-    start, end = calendar(bounds["from"]), calendar(bounds["to"])
+    start, end = (
+        boundary(bounds["from"], declaration),
+        boundary(bounds["to"], declaration),
+    )
     if start > end:
         invalid("Native history range is reversed")
     maximum = declaration.get("max_day_difference")
@@ -59,7 +79,14 @@ def resolve(leaf: "Leaf", parameters: dict) -> dict:
         invalid("History range exceeds the declared maximum day difference")
     return {
         **deepcopy(declaration),
-        "format": "%Y-%m-%d",
+        "format": "%Y-%m-%d"
+        if declaration["interpretation"] == "calendar_date"
+        else "%Y-%m-%dT%H:%M:%S.%fZ",
+        **(
+            {"precision": "millisecond"}
+            if declaration["interpretation"] == "instant"
+            else {}
+        ),
         "from_parameter": declaration["from_parameter"].replace("-", "_"),
         "to_parameter": declaration["to_parameter"].replace("-", "_"),
         **bounds,
@@ -69,8 +96,8 @@ def resolve(leaf: "Leaf", parameters: dict) -> dict:
 def window_parameters(
     leaf: "Leaf", parameters: dict, bounds: dict, contract: dict
 ) -> dict:
-    calendar(bounds["from"])
-    calendar(bounds["to"])
+    boundary(bounds["from"], contract)
+    boundary(bounds["to"], contract)
     supplied = dict(bounds)
     patch = leaf.adapter.history_parameters(supplied)
     if supplied != bounds:

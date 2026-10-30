@@ -58,6 +58,9 @@ PARAMETER_SCHEMA = {
         "choices": {"type": "array"},
         "multiple": {"type": "boolean"},
         "local_field": {"type": "string"},
+        "temporal_role": {
+            "enum": ["history_from", "history_to", "clock_from", "clock_to"]
+        },
     },
 }
 HISTORY_SCHEMA = {
@@ -74,14 +77,15 @@ HISTORY_SCHEMA = {
         "cross_range_equivalence",
     ],
     "properties": {
-        "interpretation": {"enum": ["calendar_date"]},
+        "interpretation": {"enum": ["calendar_date", "instant"]},
         "time_basis": {"type": "string"},
         "boundary": {"enum": ["inclusive"]},
         "timezone": {},
-        "from_parameter": {"enum": ["from-date"]},
-        "to_parameter": {"enum": ["to-date"]},
+        "from_parameter": {"enum": ["from-date", "from-time"]},
+        "to_parameter": {"enum": ["to-date", "to-time"]},
         "splitting": {"enum": ["explicit_windows"]},
         "cross_range_equivalence": {"type": "boolean", "enum": [False]},
+        "precision": {"enum": ["millisecond"]},
         "modification_time": {"type": "string"},
         "max_day_difference": {"type": "integer", "minimum": 0},
         "applicability": {
@@ -194,7 +198,14 @@ MANIFEST_SCHEMA = {
                         "description": {"type": "string"},
                         "parameters": {"type": "array", "items": PARAMETER_SCHEMA},
                         "execution": {"enum": ["standard", "custom"]},
-                        **({"history": HISTORY_SCHEMA} if op == "list" else {}),
+                        **(
+                            {
+                                "history": HISTORY_SCHEMA,
+                                "freeze_parameters": {"type": "boolean"},
+                            }
+                            if op == "list"
+                            else {}
+                        ),
                         "account_directory": {"type": "boolean"},
                         "entity_selector": {"type": "boolean"},
                         "queries": {
@@ -485,6 +496,37 @@ def _validate_custom_queries(domain: str, operation: dict) -> None:
                 )
 
 
+def _validate_temporal_roles(operation: dict) -> None:
+    roles = {}
+    for parameter in operation["parameters"]:
+        role = parameter.get("temporal_role")
+        if role is None:
+            continue
+        if role in roles or parameter["type"] != "string" or parameter.get("multiple"):
+            raise _invalid("temporal roles require unique scalar string parameters")
+        roles[role] = parameter
+    for kind in ("history", "clock"):
+        lower, upper = roles.get(kind + "_from"), roles.get(kind + "_to")
+        if lower is None and upper is None:
+            continue
+        if lower is None or upper is None or lower["required"] != upper["required"]:
+            raise _invalid("temporal roles require a matching pair of bounds")
+        if kind == "history":
+            history = operation.get("history")
+            if not history or (lower["name"], upper["name"]) != (
+                history["from_parameter"],
+                history["to_parameter"],
+            ):
+                raise _invalid("history parameter roles must match the declared axis")
+        elif (
+            not re.fullmatch(r"[a-z][a-z0-9-]*-from-time", lower["name"])
+            or upper["name"] != lower["name"][: -len("from-time")] + "to-time"
+        ):
+            raise _invalid(
+                "clock roles require one named from-time/to-time filter pair"
+            )
+
+
 def validate_manifest(value: Any) -> None:
     _validate(value, MANIFEST_SCHEMA, "leaf")
     for action, operation in value["operations"].items():
@@ -526,11 +568,23 @@ def validate_manifest(value: Any) -> None:
                 ):
                     raise _invalid(f"parameter {name} default is outside choices")
     for action, operation in value["operations"].items():
+        _validate_temporal_roles(operation)
         if "history" not in operation:
             continue
         if action != "list":
             raise _invalid("history is supported only for List")
         history = operation["history"]
+        expected = (
+            ("from-time", "to-time")
+            if history["interpretation"] == "instant"
+            else ("from-date", "to-date")
+        )
+        if (history["from_parameter"], history["to_parameter"]) != expected:
+            raise _invalid("history parameter names do not match its interpretation")
+        if history["interpretation"] == "instant" and "max_day_difference" in history:
+            raise _invalid("instant history cannot declare calendar day constraints")
+        if history["interpretation"] == "calendar_date" and "precision" in history:
+            raise _invalid("calendar history does not declare instant precision")
         definitions = {item["name"]: item for item in operation["parameters"]}
         if any(
             name not in definitions
@@ -830,6 +884,8 @@ class Registry:
                     required |= {"scope", "filter"}
                     if "history" in operation:
                         required |= {"history_bounds", "history_parameters"}
+                    if operation.get("freeze_parameters"):
+                        required.add("freeze_parameters")
                 if operation.get("execution", "standard") == "custom":
                     required |= {"query_capability", f"query_{action}"}
                 elif action == "get":
@@ -839,6 +895,7 @@ class Registry:
                 else:
                     required.add("capability")
             arguments = {
+                "freeze_parameters": ({},),
                 "history_bounds": ({},),
                 "history_parameters": ({},),
                 "capability": ({},),

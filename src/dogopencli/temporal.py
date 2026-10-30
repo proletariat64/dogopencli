@@ -7,7 +7,7 @@ timezone is ever inferred from the host, tenant, UI label or capture time.
 """
 
 import re
-from datetime import datetime
+from datetime import date, datetime, timezone
 
 # Native local datetime representation used by liquidity history scopes.
 LOCAL_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -73,3 +73,52 @@ def normalize_clock(value: str) -> str:
     compact = value.replace(":", "")
     parsed = datetime.strptime(compact, COMPACT_CLOCK_FORMAT)
     return parsed.strftime(COMPACT_CLOCK_FORMAT)
+
+
+_MILLISECOND_INSTANT_PATTERN = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})"
+)
+_DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+
+def parse_iso_millisecond_instant(value: str) -> datetime:
+    """Parse an explicit-offset instant with zero to three fractional digits.
+
+    This opt-in parser does not widen the existing second-precision API.
+    Unknown offsets, missing offsets and submillisecond precision are rejected.
+    """
+    if not isinstance(value, str) or not _MILLISECOND_INSTANT_PATTERN.fullmatch(value):
+        raise ValueError("not an explicit-offset instant with at most milliseconds")
+    if value.endswith("-00:00"):
+        raise ValueError("unknown-offset -00:00 carries no instant")
+    fmt = "%Y-%m-%dT%H:%M:%S.%f%z" if "." in value else "%Y-%m-%dT%H:%M:%S%z"
+    return datetime.strptime(value, fmt)
+
+
+def normalize_utc_milliseconds(value: datetime | str) -> str:
+    """Return canonical UTC milliseconds without truncation or inferred zones."""
+    parsed = parse_iso_millisecond_instant(value) if isinstance(value, str) else value
+    if not isinstance(parsed, datetime) or parsed.utcoffset() is None:
+        raise ValueError("an explicit timezone is required")
+    if parsed.microsecond % 1000:
+        raise ValueError("submillisecond precision is not representable")
+    try:
+        return (
+            parsed.astimezone(timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
+    except OverflowError as error:
+        raise ValueError("instant is outside the supported calendar") from error
+
+
+def parse_date_or_instant(value: str) -> date | datetime:
+    """Parse an ISO date or an explicit-offset instant through milliseconds.
+
+    Dates remain dates. A leaf must explicitly choose its business timezone
+    and boundary when expanding one into an instant.
+    """
+    if isinstance(value, str) and _DATE_PATTERN.fullmatch(value):
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    return parse_iso_millisecond_instant(value)

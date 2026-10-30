@@ -148,6 +148,11 @@ def dispatch(invocation: "Invocation", store: "Store") -> dict:
                 "lookback/timezone require native history"
             )
         if args.policy == "following" and plan["mode"] == "history":
+            if plan["contract"]["interpretation"] == "instant":
+                invalid(
+                    "Following instant history is not supported; "
+                    "use a frozen bounded plan"
+                )
             if plan["contract"].get("splitting") != "explicit_windows":
                 invalid(
                     "Following requires a native calendar history contract "
@@ -242,6 +247,8 @@ def following(invocation: "Invocation", store: "Store", target: dict) -> dict:
     from .workflow_history import calendar, compile_plan, gaps
 
     seed = store.read("plans", target["plans"][0])
+    if seed.get("contract", {}).get("interpretation") == "instant":
+        invalid("Following instant history is not supported; use a frozen bounded plan")
     if seed["mode"] == "full":
         plan = {**seed, "id": uuid.uuid4().hex, "created_at": now()}
         store.save("plans", plan)
