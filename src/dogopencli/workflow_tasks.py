@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .errors import CliError
 from .jsonutil import canonical, parse
-from .workflow import Store, now
+from .workflow import Store
 
 KINDS = {
     "export": "runs",
@@ -27,6 +27,11 @@ KINDS = {
     "target": "executions",
 }
 COMPLETE = {"complete_empty", "complete_nonempty"}
+
+
+def now() -> str:
+    """Task wall time is independent of frozen inquiry/capture clocks."""
+    return datetime.now(timezone.utc).isoformat()
 
 
 def create_run(store: Store, plan_id: str) -> dict:
