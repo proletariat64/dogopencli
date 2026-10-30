@@ -419,7 +419,8 @@ def _short_page_candidate(
         duplicates += duplicate
         conflicts += conflict
         ties += tie
-        contents.add(canonical(row))
+        if collection.get("latest_by") is not None:
+            contents.add(canonical(row))
     reasons = []
     if observations:
         reasons.append("PAGINATION_HOLES_BYPASSED")
@@ -651,7 +652,10 @@ def _list_candidate(
             duplicate_count += duplicate
             conflict_count += conflict
             tie_count += tie
-            contents.add(canonical(row))
+            if latest_by is not None or (
+                capability.contract.total_semantics == "source_row_occurrences"
+            ):
+                contents.add(canonical(row))
 
         report(
             source_pages=pages,
