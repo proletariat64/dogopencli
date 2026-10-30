@@ -429,3 +429,35 @@ def test_later_run_preparation_works_after_temporary_business_clock_is_restored(
         if process.is_alive():
             process.kill()
         process.join(10)
+
+
+def test_saved_incomplete_export_retains_actual_source_metrics(run_cli, pilots):
+    from dogopencli.workflow_tasks import snapshot
+
+    config = Path(os.environ["DOGOPENCLI_CONFIG"])
+    plan = call(run_cli, "plan", "create", "--leaf", "collection.cost")
+    task = call(run_cli, "export", "create", "--plan", plan["id"])
+    pilots.business_script.append(
+        {
+            "status": 200,
+            "body": {
+                "success": True,
+                "pageNo": 0,
+                "pageSize": 1000,
+                "totalCount": 1001,
+                "resultDataList": [
+                    {"itemId": "one", "itemType": "FUND_IN_CHANNEL_TRANS_FEE"}
+                ],
+            },
+        }
+    )
+    result = call(run_cli, "export", "run", "--run", task["id"])
+    status = snapshot(config, "export", task["id"])
+    assert status["effective_state"] == "incomplete"
+    assert status["result"]["export_id"] == result["id"]
+    assert status["progress"]["source"] is not None
+    assert status["progress"]["source_pages"] == 1
+    assert status["progress"]["request_attempts"] == 1
+    assert status["progress"]["source_rows_received"] == 1
+    assert status["progress"]["source_total_rows"] == 1001
+    assert status["progress"]["exported_rows"] == 1
