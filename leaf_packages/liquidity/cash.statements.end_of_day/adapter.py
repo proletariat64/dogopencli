@@ -1,4 +1,4 @@
-"""Dated end-of-day statements with native composite identity and full rows."""
+"""Dated end-of-day statements with native end2endid identity and full rows."""
 
 import re
 from dataclasses import dataclass
@@ -18,7 +18,7 @@ from dogopencli.jsonutil import canonical, parse
 
 PAGE_SIZE = 1000
 TENANT = "GUAPW3SG"
-IDENTITY = ("instId", "bankAccountAliasName", "currency", "valueDate", "bankTransNo")
+ROW_SCOPE_FIELDS = ("instId", "bankAccountAliasName", "currency", "valueDate")
 SCOPE_KEYS = frozenset(
     {
         "instIds",
@@ -181,7 +181,14 @@ class StatementInquiry:
                 INVALID_RESPONSE, "reported total is not a nonnegative integer"
             )
         for row in rows:
-            values = [row.get(field) for field in IDENTITY]
+            identity = row.get("end2endid")
+            if type(identity) not in (str, int) or (
+                isinstance(identity, str) and not identity.strip()
+            ):
+                raise CliError(
+                    INVALID_RESPONSE, "statement is missing a typed native end2endid"
+                )
+            values = [row.get(field) for field in ROW_SCOPE_FIELDS]
             if any(
                 type(value) not in (str, int)
                 or (isinstance(value, str) and not value.strip())
@@ -189,7 +196,8 @@ class StatementInquiry:
             ):
                 raise CliError(
                     INVALID_RESPONSE,
-                    "statement is missing a typed composite identity field",
+                    "statement is missing a typed "
+                    "account/currency/value-date scope field",
                 )
         return rows, total
 

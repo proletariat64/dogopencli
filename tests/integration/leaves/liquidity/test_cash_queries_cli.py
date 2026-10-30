@@ -57,7 +57,7 @@ LEAVES = {
     "cash.waterlevels": (1000, None, "aliasName"),
     "forecast.adjustments": (1000, "bankCashForecastAdjustmentQueryVO", "id"),
     "cash.statements.intraday": (1000, None, "bankTransNo"),
-    "cash.statements.end_of_day": (1000, None, "bankTransNo"),
+    "cash.statements.end_of_day": (1000, None, "end2endid"),
     "cash.credit_lines": (100, "bankCreditLineQuery", "id"),
     "cash.credit_usage": (100, "bankCreditLineQuery", "id"),
     "cash.group_balances": (100, "bankAccountManageUnitQueryVO", "id"),
@@ -115,6 +115,8 @@ def native_row(leaf, number=0):
         record["currency"] = ["USD", "EUR", "JPY"][number % 3]
         record["curAvlBal"] = Decimal("123456789.123456789123456789")
     elif leaf.startswith("cash.statements."):
+        if leaf.endswith("end_of_day"):
+            record["bankTransNo"] = f"bank-{number}"
         record.update(
             instId="Z21",
             bankAccountAliasName="synthetic",
@@ -574,11 +576,11 @@ def test_repeated_local_filters_do_not_narrow_refresh_publication(installed, lea
     assert len(browser.business_requests) == count
 
 
-def test_eod_composite_identity_retains_same_transaction_across_dates(installed):
+def test_eod_native_identity_retains_same_transaction_and_scope(installed):
     leaf = "cash.statements.end_of_day"
     cli, browser = installed(leaf)
-    first = native_row(leaf)
-    second = {**first, "valueDate": "20261002", "amount": None}
+    first = {**native_row(leaf), "end2endid": "statement-1"}
+    second = {**first, "end2endid": "statement-2", "amount": None}
     browser.business_script.append(page(leaf, [first, second]))
     result = cli(
         "liquidity", "list", leaf, "--live", "--require-complete", *scope_flags(leaf)
@@ -854,3 +856,60 @@ def test_sdk_cross_page_overlap_preserves_prior_snapshot(installed, leaf):
     after = cli("liquidity", "list", leaf, "--limit", "0")
     assert after["data"] == before["data"]
     assert after["meta"]["fetched_at"] == before["meta"]["fetched_at"]
+
+
+def test_eod_missing_native_primary_key_has_no_composite_fallback(installed):
+    leaf = "cash.statements.end_of_day"
+    cli, browser = installed(leaf)
+    record = native_row(leaf)
+    del record["end2endid"]
+    browser.business_script.append(page(leaf, [record]))
+    result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf), code=1)
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+
+
+def test_eod_reused_native_key_rejects_different_bank_transaction_content(installed):
+    leaf = "cash.statements.end_of_day"
+    cli, browser = installed(leaf)
+    first = native_row(leaf)
+    second = {**first, "bankTransNo": "another-transaction"}
+    browser.business_script.append(page(leaf, [first, second]))
+    result = cli(
+        "liquidity",
+        "list",
+        leaf,
+        "--live",
+        "--require-complete",
+        *scope_flags(leaf),
+        code=1,
+    )
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert "IDENTITY_CONTENT_CONFLICT" in result["meta"]["acquisition"]["reasons"]
+
+
+@pytest.mark.parametrize("bank_number", [None, "", "absent"])
+def test_eod_bank_transaction_number_is_output_only(installed, bank_number):
+    leaf = "cash.statements.end_of_day"
+    cli, browser = installed(leaf)
+    record = {**native_row(leaf), "bankTransNo": bank_number}
+    if bank_number == "absent":
+        del record["bankTransNo"]
+    browser.business_script.append(page(leaf, [record]))
+    result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf))
+    assert result["data"] == [record]
+    assert result["meta"]["complete"] is True
+
+
+@pytest.mark.parametrize(
+    "field", ["instId", "bankAccountAliasName", "currency", "valueDate"]
+)
+@pytest.mark.parametrize("bad", [None, "", "absent", True, {}])
+def test_eod_native_key_does_not_replace_required_scope_fields(installed, field, bad):
+    leaf = "cash.statements.end_of_day"
+    cli, browser = installed(leaf)
+    record = {**native_row(leaf), field: bad}
+    if bad == "absent":
+        del record[field]
+    browser.business_script.append(page(leaf, [record]))
+    result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf), code=1)
+    assert result["error"]["code"] == "INVALID_RESPONSE"

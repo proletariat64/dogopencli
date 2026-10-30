@@ -65,6 +65,11 @@
   "purpose": "Inspect bank statement records without aggregating currencies, inferring fund direction or changing source data.",
   "fields": [
     {
+      "name": "end2endid",
+      "type": "string|integer",
+      "meaning": "Native statement primary key; exact value and type retained."
+    },
+    {
       "name": "instId",
       "type": "string",
       "meaning": "Native institution identity."
@@ -87,7 +92,7 @@
     {
       "name": "bankTransNo",
       "type": "string",
-      "meaning": "Native transaction number; retained in composite identity."
+      "meaning": "Native bank transaction number retained as output; not the statement identity."
     },
     {
       "name": "amount",
@@ -101,13 +106,9 @@
     }
   ],
   "identity": [
-    "instId",
-    "bankAccountAliasName",
-    "currency",
-    "valueDate",
-    "bankTransNo"
+    "end2endid"
   ],
-  "identity_description": "Typed native composite identity preserves distinct institution/account/currency/value-date/transaction records. Duplicated composite identities fail rather than collapsing records.",
+  "identity_description": "Native end2endid primary key, retaining its source value and type. Account, currency and value-date scope are validated independently. Reused bank transaction numbers do not merge distinct statements.",
   "limitations": [
     "Fixed tenant GUAPW3SG, POST rowStart pagination at pageSize=1000 and timezone GMT+08.",
     "Explicit entity/account alias/currency and inclusive date bounds are required for acquisition; cached replay needs no repeated scope.",
@@ -137,13 +138,9 @@
       ]
     },
     "primary_id": {
-      "type": "hash",
+      "type": "field",
       "fields": [
-        "instId",
-        "bankAccountAliasName",
-        "currency",
-        "valueDate",
-        "bankTransNo"
+        "end2endid"
       ]
     }
   }

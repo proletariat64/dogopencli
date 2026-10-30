@@ -16,17 +16,20 @@ dogopencli liquidity list cash.statements.end_of_day --limit 0
 
 Success requires Boolean `success=true`, object-array `data.data` and a
 nonnegative integer `data.totalCount` unchanged across pages. Coverage requires
-all arrivals to match the total with unique typed composite identities
-`(instId, bankAccountAliasName, currency, valueDate, bankTransNo)`. Reused
-transaction numbers in distinct composite scopes remain distinct records.
-Duplicate composite identities leave collection incomplete; records outside the
+all arrivals to match the total with unique typed native `end2endid` primary
+keys. Missing, blank or invalidly typed keys fail; no composite fallback or
+new identity hash is used. `bankTransNo` remains an output field and may repeat
+for distinct statement keys. Institution, account, currency and value-date fields
+remain required and are validated separately against the selected scope.
+Duplicate native keys leave collection incomplete; records outside the
 requested native scope fail. Neither can publish a refresh. There is no native detail or offline scope filter.
 The default list reads saved data; live does not publish.
 
 Full native rows preserve unknown fields and source value types. This corrects
 legacy whitelist field loss without changing financial values or introducing
 new fields. No row aggregation, currency conversion or amount scaling occurs.
-The SDK hashes the reviewed typed composite internally; native rows gain no ID. Null, empty text and zero remain distinct. `valueDate`,
+The SDK uses the native primary key; native rows gain no generated ID.
+Null, empty text and zero remain distinct. `valueDate`,
 `transDate`, `transTime` and `date` keep their separate source meanings and
 representations. `fundDirection` is sourced, never inferred from amount sign.
 Capture time does not establish statement observation time.
