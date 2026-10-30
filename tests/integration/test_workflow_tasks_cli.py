@@ -365,3 +365,67 @@ def test_runner_emits_actual_identity_and_safe_progress_only_on_stderr(run_cli, 
     assert f"export {task['id']} attempt {current['number']} {current['id']}" in error
     assert "phase=" in error
     assert "private-business-row" not in error
+
+
+def _prepare_runs_after_temporary_clock(plan_id, sent):
+    """Fresh interpreter reproduces first lazy import inside a finite clock."""
+    import io
+    import json
+    from contextlib import redirect_stderr, redirect_stdout
+
+    from dogopencli import workflow
+    from dogopencli.cli import main
+
+    def invoke():
+        output, error = io.StringIO(), io.StringIO()
+        with redirect_stdout(output), redirect_stderr(error):
+            code = main(["workflow", "export", "create", "--plan", plan_id])
+        return code, json.loads(output.getvalue())
+
+    original_clock = workflow.now
+    ticks = iter(["1999-01-01T00:00:00+00:00"])
+    try:
+        workflow.now = lambda: next(ticks)
+        first = invoke()
+    finally:
+        workflow.now = original_clock
+    second = invoke()
+    status = None
+    if second[0] == 0:
+        from dogopencli.workflow_tasks import snapshot
+
+        status = snapshot(
+            Path(os.environ["DOGOPENCLI_CONFIG"]), "export", second[1]["data"]["id"]
+        )
+    sent.send((first, second, status))
+    sent.close()
+
+
+def test_later_run_preparation_works_after_temporary_business_clock_is_restored(
+    run_cli, pilots
+):
+    import multiprocessing
+
+    plan = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
+    context = multiprocessing.get_context("spawn")
+    received, sent = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_prepare_runs_after_temporary_clock, args=(plan["id"], sent)
+    )
+    process.start()
+    sent.close()
+    try:
+        assert received.poll(20), "Fresh CLI process did not return its responses"
+        first, second, status = received.recv()
+        process.join(10)
+        assert process.exitcode == 0
+        assert first[0] == 0, first[1]
+        assert second[0] == 0, second[1]
+        assert second[1]["data"]["id"] != first[1]["data"]["id"]
+        assert status["effective_state"] == "pending"
+        assert status["observation"]["quality"] == "ok"
+    finally:
+        received.close()
+        if process.is_alive():
+            process.kill()
+        process.join(10)
