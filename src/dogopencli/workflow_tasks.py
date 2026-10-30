@@ -134,28 +134,34 @@ def ownership(path: Path, attempt: dict | None) -> str:
         return "unknown"
     try:
         process = _process(owner["pid"])
-        if process is None or process != {
+        if process is not None and process == {
             key: owner.get(key) for key in ("pid", "start_ticks", "boot_id")
         }:
-            return "exited"
-        descriptor = Path(f"/proc/{owner['pid']}/fd/{owner['lock_fd']}")
-        if not os.path.samestat(descriptor.stat(), path.with_suffix(".lock").stat()):
-            return "exited"
-        info = Path(f"/proc/{owner['pid']}/fdinfo/{owner['lock_fd']}").read_text()
-        if not re.search(
-            rf"^lock:\s+\d+:\s+FLOCK\s+ADVISORY\s+WRITE\s+{owner['pid']}\s",
-            info,
-            re.MULTILINE,
-        ):
-            return "exited"
+            descriptor = Path(f"/proc/{owner['pid']}/fd/{owner['lock_fd']}")
+            exact_file = os.path.samestat(
+                descriptor.stat(), path.with_suffix(".lock").stat()
+            )
+            info = Path(f"/proc/{owner['pid']}/fdinfo/{owner['lock_fd']}").read_text()
+            if exact_file and re.search(
+                rf"^lock:\s+\d+:\s+FLOCK\s+ADVISORY\s+WRITE\s+{owner['pid']}\s",
+                info,
+                re.MULTILINE,
+            ):
+                return "verified"
+    except (OSError, KeyError, TypeError, ValueError):
+        pass
+    # /proc can expose another PID namespace or deny access. Missing or
+    # mismatched process identity cannot establish exit while this task's
+    # lock is still held. Only a verified release supports interruption.
+    try:
         with path.with_suffix(".lock").open("rb") as lock:
             try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
             except BlockingIOError:
-                return "verified"
+                return "unknown"
             fcntl.flock(lock, fcntl.LOCK_UN)
             return "exited"
-    except (OSError, KeyError, TypeError, ValueError):
+    except OSError:
         return "unknown"
 
 
@@ -165,6 +171,64 @@ class Attempt:
         self.mutex = threading.Lock()
         self.active = True
         self.rate_sample = None
+        self.diagnostics_enabled = False
+        self.last_diagnostic = None
+        self.last_diagnostic_at = 0.0
+
+    def diagnostic(self, progress: dict) -> None:
+        phase = progress.get("phase")
+        if phase not in {
+            "starting",
+            "acquisition",
+            "get",
+            "detail",
+            "query",
+            "staging",
+            "publication",
+            "exporting",
+            "export_saved",
+            "settled",
+        }:
+            phase = "working"
+        metrics = tuple(
+            (key, progress[key])
+            for key in (
+                "source_pages",
+                "request_attempts",
+                "source_rows_received",
+                "source_total_rows",
+                "exported_rows",
+                "expected_rows",
+                "staged_rows",
+                "committed_rows",
+                "detail_rows_completed",
+                "detail_rows_expected",
+            )
+            if type(progress.get(key)) is int
+        )
+        signature = (phase, metrics)
+        tick = time.monotonic()
+        previous = self.last_diagnostic
+        if (
+            self.diagnostics_enabled
+            and signature != previous
+            and (
+                previous is None
+                or phase != previous[0]
+                or tick - self.last_diagnostic_at >= 3
+            )
+        ):
+            counts = " ".join(f"{key}={value}" for key, value in metrics)
+            try:
+                print(
+                    f"{self.state['kind']} {self.state['id']} "
+                    f"attempt {self.attempt['number']} phase={phase} {counts}".rstrip(),
+                    file=sys.stderr,
+                    flush=True,
+                )
+            except OSError:
+                return
+            self.last_diagnostic, self.last_diagnostic_at = signature, tick
 
     def publish(self, facts: dict) -> None:
         with self.mutex:
@@ -251,6 +315,8 @@ class Attempt:
             self.state["heartbeat_at"] = stamp
             self.state["updated_at"] = stamp
             _atomic(self.path, self.state)
+            if facts:
+                self.diagnostic(self.state.get("progress", {}))
 
 
 @contextmanager
@@ -299,6 +365,8 @@ def attempt(store: Store, kind: str, identity: str) -> Iterator[Attempt]:
             file=sys.stderr,
             flush=True,
         )
+        writer.diagnostics_enabled = True
+        writer.diagnostic(state["progress"])
         stop = threading.Event()
 
         def heartbeat() -> None:
