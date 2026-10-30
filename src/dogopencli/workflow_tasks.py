@@ -441,9 +441,13 @@ def execute_export(invocation, store: Store) -> tuple[dict, dict]:
             saved = [e for e in store.exports_for(run["id"]) if e["state"] in COMPLETE]
             if saved:
                 result = store.read("exports", saved[-1]["id"])
-                meta = result["metadata"]
+                meta = dict(result["metadata"])
                 from .leaves.runtime import _project
-                from .temporary_query import display_options, window_rows
+                from .temporary_query import (
+                    display_options,
+                    list_preview_metadata,
+                    window_rows,
+                )
 
                 limit, offset, fields = display_options(invocation.args)
                 rows = result["records"]
@@ -457,6 +461,21 @@ def execute_export(invocation, store: Store) -> tuple[dict, dict]:
                     ]
                 else:
                     displayed = _project(window_rows(rows, limit, offset), fields)
+                if plan["operation"] != "get":
+                    meta.update(
+                        list_preview_metadata(
+                            len(rows),
+                            len(displayed),
+                            limit,
+                            offset,
+                            custom_detail=(
+                                plan["detail_contract"]["declaration"].get("execution")
+                                == "custom"
+                                if plan.get("with_detail")
+                                else None
+                            ),
+                        )
+                    )
                 result = {**result, "records": displayed}
             else:
                 result, meta = run_export(invocation, store, plan)

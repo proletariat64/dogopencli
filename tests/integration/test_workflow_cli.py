@@ -80,6 +80,72 @@ def test_export_retains_full_exact_records_before_preview_and_survives_later_exp
     assert call(run_cli, "export", "show", "--export", exported["id"]) == saved
 
 
+@pytest.mark.parametrize("with_detail", [False, True])
+def test_completed_export_rebuilds_preview_metadata_without_changing_acquisition(
+    run_cli, pilots, with_detail
+):
+    rows = [{"id": str(i), "name": f"row {i}"} for i in range(3)]
+    plan = call(
+        run_cli,
+        "plan",
+        "create",
+        "--leaf",
+        "payment.sla.baselines",
+        *(["--with-detail"] if with_detail else []),
+    )
+    run = call(run_cli, "export", "create", "--plan", plan["id"])
+    pilots.business_script.append(payment_page(rows))
+    if with_detail:
+        pilots.business_script.extend(
+            {"status": 200, "body": {"success": True, "resultData": row}}
+            for row in rows
+        )
+
+    def preview(limit, offset):
+        code, out, _ = run_cli(
+            [
+                "workflow",
+                "export",
+                "run",
+                "--run",
+                run["id"],
+                "--limit",
+                str(limit),
+                "--offset",
+                str(offset),
+                "--fields",
+                "id",
+            ]
+        )
+        assert code == 0, out
+        return json.loads(out)
+
+    first = preview(1, 0)
+    saved = call(run_cli, "export", "show", "--export", first["data"]["id"])
+    requests = len(pilots.business_requests)
+    for limit, offset in [(1, 0), (1, 1), (0, 1), (1, 5)]:
+        replay = preview(limit, offset)
+        selected = rows[offset:] if limit == 0 else rows[offset : offset + limit]
+        meta = replay["meta"]
+        assert replay["data"]["id"] == first["data"]["id"]
+        assert meta["returned_count"] == len(selected)
+        assert meta["matched_total"] == len(rows)
+        assert meta["has_more"] is (offset + len(selected) < len(rows))
+        displayed = replay["data"]["records"]
+        assert [item["record"] if with_detail else item for item in displayed] == [
+            {"id": row["id"]} for row in selected
+        ]
+        if with_detail:
+            assert meta["detail_count"] == len(selected)
+            assert meta["detail_window"] == {"limit": limit, "offset": offset}
+            for key in ("detail_scope", "detail_coverage"):
+                assert meta[key] == first["meta"][key]
+        for key, value in saved["metadata"].items():
+            assert meta[key] == value
+    assert len(pilots.business_requests) == requests
+    assert call(run_cli, "export", "show", "--export", saved["id"]) == saved
+
+
 def test_import_preserves_exact_observations_offline_and_replay_is_noop(
     run_cli, pilots
 ):

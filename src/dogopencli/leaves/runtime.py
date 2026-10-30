@@ -30,7 +30,12 @@ from dogopencli.result_policy import (
     check_complete,
     prepare_result,
 )
-from dogopencli.temporary_query import display_options, is_stale, window_rows
+from dogopencli.temporary_query import (
+    display_options,
+    is_stale,
+    list_preview_metadata,
+    window_rows,
+)
 
 from .query import (
     CustomGetResult,
@@ -982,40 +987,29 @@ def execute(
             "contract_id": contract_id,
             "fetched_at": fetched_at,
             "stale": stale,
-            "matched_total": matched,
-            "returned_count": len(displayed),
-            "has_more": offset + len(displayed) < matched,
             **evidence.meta(),
             "unique_count": evidence.unique_count,
             "duplicate_count": evidence.duplicate_count,
             "total_semantics": evidence.total_semantics,
         }
         if args.with_detail:
-            custom_detail = (
-                leaf.manifest["operations"]["get"].get("execution") == "custom"
-            )
             meta.update(
-                {
-                    "source_acquisition": source_list_acquisition,
-                    "detail_acquisition": [
-                        item.record() for item in detail_acquisitions
-                    ],
-                    "with_detail": True,
-                    "detail_scope": "custom" if custom_detail else "native_root",
-                    "detail_count": len(displayed),
-                    "detail_window": {"offset": offset, "limit": limit},
-                    "detail_coverage": (
-                        "Only selected List rows; each custom Get follows its "
-                        "declared leaf relationship and coverage contract. "
-                        "Detail success does not expand List coverage."
-                        if custom_detail
-                        else "Only selected List rows; "
-                        "one native root response per row. "
-                        "Separate histories, logs and child pages are not acquired. "
-                        "Detail success does not expand List coverage."
-                    ),
-                }
+                source_acquisition=source_list_acquisition,
+                detail_acquisition=[item.record() for item in detail_acquisitions],
             )
+        meta.update(
+            list_preview_metadata(
+                matched,
+                len(displayed),
+                limit,
+                offset,
+                custom_detail=(
+                    leaf.manifest["operations"]["get"].get("execution") == "custom"
+                    if args.with_detail
+                    else None
+                ),
+            )
+        )
         if not live:
             meta["source_acquisition"] = source_acquisition
             meta["requested_coverage"] = requested_coverage
