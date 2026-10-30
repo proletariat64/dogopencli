@@ -142,7 +142,10 @@ Coverage uses whole calendar days for calendar contracts and integer millisecond
 for instant contracts. It does not infer coverage from returned row timestamps.
 Explicit windows must remain native-executable, including precision restrictions;
 no automatic splitting or range-replacement support follows from an instant
-history declaration. Daily clock filters such as forecast `record-from-time` are
+history declaration. Instant contracts support fixed history, exact export and
+repair; following/lookback policies reject instant targets until their cutoff
+semantics have a separate contract. Calendar following behavior is unchanged.
+Daily clock filters such as forecast `record-from-time` are
 fixed selectors, not independent instant axes. Defaults that depend on the current
 day must be materialized when the plan is created, before execution or resume.
 For such defaults, a List may opt in with `operations.list.freeze_parameters: true`
