@@ -84,6 +84,16 @@ declarations, shared budgets, leaf-qualified detail refusals/failures and
 source/relationship evidence.
 Standard and custom execution may coexist across List and Get.
 
+For a qualified inclusive calendar inquiry, opt in through
+`operations.list.history` and implement the two pure date conversion methods.
+The leaf chooses its accepted public formats; the host only accepts ISO
+`YYYY-MM-DD` across this SDK boundary, constructs the contract, and validates
+explicit windows without changing native acquisition. Follow
+[bounded history](../../docs/agents/bounded-history.md#native-declaration-and-date-boundary)
+and the executable [calendar sample](example-history/). Do not copy a
+`history_contract` dictionary into each adapter. Full observations require no
+history declaration or conversion methods and keep their existing parameters.
+
 Keep the leaf in one root adapter file. Resolve optional resources from
 `Path(__file__).parent` inside methods; bare sibling imports have no package-loader
 support. Installed adapters use host dependencies; installation installs no new

@@ -8,7 +8,7 @@ become business dates or source modification times.
 ```bash
 dogopencli workflow plan create --leaf liquidity.cash.balances --mode history \
   --parameters '{"account-alias":"ACCOUNT","from-date":"20260918","to-date":"20260920"}' \
-  --windows '[{"from":"20260918","to":"20260918"},{"from":"20260919","to":"20260919"},{"from":"20260920","to":"20260920"}]'
+  --windows '[{"from":"2026-09-18","to":"2026-09-18"},{"from":"2026-09-19","to":"2026-09-19"},{"from":"2026-09-20","to":"2026-09-20"}]'
 dogopencli workflow plan show --plan PLAN_ID
 dogopencli workflow history show --plan PLAN_ID
 dogopencli workflow export run --plan PLAN_ID
@@ -16,8 +16,10 @@ dogopencli workflow export run --plan PLAN_ID --package PACKAGE_ID
 dogopencli workflow status
 ```
 
-`--windows` selects exact native ranges within the desired bounds; endpoints use
-the format declared by the leaf. Omit it to retain one unchanged native range.
+`--windows` selects exact native ranges within the desired bounds and accepts only
+ISO `YYYY-MM-DD`. Desired ranges, cutoffs and coverage metadata use the same ISO
+format. The leaf decides which public date formats its own parameters accept and
+converts them at this boundary. Omit windows to retain one unchanged native range.
 The planner never automatically expands a query into days. A selected package run
 still returns a nonzero aggregate outcome while any desired scope or requested
 package remains unresolved. Inspect `meta.history` or use `history show` for the
@@ -50,22 +52,68 @@ overlapping records from different exports therefore do not become a double-coun
 current history view. Historical merge, range replacement and separate frozen
 repair plans require their own explicit actions.
 
-## Native declaration
+## Native declaration and date boundary
 
-An adapter may expose `history_contract(parameters) -> dict` at the exporter
-boundary. Full observations do not require it. The current planner supports
-`interpretation: calendar_date` and `boundary: inclusive`; other semantics remain
-available as unchanged full scoped observations. Required facts are `time_basis`,
-native `format`, `from_parameter`/`to_parameter` (normalized parameter names), and
-normalized finite `from`/`to`. `splitting: explicit_windows` permits individually
-selected native windows; it does not assert cross-range equivalence. Preserve
-`timezone`, `cross_range_equivalence` and source modification-time information
-without guessing unknown facts. No importer leaf profile or source qualification
-table is involved.
+A List opts in through `operations.list.history` in its manifest. The declaration
+is independent of standard/custom acquisition. Declare verified business facts:
 
-`cash.balances` declares calendar `valueDate`, inclusive compact bounds, explicit
-account aliases and separately labeled range observations. Its `updateTime`
-retains native local formatting with unknown timezone. It does not declare daily
-concatenation equivalent to a multi-day result, historical account ownership,
-source freshness, or deletion coverage. Its existing custom List parser and
-pagination establish acquisition completeness for each exact request.
+```json
+{
+  "interpretation": "calendar_date",
+  "time_basis": "valueDate",
+  "boundary": "inclusive",
+  "timezone": null,
+  "from_parameter": "from-date",
+  "to_parameter": "to-date",
+  "splitting": "explicit_windows",
+  "cross_range_equivalence": false
+}
+```
+
+The parameters name declared scalar string CLI options. The single calendar axis
+uses `from-date`/`to-date`; the host normalizes their adapter keys to underscores.
+Keep an unknown timezone explicitly null; never manufacture UTC instants from an
+unqualified business date. Optional `modification_time` describes a separate native
+field. `splitting: explicit_windows` permits exact windows, without asserting
+daily concatenation equivalent to a wider inquiry.
+
+Optional `max_day_difference` limits the difference between inclusive endpoints:
+0 allows only one day, while 31 allows up to 32 calendar dates. Optional
+`applicability` limits history to one selector's declared values, for example
+`{"parameter":"source","values":["market","bank"]}`. A nonapplicable variant
+can still use its existing full observation path. The declaration does not add
+a generic condition language, multiple time axes or instant-range support.
+
+The adapter supplies two pure conversion methods:
+
+| Method | Boundary |
+| --- | --- |
+| `history_bounds(parameters)` | Parse the leaf's accepted public formats and return only `{"from":"YYYY-MM-DD","to":"YYYY-MM-DD"}`. |
+| `history_parameters(bounds)` | Convert validated ISO bounds into a patch containing only the two declared adapter parameter keys. |
+
+The host constructs the contract, strictly validates ISO dates, ordering,
+applicability and limits, and verifies the parameter round trip. It preserves all
+other frozen selectors and reuses native capability/scope validation. Plan
+creation and export revalidation use this same resolution path. The adapter does
+not construct a host `history_contract` dictionary.
+
+Whole desired ranges must also be executable native inquiries. A single-day leaf
+therefore cannot accept a multi-day desired range merely because supplied windows
+each select one day. No automatic decomposition is performed.
+
+Full observations need no temporal declaration, no conversion methods and no ISO
+parameter requirement. Existing full-only leaves keep their List, Refresh,
+export/import and package validation paths. Undeclared leaves do not gain history
+from date-like option names or output timestamps. See the executable
+[calendar sample](../../tools/leaf-dev/example-history/) and its
+[fake CLI exercise](../../tests/integration/test_leaf_calendar_handbook.py).
+
+`cash.balances` declares calendar `valueDate`; its public parameters accept compact
+and ISO dates, while the SDK boundary uses only ISO. Its `updateTime` retains
+native local formatting with unknown timezone. Account-directory quality and
+current ownership limitations remain separate from per-request completeness.
+It does not declare source freshness, historical ownership or deletion coverage.
+
+A saved plan whose installed leaf binding or temporal contract changed must be
+recreated. Existing plans, exact exports and imported observations are retained
+for inspection; the host does not silently rewrite or delete them.

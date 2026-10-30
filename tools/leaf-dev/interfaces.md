@@ -15,6 +15,7 @@ fields. Start from [leaf.json](example/leaf.json), then run `leaf.py verify`.
 | `adapter` | Root Python file and exported object, e.g. `adapter.py:adapter`. |
 | `operations` | Verified `list` and/or `get`, each with description and parameters. Host provides describe/help, plus refresh/prune for List. |
 | `operations.<action>.execution` | `standard` (also the omission convention) or explicit `custom`; chosen independently for List/Get. |
+| `operations.list.history` | Optional verified inclusive calendar axis; independent of standard/custom execution. Declaration and conversion boundary: [bounded history](../../docs/agents/bounded-history.md#native-declaration-and-date-boundary). |
 | Custom operation `queries`, `max_requests`, `budget_seconds` | Named List/detail inquiries and shared execution bounds; see [Custom query SDK](../../docs/agents/custom-query-sdk.md). |
 | `summary`, `purpose`, `fields` | Discovery and business field meanings; preserve unknown native fields in output. |
 | `identity`, `identity_description` | Native List identity and its meaning; Get-only may use an empty List identity. |
@@ -95,6 +96,14 @@ verified mapping; it does not filter automatically or extend saved coverage.
 Help/describe/GUI prose comes from this manifest without activating adapters.
 Reconcile desired GUI edits into source before reinstallation.
 
+Calendar history is opt-in. A declared single calendar axis uses `from-date` and
+`to-date`; each remains a scalar string parameter whose accepted public formats
+belong to the leaf. The host accepts only ISO dates returned across the temporal
+boundary and supplied as workflow windows. This rule does not constrain arbitrary
+parameters or require full-only leaves to acquire a time declaration. Instant and
+multi-axis naming/models need their own scoped contracts, not a forced calendar
+declaration. See the [calendar sample](example-history/).
+
 ## Adapter
 
 The [runtime](../../src/dogopencli/leaves/runtime.py) invokes these methods:
@@ -107,6 +116,8 @@ The [runtime](../../src/dogopencli/leaves/runtime.py) invokes these methods:
 | `assemble(records_by_source, parameters)` | Pure leaf-owned mapping of all complete sources to reviewed aggregate roots; no queries. |
 | `scope(parameters)` | Stable string describing the native acquisition scope; canonical JSON suits structured inputs. |
 | `filter(records, parameters)` | Supported local filters only; return unchanged records when none are supported. |
+| `history_bounds(parameters)` | With a history declaration: pure conversion of leaf date parameters to only ISO `from`/`to` bounds. |
+| `history_parameters(bounds)` | With a history declaration: pure conversion of validated ISO bounds to only the declared adapter date keys. |
 | `detail_capability(parameters)` | For standard Get: independent endpoint and pure native request/parser hooks. No inquiry. |
 | `query_capability(operation, name, parameters)` | Custom operation: pure capability for one declared named inquiry. |
 | `query_list(parameters, tools)` | Custom List: Python orchestration returning `CustomListResult` with records and business coverage. |
