@@ -229,26 +229,12 @@ class Store:
 
     def save(self, kind: str, value: dict) -> dict:
         if kind == "imports":
-            from .workflow_storage import header
+            from .workflow_storage import import_plan_header
 
             value = {**value, "task_contract": 1}
             # The immutable frozen input remains in the plan; polling reads
             # this separately published bounded header, never row arrays.
-            self.save(
-                "import_headers",
-                {
-                    **{
-                        k: v
-                        for k, v in value.items()
-                        if k not in {"input", "inputs", "coverage"}
-                    },
-                    "input_metadata": [
-                        header(item)
-                        for item in value.get("inputs", [value.get("input")])
-                        if item is not None
-                    ],
-                },
-            )
+            self.save("import_headers", import_plan_header(value))
         directory = self.root / kind
         directory.mkdir(parents=True, exist_ok=True)
         if kind == "exports":

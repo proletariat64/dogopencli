@@ -258,6 +258,8 @@ class Attempt:
                         "source_pages",
                         "source_rows_received",
                         "source_total_rows",
+                        "source_total_scope",
+                        "source_total_scope_reason",
                         "request_attempts",
                         "row_rate_per_second",
                         "eta_seconds",
@@ -478,24 +480,9 @@ def execute_import(invocation, store: Store) -> dict:
 
     plan = store.read("imports", invocation.args.plan)
     if not (store.root / "import_headers" / (plan["id"] + ".json")).is_file():
-        from .workflow_storage import header
+        from .workflow_storage import import_plan_header
 
-        store.save(
-            "import_headers",
-            {
-                **{
-                    key: value
-                    for key, value in plan.items()
-                    if key not in {"input", "inputs", "coverage"}
-                },
-                "task_contract": 1,
-                "input_metadata": [
-                    header(item)
-                    for item in plan.get("inputs", [plan.get("input")])
-                    if item is not None
-                ],
-            },
-        )
+        store.save("import_headers", import_plan_header(plan))
     with attempt(store, "import", plan["id"]) as active:
         result = apply_import(invocation, store)
         active.state["result"] = result
@@ -735,15 +722,25 @@ def _snapshot(config_file: Path, kind: str, identity: str) -> dict:
                 "id": p.get("run_id"),
                 "plan_id": p["plan_id"],
                 "complete": p["complete"],
+                "effective_state": p.get(
+                    "effective_state", "completed" if p["complete"] else "unknown"
+                ),
             }
             for p in result["packages"]
         ]
+        child_states = [child["effective_state"] for child in children]
         progress["packages"] = {
             "total": len(children),
             "complete": sum(p["complete"] for p in children),
-            "active": None,
-            "pending": None,
-            "failed": None,
+            "active": child_states.count("running"),
+            "pending": child_states.count("pending"),
+            "failed": child_states.count("failed"),
+            "incomplete": child_states.count("incomplete"),
+            "interrupted": child_states.count("interrupted"),
+            "unknown": child_states.count("unknown"),
+            "unknown_reason": (
+                "child_task_state_unverified" if "unknown" in child_states else None
+            ),
         }
         result = {
             "target_id": task["target_id"],
@@ -761,6 +758,16 @@ def _snapshot(config_file: Path, kind: str, identity: str) -> dict:
         if result["complete"]:
             effective = "completed"
             quality = {"complete": True, "dataset_complete": True}
+    if (
+        kind in {"repair", "target"}
+        and current
+        and result
+        and result["complete"] is False
+        and effective in {"completed", "incomplete", "failed", "interrupted"}
+    ):
+        quality = {"complete": False, "dataset_complete": False}
+        if effective == "completed":
+            effective = "incomplete"
     if kind in {"export", "repair"} and result and "packages" in result:
         result = {
             **result,
@@ -851,6 +858,14 @@ def _snapshot(config_file: Path, kind: str, identity: str) -> dict:
         "eta_seconds",
     ):
         progress.setdefault(metric, None)
+    progress.setdefault("source_total_scope", None)
+    progress["source_total_scope_reason"] = (
+        None
+        if progress["source_total_scope"] is not None
+        else "native_total_unavailable"
+        if progress["source_total_rows"] is None
+        else "source_scope_unrecorded"
+    )
     if effective != "running":
         progress["eta_seconds"] = None
         progress["eta_reason"] = "task_not_running"

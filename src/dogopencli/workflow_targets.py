@@ -102,7 +102,13 @@ def execution_status(store: "Store", execution: dict) -> dict:
             child = snapshot(store.config_file, "export", identity)
             run = store.read("runs", identity)
             if run["plan"]["mode"] == "history":
-                packages.append({**child["result"], "run_id": identity})
+                packages.append(
+                    {
+                        **child["result"],
+                        "run_id": identity,
+                        "effective_state": child["effective_state"],
+                    }
+                )
                 continue
             attempts = sorted(
                 store.exports_for(identity),
@@ -115,6 +121,7 @@ def execution_status(store: "Store", execution: dict) -> dict:
                 {
                     "plan_id": child["plan_id"],
                     "run_id": identity,
+                    "effective_state": child["effective_state"],
                     "complete": child["effective_state"] == "completed",
                     "latest_attempt": attempts[-1] if attempts else None,
                     "last_successful_export": successful[-1] if successful else None,

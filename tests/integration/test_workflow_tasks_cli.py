@@ -461,3 +461,93 @@ def test_saved_incomplete_export_retains_actual_source_metrics(run_cli, pilots):
     assert status["progress"]["source_rows_received"] == 1
     assert status["progress"]["source_total_rows"] == 1001
     assert status["progress"]["exported_rows"] == 1
+
+
+def test_target_status_retains_known_child_pending_running_and_failed_states(
+    run_cli, pilots, monkeypatch
+):
+    from integration.test_workflow_watch_cli import isolated_cli
+
+    inquiry = call(run_cli, "plan", "create", "--leaf", "payment.sla.baselines")
+    target = call(run_cli, "target", "create", "--plan", inquiry["id"])
+    execution = call(run_cli, "target", "plan", "--target", target["id"])
+    pending = call(run_cli, "target", "status", "--execution", execution["id"])
+    assert pending["progress"]["packages"]["pending"] == 1
+    assert pending["progress"]["packages"]["active"] == 0
+    assert pending["progress"]["packages"]["failed"] == 0
+    assert pending["quality"] == {"complete": None, "dataset_complete": None}
+    active = []
+
+    def failed_query(payload, index):
+        snapshot = call(
+            isolated_cli, "target", "status", "--execution", execution["id"]
+        )
+        assert snapshot["progress"]["packages"]["active"] == 1
+        assert snapshot["progress"]["packages"]["pending"] == 0
+        assert snapshot["progress"]["packages"]["failed"] == 0
+        active.append(snapshot)
+        original_read = Path.read_text
+
+        def unavailable_proc(path, *args, **kwargs):
+            if str(path).startswith("/proc/"):
+                raise PermissionError("controlled ownership read failure")
+            return original_read(path, *args, **kwargs)
+
+        with monkeypatch.context() as unavailable:
+            unavailable.setattr(Path, "read_text", unavailable_proc)
+            uncertain = call(
+                isolated_cli, "target", "status", "--execution", execution["id"]
+            )
+        packages = uncertain["progress"]["packages"]
+        assert packages["unknown"] == 1
+        assert packages["unknown_reason"] == "child_task_state_unverified"
+        assert packages["active"] == packages["pending"] == packages["failed"] == 0
+        assert uncertain["quality"] == {"complete": None, "dataset_complete": None}
+        return {"status": 500, "body": {}}
+
+    pilots.business_handler = failed_query
+    code, _, _ = run_cli(["workflow", "target", "run", "--execution", execution["id"]])
+    assert code == 1
+    assert active
+    failed = call(run_cli, "target", "status", "--execution", execution["id"])
+    assert failed["progress"]["packages"]["failed"] == 1
+    assert failed["progress"]["packages"]["pending"] == 0
+    assert failed["progress"]["packages"]["active"] == 0
+    assert failed["progress"]["packages"]["unknown"] == 0
+    assert failed["progress"]["packages"]["unknown_reason"] is None
+
+
+def test_settled_repair_and_target_gaps_retain_established_negative_quality(
+    run_cli, pilots
+):
+    inquiry = call(run_cli, "plan", "create", "--leaf", "collection.cost")
+
+    def incomplete_reply():
+        response = payment_page(
+            [{"itemId": "one", "itemType": "FUND_IN_CHANNEL_TRANS_FEE"}]
+        )
+        response["body"].update(pageSize=1000, totalCount=1001)
+        return response
+
+    baseline = call(run_cli, "export", "create", "--plan", inquiry["id"])
+    pilots.business_script.append(incomplete_reply())
+    assert run_cli(["workflow", "export", "run", "--run", baseline["id"]])[0] == 0
+    repair = call(run_cli, "repair", "plan", "--run", baseline["id"])
+    target = call(run_cli, "target", "create", "--plan", inquiry["id"])
+    execution = call(run_cli, "target", "plan", "--target", target["id"])
+    for kind, selector, identity in (
+        ("repair", "--repair", repair["id"]),
+        ("target", "--execution", execution["id"]),
+    ):
+        pending = call(run_cli, kind, "status", selector, identity)
+        assert pending["quality"] == {"complete": None, "dataset_complete": None}
+        pilots.business_script.append(incomplete_reply())
+        assert run_cli(["workflow", kind, "run", selector, identity])[0] == 1
+        settled = call(run_cli, kind, "status", selector, identity)
+        assert settled["result"]["complete"] is False
+        assert settled["effective_state"] == "incomplete"
+        assert settled["quality"] == {"complete": False, "dataset_complete": False}
+        if kind == "target":
+            assert settled["progress"]["packages"]["incomplete"] == 1
+            assert settled["progress"]["packages"]["pending"] == 0
+            assert settled["progress"]["packages"]["failed"] == 0
