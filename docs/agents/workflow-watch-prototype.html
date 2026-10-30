@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Workflow watch · 一次性體驗原型</title>
+<style>
+:root{color-scheme:light;--ink:#15202c;--muted:#566273;--line:#dbe1e8;--accent:#176c63}
+*{box-sizing:border-box}body{margin:0;background:#f5f7f9;color:var(--ink);font:15px/1.6 system-ui,sans-serif}
+main{max-width:1320px;margin:30px auto;padding:0 24px}h1{font-size:27px;margin:8px 0}h2{font-size:17px;margin:0 0 12px}p{margin:8px 0}.muted{color:var(--muted)}
+.badge{display:inline-block;padding:3px 10px;background:#fff0d6;border:1px solid #e8c47d;border-radius:5px;font-size:12px;font-weight:700}
+nav{display:flex;gap:7px;flex-wrap:wrap;margin:22px 0 16px}button{font:inherit;cursor:pointer;border:1px solid var(--line);background:white;border-radius:6px;padding:7px 12px;color:var(--ink)}
+button[aria-pressed=true]{color:white;background:var(--accent);border-color:var(--accent)}button:disabled{opacity:.4;cursor:default}button:focus-visible{outline:3px solid #6baea7;outline-offset:2px}
+.grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(310px,1fr);gap:18px}.card{min-width:0;background:white;border:1px solid var(--line);border-radius:8px;padding:20px;margin-bottom:16px}
+.terminal{background:#111923;color:#e1e9ef;border-radius:7px;padding:18px;min-height:290px;overflow:auto;font:14px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre}
+.commands{background:#f3f5f7;border-radius:5px;padding:14px;overflow:auto;font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.steps{display:flex;gap:6px;flex-wrap:wrap}dl{display:grid;grid-template-columns:95px 1fr;gap:5px 10px;margin:0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}
+#notice{padding:10px 13px;border-left:3px solid var(--accent);background:#edf6f4;margin:12px 0}.warning{color:#91600d}a{color:var(--accent)}details summary{cursor:pointer;font-weight:600}footer{font-size:13px;color:var(--muted);padding-bottom:25px}
+@media(max-width:880px){.grid{grid-template-columns:1fr}main{padding:0 12px;margin:18px auto}.terminal{font-size:12px;padding:12px}h1{font-size:23px}}
+</style>
+<main>
+  <span class="badge">THROWAWAY PROTOTYPE · 靜態樣例 · 尚未實現</span>
+  <h1>一個任務，同一份狀態</h1>
+  <p>要確認的問題：在 shell、Herdr pane 和單次 JSON 中，能否看懂任務進度、重試與提交結果，而且不把舊狀態誤認為新成功？</p>
+  <p class="muted">所有資料皆為示意。按鈕只切換記憶體中的固定樣例；沒有網路、儲存、真實 CLI、資料庫或 pane 操作。這不是網頁版 watch。</p>
+  <nav id="scenarios" aria-label="選擇情境"></nav>
+  <div class="grid">
+    <section>
+      <div class="card">
+        <h2 id="title"></h2><p id="description" class="muted"></p>
+        <div class="steps" id="steps" aria-label="情境步驟"></div>
+        <div class="controls"><button id="previous">上一幀</button><button id="next">下一幀</button><button id="reset">重看情境</button><button id="stop">演示 Ctrl+C</button></div>
+        <div id="notice" role="status"></div>
+        <pre class="terminal" id="terminal" aria-label="文字 watch 面板"></pre>
+        <p class="muted">面板是 stdout；TTY 更新原位，非 TTY 逐幀追加。預設完成後仍常駐；Ctrl+C 只結束 watcher。</p>
+      </div>
+      <div class="card"><h2>命令旅程（未執行）</h2><pre class="commands" id="commands"></pre></div>
+    </section>
+    <aside>
+      <div class="card"><h2>此幀的事實</h2><dl id="facts"></dl></div>
+      <div class="card"><h2>Agent：一次 status，一次回應</h2><p class="muted">獨立有限呼叫，stdout 為一個 envelope；沒有 JSON 流。欄位是規格示意。</p><pre class="commands" id="statusCommand"></pre><pre class="commands" id="json"></pre><p id="exit" class="muted"></p></div>
+      <div class="card"><h2>stdout / stderr</h2><pre class="commands" id="streams"></pre></div>
+    </aside>
+  </div>
+  <footer>來源：<a href="https://github.com/proletariat64/dogopencli/issues/406">規格決策地圖</a> · <a href="https://github.com/proletariat64/dogopencli/issues/409#issuecomment-6518626289">狀態契約</a> · <a href="https://github.com/proletariat64/dogopencli/issues/410">待人類確認的體驗 ticket</a><br>沒有暫停、恢復、取消或重試的 watch 控件；情境切換不代表 watcher 能控制 runner。</footer>
+</main>
+<script>
+// Pure, in-memory scenario selection. No I/O and no production state machine.
+const Demo = (() => {
+  const ids = {export:'11111111111111111111111111111111',import:'22222222222222222222222222222222',repair:'33333333333333333333333333333333',target:'44444444444444444444444444444444'};
+  const selectors = {export:'--run',import:'--plan',repair:'--repair',target:'--execution'};
+  const make = (kind, state, phase, attempt, progress, extra={}) => ({
+    kind, id:ids[kind], effective_state:state, phase,
+    attempt:attempt ? {number:attempt,state:state==='completed'?'completed':state} : null,
+    progress, observation:{read_state:'ok',age_seconds:1,owner:state==='running'?'verified_active':'not_active'},...extra
+  });
+  const progress = (complete,active,pending,extra={}) => ({packages:{complete,active,pending,failed:0,total:complete+active+pending},...extra});
+  const exportFrames = [
+    {label:'先開 watcher',data:make('export','pending','not_started',null,progress(0,0,3)),note:'Run 已建立。watch 只讀等待；尚未執行任何查詢。'},
+    {label:'正在取得',data:make('export','running','acquiring',1,progress(1,1,1,{source_pages:6,source_rows_received:6000,source_total_rows:null,row_rate_per_second:333,eta_seconds:null,exported_rows:5000}),{source:'current package / candidate 1',leaf:'liquidity.cash.balances'}),note:'來源總量未知，所以沒有總體百分比或 ETA。來源取得 6,000 行，已保存結果是另一個數。'},
+    {label:'切換寬度候選',data:make('export','running','acquiring',1,progress(1,1,1,{source_pages:1,source_rows_received:500,source_total_rows:null,row_rate_per_second:250,eta_seconds:null,exported_rows:5000}),{source:'current package / candidate 2',leaf:'liquidity.cash.balances'}),note:'新 candidate 從頭取得。先前候選的 6,000 行不能加到新候選 500 行上充作唯一結果；已保存的完整包仍保留。'},
+    {label:'結果已保存',data:make('export','completed','finished',1,progress(3,0,0,{exported_rows:13000}),{quality:{complete:true,dataset_complete:true},imported:false}),note:'完整 export artifact 已保存。這是導出完成，尚未導入。預設 watcher 仍常駐。'}
+  ];
+  const exportDone=exportFrames[exportFrames.length-1];
+  const retryFrames = [
+    {...exportFrames[1],label:'第一次執行'},
+    {label:'執行中斷',data:make('export','interrupted','acquiring',1,progress(1,0,2,{exported_rows:5000}),{error:{code:'INTERRUPTED'},source:'package 2'}),note:'原所有者已證實退出。完整包仍保留；此時不是 running，watcher 留在原 Run。'},
+    {label:'外部明確重試',data:make('export','running','acquiring',2,progress(1,1,1,{source_pages:2,source_rows_received:2000,source_total_rows:null,row_rate_per_second:500,eta_seconds:null,exported_rows:5000}),{previous_attempt:{number:1,state:'interrupted'},source:'package 2 / candidate 1'}),note:'使用者在 runner 終端重試同一 Run。Run ID 不變、attempt 變成 2；速度重新計算，不重查已完成包。'},
+    {...exportDone,label:'原 Run 完成',data:{...exportDone.data,attempt:{number:2,state:'completed'},previous_attempt:{number:1,state:'interrupted'}}}
+  ];
+  const importFrames = [
+    {label:'批次暫存',data:make('import','running','staging',1,{expected_rows:23000,staged_rows:20000,committed_rows:null,replayed:false},{action:'preserve',commit_verification:'not_checked_active_writer',current_effect:'unchanged'}),note:'20,000 行暫存已 durable。外部 observer 不假設 writer 活躍時一定能讀 DB，未核實的 committed_rows 是 null。'},
+    {label:'暫存全部到齊',data:make('import','running','publishing',1,{expected_rows:23000,staged_rows:23000,committed_rows:null,replayed:false},{action:'preserve',commit_verification:'pending',current_effect:'unchanged'}),note:'23,000 / 23,000 只是暫存完成。publication 尚待確認，不能顯示整個 import 已完成。'},
+    {label:'提交後摘要落後',data:make('import','completed','receipt_verified',1,{expected_rows:23000,staged_rows:23000,committed_rows:23000,replayed:false},{attempt:{number:1,state:'running',note:'stored summary lagged'},commit_verification:'database_receipt',action:'preserve',current_effect:'unchanged'}),note:'runner 在提交後退出，摘要仍是 running。owner 退出後可讀 DB，receipt 證明已提交，effective_state 校正為 completed。'},
+    {label:'同計劃重放',data:make('import','completed','finished',2,{expected_rows:23000,staged_rows:23000,committed_rows:23000,replayed:true,inserted_rows:0},{commit_verification:'database_receipt',action:'preserve',current_effect:'unchanged'}),note:'同 Import Plan 重新 apply 是 receipt replay。已提交 23,000 行，本次新增 0 行；current 保持不變。'}
+  ];
+  const repairFrames = [
+    {label:'獨立 repair',data:make('repair','running','acquiring',1,progress(0,1,2,{baseline_packages:9,remaining_gap_packages:3,source_pages:2,source_rows_received:2000,source_total_rows:null}),{baseline_run_id:ids.export}),note:'Repair 有自己的 ID。9 個 frozen baseline 包不重查，只取得 3 個缺口包。'},
+    {label:'仍有缺口',data:make('repair','incomplete','finished',1,{packages:{complete:2,active:0,pending:0,failed:1,total:3},baseline_packages:9,remaining_gap_packages:1},{baseline_run_id:ids.export,error:{code:'INCOMPLETE_RESULT'}}),note:'新 repair 2/3 成功，整體仍不完整。baseline 的 9 個成功包與 2 個新成功包分別保留。'},
+    {label:'原 repair 重試',data:make('repair','running','acquiring',2,progress(2,1,0,{baseline_packages:9,remaining_gap_packages:1}),{baseline_run_id:ids.export}),note:'同 repair ID、attempt 2。只重試剩餘缺口。'},
+    {label:'缺口已補齊',data:make('repair','completed','finished',2,progress(3,0,0,{baseline_packages:9,remaining_gap_packages:0}),{baseline_run_id:ids.export,quality:{complete:true,dataset_complete:true},imported:false}),note:'Frozen baseline 加獨立 repair exports 的範圍已核實。仍需另外計劃並執行 import。'}
+  ];
+  const failureFrames = [
+    {...exportFrames[1],label:'最近有效幀'},
+    {label:'本次讀取失敗',data:null,lastGood:exportFrames[1].data,statusError:{code:'WORKFLOW_ERROR',message:'Local progress is temporarily unavailable',retryable:true},note:'保留最近有效內容，明確顯示 STALE 與 15 秒年齡。本次有限 status 是錯誤 envelope，不能把舊成功當成本次成功。'},
+    {...exportFrames[1],label:'重新讀取成功',note:'恢復成功讀取後清除 STALE。runner 從未被 watcher 讀錯或恢復動作所控制。'}
+  ];
+  const customFrames = [{label:'只有可證實計數',data:make('export','running','acquiring',1,{request_attempts:13,source_pages:null,source_rows_received:240,source_total_rows:null,row_rate_per_second:null,eta_seconds:null},{source:'named custom query',metric_reasons:{source_pages:'custom requests are not business pages',eta_seconds:'unknown total'}}),note:'13 是請求嘗試，包含 transport retry，不能寫成 13 頁。未知總量、速度或 ETA 不補 0。'}];
+  const targetFrames = [{label:'精確 execution',data:make('target','running','acquiring',2,{packages:{complete:4,failed:1,active:1,pending:2,total:8}},{leaf:'liquidity.cash.balances',current_child_run_id:ids.export}),note:'只觀察一個 target execution。它內部可以有多個 child exports；這不是所有 workflow 的總覽。'}];
+  const attachFrames = [
+    {label:'空閒 pane 可附著',data:exportFrames[1].data,attachment:{state:'confirmed_started',pane:'<PANE_ID>',same_config:true,exact_argv_verified:true},note:'先核實 Herdr caller 與指定 pane 是空閒 shell，再啟動並確認 exact argv。只證明 watcher 啟動；不改 layout/focus 或 runner。'},
+    {label:'pane 被佔用',data:exportFrames[1].data,attachment:{state:'rejected',pane:'<PANE_ID>',reason:'foreground process or agent present'},note:'已佔用、自身 pane 或非 Herdr 環境會拒絕 attach。既有程序和 runner 均不被打斷；不自動分 pane。'}
+  ];
+  const scenarios = [
+    {key:'export',title:'Export',description:'一個 Run 從等待到導出完成；結果保存與 import 分開。',kind:'export',frames:exportFrames},
+    {key:'retry',title:'跨重試',description:'watch 綁定穩定 Run；runner 在另一個終端顯式重試。',kind:'export',frames:retryFrames},
+    {key:'import',title:'Import',description:'暫存、提交、摘要落後與 replay 是不同事實。',kind:'import',frames:importFrames},
+    {key:'repair',title:'Repair',description:'baseline、修復包與剩餘缺口分開顯示。',kind:'repair',frames:repairFrames},
+    {key:'read-error',title:'讀取失敗',description:'留下可識別的舊畫面，不能冒充本次成功。',kind:'export',frames:failureFrames},
+    {key:'custom',title:'Custom',description:'可用的請求嘗試數與未知的業務頁數分開。',kind:'export',frames:customFrames},
+    {key:'target',title:'Target',description:'只跟蹤精確 execution，內部包進度單獨匯總。',kind:'target',frames:targetFrames},
+    {key:'attach',title:'Herdr attach',description:'同一 watcher、同一 config、同一任務；只用現有空閒 pane。',kind:'export',frames:attachFrames}
+  ];
+  const initial = (key='export',step=0) => {
+    const scenario = scenarios.findIndex(x=>x.key===key);
+    const index = scenario<0?0:scenario;
+    return {scenario:index,step:Math.min(Math.max(0,step||0),scenarios[index].frames.length-1),watcherStopped:false};
+  };
+  const reduce = (state,action) => {
+    const max = scenarios[state.scenario].frames.length-1;
+    if(action.type==='scenario') return initial(action.key);
+    if(action.type==='step') return {...state,step:Math.max(0,Math.min(max,action.index)),watcherStopped:false};
+    if(action.type==='reset') return initial(scenarios[state.scenario].key);
+    if(action.type==='stop') return {...state,watcherStopped:true};
+    return state;
+  };
+  const view = state => {
+    const scenario=scenarios[state.scenario],frame=scenario.frames[state.step];
+    return {scenario,frame,selector:selectors[scenario.kind],id:ids[scenario.kind],watcherStopped:state.watcherStopped};
+  };
+  return {scenarios,initial,reduce,view};
+})();
+
+// Thin presentation shell. Commands are displayed with textContent, never run.
+const $ = id => document.getElementById(id);
+const query = new URLSearchParams(location.search);
+let state = Demo.initial(query.get('case')||'export',Number(query.get('step')||0));
+const number = n => n==null?'unknown':n.toLocaleString('en-US');
+function terminal(v){
+  const f=v.frame,d=f.data||f.lastGood,p=d.progress,lines=[
+    `dogopencli / ${d.kind} / ${d.leaf||'one exact task'}`,
+    `ID       ${d.id}`,
+    `Attempt  ${d.attempt?.number??'not started'}    State  ${d.effective_state.toUpperCase()}`,
+    `Phase    ${d.phase}`
+  ];
+  if(f.attachment?.state==='rejected') return 'ATTACH REJECTED\n\nTarget pane: <PANE_ID>\nReason: foreground process or agent present\n\nWatcher: not started\nPane occupant: unchanged\nRunner: unchanged\n\nCaller output: text error, exit 1';
+  if(f.statusError) lines.unshift('READ ERROR / STALE 15s / LAST GOOD FRAME');
+  if(p.packages){const k=p.packages;lines.push(`Packages ${k.complete}/${k.total} complete · ${k.active} active · ${k.pending} pending · ${k.failed} failed`);}
+  if(p.baseline_packages!=null) lines.push(`Baseline ${p.baseline_packages} frozen packages · gaps ${p.remaining_gap_packages}`);
+  if(d.source) lines.push(`Source   ${d.source}`);
+  for(const [key,label] of [['source_pages','Pages'],['request_attempts','Requests'],['source_rows_received','Received'],['exported_rows','Saved'],['expected_rows','Expected'],['staged_rows','Staged'],['committed_rows','Committed'],['inserted_rows','Inserted']]){
+    if(key in p) lines.push(`${label.padEnd(9)}${number(p[key])}${key.includes('rows')?' rows':''}`);
+  }
+  if('source_total_rows' in p) lines.push(`Total    ${number(p.source_total_rows)} (current source)`);
+  if('row_rate_per_second' in p) lines.push(`Rate     ${number(p.row_rate_per_second)} rows/s    ETA ${number(p.eta_seconds)}`);
+  if(d.commit_verification) lines.push(`Proof    ${d.commit_verification}`);
+  if(d.current_effect) lines.push(`Current  ${d.current_effect}`);
+  if(p.replayed) lines.push('Replay   yes · receipt reused');
+  if(d.quality) lines.push(`Quality  complete=${d.quality.complete} · dataset_complete=${d.quality.dataset_complete}`);
+  if(d.imported===false) lines.push('Import   not performed');
+  if(d.previous_attempt) lines.push(`Previous attempt ${d.previous_attempt.number}: ${d.previous_attempt.state}`);
+  if(d.effective_state==='completed'&&d.attempt?.state==='running') lines.push('Stored attempt: running (lagged); receipt wins');
+  if(d.error) lines.push(`Error    ${d.error.code}`);
+  if(f.attachment) lines.push(`Attach   ${f.attachment.state} · ${f.attachment.pane}`);
+  lines.push(f.statusError?'Read     failed · last-good age 15s':'Read     ok · progress updated 1s ago');
+  lines.push(v.watcherStopped?'Watcher  STOPPED (Ctrl+C → 130); runner unchanged':'Watcher  resident · refresh 3s · Ctrl+C stops watcher only');
+  return lines.join('\n');
+}
+function commandJourney(v){
+  const k=v.scenario.kind,select=`${v.selector} <${k==='export'?'RUN_ID':k==='repair'?'REPAIR_PLAN_ID':k==='import'?'IMPORT_PLAN_ID':'EXECUTION_ID'}>`;
+  const preparation=k==='export'?'dogopencli workflow export create --plan <INQUIRY_PLAN_ID>':k==='repair'?'dogopencli workflow repair plan --run <BASELINE_RUN_ID>':k==='import'?'dogopencli workflow import plan --export <EXPORT_ID> --action preserve':'dogopencli workflow target plan --target <TARGET_ID>';
+  const execution=`dogopencli workflow ${k} ${k==='import'?'apply':'run'} ${select}`;
+  return `${preparation}\n# 回應的 data.id 是精確觀察身份\n\n# 觀察終端：可先啟動，等待 runner\ndogopencli workflow ${k} watch ${select}\n\n# 執行終端（另一個 shell / pane）\n${execution}\n\n# 在 Herdr 呼叫 pane 啟動指定空閒 pane 的 watcher\ndogopencli workflow ${k} watch ${select} --attach <PANE_ID>\n\n# 一幀或等本次終態；與 --attach 互斥\ndogopencli workflow ${k} watch ${select} --snapshot\ndogopencli workflow ${k} watch ${select} --until-settled`;
+}
+function render(){
+  const v=Demo.view(state),f=v.frame,d=f.data||f.lastGood;
+  $('scenarios').replaceChildren(...Demo.scenarios.map(x=>{const b=document.createElement('button');b.textContent=x.title;b.setAttribute('aria-pressed',String(x.key===v.scenario.key));b.onclick=()=>dispatch({type:'scenario',key:x.key});return b;}));
+  $('steps').replaceChildren(...v.scenario.frames.map((x,i)=>{const b=document.createElement('button');b.textContent=`${i+1}. ${x.label}`;b.setAttribute('aria-pressed',String(i===state.step));b.onclick=()=>dispatch({type:'step',index:i});return b;}));
+  $('title').textContent=v.scenario.title+' · '+f.label;
+  $('description').textContent=v.scenario.description;
+  $('notice').textContent=(v.watcherStopped?'已演示停止 watcher；任務狀態未改變。 ':'')+f.note;
+  $('terminal').textContent=terminal(v);
+  $('commands').textContent=commandJourney(v);
+  $('previous').disabled=state.step===0;$('next').disabled=state.step===v.scenario.frames.length-1;
+  const facts=[['任務',d.kind],['精確身份',d.id],['當前可證實',f.statusError?'unknown（本次讀取失敗）':d.effective_state],['執行嘗試',d.attempt?.number??'尚未開始'],['原始嘗試',d.attempt?.state??'無'],['觀察器',f.attachment?.state==='rejected'?'未啟動':v.watcherStopped?'已退出；任務不變':'常駐'],['事實來源',d.commit_verification||'該任務的進度/結果摘要'],['本次讀取',f.statusError?'失敗；舊幀 15 秒前':'成功；示例狀態年齡 1 秒']];
+  $('facts').replaceChildren(...facts.flatMap(([label,value])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;return [dt,dd];}));
+  const envelope={data:f.data,meta:null,error:f.statusError||null};
+  $('statusCommand').textContent=`dogopencli workflow ${v.scenario.kind} status ${v.selector} <ID> --format json`;
+  $('json').textContent=JSON.stringify(envelope,null,2);
+  const until=d.effective_state==='completed'?'0':(['incomplete','failed','interrupted'].includes(d.effective_state)||f.statusError)?'1':'繼續等待';
+  $('exit').textContent=`status / snapshot: ${f.statusError?1:0}；until-settled: ${until}。status 成功只表示觀察成功。`;
+  $('streams').textContent=f.attachment?`attach 呼叫方 stdout (text)\n${f.attachment.state==='confirmed_started'?'watch attached to pane <PANE_ID>\nexit 0 — 只證明 watcher 啟動\n\npane stdout\n同一個常駐文字 watcher':'Error: target pane unavailable\nexit 1 — occupant / runner 未改變\n\npane stdout\n無新 watcher 輸出'}`:`runner stderr（格式示意）\n${d.effective_state==='pending'?'尚未啟動，無執行進度':`run <ID> attempt ${d.attempt?.number??'<N>'} started\nphase=${d.phase}`}\n\nrunner stdout\n執行結束時一個 {data, meta, error} 回應\n\nwatch stdout\n文字面板\n\nstatus stdout\n右上方的一個 JSON envelope\n\n輔助 warning / diagnostics\nstderr（機讀 error 仍在 stdout envelope）`;
+}
+function dispatch(action){state=Demo.reduce(state,action);render();}
+$('previous').onclick=()=>dispatch({type:'step',index:state.step-1});
+$('next').onclick=()=>dispatch({type:'step',index:state.step+1});
+$('reset').onclick=()=>dispatch({type:'reset'});
+$('stop').onclick=()=>dispatch({type:'stop'});
+render();
+</script>
+</html>
