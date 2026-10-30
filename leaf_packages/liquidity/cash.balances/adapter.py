@@ -460,9 +460,7 @@ class Adapter:
             selection["successful_empty_accounts"] += (
                 account_complete and evidence.reported_total == 0 and not result.records
             )
-            rows.extend(
-                {k: v for k, v in row.items() if k != ORDER} for row in result.records
-            )
+            rows.extend(result.records)
             attempts.append({"alias": alias, "acquisition": evidence.record()})
         selection["query_execution_complete"] = complete
         evidence = AcquisitionEvidence.for_collection(

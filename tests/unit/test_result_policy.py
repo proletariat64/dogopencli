@@ -437,3 +437,56 @@ def test_cache_rejects_corrupt_latest_selection_counts(field, value):
     record["selection"][field] = value
     with pytest.raises(CliError, match="selection evidence"):
         AcquisitionEvidence.from_record(record)
+
+
+@pytest.mark.parametrize(
+    "reasons",
+    [
+        ("LATEST_BY_SELECTION",),
+        ("LATEST_BY_TIE",),
+        ("LATEST_BY_SELECTION", "LATEST_BY_TIE"),
+    ],
+)
+def test_cached_local_latest_reasons_require_selection_witness(reasons):
+    record = {
+        "scope_complete": True,
+        "dataset_complete": True,
+        "reported_total": 1,
+        "collected_total": 1,
+        "arrivals": 2,
+        "unique_count": 1,
+        "duplicate_count": 1,
+        "total_semantics": "unique_objects",
+        "reasons": list(reasons),
+        "attempts": [],
+        "usable_incomplete": True,
+    }
+    with pytest.raises(CliError, match="selection evidence"):
+        AcquisitionEvidence.from_record(record)
+
+
+def test_cached_parent_retains_nested_latest_witness_without_local_selection():
+    child = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=1,
+        collected_total=1,
+        arrivals=2,
+        reasons=("LATEST_BY_SELECTION",),
+        selection={
+            "latest_by": "ordering",
+            "resolved_version_count": 1,
+            "identical_duplicate_count": 0,
+            "equal_order_count": 0,
+        },
+    )
+    parent = AcquisitionEvidence.for_collection(
+        complete=True,
+        reported_total=None,
+        collected_total=1,
+        arrivals=2,
+        attempts=({"acquisition": child.record()},),
+    )
+    restored = AcquisitionEvidence.from_record(parent.record())
+    decision = evaluate_result(restored, mode="cache", require_complete=True)
+    assert decision.exit_code == 0
+    assert decision.warnings[0]["code"] == "LATEST_BY_SELECTION"

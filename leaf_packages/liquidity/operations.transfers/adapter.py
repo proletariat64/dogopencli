@@ -307,10 +307,7 @@ class Adapter:
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]
     ) -> list[dict[str, Any]]:
-        return [
-            {key: value for key, value in row.items() if key != ORDER}
-            for row in records
-        ]
+        return records
 
 
 adapter = Adapter()

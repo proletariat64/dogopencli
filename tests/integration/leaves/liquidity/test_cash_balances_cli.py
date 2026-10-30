@@ -750,3 +750,39 @@ def test_latest_versions_cannot_repair_partial_directory(installed, strict):
     assert "ACCOUNT_DIRECTORY_INCOMPLETE" in str(got["meta"])
     assert "LATEST_BY_SELECTION" in str(got["meta"])
     assert got["data"] == (None if strict else [winner])
+
+
+def test_strict_offline_rejects_missing_named_selection_witness(installed):
+    import sqlite3
+
+    from dogopencli.cache import Cache
+    from dogopencli.jsonutil import canonical
+
+    cli, browser, config = installed
+    winner = row(updateTime="2026-09-19 09:00:00")
+    browser.business_script.append(page([row(), winner], total=1))
+    cli("refresh", *FLAGS, "--require-complete")
+    cache = Cache(config / "leaf-cache.sqlite3")
+    snapshot, _ = cache.read("leaf:liquidity.cash.balances")
+    acquisition = snapshot.acquisition
+
+    def remove_witness(value):
+        if isinstance(value, dict):
+            value.pop("selection", None)
+            for child in value.values():
+                remove_witness(child)
+        elif isinstance(value, list):
+            for child in value:
+                remove_witness(child)
+
+    remove_witness(acquisition)
+    with sqlite3.connect(config / "leaf-cache.sqlite3") as database:
+        database.execute(
+            "UPDATE snapshots SET acquisition=? WHERE namespace=?",
+            [canonical(acquisition), "leaf:liquidity.cash.balances"],
+        )
+    before = len(browser.business_requests)
+    got = cli("list", "--require-complete", code=1)
+    assert got["error"]["code"] == "INVALID_RESPONSE"
+    assert "selection evidence" in got["error"]["message"]
+    assert len(browser.business_requests) == before

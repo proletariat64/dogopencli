@@ -243,6 +243,13 @@ class AcquisitionEvidence:
             usable_incomplete=record["usable_incomplete"],
             selection=record.get("selection"),
         )
+        if evidence.selection is None and {
+            "LATEST_BY_SELECTION",
+            "LATEST_BY_TIE",
+        }.intersection(reasons):
+            raise CliError(
+                INVALID_RESPONSE, "cached latest selection evidence is missing"
+            )
         if evidence.selection is not None:
             selection = evidence.selection
             if (
