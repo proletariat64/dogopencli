@@ -401,3 +401,53 @@ def test_import_status_requires_exact_action_receipt_after_preserve(
     replayed = call(run_cli, "import", "status", "--plan", plan["id"])
     assert replayed["effective_state"] == "completed"
     assert replayed["result"]["action_completed"] is True
+
+
+@pytest.mark.parametrize("action", ["keyed", "replace-range"])
+@pytest.mark.parametrize(
+    "stop",
+    [
+        "before_batch_commit",
+        "after_batch_commit",
+        "before_publication_commit",
+        "after_publication_commit",
+    ],
+)
+def test_history_publication_resumes_at_shared_durable_boundaries(
+    run_cli, ranged, monkeypatch, action, stop
+):
+    from leaves.liquidity.test_cash_balances_cli import row
+
+    from dogopencli import workflow_storage
+
+    browser, _ = ranged
+    original_rows = [row()]
+    first = export(run_cli, browser, original_rows)
+    apply(run_cli, prepare(run_cli, first, action))
+    revised = row(closeBalance="9.00", updateTime="2026-09-21 08:00:00")
+    second = export(run_cli, browser, [revised])
+    plan = prepare(run_cli, second, action)
+    original = workflow_storage.stage_checkpoint
+
+    def interrupted(phase, count):
+        if phase == stop:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(workflow_storage, "stage_checkpoint", interrupted)
+    code, _, _ = run_cli(["workflow", "import", "apply", "--plan", plan["id"]])
+    assert code != 0
+    committed = stop == "after_publication_commit"
+    assert current(run_cli, first)["records"] == (
+        [revised] if committed else original_rows
+    )
+    code, _, _ = run_cli(["workflow", "observation", "show", "--export", second["id"]])
+    assert code == (0 if committed else 1)
+    monkeypatch.setattr(workflow_storage, "stage_checkpoint", original)
+    receipt = apply(run_cli, plan)
+    assert receipt["replayed"] is committed
+    assert current(run_cli, first)["records"] == [revised]
+    assert apply(run_cli, plan)["inserted_count"] == 0
+    assert (
+        call(run_cli, "observation", "show", "--export", first["id"])["records"]
+        == original_rows
+    )

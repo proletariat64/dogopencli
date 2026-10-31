@@ -481,3 +481,46 @@ def test_mixed_terminal_kinds_do_not_combine_into_one_end_proof():
     assert walk.run([]) == [{"id": "last"}]
     assert [item["start"] for item in walk.terminal_batches] == [16, 24]
     assert all("native_terminal" in item for item in walk.terminal_batches)
+
+
+@pytest.mark.parametrize("termination", ["known_total", "short_page"])
+def test_both_walkers_keep_arrival_order_and_equal_order_selection_facts(termination):
+    source = Native(size=2)
+    source.contract = replace(
+        source.contract,
+        allowed_page_sizes=(2,),
+        total_semantics="source_row_occurrences",
+    )
+    data = Dataset(source, length=0)
+    data.rows = [
+        {"id": "a", "version": 1, "value": "old"},
+        {"id": "b", "version": 2, "value": "first"},
+        {"id": "a", "version": 1, "value": "tie wins"},
+        {"id": "b", "version": 1, "value": "older"},
+        {"id": "a", "version": 1, "value": "tie wins"},
+        {"id": "c", "version": 3, "value": "last"},
+    ]
+    policy = {**settings(source), "latest_by": "version"}
+    if termination == "known_total":
+        policy["paging"].pop("termination")
+        parse_rows = source.parse_rows
+        source.parse_rows = lambda raw: (parse_rows(raw)[0], 6)
+    result = collect_list(
+        source,
+        data,
+        "private-scope",
+        policy,
+        domain="liquidity",
+        leaf_id="liquidity.fixture",
+    )
+    assert result.records == [data.rows[2], data.rows[1], data.rows[5]]
+    assert result.evidence.arrivals == 6
+    assert result.evidence.selection == {
+        "latest_by": "version",
+        "resolved_version_count": 2,
+        "equal_order_count": 1,
+        "identical_duplicate_count": 1,
+    }
+    # Record choice is the same, but neither traversal can establish coverage
+    # from repeated native contents or conflicting overlapping identities.
+    assert not result.complete

@@ -442,40 +442,27 @@ def execute_export(invocation, store: Store) -> tuple[dict, dict]:
             if saved:
                 result = store.read("exports", saved[-1]["id"])
                 meta = dict(result["metadata"])
-                from .leaves.runtime import _project
-                from .temporary_query import (
-                    display_options,
-                    list_preview_metadata,
-                    window_rows,
-                )
+                from .temporary_query import display_options, present_result
 
                 limit, offset, fields = display_options(invocation.args)
-                rows = result["records"]
-                if plan["operation"] == "get":
-                    rows = _project(rows, fields)
-                    displayed = rows if result["display_shape"] == "array" else rows[0]
-                elif plan.get("with_detail"):
-                    displayed = [
-                        {**item, "record": _project([item["record"]], fields)[0]}
-                        for item in window_rows(rows, limit, offset)
-                    ]
-                else:
-                    displayed = _project(window_rows(rows, limit, offset), fields)
-                if plan["operation"] != "get":
-                    meta.update(
-                        list_preview_metadata(
-                            len(rows),
-                            len(displayed),
-                            limit,
-                            offset,
-                            custom_detail=(
-                                plan["detail_contract"]["declaration"].get("execution")
-                                == "custom"
-                                if plan.get("with_detail")
-                                else None
-                            ),
-                        )
-                    )
+                displayed, preview = present_result(
+                    result["records"],
+                    fields,
+                    shape=(
+                        result["display_shape"]
+                        if plan["operation"] == "get"
+                        else "list"
+                    ),
+                    limit=limit,
+                    offset=offset,
+                    custom_detail=(
+                        plan["detail_contract"]["declaration"].get("execution")
+                        == "custom"
+                        if plan.get("with_detail")
+                        else None
+                    ),
+                )
+                meta.update(preview)
                 result = {**result, "records": displayed}
             else:
                 result, meta = run_export(invocation, store, plan)

@@ -5,9 +5,7 @@ from typing import Any
 
 from .errors import CliError
 from .jsonutil import canonical, parse
-from .leaves.lifecycle import lifecycle_lock
-from .leaves.registry import Registry
-from .workflow_storage import connection, header, metadata_match
+from .workflow_storage import connection, metadata_match, publication, save_observation
 
 
 def invalid(message: str) -> None:
@@ -246,138 +244,83 @@ def current(artifact: dict) -> dict:
     }
 
 
-def save_observation(db: Any, artifact: dict, receipt: dict) -> None:
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS _dogopencli_observations (export_id "
-        "VARCHAR PRIMARY KEY, leaf_id VARCHAR NOT NULL, relation_name VARCHAR"
-        " NOT NULL, action VARCHAR NOT NULL, committed_at VARCHAR NOT NULL, "
-        "artifact VARCHAR NOT NULL, receipt VARCHAR NOT NULL)"
-    )
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS _dogopencli_observation_rows (export_id "
-        "VARCHAR NOT NULL, ordinal BIGINT NOT NULL, _record VARCHAR NOT NULL,"
-        " PRIMARY KEY(export_id, ordinal))"
-    )
-    saved = db.execute(
-        "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
-        [artifact["id"]],
-    ).fetchone()
-    if saved:
-        if not metadata_match(saved[0], artifact):
-            invalid("Exact export differs from committed observation")
-        return
-    binding = artifact["binding"]
-    db.execute(
-        "INSERT INTO _dogopencli_observations VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [
-            artifact["id"],
-            binding["leaf"],
-            binding["relation"],
-            receipt["action"],
-            receipt["committed_at"],
-            canonical(header(artifact)),
-            canonical(receipt),
-        ],
-    )
-
-
 def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> dict:
     binding = artifact["binding"]
     key = namespace(artifact)
     if canonical(plan.get("namespace")) != key:
         invalid("Keyed plan namespace differs from frozen export")
-    with lifecycle_lock(Registry(config_file)):
-        with connection(binding, write=True) as db:
-            from .workflow_storage import publication_progress, stage_rows
-
-            stage_rows(db, artifact)
-            db.execute("BEGIN TRANSACTION")
-            guard(db, binding)
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS _dogopencli_keyed_current "
-                "(relation_name VARCHAR, namespace VARCHAR, identity VARCHAR,"
-                " _record VARCHAR NOT NULL, artifact VARCHAR NOT NULL, "
-                "contract VARCHAR NOT NULL, PRIMARY KEY(relation_name, "
-                "namespace, identity))"
-            )
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS _dogopencli_keyed_receipts "
-                "(export_id VARCHAR PRIMARY KEY, relation_name VARCHAR NOT "
-                "NULL, receipt VARCHAR NOT NULL)"
-            )
-            replay = db.execute(
-                "SELECT receipt FROM _dogopencli_keyed_receipts WHERE export_id=?",
-                [artifact["id"]],
-            ).fetchone()
-            if replay:
-                saved = db.execute(
-                    "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
-                    [artifact["id"]],
+    with publication(config_file, artifact) as publishing:
+        db = publishing.db
+        guard(db, binding)
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS _dogopencli_keyed_current "
+            "(relation_name VARCHAR, namespace VARCHAR, identity VARCHAR,"
+            " _record VARCHAR NOT NULL, artifact VARCHAR NOT NULL, "
+            "contract VARCHAR NOT NULL, PRIMARY KEY(relation_name, "
+            "namespace, identity))"
+        )
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS _dogopencli_keyed_receipts "
+            "(export_id VARCHAR PRIMARY KEY, relation_name VARCHAR NOT "
+            "NULL, receipt VARCHAR NOT NULL)"
+        )
+        replay = publishing.replay(
+            "_dogopencli_keyed_receipts",
+            "Exact export differs from keyed receipt",
+            updated_count=0,
+        )
+        if replay is not None:
+            return replay
+        previous = rows(db, artifact)
+        selected, counts = changes(artifact, previous)
+        receipt = {
+            "export_id": artifact["id"],
+            "plan_id": plan["id"],
+            "action": "keyed",
+            "binding": binding,
+            "scope": artifact["metadata"]["scope"],
+            "environment": artifact["environment"],
+            "namespace": parse(key),
+            "record_count": artifact["record_count"],
+            "committed_at": committed_at,
+            "captured_at": artifact["completed_at"],
+            "ordering": contract(artifact)["ordering"],
+            "current_effect": "reconcile_keyed_history",
+            **counts,
+        }
+        save_observation(db, artifact, receipt)
+        relation = '"' + binding["relation"].replace('"', '""') + '"'
+        for identity, row in selected.items():
+            if identity in previous:
+                old = canonical(previous[identity][0])
+                found = db.execute(
+                    f"SELECT rowid FROM {relation} WHERE _record=? LIMIT 1", [old]
                 ).fetchone()
-                if not saved or not metadata_match(saved[0], artifact):
-                    invalid("Exact export differs from keyed receipt")
-                db.execute("ROLLBACK")
-                publication_progress(artifact, replayed=True, inserted_count=0)
-                return {
-                    **parse(replay[0]),
-                    "replayed": True,
-                    "inserted_count": 0,
-                    "updated_count": 0,
-                }
-            previous = rows(db, artifact)
-            selected, counts = changes(artifact, previous)
-            receipt = {
-                "export_id": artifact["id"],
-                "plan_id": plan["id"],
-                "action": "keyed",
-                "binding": binding,
-                "scope": artifact["metadata"]["scope"],
-                "environment": artifact["environment"],
-                "namespace": parse(key),
-                "record_count": artifact["record_count"],
-                "committed_at": committed_at,
-                "captured_at": artifact["completed_at"],
-                "ordering": contract(artifact)["ordering"],
-                "current_effect": "reconcile_keyed_history",
-                **counts,
-            }
-            save_observation(db, artifact, receipt)
-            relation = '"' + binding["relation"].replace('"', '""') + '"'
-            for identity, row in selected.items():
-                if identity in previous:
-                    old = canonical(previous[identity][0])
-                    found = db.execute(
-                        f"SELECT rowid FROM {relation} WHERE _record=? LIMIT 1", [old]
-                    ).fetchone()
-                    if not found:
-                        invalid("Current rows differ from committed keyed history")
-                    db.execute(f"DELETE FROM {relation} WHERE rowid=?", [found[0]])
-                db.execute(f"INSERT INTO {relation} VALUES (?)", [canonical(row)])
-                db.execute(
-                    "INSERT INTO _dogopencli_keyed_current VALUES (?, ?, ?, "
-                    "?, ?, ?) ON CONFLICT (relation_name, namespace, "
-                    "identity) DO UPDATE SET _record=excluded._record, "
-                    "artifact=excluded.artifact, contract=excluded.contract",
-                    [
-                        binding["relation"],
-                        key,
-                        identity,
-                        canonical(row),
-                        canonical(
-                            {
-                                name: artifact[name]
-                                for name in ("id", "completed_at", "keyed_contract")
-                            }
-                        ),
-                        canonical(contract(artifact)),
-                    ],
-                )
+                if not found:
+                    invalid("Current rows differ from committed keyed history")
+                db.execute(f"DELETE FROM {relation} WHERE rowid=?", [found[0]])
+            db.execute(f"INSERT INTO {relation} VALUES (?)", [canonical(row)])
             db.execute(
-                "INSERT INTO _dogopencli_keyed_receipts VALUES (?, ?, ?)",
-                [artifact["id"], binding["relation"], canonical(receipt)],
+                "INSERT INTO _dogopencli_keyed_current VALUES (?, ?, ?, "
+                "?, ?, ?) ON CONFLICT (relation_name, namespace, "
+                "identity) DO UPDATE SET _record=excluded._record, "
+                "artifact=excluded.artifact, contract=excluded.contract",
+                [
+                    binding["relation"],
+                    key,
+                    identity,
+                    canonical(row),
+                    canonical(
+                        {
+                            name: artifact[name]
+                            for name in ("id", "completed_at", "keyed_contract")
+                        }
+                    ),
+                    canonical(contract(artifact)),
+                ],
             )
-            db.execute("COMMIT")
-            publication_progress(
-                artifact, replayed=False, inserted_count=receipt["inserted_count"]
-            )
-            return {**receipt, "replayed": False}
+        db.execute(
+            "INSERT INTO _dogopencli_keyed_receipts VALUES (?, ?, ?)",
+            [artifact["id"], binding["relation"], canonical(receipt)],
+        )
+        return publishing.commit(receipt, inserted_count=receipt["inserted_count"])

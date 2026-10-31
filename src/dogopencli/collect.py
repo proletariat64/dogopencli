@@ -22,6 +22,7 @@ from .errors import (
 )
 from .jsonutil import canonical
 from .progress import advance, report, scoped
+from .record_selection import RecordSelection, record_identity
 from .result_policy import AcquisitionEvidence, check_complete
 from .transport import QueryRequest, TransportResponse, validate_request
 from .transport.cdp import FetchFailed
@@ -148,64 +149,6 @@ def execute_bounded(
         attempt += 1
 
 
-def _list_identity(
-    row: dict[str, Any],
-    primary_id: dict[str, Any],
-    sources: dict[str, str],
-) -> str:
-    """Compute an internal, type-aware identity; never decorate a native row."""
-    import hashlib
-
-    values: list[Any] = []
-    for field in primary_id["fields"]:
-        value = row.get(field)
-        if (
-            field not in row
-            or isinstance(value, (dict, list))
-            or (
-                (value is None or (isinstance(value, str) and not value.strip()))
-                and not primary_id.get("allow_empty_components", False)
-            )
-        ):
-            raise CliError(INVALID_RESPONSE, f"missing native identity field {field}")
-        values.append(value)
-    try:
-        encoded = canonical(values)
-    except (TypeError, ValueError, OverflowError) as error:
-        raise CliError(INVALID_RESPONSE, "invalid native identity value") from error
-    if primary_id["type"] == "field":
-        return encoded
-    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-    previous = sources.setdefault(digest, encoded)
-    if previous != encoded:
-        raise CliError(INVALID_RESPONSE, "composite primary identity hash collision")
-    return digest
-
-
-def _list_timestamp(value: Any) -> tuple[str, Any]:
-    """Comparable native times; do not infer time zones or coerce invalid values."""
-    from datetime import datetime, timezone
-    from decimal import Decimal
-
-    if type(value) in (int, float, Decimal):
-        try:
-            number = Decimal(str(value))
-        except (ValueError, ArithmeticError) as error:
-            raise CliError(INVALID_RESPONSE, "invalid identity timestamp") from error
-        if not number.is_finite():
-            raise CliError(INVALID_RESPONSE, "non-finite identity timestamp")
-        return ("numeric", number)
-    if isinstance(value, str):
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError as error:
-            raise CliError(INVALID_RESPONSE, "invalid identity timestamp") from error
-        if parsed.tzinfo is None:
-            raise CliError(INVALID_RESPONSE, "timestamp requires explicit timezone")
-        return ("datetime", parsed.astimezone(timezone.utc))
-    raise CliError(INVALID_RESPONSE, "missing or invalid identity timestamp")
-
-
 def _list_allowed_sizes(capability: TransportCapability) -> set[int]:
     contract = capability.contract
     sizes = set(contract.allowed_page_sizes) or {contract.page_size}
@@ -239,41 +182,6 @@ class _PageBudget:
     remaining: int
 
 
-def _merge_list_row(
-    row: dict,
-    primary_id: dict,
-    latest_by: str | None,
-    ordered: list[dict],
-    positions: dict[str, int],
-    hashes: dict[str, str],
-) -> tuple[int, int, int]:
-    if latest_by is not None:
-        order = _list_timestamp(row.get(latest_by))
-        if ordered and order[0] != _list_timestamp(ordered[0].get(latest_by))[0]:
-            raise CliError(INVALID_RESPONSE, "mixed native timestamp formats")
-    record_id = _list_identity(row, primary_id, hashes)
-    previous_index = positions.get(record_id)
-    if previous_index is None:
-        positions[record_id] = len(ordered)
-        ordered.append(row)
-        return 0, 0, 0
-    previous = ordered[previous_index]
-    if canonical(row) == canonical(previous):
-        return 1, 0, 0
-    equal = 0
-    if latest_by is None:
-        ordered[previous_index] = row
-    else:
-        newer = _list_timestamp(row.get(latest_by))
-        older = _list_timestamp(previous.get(latest_by))
-        if newer[0] != older[0]:
-            raise CliError(INVALID_RESPONSE, "mixed native timestamp formats")
-        equal = int(newer[1] == older[1])
-        if newer[1] >= older[1]:
-            ordered[previous_index] = row
-    return 1, 1, equal
-
-
 def _short_page_candidate(
     capability: Any,
     transport: Any,
@@ -292,7 +200,7 @@ def _short_page_candidate(
 
     mode = collection["paging"]["mode"]
     pages = 0
-    hashes: dict[str, str] = {}
+    selected = RecordSelection(collection["primary_id"], collection.get("latest_by"))
     short_pages: dict[int, ParsedPage] = {}
     native_metadata: list[dict[str, Any]] = []
 
@@ -389,7 +297,7 @@ def _short_page_candidate(
     def fingerprint(row: dict) -> str:
         # Neighbor identities prevent stale positional skips after reordering.
         # Hash field identities too: operational state never stores account IDs.
-        value = _list_identity(row, collection["primary_id"], hashes)
+        value = selected.identity(row)
         return hashlib.sha256(value.encode()).hexdigest()
 
     walk = ShortPageWalk(
@@ -403,59 +311,24 @@ def _short_page_candidate(
     )
     rows = walk.run(previous_holes)
     remaining_seconds(deadline)
-    ordered: list[dict] = []
-    positions: dict[str, int] = {}
-    duplicates = conflicts = ties = 0
-    contents: set[str] = set()
     for row in rows:
-        duplicate, conflict, tie = _merge_list_row(
-            row,
-            collection["primary_id"],
-            collection.get("latest_by"),
-            ordered,
-            positions,
-            hashes,
-        )
-        duplicates += duplicate
-        conflicts += conflict
-        ties += tie
-        if collection.get("latest_by") is not None:
-            contents.add(canonical(row))
+        selected.add(row)
     reasons = []
     if observations:
         reasons.append("PAGINATION_HOLES_BYPASSED")
-    if duplicates:
-        reasons.append("CROSS_PAGE_OR_INTRA_PAGE_DUPLICATES")
+    reasons.extend(selected.reasons(include_selected_duplicates=True))
     latest_by = collection.get("latest_by")
-    if conflicts:
-        reasons.append(
-            "LATEST_BY_SELECTION" if latest_by else "IDENTITY_CONTENT_CONFLICT"
-        )
-        if latest_by is None:
-            reasons.append("LAST_ARRIVAL_WINS")
-    if ties:
-        reasons.append("LATEST_BY_TIE")
-    selection = (
-        None
-        if latest_by is None
-        else {
-            "latest_by": latest_by,
-            "resolved_version_count": len(contents) - len(ordered),
-            "equal_order_count": ties,
-            "identical_duplicate_count": len(rows) - len(contents),
-        }
-    )
     evidence = AcquisitionEvidence.for_collection(
-        complete=(not conflicts or latest_by is not None)
+        complete=(not selected.conflicts or latest_by is not None)
         and (
-            not duplicates
+            not selected.duplicates
             or (
                 capability.contract.duplicate_policy == "allow_identical_overlap"
-                and not conflicts
+                and not selected.conflicts
             )
         ),
         reported_total=None,
-        collected_total=len(ordered),
+        collected_total=len(selected.records),
         arrivals=len(rows),
         total_semantics="unknown",
         coverage_basis=(
@@ -465,7 +338,7 @@ def _short_page_candidate(
         ),
         duplicate_policy=capability.contract.duplicate_policy,
         reasons=tuple(reasons),
-        selection=selection,
+        selection=selected.selection,
     )
     evidence = replace(
         evidence,
@@ -475,9 +348,9 @@ def _short_page_candidate(
                 "page_size": size,
                 "pages": pages,
                 "arrivals": len(rows),
-                "unique_count": len(ordered),
-                "duplicate_count": duplicates,
-                "conflict_count": conflicts if latest_by is None else 0,
+                "unique_count": len(selected.records),
+                "duplicate_count": selected.duplicates,
+                "conflict_count": selected.conflicts if latest_by is None else 0,
                 "reported_total": None,
                 "complete": evidence.scope_complete,
                 "reasons": list(evidence.reasons),
@@ -502,7 +375,7 @@ def _short_page_candidate(
                 for k, v in row.items()
                 if k not in capability.contract.internal_fields
             }
-            for row in ordered
+            for row in selected.records
         ],
         evidence.scope_complete,
         None,
@@ -549,15 +422,13 @@ def _list_candidate(
     primary_id = collection["primary_id"]
     has_identity = primary_id["type"] != "unproven"
     latest_by = collection.get("latest_by")
-    ordered: list[dict[str, Any]] = []
-    positions: dict[str, int] = {}
-    hashes: dict[str, str] = {}
-    observed: set[str] = set()
+    selected = RecordSelection(
+        primary_id,
+        latest_by,
+        count_source_contents=capability.contract.total_semantics
+        == "source_row_occurrences",
+    )
     reported: int | None = None
-    arrivals = 0
-    duplicate_count = 0
-    conflict_count = tie_count = 0
-    contents: set[str] = set()
     problems: list[str] = []
     if not has_identity:
         problems.append("IDENTITY_UNPROVEN")
@@ -639,7 +510,6 @@ def _list_candidate(
             if reason not in problems:
                 problems.append(reason)
         pages += 1
-        arrivals += len(rows)
         if retained_records is not None:
             retained_records.extend(
                 {
@@ -650,33 +520,18 @@ def _list_candidate(
                 for row in rows
             )
         for row in rows:
-            if not has_identity:
-                content = canonical(row)
-                if content in observed:
-                    if "UNEXPECTED_DUPLICATE_ROWS" not in problems:
-                        problems.append("UNEXPECTED_DUPLICATE_ROWS")
-                observed.add(content)
-                ordered.append(row)
-                continue
-            duplicate, conflict, tie = _merge_list_row(
-                row, primary_id, latest_by, ordered, positions, hashes
-            )
-            duplicate_count += duplicate
-            conflict_count += conflict
-            tie_count += tie
-            if latest_by is not None or (
-                capability.contract.total_semantics == "source_row_occurrences"
-            ):
-                contents.add(canonical(row))
+            selected.add(row)
+        if selected.unproven_overlap and "UNEXPECTED_DUPLICATE_ROWS" not in problems:
+            problems.append("UNEXPECTED_DUPLICATE_ROWS")
 
         report(
             source_pages=pages,
-            source_rows_received=arrivals,
+            source_rows_received=selected.arrivals,
             source_total_rows=reported,
             source_total_scope=(
                 "native_query_before_local_selection" if reported is not None else None
             ),
-            source_rows_selected=len(ordered),
+            source_rows_selected=len(selected.records),
         )
         if progress is not None:
             progress(
@@ -698,33 +553,11 @@ def _list_candidate(
             raise CliError(TIMEOUT, "List page budget exceeded", retryable=True)
         problems.append("PAGE_BUDGET_EXHAUSTED")
     remaining_seconds(deadline)
-    if duplicate_count and latest_by is None:
-        problems.append("CROSS_PAGE_OR_INTRA_PAGE_DUPLICATES")
-    if conflict_count:
-        problems.append(
-            "LATEST_BY_SELECTION" if latest_by else "IDENTITY_CONTENT_CONFLICT"
-        )
-        if latest_by is None:
-            problems.append("LAST_ARRIVAL_WINS")
-    if tie_count:
-        problems.append("LATEST_BY_TIE")
-    selection = (
-        None
-        if latest_by is None
-        else {
-            "latest_by": latest_by,
-            "resolved_version_count": len(contents) - len(ordered),
-            "equal_order_count": tie_count,
-            "identical_duplicate_count": arrivals - len(contents),
-        }
-    )
+    problems.extend(selected.reasons())
+    selection = selected.selection
     if selection is not None and selection["identical_duplicate_count"]:
         problems.append("DUPLICATE_ROWS")
-    coverage_count = (
-        len(contents)
-        if capability.contract.total_semantics == "source_row_occurrences"
-        else len(ordered)
-    )
+    coverage_count = selected.coverage_count(capability.contract.total_semantics)
     if reported is not None and coverage_count != reported:
         problems.append("COUNT_MISMATCH")
     if mode == "single" and reported is not None and reported > size:
@@ -741,8 +574,8 @@ def _list_candidate(
     evidence = AcquisitionEvidence.for_collection(
         complete=complete,
         reported_total=reported,
-        collected_total=len(ordered),
-        arrivals=arrivals,
+        collected_total=len(selected.records),
+        arrivals=selected.arrivals,
         has_identity=has_identity,
         total_semantics="unknown"
         if without_total
@@ -759,10 +592,10 @@ def _list_candidate(
             {
                 "page_size": size,
                 "pages": pages,
-                "arrivals": arrivals,
+                "arrivals": selected.arrivals,
                 "unique_count": evidence.unique_count,
                 "duplicate_count": evidence.duplicate_count,
-                "conflict_count": conflict_count if latest_by is None else 0,
+                "conflict_count": selected.conflicts if latest_by is None else 0,
                 "reported_total": reported,
                 "complete": evidence.scope_complete,
                 "reasons": list(evidence.reasons),
@@ -776,7 +609,7 @@ def _list_candidate(
                 for k, v in row.items()
                 if k not in capability.contract.internal_fields
             }
-            for row in ordered
+            for row in selected.records
         ],
         complete=evidence.scope_complete,
         total_count=reported,
@@ -1141,7 +974,7 @@ def collect_sources(
     identities: set[str] = set()
     hashes: dict[str, str] = {}
     for row in assembled:
-        identity = _list_identity(row, primary_id, hashes)
+        identity = record_identity(row, primary_id, hashes)
         if identity in identities:
             raise CliError(INVALID_RESPONSE, "assembled List identity is duplicated")
         identities.add(identity)

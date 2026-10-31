@@ -5,11 +5,9 @@ from typing import Any
 
 from .errors import CliError
 from .jsonutil import canonical, parse
-from .leaves.lifecycle import lifecycle_lock
-from .leaves.registry import Registry
 from .workflow_history import calendar
-from .workflow_keyed import installed, save_observation
-from .workflow_storage import connection, metadata_match
+from .workflow_keyed import installed
+from .workflow_storage import connection, publication, save_observation
 
 
 def invalid(message: str) -> None:
@@ -201,138 +199,118 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
         k: value[k] for k in ("from", "to")
     }:
         invalid("Replacement plan differs from frozen native range")
-    with lifecycle_lock(Registry(config_file)):
-        with connection(binding, write=True) as db:
-            from .workflow_storage import publication_progress, stage_rows
-
-            stage_rows(db, artifact)
-            db.execute("BEGIN TRANSACTION")
-            guard(db, binding)
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS _dogopencli_range_publications "
-                "(relation_name VARCHAR, namespace VARCHAR, "
-                "export_id VARCHAR NOT NULL, contract VARCHAR NOT "
-                "NULL, PRIMARY KEY(relation_name, namespace))"
+    with publication(config_file, artifact) as publishing:
+        db = publishing.db
+        guard(db, binding)
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS _dogopencli_range_publications "
+            "(relation_name VARCHAR, namespace VARCHAR, "
+            "export_id VARCHAR NOT NULL, contract VARCHAR NOT "
+            "NULL, PRIMARY KEY(relation_name, namespace))"
+        )
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS _dogopencli_range_receipts "
+            "(export_id VARCHAR PRIMARY KEY, relation_name "
+            "VARCHAR NOT NULL, receipt VARCHAR NOT NULL)"
+        )
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS _dogopencli_range_rows "
+            "(relation_name VARCHAR, namespace VARCHAR, "
+            "export_id VARCHAR, ordinal BIGINT, native_day INTEGER, "
+            "_record VARCHAR NOT NULL, PRIMARY "
+            "KEY(relation_name, namespace, export_id, ordinal))"
+        )
+        replay = publishing.replay(
+            "_dogopencli_range_receipts",
+            "Exact export differs from committed range publication",
+        )
+        if replay is not None:
+            return replay
+        compatible(db, artifact)
+        previous = pointer(db, artifact)
+        if previous != plan["expected_current"]:
+            invalid(
+                "Stale replacement plan: current publication "
+                "changed; compile a new import plan"
             )
+        replaced, retained = counts(db, artifact)
+        receipt = {
+            "export_id": artifact["id"],
+            "previous_current": previous,
+            "plan_id": plan["id"],
+            "action": "replace-range",
+            "binding": binding,
+            "namespace": parse(key),
+            "scope": artifact["metadata"]["scope"],
+            "environment": artifact["environment"],
+            "replacement_range": plan["replacement_range"],
+            "record_count": artifact["record_count"],
+            "removed_count": replaced,
+            "retained_count": retained,
+            "committed_at": committed_at,
+            "current_effect": "replace_covered_range",
+        }
+        save_observation(db, artifact, receipt)
+        relation = '"' + binding["relation"].replace('"', '""') + '"'
+        selected = [binding["relation"], key, left, right]
+        # Subtract owned occurrences; retain equal rows in other scopes.
+        missing = db.execute(
+            "SELECT _record FROM _dogopencli_range_rows WHERE "
+            "relation_name=? AND namespace=? "
+            f"AND native_day BETWEEN ? AND ? EXCEPT ALL SELECT "
+            f"_record FROM {relation}",
+            selected,
+        ).fetchone()
+        if missing:
+            invalid("Current rows differ from committed range publication")
+        db.execute(
+            "CREATE TEMP TABLE retained_range AS SELECT _record "
+            f"FROM {relation} EXCEPT ALL SELECT _record FROM "
+            f"_dogopencli_range_rows "
+            "WHERE relation_name=? AND namespace=? AND native_day BETWEEN ? AND ?",
+            selected,
+        )
+        db.execute(f"DELETE FROM {relation}")
+        db.execute(f"INSERT INTO {relation} SELECT _record FROM retained_range")
+        db.execute(
+            "DELETE FROM _dogopencli_range_rows WHERE "
+            "relation_name=? AND namespace=? AND native_day BETWEEN ? AND ?",
+            selected,
+        )
+        if artifact["records"]:
+            # Calendar validation already established these native values;
+            # derive the same ordinal from retained canonical row storage.
             db.execute(
-                "CREATE TABLE IF NOT EXISTS _dogopencli_range_receipts "
-                "(export_id VARCHAR PRIMARY KEY, relation_name "
-                "VARCHAR NOT NULL, receipt VARCHAR NOT NULL)"
-            )
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS _dogopencli_range_rows "
-                "(relation_name VARCHAR, namespace VARCHAR, "
-                "export_id VARCHAR, ordinal BIGINT, native_day INTEGER, "
-                "_record VARCHAR NOT NULL, PRIMARY "
-                "KEY(relation_name, namespace, export_id, ordinal))"
-            )
-            replay = db.execute(
-                "SELECT receipt FROM _dogopencli_range_receipts WHERE export_id=?",
-                [artifact["id"]],
-            ).fetchone()
-            if replay:
-                saved = db.execute(
-                    "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
-                    [artifact["id"]],
-                ).fetchone()
-                if not saved or not metadata_match(saved[0], artifact):
-                    invalid("Exact export differs from committed range publication")
-                db.execute("ROLLBACK")
-                publication_progress(artifact, replayed=True, inserted_count=0)
-                return {**parse(replay[0]), "replayed": True, "inserted_count": 0}
-            compatible(db, artifact)
-            previous = pointer(db, artifact)
-            if previous != plan["expected_current"]:
-                invalid(
-                    "Stale replacement plan: current publication "
-                    "changed; compile a new import plan"
-                )
-            replaced, retained = counts(db, artifact)
-            receipt = {
-                "export_id": artifact["id"],
-                "previous_current": previous,
-                "plan_id": plan["id"],
-                "action": "replace-range",
-                "binding": binding,
-                "namespace": parse(key),
-                "scope": artifact["metadata"]["scope"],
-                "environment": artifact["environment"],
-                "replacement_range": plan["replacement_range"],
-                "record_count": artifact["record_count"],
-                "removed_count": replaced,
-                "retained_count": retained,
-                "committed_at": committed_at,
-                "current_effect": "replace_covered_range",
-            }
-            save_observation(db, artifact, receipt)
-            relation = '"' + binding["relation"].replace('"', '""') + '"'
-            selected = [binding["relation"], key, left, right]
-            # Subtract owned occurrences; retain equal rows in other scopes.
-            missing = db.execute(
-                "SELECT _record FROM _dogopencli_range_rows WHERE "
-                "relation_name=? AND namespace=? "
-                f"AND native_day BETWEEN ? AND ? EXCEPT ALL SELECT "
-                f"_record FROM {relation}",
-                selected,
-            ).fetchone()
-            if missing:
-                invalid("Current rows differ from committed range publication")
-            db.execute(
-                "CREATE TEMP TABLE retained_range AS SELECT _record "
-                f"FROM {relation} EXCEPT ALL SELECT _record FROM "
-                f"_dogopencli_range_rows "
-                "WHERE relation_name=? AND namespace=? AND native_day BETWEEN ? AND ?",
-                selected,
-            )
-            db.execute(f"DELETE FROM {relation}")
-            db.execute(f"INSERT INTO {relation} SELECT _record FROM retained_range")
-            db.execute(
-                "DELETE FROM _dogopencli_range_rows WHERE "
-                "relation_name=? AND namespace=? AND native_day BETWEEN ? AND ?",
-                selected,
-            )
-            if artifact["records"]:
-                # Calendar validation already established these native values;
-                # derive the same ordinal from retained canonical row storage.
-                db.execute(
-                    "INSERT INTO _dogopencli_range_rows SELECT ?, ?, export_id, "
-                    "ordinal, date_diff('day', DATE '0001-01-01', "
-                    "strptime(json_extract_string(_record, ?), ?)) + 1, _record "
-                    "FROM _dogopencli_observation_rows WHERE export_id=?",
-                    [
-                        binding["relation"],
-                        key,
-                        '$."' + value["field"] + '"',
-                        value["format"],
-                        artifact["id"],
-                    ],
-                )
-                db.execute(
-                    f"INSERT INTO {relation} SELECT _record FROM "
-                    "_dogopencli_observation_rows WHERE export_id=? ORDER BY ordinal",
-                    [artifact["id"]],
-                )
-            db.execute(
-                "INSERT INTO _dogopencli_range_receipts VALUES (?, ?, ?)",
-                [artifact["id"], binding["relation"], canonical(receipt)],
-            )
-            db.execute(
-                "INSERT INTO _dogopencli_range_publications VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(relation_name, namespace) DO UPDATE SET "
-                "export_id=excluded.export_id, contract=excluded.contract",
+                "INSERT INTO _dogopencli_range_rows SELECT ?, ?, export_id, "
+                "ordinal, date_diff('day', DATE '0001-01-01', "
+                "strptime(json_extract_string(_record, ?), ?)) + 1, _record "
+                "FROM _dogopencli_observation_rows WHERE export_id=?",
                 [
                     binding["relation"],
                     key,
+                    '$."' + value["field"] + '"',
+                    value["format"],
                     artifact["id"],
-                    canonical(semantics(artifact)),
                 ],
             )
-            db.execute("COMMIT")
-            publication_progress(
-                artifact, replayed=False, inserted_count=artifact["record_count"]
+            db.execute(
+                f"INSERT INTO {relation} SELECT _record FROM "
+                "_dogopencli_observation_rows WHERE export_id=? ORDER BY ordinal",
+                [artifact["id"]],
             )
-            return {
-                **receipt,
-                "replayed": False,
-                "inserted_count": artifact["record_count"],
-            }
+        db.execute(
+            "INSERT INTO _dogopencli_range_receipts VALUES (?, ?, ?)",
+            [artifact["id"], binding["relation"], canonical(receipt)],
+        )
+        db.execute(
+            "INSERT INTO _dogopencli_range_publications VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(relation_name, namespace) DO UPDATE SET "
+            "export_id=excluded.export_id, contract=excluded.contract",
+            [
+                binding["relation"],
+                key,
+                artifact["id"],
+                canonical(semantics(artifact)),
+            ],
+        )
+        return publishing.commit(receipt, inserted_count=artifact["record_count"])
