@@ -1,9 +1,10 @@
 # Outflow PTR case library
 
-`payment list ptr.cases` reads the outflow case library through the host custom
-query SDK. Each operation acquires the same fixed page0/5000 twice, validates
+`payment list ptr.cases` reads the outflow case library through the standard host
+multi-source SDK. Each operation acquires the same fixed page0/5000 twice, validates
 complete coverage and unique native `id`, and compares sorted retained content.
-Both reads share the host deadline/request budget and retain acquisition evidence.
+Both required sources share a 120-second deadline and two-logical-page budget,
+including bounded retries. Their independent acquisition evidence survives replay.
 
 The output preserves the assigned case/baseline/money whitelist, including native
 amount precision and nullable values. Local filters select exact whole strings:

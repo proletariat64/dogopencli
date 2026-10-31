@@ -138,11 +138,15 @@ def test_two_read_projection_refresh_offline_and_help(installed):
     assert live["data"] == expected(rows)
     assert browser.business_requests == [{"pageNo": 0, "pageSize": 5000}] * 2
     acquisition = live["meta"]["acquisition"]
-    trace = acquisition["attempts"][-1]
-    assert trace["kind"] == "custom_query"
-    assert trace["queries"]["cases"]["calls"] == 2
-    assert trace["queries"]["cases"]["succeeded"] == 2
-    assert len(trace["queries"]["cases"]["collections"]) == 2
+    assert acquisition["coverage_basis"] == "validated_sources"
+    assert acquisition["total_semantics"] == "assembled_roots"
+    assert acquisition["reported_total"] is None
+    assert set(acquisition["sources"]) == {"first", "second"}
+    for source in acquisition["sources"].values():
+        assert source["scope"] == "outflow-library"
+        assert source["acquisition"]["reported_total"] == 2
+        assert source["acquisition"]["scope_complete"] is True
+        assert source["acquisition"]["dataset_complete"] is True
     assert not (config / "leaf-cache.sqlite3").exists()
     stable(browser, rows)
     refreshed = cli("refresh", "--require-complete")
@@ -222,18 +226,23 @@ def test_unstable_retained_contents_preserve_capture(installed, change):
         ({"status": 401, "body": {}}, "AUTH_REQUIRED"),
     ],
 )
-def test_second_failure_is_not_partial_success(installed, failure, error):
+@pytest.mark.parametrize("failed_read", ["first", "second"])
+def test_source_failure_is_not_partial_success(installed, failure, error, failed_read):
     cli, browser, config = installed
-    browser.business_script.extend([reply([row()]), failure])
+    browser.business_script.extend(
+        [failure] if failed_read == "first" else [reply([row()]), failure]
+    )
     result = cli("list", "--live", code=1)
     assert result["data"] is None
     assert result["error"]["code"] == error
-    assert len(browser.business_requests) == 2
+    assert len(browser.business_requests) == (1 if failed_read == "first" else 2)
     stable(browser, [row()])
     cli("refresh")
     database = config / "leaf-cache.sqlite3"
     before = database.read_bytes()
-    browser.business_script.extend([reply([row()]), failure])
+    browser.business_script.extend(
+        [failure] if failed_read == "first" else [reply([row()]), failure]
+    )
     failed_refresh = cli("refresh", code=1)
     assert failed_refresh["error"]["code"] == error
     assert failed_refresh["meta"]["published"] is False
@@ -255,7 +264,7 @@ def test_empty_refresh_preserves_capture(installed):
 def test_request_contract_rejects_extra_fields_and_execution(installed):
     _, _, config = installed
     leaf = Registry(config / "config.toml").scan().get("payment", "ptr.cases")
-    capability = leaf.adapter.query_capability("list", "cases", {})
+    capability = leaf.adapter.source_capability("first", {})
     body = capability.page_body("outflow-library", 0, 5000)
     contract = capability.contract
 
@@ -280,3 +289,14 @@ def test_request_contract_rejects_extra_fields_and_execution(installed):
     ):
         with pytest.raises(CliError):
             validate_request(request(forbidden), contract)
+
+
+def test_stability_covers_rows_hidden_by_local_filters(installed):
+    cli, browser, _ = installed
+    original = [row("A", caseName="shown"), row("B", caseName="hidden")]
+    changed = [original[0], row("B", caseName="changed")]
+    browser.business_script.extend([reply(original), reply(changed)])
+    failed = cli("list", "--live", "--name", "shown", code=1)
+    assert failed["data"] is None
+    assert failed["error"]["code"] == "INCOMPLETE_RESULT"
+    assert len(browser.business_requests) == 2
