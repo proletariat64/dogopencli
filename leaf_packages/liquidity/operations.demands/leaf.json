@@ -28,7 +28,8 @@
         "to_parameter": "to-time",
         "splitting": "explicit_windows",
         "cross_range_equivalence": false,
-        "precision": "millisecond"
+        "precision": "millisecond",
+        "modification_time": "gmtModified (native offset-free local clock; timezone not inferred)"
       }
     },
     "get": {
@@ -76,6 +77,11 @@
       "name": "executeTime",
       "type": "string",
       "meaning": "Native execution timestamp; Beijing GMT+08:00, distinct from capture time."
+    },
+    {
+      "name": "gmtModified",
+      "type": "string",
+      "meaning": "Native modification clock ordering versions of one task; preserved independently of executeTime and without inferred timezone."
     }
   ],
   "identity": [
@@ -87,7 +93,7 @@
     "Both offset-free execution-time bounds are required. Public values use T; wire values use a space. Equal bounds are permitted and native boundaries are inclusive. Offset-free execution times use owner-confirmed Beijing GMT+08:00.",
     "Native result.dataValue records and result.count describe the queried task scope. Counts or arrivals above 5000 are rejected; narrow the bounds. No offset fallback, automatic partitioning or alternate source.",
     "Ordinary List: All native fields, types, nesting and unknown values are retained. No detail lookup, source join or status interpretation.",
-    "The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima.",
+    "The host SDK owns retries, completeness and publication. Standard latest_by selects the complete latest row per taskId by strictly validated gmtModified; its offset-free local calendar/clock ordinal is internal and does not invent a timezone or Unix instant. Native fields remain unchanged. Resolved versions/ties warn and can be complete; missing/invalid modification clocks fail and real count/traversal gaps retain their coverage meaning.",
     "Native result.riskActionVO only; same-envelope decision/execution report siblings and separate child/history endpoints are outside this Get.",
     "Get and supported List --live --with-detail preserve native types, nesting and unknown fields, perform no implicit history/child inquiries, and write no cache or Duckdog data."
   ],
@@ -121,6 +127,7 @@
       "fields": [
         "taskId"
       ]
-    }
+    },
+    "latest_by": "__dogopencli_demand_order"
   }
 }

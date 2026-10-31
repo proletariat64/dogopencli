@@ -358,3 +358,149 @@ def test_restricted_transport_rejects_unverified_request(installed, change):
         validate_request(request, capability.contract)
     assert caught.value.code == "REQUEST_NOT_ALLOWED"
     assert not browser.business_requests
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("newer_first", [False, True])
+def test_latest_task_version_preserves_whole_record_and_cache(
+    installed, strict, newer_first
+):
+    cli, browser, _ = installed
+    old = row(7, lastModifiedTime="2026-10-24 01:02:03", old_only=True)
+    new = row(7, lastModifiedTime="2026-10-24 01:02:04", operationStatus="FINAL")
+    other = row(2)
+    arrivals = [new, other, old] if newer_first else [old, other, new]
+    browser.business_script.append(page(arrivals, 2))
+    flags = ("--require-complete",) if strict else ()
+    result = cli("refresh", *FLAGS, *flags)
+    assert result["error"] is None
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["outcome"] == "warning"
+    assert result["meta"]["warnings"]
+    assert result["meta"]["published"] is True
+    requests = len(browser.business_requests)
+    offline = cli("list", "--limit", "0", *flags)
+    assert offline["data"] == [new, other]
+    assert "__dogopencli_automatic_task_order" not in str(offline["data"])
+    assert offline["meta"]["acquisition"] == result["meta"]["acquisition"]
+    assert len(browser.business_requests) == requests
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        "",
+        " ",
+        1,
+        True,
+        "2026-02-30 12:00:00",
+        "2026-10-24T12:00:00",
+        "2026-10-24 12:00:00+08:00",
+        "2026-10-24 12:00:00.000",
+        "2026-1-4 12:00:00",
+    ],
+)
+def test_invalid_singleton_modification_clock_preserves_cache(installed, value):
+    cli, browser, _ = installed
+    browser.business_script.append(page([row(77)]))
+    saved = cli("refresh", *FLAGS, "--require-complete")
+    browser.business_script.append(page([row(88, lastModifiedTime=value)]))
+    failed = cli("refresh", *FLAGS, code=1)
+    assert failed["error"]["code"] == "INVALID_RESPONSE"
+    assert failed["meta"]["published"] is False
+    offline = cli("list", "--limit", "0", "--require-complete")
+    assert offline["data"] == [row(77)]
+    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+@pytest.mark.parametrize("change", ["missing", "collision"])
+def test_missing_or_reserved_modification_order_is_rejected(installed, change):
+    cli, browser, _ = installed
+    candidate = row()
+    if change == "missing":
+        candidate.pop("lastModifiedTime")
+    else:
+        candidate["__dogopencli_automatic_task_order"] = 1
+    browser.business_script.append(page([candidate]))
+    result = cli("list", "--live", *FLAGS, code=1)
+    assert result["data"] is None
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_equal_modification_clock_keeps_last_whole_task(installed, strict):
+    cli, browser, _ = installed
+    old = row(7, old_only=True)
+    new = row(7, operationStatus="FINAL", unknown=[None, False, "0.0001"])
+    browser.business_script.append(page([old, old, new], 1))
+    flags = ("--require-complete",) if strict else ()
+    result = cli("list", "--live", *FLAGS, "--limit", "0", *flags)
+    assert result["data"] == [new]
+    assert result["error"] is None
+    assert result["meta"]["complete"] is True
+    assert result["meta"]["warnings"]
+
+
+def test_task_winner_does_not_hide_missing_distinct_identity(installed):
+    cli, browser, _ = installed
+    old = row(7, lastModifiedTime="2026-10-24 01:02:03")
+    new = row(7, lastModifiedTime="2026-10-24 01:02:04")
+    browser.business_script.append(page([old, new], 2))
+    result = cli("refresh", *FLAGS, "--require-complete", code=1)
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert result["meta"]["complete"] is False
+    assert result["meta"]["published"] is False
+
+
+def test_task_versions_across_pages_keep_first_identity_position(installed):
+    cli, browser, _ = installed
+    records = [row(i) for i in range(11)]
+    records[0] = row(0, lastModifiedTime="2026-10-24 01:00:00")
+    newest = row(0, lastModifiedTime="2026-10-24 02:00:00", operationStatus="FINAL")
+    browser.business_script.extend(
+        [page(records[:10], 11), page([newest, records[10]], 11)]
+    )
+    result = cli("list", "--live", *FLAGS, "--limit", "0", "--require-complete")
+    assert result["data"] == [newest, *records[1:]]
+    assert result["meta"]["complete"] is True
+    evidence = result["meta"]["acquisition"]
+    assert evidence["arrivals"] == 12
+    assert evidence["collected_total"] == evidence["reported_total"] == 11
+    assert [body["rowStart"] for body in browser.business_requests] == [0, 10]
+
+
+def test_task_selection_proof_survives_export_and_preserve_import(installed, run_cli):
+    _, browser, _ = installed
+    old = row(7, lastModifiedTime="2026-10-24 01:00:00")
+    new = row(7, lastModifiedTime="2026-10-24 02:00:00", operationStatus="FINAL")
+
+    def workflow(*args):
+        code, out, error = run_cli(["workflow", *args])
+        assert code == 0, out + error
+        return parse(out)["data"]
+
+    plan = workflow(
+        "plan",
+        "create",
+        "--leaf",
+        "liquidity." + LEAF,
+        "--parameters",
+        '{"from-time":"2026-10-23T00:00:00","to-time":"2026-10-23T23:59:59"}',
+    )
+    browser.business_script.append(page([old, new], 1))
+    run = workflow("export", "create", "--plan", plan["id"])
+    result = workflow("export", "run", "--run", run["id"])
+    exported = workflow("export", "show", "--export", result["id"])
+    assert exported["records"] == [new]
+    assert "LATEST_BY_SELECTION" in str(exported)
+    assert "__dogopencli_automatic_task_order" not in str(exported["records"])
+    prepared = workflow(
+        "import", "plan", "--export", result["id"], "--action", "preserve"
+    )
+    requests = len(browser.business_requests)
+    workflow("import", "apply", "--plan", prepared["id"])
+    retained = workflow("observation", "show", "--export", result["id"])
+    assert retained["records"] == [new]
+    assert "LATEST_BY_SELECTION" in str(retained)
+    assert len(browser.business_requests) == requests
