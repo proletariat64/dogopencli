@@ -43,9 +43,9 @@ ENDPOINTS = {
 }
 DAY_FLAGS = ("--from-date", "2026-09-30", "--to-date", "2026-09-30")
 DEMAND_FLAGS = (
-    "--execute-from",
+    "--from-time",
     "2026-04-01T00:00:00",
-    "--execute-to",
+    "--to-time",
     "2026-04-02T00:00:00",
 )
 STATUS_FLAGS = ("--status", "APPROVED", "--status", "CLOSED")
@@ -66,8 +66,8 @@ def parameters(case):
         return {"status": ["APPROVED", "CLOSED"]}
     if case == "demands":
         return {
-            "execute_from": "2026-04-01T00:00:00",
-            "execute_to": "2026-04-02T00:00:00",
+            "from_time": "2026-04-01T00:00:00",
+            "to_time": "2026-04-02T00:00:00",
         }
     return {"from_date": "2026-09-30", "to_date": "2026-09-30"}
 
@@ -99,6 +99,7 @@ def record(case, index=0):
             creditAmount="",
             gmtReturnFinnet=None,
             gmtCreate="UNINTERPRETED_SOURCE_TIME",
+            gmtModified="2026-09-30 00:00:00（GMT+08）",
             orderStatus="UNRECOGNIZED_NATIVE",
             receiptStatus="PENDING",
             executeResult="",
@@ -172,8 +173,8 @@ def expected_request(case, position=0):
         inner.update(
             debitEntity=[],
             creditEntity=[],
-            transactionStartDate="2026-09-30 00:00:00",
-            transactionEndDate="2026-09-30 23:59:59",
+            transactionStartDate="2026-09-29 09:00:00",
+            transactionEndDate="2026-09-30 08:59:59",
             debitStartDate="",
             debitEndDate="",
             creditStartDate="",
@@ -456,9 +457,15 @@ def test_conflict_rejects_inconsistent_rows(installed):
     rows = [record(case, i) for i in range(2)]
     last = {**rows[0], "unknown": "CHANGED"}
     browser.business_script.append(page(case, [rows[0], last, rows[1]], 3))
-    result = cli("list", "--live", "--limit", "0", code=1)
-    assert result["data"] is None
-    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    if case == "transfers":
+        result = cli("list", "--live", "--limit", "0")
+        assert result["data"] == [last, rows[1]]
+        assert result["error"] is None
+        assert result["meta"]["warnings"]
+    else:
+        result = cli("list", "--live", "--limit", "0", code=1)
+        assert result["data"] is None
+        assert result["error"]["code"] == "INCOMPLETE_RESULT"
     assert result["meta"]["complete"] is False
     assert result["meta"]["acquisition"]["duplicate_count"] == 1
 
@@ -589,35 +596,35 @@ def test_required_iso_date_scopes_rejected_before_contact(installed, date_flags)
     "timestamp_flags",
     [
         (),
-        ("--execute-from", "2026-04-01T00:00:00"),
+        ("--from-time", "2026-04-01T00:00:00"),
         (
-            "--execute-from",
+            "--from-time",
             "2026-04-01 00:00:00",
-            "--execute-to",
+            "--to-time",
             "2026-04-02T00:00:00",
         ),
         (
-            "--execute-from",
+            "--from-time",
             "2026-04-01T00:00:00Z",
-            "--execute-to",
+            "--to-time",
             "2026-04-02T00:00:00Z",
         ),
         (
-            "--execute-from",
+            "--from-time",
             "2026-04-01T00:00:00+08:00",
-            "--execute-to",
+            "--to-time",
             "2026-04-02T00:00:00+08:00",
         ),
         (
-            "--execute-from",
+            "--from-time",
             "2026-02-30T00:00:00",
-            "--execute-to",
+            "--to-time",
             "2026-04-02T00:00:00",
         ),
         (
-            "--execute-from",
+            "--from-time",
             "2026-04-02T00:00:00",
-            "--execute-to",
+            "--to-time",
             "2026-04-01T00:00:00",
         ),
     ],

@@ -106,6 +106,7 @@ def read(binding: dict, export_id: str) -> dict:
             "export_id": export_id,
             "leaf": binding["leaf"],
             "scope": artifact["metadata"]["scope"],
+            "metadata": artifact["metadata"],
             "records": rows,
             "receipt": receipt,
         }

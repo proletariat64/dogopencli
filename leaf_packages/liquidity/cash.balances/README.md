@@ -72,11 +72,15 @@ only in internal record copies and is removed from output and saved business
 records. A native field colliding with its reserved name is rejected.
 
 The greatest source time selects the SDK candidate; equal times use last
-arrival. No balance-value tie-break is applied. Identical duplicates, conflicting
-content and pagination anomalies retain SDK evidence. Selecting a candidate does
-not accept a conflict: same-key different content remains a shared-policy error
-with exit 1. There is no generated business ID, `record/history` wrapper or
-leaf-owned latest-record algorithm.
+arrival. No balance-value tie-break is applied. A valid declared selection emits
+`LATEST_BY_SELECTION`, including retained counts, with exit 0 in default and
+strict modes when traversal is complete. Equal-order selection also retains
+`LATEST_BY_TIE`; exact duplicate counts remain separate from resolved versions.
+Missing or malformed ordering values still fail. Native totals keep their
+qualified unique-object meaning: selecting one winner cannot repair a count
+shortfall, incomplete directory or skipped account. Unresolved identity conflicts
+remain shared-policy errors. There is no generated business ID, `record/history`
+wrapper or leaf-owned latest-record algorithm.
 
 ## Coverage and replay
 

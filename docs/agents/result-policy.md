@@ -21,6 +21,11 @@ coverage or shrink a Refresh candidate.
 
 An empty incomplete result never replaces a capture; strict mode still rejects it.
 A valid empty response differs from an unresolved prerequisite or verified not-found.
+Declared valid `latest_by` selection returns the latest complete native row per
+identity with a resolved-version warning, no fatal error and exit 0 in both modes.
+Equal-order last-arrival ties remain explicit. Selection alone does not make a
+result incomplete and does not improve traversal coverage. Undeclared conflicts
+and malformed ordering remain failures.
 Warnings alone do not mean incomplete. Native count equality, deduplication or zero
 rows alone do not prove coverage.
 
@@ -47,7 +52,7 @@ Custom operations declare supplementary queries and permitted retained categorie
 for retained detail failures. Existing custom List traversal qualification remains
 independent: valid primary rows with incomplete scope may be usable, while a failed
 required detail remains fatal. Authentication/permission loss, transport, timeout,
-budget exhaustion, malformed response, scope violation, identity conflict, corrupt configured sources
+budget exhaustion, malformed response, scope violation, unresolved identity conflict, corrupt configured sources
 and unknown business errors remain failures, even when an adapter catches them.
 The host has no native-code allowlist, failure percentage threshold or stale-data
 filling policy. Native paging and recovery qualification remain authoritative.

@@ -49,8 +49,9 @@ omit pagination fields from the native request; zero is not a capacity limit.
 Other modes require positive widths. Use
 [its sample](example-single-response/). A field identity
 has one native column; `hash` needs reviewed native columns and preserves native
-JSON. Optional `latest_by` selects a conflicting candidate row for evidence;
-identity/content conflicts remain hard failures without accepted data or publication. Optional `max_pages` and `budget_seconds` narrow host
+JSON. Optional `latest_by` selects the latest complete record for a qualified stable
+identity; resolved versions warn, while unresolved conflicts fail. Assess applicable
+optional capabilities using the [SDK review requirements](../../docs/agents/list-collection-sdk.md#assess-applicable-sdk-capabilities). Optional `max_pages` and `budget_seconds` narrow host
 bounds. Provider `general` works in any domain; `<domain>.collection` is private
 to its owner. Domain declarations do not register SDKs.
 
@@ -227,3 +228,10 @@ The host can pass `resolved_entities` to `QueryTools` after resolving and freezi
 the registered entity selector. This retains its source witness, including a
 verified empty universe, and `entity_selector()` replays the frozen value without
 reading the selector again. Ordinary query parameters do not create this proof.
+
+
+Capabilities that derive a temporary latest-ordering value declare its reserved
+name in `EndpointContract.internal_fields`. Reject native collisions while parsing.
+The SDK removes declared scratch fields after selection and before source assembly,
+cache, export and public output; identity fields cannot be internal. This declaration
+does not remove or reinterpret native timestamp fields.

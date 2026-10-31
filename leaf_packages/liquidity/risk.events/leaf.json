@@ -4,21 +4,32 @@
   "adapter": "adapter.py:adapter",
   "operations": {
     "list": {
-      "description": "Read complete native events within an adjacent-date request.",
+      "description": "Read native event records for inclusive Beijing calendar days.",
       "parameters": [
         {
           "name": "from-date",
           "type": "string",
           "required": true,
-          "description": "Native query start, valid YYYYMMDD; to-date must be one day later."
+          "description": "Inclusive Beijing calendar lower bound YYYYMMDD."
         },
         {
           "name": "to-date",
           "type": "string",
           "required": true,
-          "description": "Native query end, valid YYYYMMDD; exactly one day after from-date."
+          "description": "Inclusive Beijing calendar upper bound YYYYMMDD, at or after from-date."
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "gmtCreate",
+        "boundary": "inclusive",
+        "timezone": "GMT+08:00",
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false,
+        "modification_time": "gmtModified (native GMT+08; separate from gmtCreate history axis)"
+      }
     },
     "get": {
       "description": "Read one native root detail online without changing a saved List.",
@@ -55,8 +66,8 @@
     "Inquiry-only native JSON and unknown nested fields are retained without projection. Native zero values remain unchanged.",
     "Widths are based on historical successful requests, not measured backend maxima. SDK quality reports duplicate identities, count shortfall and page gaps; strict refresh publishes complete acquisitions only.",
     "Conflicts keep the last arrival and remain incomplete. Rejected refresh preserves the prior saved capture.",
-    "Fixed tenant GUAPW3SG, riskMode=RISK_EVENT, timeZone=GMT+08. Adjacent YYYYMMDD CLI bounds map to native YYYY-MM-DD; unbounded acquisition is unsupported.",
-    "Native Risk Time gmtCreate and other GMT+08 source times are retained. Server boundary clock and inclusivity remain unproven; no local date membership or anomaly classification is inferred.",
+    "Fixed tenant GUAPW3SG, riskMode=RISK_EVENT, timeZone=GMT+08. Ordered inclusive YYYYMMDD CLI days use Beijing GMT+08:00 and map to explicit GMT+0 whole-second startTime/endTime, retaining request timeZone=GMT+08. Equal-day and multi-day inquiries are supported; no automatic splitting.",
+    "Native Risk Time gmtCreate and other GMT+08 source times are retained. Inclusive query-clock bounds are GMT+0, eight hours behind Beijing. Raw source timestamps remain unchanged; no anomaly classification is inferred.",
     "Native Get uses POST form /api/risk/event/detail.json; lookup riskEventId returns one native root object with id.",
     "Get preserves all native nested fields and unknown values; separately queried history, logs and child endpoints remain unqueried.",
     "Get is live-only and publishes no cache or Duckdog data.",

@@ -18,7 +18,17 @@
           "required": true,
           "description": "Native inquiry-date upper bound YYYY-MM-DD, at or after from-date."
         }
-      ]
+      ],
+      "history": {
+        "interpretation": "calendar_date",
+        "time_basis": "inquiryStartTime",
+        "boundary": "inclusive",
+        "timezone": "GMT+08:00",
+        "from_parameter": "from-date",
+        "to_parameter": "to-date",
+        "splitting": "explicit_windows",
+        "cross_range_equivalence": false
+      }
     },
     "get": {
       "description": "Read one complete native detail root; separate histories and child endpoints are unqueried.",
@@ -59,7 +69,7 @@
     {
       "name": "inquiryStartTime",
       "type": "native",
-      "meaning": "Native source value; timezone and date-bound membership are unproven."
+      "meaning": "Owner-confirmed Beijing calendar history axis. Native value is retained without coercion; backend predicate has not been independently proved."
     },
     {
       "name": "quotedNum",
@@ -73,7 +83,7 @@
   "identity_description": "Native nonempty inquirySubTaskId identifies one returned TARGET_RFQ subtask within the application and exact inquiry-date scope.",
   "limitations": [
     "One JSON POST /rfq/subInquiryTask/querySubInquiryTask.json sends exactly rowStart=0, pageSize=5000, inquiryType=TARGET_RFQ and compact inquiryStartDate/inquiryEndDate. The request has no tenant key; the verified application startup session supplies tenant context.",
-    "Both public ISO date bounds are required and ordered. Native timestamp timezone and exact source boundary semantics remain unknown; no local timestamp membership or date conversion is inferred.",
+    "Both public ISO date bounds are required and ordered. Owner-confirmed inclusive Beijing calendar range on inquiryStartTime maps to inquiryStartDate/inquiryEndDate. Lifecycle inquiryEndTime is not another axis; raw timestamps remain unchanged. No independent backend-predicate claim or local membership filtering.",
     "Only the qualified TARGET_RFQ source is supported. No type, product, status, parent or subtask filters; no offset fallback, automatic partitioning, source supplementation or related-detail acquisition.",
     "Native data.data records and data.totalCount must fit the single response. The host SDK owns completeness and publication; duplicate/conflicting identities or count gaps remain incomplete, and rejected refresh preserves the previous capture.",
     "Every native field, type, nested object and unknown addition is retained. Nullable, blank, zero, negative and unknown counter/status/time values are preserved without interpretation. Parent references do not collapse subtask identities.",

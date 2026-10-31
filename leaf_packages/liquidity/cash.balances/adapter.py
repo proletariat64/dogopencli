@@ -103,6 +103,7 @@ class BalanceInquiry:
         ),
         fixed_body_values=(("tntInstId", TENANT),),
         allowed_page_sizes=(500,),
+        internal_fields=(ORDER,),
     )
 
     def page_body(self, scope: str, row_start: int, page_size: int) -> dict:
@@ -459,9 +460,7 @@ class Adapter:
             selection["successful_empty_accounts"] += (
                 account_complete and evidence.reported_total == 0 and not result.records
             )
-            rows.extend(
-                {k: v for k, v in row.items() if k != ORDER} for row in result.records
-            )
+            rows.extend(result.records)
             attempts.append({"alias": alias, "acquisition": evidence.record()})
         selection["query_execution_complete"] = complete
         evidence = AcquisitionEvidence.for_collection(

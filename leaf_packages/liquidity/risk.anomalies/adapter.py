@@ -68,18 +68,27 @@ def native_scope(parameters: dict[str, Any]) -> dict[str, str]:
                 exit_code=EXIT_USAGE,
             ) from error
         dates.append(day)
-    if dates[1] - dates[0] != timedelta(days=1):
+    if dates[0] > dates[1]:
         raise CliError(
             INVALID_ARGUMENT,
-            "risk --to-date must be exactly one day after --from-date",
+            "risk --from-date must not follow --to-date",
             exit_code=EXIT_USAGE,
         )
+    try:
+        start = dates[0] - timedelta(hours=8)
+        end = dates[1] + timedelta(hours=15, minutes=59, seconds=59)
+    except OverflowError as error:
+        raise CliError(
+            INVALID_ARGUMENT,
+            "risk dates exceed the supported query clock",
+            exit_code=EXIT_USAGE,
+        ) from error
     return {
         "tntInstId": TENANT,
         "riskMode": MODE,
         "timeZone": "GMT+08",
-        "startTime": dates[0].strftime("%Y-%m-%d"),
-        "endTime": dates[1].strftime("%Y-%m-%d"),
+        "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+        "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
 
@@ -219,6 +228,19 @@ DETAIL = DetailInquiry()
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native_scope(parameters)
+        return {
+            bound: datetime.strptime(parameters[key], "%Y%m%d").date().isoformat()
+            for bound, key in (("from", "from_date"), ("to", "to_date"))
+        }
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {
+            "from_date": bounds["from"].replace("-", ""),
+            "to_date": bounds["to"].replace("-", ""),
+        }
+
     def detail_capability(self, parameters: dict[str, Any]) -> DetailInquiry:
         return DETAIL
 

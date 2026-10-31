@@ -31,6 +31,7 @@ class AcquisitionEvidence:
     sources: dict[str, dict[str, Any]] | None = None
     native_metadata: tuple[dict[str, Any], ...] | None = None
     usable_incomplete: bool = False
+    selection: dict[str, Any] | None = None
 
     @classmethod
     def for_collection(
@@ -47,9 +48,13 @@ class AcquisitionEvidence:
         attempts: tuple[dict[str, Any], ...] = (),
         coverage_basis: str | None = None,
         usable_incomplete: bool = True,
+        selection: dict[str, Any] | None = None,
     ) -> "AcquisitionEvidence":
         # Bank's native total counts date groups while collected_total counts rows.
-        comparable = total_semantics != "quote_date_groups"
+        comparable = total_semantics not in (
+            "quote_date_groups",
+            SOURCE_ROW_OCCURRENCES,
+        )
         if (
             comparable
             and reported_total is not None
@@ -74,7 +79,27 @@ class AcquisitionEvidence:
         ):
             codes.append("COUNT_SHORTFALL")
             complete = False
-        if duplicate_count:
+        if total_semantics == SOURCE_ROW_OCCURRENCES and reported_total is not None:
+            covered = (arrivals or 0) - (
+                selection["identical_duplicate_count"] if selection is not None else 0
+            )
+            if covered != reported_total:
+                codes.append("COUNT_SHORTFALL")
+                complete = False
+        accounted = (
+            duplicate_count
+            if selection is not None and semantics == "unique_objects"
+            else selection["resolved_version_count"]
+            if selection is not None
+            else 0
+        )
+        accounted += sum(
+            child.get("duplicate_count") or 0
+            for attempt in attempts
+            if isinstance(child := attempt.get("acquisition"), dict)
+            and child.get("selection") is not None
+        )
+        if duplicate_count and duplicate_count > accounted:
             codes.append("DUPLICATE_ROWS")
             if duplicate_policy != "allow_identical_overlap":
                 codes.append("UNEXPECTED_DUPLICATE_ROWS")
@@ -105,6 +130,7 @@ class AcquisitionEvidence:
             attempts=attempts,
             coverage_basis=coverage_basis,
             usable_incomplete=usable_incomplete,
+            selection=selection,
         )
 
     def record(self) -> dict[str, Any]:
@@ -121,6 +147,8 @@ class AcquisitionEvidence:
             "attempts": list(self.attempts),
             "usable_incomplete": self.usable_incomplete,
         }
+        if self.selection is not None:
+            record["selection"] = self.selection
         if self.requested_count is not None:
             record["requested_count"] = self.requested_count
             record["resolved_count"] = self.resolved_count
@@ -213,7 +241,47 @@ class AcquisitionEvidence:
             if native_metadata is not None
             else None,
             usable_incomplete=record["usable_incomplete"],
+            selection=record.get("selection"),
         )
+        if evidence.selection is None and {
+            "LATEST_BY_SELECTION",
+            "LATEST_BY_TIE",
+        }.intersection(reasons):
+            raise CliError(
+                INVALID_RESPONSE, "cached latest selection evidence is missing"
+            )
+        if evidence.selection is not None:
+            selection = evidence.selection
+            if (
+                not isinstance(selection, dict)
+                or set(selection)
+                != {
+                    "latest_by",
+                    "resolved_version_count",
+                    "equal_order_count",
+                    "identical_duplicate_count",
+                }
+                or not isinstance(selection.get("latest_by"), str)
+                or not selection["latest_by"].strip()
+                or any(
+                    type(selection.get(key)) is not int or selection[key] < 0
+                    for key in (
+                        "resolved_version_count",
+                        "equal_order_count",
+                        "identical_duplicate_count",
+                    )
+                )
+                or selection["equal_order_count"] > (evidence.duplicate_count or 0)
+                or evidence.duplicate_count
+                != selection["resolved_version_count"]
+                + selection["identical_duplicate_count"]
+                or bool(selection["resolved_version_count"])
+                != ("LATEST_BY_SELECTION" in reasons)
+                or bool(selection["equal_order_count"]) != ("LATEST_BY_TIE" in reasons)
+            ):
+                raise CliError(
+                    INVALID_RESPONSE, "cached latest selection evidence conflicts"
+                )
         if coverage_basis in {
             "qualified_single_response",
             "qualified_short_page",
@@ -228,6 +296,19 @@ class AcquisitionEvidence:
                 coverage_basis != "accepted_short_page"
                 and evidence.scope_complete
                 and evidence.duplicate_count != 0
+                and evidence.selection is None
+            )
+            or (
+                evidence.scope_complete
+                and evidence.duplicate_count != 0
+                and (
+                    coverage_basis == "qualified_short_page"
+                    or (
+                        coverage_basis == "accepted_short_page"
+                        and evidence.selection is not None
+                        and evidence.selection["resolved_version_count"] != 0
+                    )
+                )
             )
         ):
             raise CliError(
@@ -397,7 +478,8 @@ class AcquisitionEvidence:
                 )
             )
             or (
-                evidence.total_semantics != "quote_date_groups"
+                evidence.total_semantics
+                not in ("quote_date_groups", SOURCE_ROW_OCCURRENCES)
                 and evidence.reported_total is not None
                 and evidence.collected_total > evidence.reported_total
             )
@@ -414,7 +496,28 @@ class AcquisitionEvidence:
             )
         ):
             raise CliError(INVALID_RESPONSE, "cached acquisition evidence conflicts")
-        if evidence.total_semantics == SOURCE_ROW_OCCURRENCES:
+        if (
+            evidence.total_semantics == SOURCE_ROW_OCCURRENCES
+            and evidence.selection is not None
+        ):
+            if (
+                evidence.reported_total is None
+                or evidence.arrivals is None
+                or (
+                    evidence.scope_complete
+                    and (
+                        evidence.arrivals != evidence.reported_total
+                        or evidence.selection["identical_duplicate_count"] != 0
+                    )
+                )
+            ):
+                raise CliError(
+                    INVALID_RESPONSE, "cached latest selection raw coverage conflicts"
+                )
+        if (
+            evidence.total_semantics == SOURCE_ROW_OCCURRENCES
+            and evidence.selection is None
+        ):
             selections = [
                 item for item in attempts if item.get("kind") == "source_selection"
             ]
@@ -451,6 +554,18 @@ class AcquisitionEvidence:
                 raise CliError(
                     INVALID_RESPONSE, "cached source selection evidence conflicts"
                 )
+        for attempt in attempts:
+            if isinstance(attempt.get("acquisition"), dict):
+                cls.from_record(attempt["acquisition"])
+            queries = attempt.get("queries")
+            if isinstance(queries, dict):
+                for query in queries.values():
+                    if isinstance(query, dict):
+                        for item in query.get("collections", ()):
+                            if isinstance(item, dict) and isinstance(
+                                item.get("acquisition"), dict
+                            ):
+                                cls.from_record(item["acquisition"])
         return evidence
 
     def meta(self) -> dict[str, Any]:
@@ -470,8 +585,13 @@ class AcquisitionEvidence:
             self.total_semantics == SOURCE_ROW_OCCURRENCES
             and self.reported_total is not None
         ):
-            missing = max(0, self.reported_total - (self.arrivals or 0))
-            ratio = self.arrivals / self.reported_total if self.reported_total else None
+            covered = (self.arrivals or 0) - (
+                self.selection["identical_duplicate_count"]
+                if self.selection is not None
+                else 0
+            )
+            missing = max(0, self.reported_total - covered)
+            ratio = covered / self.reported_total if self.reported_total else None
         result = {
             "complete": self.scope_complete,
             "dataset_complete": self.dataset_complete,
@@ -545,6 +665,27 @@ def _has_identity_conflict(record: dict[str, Any]) -> bool:
     )
 
 
+def _selection_reasons(record: dict[str, Any]) -> list[str]:
+    reasons = [
+        code
+        for code in record.get("reasons", ())
+        if code in {"LATEST_BY_SELECTION", "LATEST_BY_TIE", "DUPLICATE_ROWS"}
+    ]
+    children = list(record.get("attempts", ()))
+    if isinstance(record.get("sources"), dict):
+        children.extend(record["sources"].values())
+    if isinstance(record.get("acquisition"), dict):
+        children.append(record["acquisition"])
+    if isinstance(record.get("queries"), dict):
+        for query in record["queries"].values():
+            if isinstance(query, dict):
+                children.extend(query.get("collections", ()))
+    for child in children:
+        if isinstance(child, dict):
+            reasons.extend(_selection_reasons(child))
+    return list(dict.fromkeys(reasons))
+
+
 def _has_unrecovered_timeout(record: dict[str, Any]) -> bool:
     """Completed fallback acquisitions may retain earlier timeout provenance."""
     if record.get("scope_complete") is True and record.get("dataset_complete") is True:
@@ -601,6 +742,8 @@ def evaluate_result(
         reasons.append("IDENTITY_CONTENT_CONFLICT")
     if incomplete and not reasons:
         reasons = ["COVERAGE_UNPROVEN"]
+    selection_reasons = _selection_reasons(evidence.record())
+    reasons = list(dict.fromkeys([*reasons, *selection_reasons]))
     warnings: tuple[dict[str, Any], ...] = ()
     message = (
         f"result is incomplete (collected {evidence.collected_total},"
@@ -610,7 +753,14 @@ def evaluate_result(
         warning_code = INCOMPLETE_RESULT
         warning_message = message
         if not incomplete:
-            if evidence.total_semantics == SOURCE_ROW_OCCURRENCES:
+            if "LATEST_BY_SELECTION" in reasons:
+                warning_code = "LATEST_BY_SELECTION"
+                warning_message = (
+                    "selected latest complete native records; retained "
+                    + str(evidence.collected_total)
+                    + " records"
+                )
+            elif evidence.total_semantics == SOURCE_ROW_OCCURRENCES:
                 if evidence.duplicate_count:
                     warning_code = "SOURCE_ROWS_SELECTED"
                     warning_message = (

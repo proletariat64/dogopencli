@@ -170,6 +170,13 @@ DETAIL = DetailInquiry()
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict) -> dict:
+        native_scope(parameters)
+        return {"from": parameters["from_date"], "to": parameters["to_date"]}
+
+    def history_parameters(self, bounds: dict) -> dict:
+        return {"from_date": bounds["from"], "to_date": bounds["to"]}
+
     def detail_capability(self, parameters: dict[str, Any]) -> DetailInquiry:
         return DETAIL
 

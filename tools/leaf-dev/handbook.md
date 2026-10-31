@@ -108,6 +108,11 @@ operations delegate acquisition to their SDK; custom operations orchestrate only
 through named tools and return business coverage. The host owns pagination,
 authentication and publication in both cases.
 
+Assess each applicable optional SDK capability before implementation and review:
+independent sources, latest document selection, existing temporal parsers and
+source evidence. Follow the [SDK requirements](../../docs/agents/list-collection-sdk.md#assess-applicable-sdk-capabilities);
+static package validity does not prove business applicability or complete SDK reuse.
+
 ## 3. Exercise the public CLI with fake responses
 
 Run the sample exercise, then adapt the

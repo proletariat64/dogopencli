@@ -16,9 +16,11 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
-from dogopencli.leaves.query import CustomListResult
-from dogopencli.result_policy import AcquisitionEvidence
-from dogopencli.temporal import parse_numeric_offset_instant
+from dogopencli.temporal import (
+    normalize_utc_milliseconds,
+    parse_iso_millisecond_instant,
+    parse_numeric_offset_instant,
+)
 
 SHANGHAI = timezone(timedelta(hours=8))
 PAGE_SIZE = 500
@@ -175,8 +177,8 @@ def validate_filters(parameters: dict[str, Any]) -> None:
 
 @dataclass(frozen=True)
 class Window:
-    updated_from: str
-    updated_to: str
+    from_time: str
+    to_time: str
     start_ms: int
     end_ms: int
     native_begin: str
@@ -184,9 +186,7 @@ class Window:
 
     @property
     def scope(self) -> str:
-        return canonical(
-            {"updated_from": self.updated_from, "updated_to": self.updated_to}
-        )
+        return canonical({"from_time": self.from_time, "to_time": self.to_time})
 
 
 def window(parameters: dict[str, Any]) -> Window:
@@ -194,7 +194,7 @@ def window(parameters: dict[str, Any]) -> Window:
     try:
         start, end = (
             parse_numeric_offset_instant(parameters.get(name)).astimezone(SHANGHAI)
-            for name in ("updated_from", "updated_to")
+            for name in ("from_time", "to_time")
         )
         if (
             not start < end
@@ -299,54 +299,70 @@ class Inquiry:
 
 
 class Adapter:
-    def query_capability(
-        self, operation: str, name: str, parameters: dict[str, Any]
-    ) -> Inquiry:
-        if operation != "list" or name != "orders":
-            raise CliError(REQUEST_NOT_ALLOWED, "undeclared PTR order inquiry")
+    def history_bounds(self, parameters: dict[str, Any]) -> dict[str, str]:
+        selected = window(parameters)
+        return {
+            "from": normalize_utc_milliseconds(selected.from_time),
+            "to": normalize_utc_milliseconds(
+                parse_numeric_offset_instant(selected.to_time)
+                - timedelta(milliseconds=1)
+            ),
+        }
+
+    def history_parameters(self, bounds: dict[str, str]) -> dict[str, str]:
+        try:
+            start = parse_iso_millisecond_instant(bounds["from"])
+            upper = parse_iso_millisecond_instant(bounds["to"])
+            if start.microsecond != 0 or upper.microsecond != 999000:
+                raise ValueError("PTR windows require whole-second public endpoints")
+            parameters = {
+                "from_time": start.astimezone(SHANGHAI).isoformat(timespec="seconds"),
+                "to_time": (upper + timedelta(milliseconds=1))
+                .astimezone(SHANGHAI)
+                .isoformat(timespec="seconds"),
+            }
+            window(parameters)
+            return parameters
+        except (ValueError, OverflowError) as error:
+            raise CliError(
+                INVALID_ARGUMENT,
+                "PTR history windows must recover an ordered whole-second interval",
+                exit_code=2,
+            ) from error
+
+    def source_capability(self, name: str, parameters: dict[str, Any]) -> Inquiry:
+        if name not in {"first", "second"}:
+            raise CliError(REQUEST_NOT_ALLOWED, "undeclared PTR order source")
         return Inquiry(window(parameters))
+
+    def source_scope(self, name: str, parameters: dict[str, Any]) -> str:
+        return self.source_capability(name, parameters).window.scope
 
     def scope(self, parameters: dict[str, Any]) -> str:
         return window(parameters).scope
 
-    def query_list(self, parameters: dict[str, Any], tools: Any) -> CustomListResult:
+    def assemble(
+        self, records_by_source: dict[str, list[dict]], parameters: dict[str, Any]
+    ) -> list[dict]:
         selected_window = window(parameters)
-        first = tools.collect("orders", selected_window.scope)
-        second = tools.collect("orders", selected_window.scope)
-        if not first.complete or not second.complete:
-            raise CliError(INCOMPLETE_RESULT, "PTR order padded scope is incomplete")
-        first_rows = sorted(first.records, key=lambda row: row["ptrOrderId"])
-        second_rows = sorted(second.records, key=lambda row: row["ptrOrderId"])
-        if first.total_count != second.total_count or canonical(
-            first_rows
-        ) != canonical(second_rows):
+        first_rows = sorted(
+            records_by_source["first"], key=lambda row: row["ptrOrderId"]
+        )
+        second_rows = sorted(
+            records_by_source["second"], key=lambda row: row["ptrOrderId"]
+        )
+        # Both sources have already proved total/unique-identity coverage. Thus
+        # retained projection equality also proves their native counts agree.
+        if canonical(first_rows) != canonical(second_rows):
             raise CliError(
                 INCOMPLETE_RESULT,
                 "PTR order padded scope changed between complete reads",
             )
-        rows = [
+        return [
             row
             for row in first_rows
             if selected_window.start_ms <= row["gmtModified"] < selected_window.end_ms
         ]
-        evidence = AcquisitionEvidence.for_collection(
-            complete=True,
-            reported_total=None,
-            collected_total=len(rows),
-            arrivals=len(rows),
-            attempts=(
-                {
-                    "kind": "ptr_stable_padded_window",
-                    "read_count": 2,
-                    "reads": [first.evidence.record(), second.evidence.record()],
-                    "padded_count": len(first_rows),
-                    "trimmed_count": len(rows),
-                    "discarded_padding_count": len(first_rows) - len(rows),
-                    "stability": "equal_retained_projection_by_native_identity",
-                },
-            ),
-        )
-        return CustomListResult(rows, evidence)
 
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]

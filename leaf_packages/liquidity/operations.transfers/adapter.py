@@ -1,9 +1,10 @@
 """Native transfer-order List through the host collection SDK."""
 
 import json
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from dogopencli.contracts import EndpointContract
 from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
@@ -16,9 +17,13 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
+from dogopencli.temporal import normalize_local_datetime, parse_date_or_instant
 
 TENANT = "GUAPW3SG"
 PAGE_SIZE = 1000
+BEIJING = timezone(timedelta(hours=8))
+PACIFIC = ZoneInfo("America/Los_Angeles")
+ORDER = "__dogopencli_transfer_order"
 STRING_FIELDS = (
     "orderNo",
     "orderId",
@@ -47,17 +52,15 @@ STRING_FIELDS = (
 )
 
 
-def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
+def business_dates(parameters: dict[str, Any]) -> list[date]:
     dates = []
     try:
         for field in ("from_date", "to_date"):
             value = parameters.get(field)
-            if not isinstance(value, str) or len(value) != 10 or not value.isascii():
+            day = parse_date_or_instant(value)
+            if type(day) is not date:
                 raise ValueError
-            day = datetime.strptime(value, "%Y-%m-%d")
-            if day.strftime("%Y-%m-%d") != value:
-                raise ValueError
-            dates.append(value)
+            dates.append(day)
         if dates[0] > dates[1]:
             raise ValueError
     except ValueError as error:
@@ -66,12 +69,26 @@ def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
             "transfers requires an ordered --from-date/--to-date YYYY-MM-DD pair",
             exit_code=EXIT_USAGE,
         ) from error
+    return dates
+
+
+def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
+    start, end = business_dates(parameters)
+    try:
+        lower = datetime.combine(start, time.min, BEIJING).astimezone(PACIFIC)
+        upper = datetime.combine(end, time(23, 59, 59), BEIJING).astimezone(PACIFIC)
+    except OverflowError as error:
+        raise CliError(
+            INVALID_ARGUMENT,
+            "transfer dates exceed the supported query clock",
+            exit_code=EXIT_USAGE,
+        ) from error
     return {
         "tntInstId": TENANT,
         "debitEntity": [],
         "creditEntity": [],
-        "transactionStartDate": dates[0] + " 00:00:00",
-        "transactionEndDate": dates[1] + " 23:59:59",
+        "transactionStartDate": lower.strftime("%Y-%m-%d %H:%M:%S"),
+        "transactionEndDate": upper.strftime("%Y-%m-%d %H:%M:%S"),
         "debitStartDate": "",
         "debitEndDate": "",
         "creditStartDate": "",
@@ -125,6 +142,7 @@ class Inquiry:
             encoding="form",
             page_size=PAGE_SIZE,
             one_based=False,
+            internal_fields=(ORDER,),
             allowed_body_keys=frozenset({"tntInstId", "transferOrderQueryRequestVO"}),
             fixed_body_values=(("tntInstId", TENANT),),
             json_body_contracts=(
@@ -186,9 +204,30 @@ class Inquiry:
             raise CliError(
                 INVALID_RESPONSE, "invalid transfer rows or disagreeing native counts"
             )
+        selected = []
         for row in rows:
             validate_record(row)
-        return rows, total
+            if ORDER in row:
+                raise CliError(INVALID_RESPONSE, "transfer reserved field collision")
+            timestamp = row.get("gmtModified")
+            try:
+                if not isinstance(timestamp, str) or not timestamp.endswith(
+                    "（GMT+08）"
+                ):
+                    raise ValueError
+                local = timestamp.removesuffix("（GMT+08）")
+                normalized = normalize_local_datetime(local)
+                if normalized != local:
+                    raise ValueError
+                ordering = int(
+                    normalized.replace("-", "").replace(" ", "").replace(":", "")
+                )
+            except ValueError as error:
+                raise CliError(
+                    INVALID_RESPONSE, "invalid transfer native gmtModified GMT+08 clock"
+                ) from error
+            selected.append({**row, ORDER: ordering})
+        return selected, total
 
 
 class DetailInquiry:
@@ -247,6 +286,15 @@ DETAIL = DetailInquiry()
 
 
 class Adapter:
+    def history_bounds(self, parameters: dict[str, Any]) -> dict[str, str]:
+        start, end = business_dates(parameters)
+        return {"from": start.isoformat(), "to": end.isoformat()}
+
+    def history_parameters(self, bounds: dict[str, str]) -> dict[str, str]:
+        parameters = {"from_date": bounds["from"], "to_date": bounds["to"]}
+        business_dates(parameters)
+        return parameters
+
     def detail_capability(self, parameters: dict[str, Any]) -> DetailInquiry:
         return DETAIL
 

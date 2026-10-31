@@ -246,16 +246,21 @@ def _merge_list_row(
     ordered: list[dict],
     positions: dict[str, int],
     hashes: dict[str, str],
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
+    if latest_by is not None:
+        order = _list_timestamp(row.get(latest_by))
+        if ordered and order[0] != _list_timestamp(ordered[0].get(latest_by))[0]:
+            raise CliError(INVALID_RESPONSE, "mixed native timestamp formats")
     record_id = _list_identity(row, primary_id, hashes)
     previous_index = positions.get(record_id)
     if previous_index is None:
         positions[record_id] = len(ordered)
         ordered.append(row)
-        return 0, 0
+        return 0, 0, 0
     previous = ordered[previous_index]
     if canonical(row) == canonical(previous):
-        return 1, 0
+        return 1, 0, 0
+    equal = 0
     if latest_by is None:
         ordered[previous_index] = row
     else:
@@ -263,9 +268,10 @@ def _merge_list_row(
         older = _list_timestamp(previous.get(latest_by))
         if newer[0] != older[0]:
             raise CliError(INVALID_RESPONSE, "mixed native timestamp formats")
+        equal = int(newer[1] == older[1])
         if newer[1] >= older[1]:
             ordered[previous_index] = row
-    return 1, 1
+    return 1, 1, equal
 
 
 def _short_page_candidate(
@@ -399,9 +405,10 @@ def _short_page_candidate(
     remaining_seconds(deadline)
     ordered: list[dict] = []
     positions: dict[str, int] = {}
-    duplicates = conflicts = 0
+    duplicates = conflicts = ties = 0
+    contents: set[str] = set()
     for row in rows:
-        duplicate, conflict = _merge_list_row(
+        duplicate, conflict, tie = _merge_list_row(
             row,
             collection["primary_id"],
             collection.get("latest_by"),
@@ -411,20 +418,41 @@ def _short_page_candidate(
         )
         duplicates += duplicate
         conflicts += conflict
+        ties += tie
+        if collection.get("latest_by") is not None:
+            contents.add(canonical(row))
     reasons = []
     if observations:
         reasons.append("PAGINATION_HOLES_BYPASSED")
     if duplicates:
         reasons.append("CROSS_PAGE_OR_INTRA_PAGE_DUPLICATES")
+    latest_by = collection.get("latest_by")
     if conflicts:
-        reasons.append("IDENTITY_CONTENT_CONFLICT")
-        if collection.get("latest_by") is None:
+        reasons.append(
+            "LATEST_BY_SELECTION" if latest_by else "IDENTITY_CONTENT_CONFLICT"
+        )
+        if latest_by is None:
             reasons.append("LAST_ARRIVAL_WINS")
+    if ties:
+        reasons.append("LATEST_BY_TIE")
+    selection = (
+        None
+        if latest_by is None
+        else {
+            "latest_by": latest_by,
+            "resolved_version_count": len(contents) - len(ordered),
+            "equal_order_count": ties,
+            "identical_duplicate_count": len(rows) - len(contents),
+        }
+    )
     evidence = AcquisitionEvidence.for_collection(
-        complete=not conflicts
+        complete=(not conflicts or latest_by is not None)
         and (
             not duplicates
-            or capability.contract.duplicate_policy == "allow_identical_overlap"
+            or (
+                capability.contract.duplicate_policy == "allow_identical_overlap"
+                and not conflicts
+            )
         ),
         reported_total=None,
         collected_total=len(ordered),
@@ -437,6 +465,7 @@ def _short_page_candidate(
         ),
         duplicate_policy=capability.contract.duplicate_policy,
         reasons=tuple(reasons),
+        selection=selection,
     )
     evidence = replace(
         evidence,
@@ -448,7 +477,7 @@ def _short_page_candidate(
                 "arrivals": len(rows),
                 "unique_count": len(ordered),
                 "duplicate_count": duplicates,
-                "conflict_count": conflicts,
+                "conflict_count": conflicts if latest_by is None else 0,
                 "reported_total": None,
                 "complete": evidence.scope_complete,
                 "reasons": list(evidence.reasons),
@@ -467,7 +496,21 @@ def _short_page_candidate(
         ),
     )
     return CollectedScope(
-        ordered, evidence.scope_complete, None, size, pages, False, deadline, evidence
+        [
+            {
+                k: v
+                for k, v in row.items()
+                if k not in capability.contract.internal_fields
+            }
+            for row in ordered
+        ],
+        evidence.scope_complete,
+        None,
+        size,
+        pages,
+        False,
+        deadline,
+        evidence,
     )
 
 
@@ -512,11 +555,15 @@ def _list_candidate(
     reported: int | None = None
     arrivals = 0
     duplicate_count = 0
-    conflict_count = 0
+    conflict_count = tie_count = 0
+    contents: set[str] = set()
     problems: list[str] = []
     if not has_identity:
         problems.append("IDENTITY_UNPROVEN")
-    if not without_total and capability.contract.total_semantics != "unique_objects":
+    if not without_total and capability.contract.total_semantics not in {
+        "unique_objects",
+        "source_row_occurrences",
+    }:
         problems.append("TOTAL_SEMANTICS_UNPROVEN")
     pages = 0
 
@@ -601,11 +648,16 @@ def _list_candidate(
                 observed.add(content)
                 ordered.append(row)
                 continue
-            duplicate, conflict = _merge_list_row(
+            duplicate, conflict, tie = _merge_list_row(
                 row, primary_id, latest_by, ordered, positions, hashes
             )
             duplicate_count += duplicate
             conflict_count += conflict
+            tie_count += tie
+            if latest_by is not None or (
+                capability.contract.total_semantics == "source_row_occurrences"
+            ):
+                contents.add(canonical(row))
 
         report(
             source_pages=pages,
@@ -636,17 +688,46 @@ def _list_candidate(
             raise CliError(TIMEOUT, "List page budget exceeded", retryable=True)
         problems.append("PAGE_BUDGET_EXHAUSTED")
     remaining_seconds(deadline)
-    if duplicate_count:
+    if duplicate_count and latest_by is None:
         problems.append("CROSS_PAGE_OR_INTRA_PAGE_DUPLICATES")
     if conflict_count:
-        problems.append("IDENTITY_CONTENT_CONFLICT")
+        problems.append(
+            "LATEST_BY_SELECTION" if latest_by else "IDENTITY_CONTENT_CONFLICT"
+        )
         if latest_by is None:
             problems.append("LAST_ARRIVAL_WINS")
-    if reported is not None and len(ordered) != reported:
+    if tie_count:
+        problems.append("LATEST_BY_TIE")
+    selection = (
+        None
+        if latest_by is None
+        else {
+            "latest_by": latest_by,
+            "resolved_version_count": len(contents) - len(ordered),
+            "equal_order_count": tie_count,
+            "identical_duplicate_count": arrivals - len(contents),
+        }
+    )
+    if selection is not None and selection["identical_duplicate_count"]:
+        problems.append("DUPLICATE_ROWS")
+    coverage_count = (
+        len(contents)
+        if capability.contract.total_semantics == "source_row_occurrences"
+        else len(ordered)
+    )
+    if reported is not None and coverage_count != reported:
         problems.append("COUNT_MISMATCH")
     if mode == "single" and reported is not None and reported > size:
         problems.append("SINGLE_PAGE_CAPACITY")
-    complete = not problems and (single_response or len(ordered) == reported)
+    accepted_reasons = {"LATEST_BY_SELECTION", "LATEST_BY_TIE"}
+    if (
+        latest_by is not None
+        and capability.contract.total_semantics == "unique_objects"
+    ):
+        accepted_reasons.add("DUPLICATE_ROWS")
+    complete = not (set(problems) - accepted_reasons) and (
+        single_response or coverage_count == reported
+    )
     evidence = AcquisitionEvidence.for_collection(
         complete=complete,
         reported_total=reported,
@@ -659,6 +740,7 @@ def _list_candidate(
         coverage_basis="qualified_single_response" if single_response else None,
         reasons=tuple(problems),
         duplicate_policy="conservative",
+        selection=selection,
     )
     evidence = replace(
         evidence,
@@ -670,7 +752,7 @@ def _list_candidate(
                 "arrivals": arrivals,
                 "unique_count": evidence.unique_count,
                 "duplicate_count": evidence.duplicate_count,
-                "conflict_count": conflict_count,
+                "conflict_count": conflict_count if latest_by is None else 0,
                 "reported_total": reported,
                 "complete": evidence.scope_complete,
                 "reasons": list(evidence.reasons),
@@ -678,7 +760,14 @@ def _list_candidate(
         ),
     )
     return CollectedScope(
-        records=ordered,
+        records=[
+            {
+                k: v
+                for k, v in row.items()
+                if k not in capability.contract.internal_fields
+            }
+            for row in ordered
+        ],
         complete=evidence.scope_complete,
         total_count=reported,
         page_size=size,
@@ -726,6 +815,14 @@ def collect_list(
             INVALID_RESPONSE,
             "List identity declaration disagrees with endpoint contract",
         )
+    internal = capability.contract.internal_fields
+    if (
+        not isinstance(internal, tuple)
+        or any(not isinstance(field, str) or not field.strip() for field in internal)
+        or len(set(internal)) != len(internal)
+        or set(internal) & set(collection["primary_id"].get("fields", ()))
+    ):
+        raise CliError(INVALID_RESPONSE, "invalid internal collection fields")
     sizes = tuple(collection["paging"]["page_sizes"])
     single_response = collection["paging"]["mode"] == "single_response"
     short_page = collection["paging"].get("termination") == "short_page"

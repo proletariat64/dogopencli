@@ -321,13 +321,52 @@ def test_paging_overlap_missing_rows_and_total_drift_rejected_strict(installed, 
         ({"closeBalance": "9999"}, {"closeBalance": "1"}),
     ],
 )
-def test_same_key_content_conflict_remains_exit_one(installed, first, second):
+@pytest.mark.parametrize("strict", [False, True])
+def test_same_key_versions_return_latest_complete_warning(
+    installed, first, second, strict
+):
     cli, browser, _ = installed
-    browser.business_script.append(page([row(**first), row(**second)]))
-    got = cli("list", "--live", *FLAGS, code=1)
-    assert got["data"] is None
-    assert got["error"]["code"] == "INCOMPLETE_RESULT"
-    assert "IDENTITY_CONTENT_CONFLICT" in str(got["meta"])
+    browser.business_script.append(page([row(**first), row(**second)], total=1))
+    got = cli("list", "--live", *FLAGS, *(["--require-complete"] if strict else []))
+    expected = (
+        second if row(**first)["updateTime"] <= row(**second)["updateTime"] else first
+    )
+    assert got["data"] == [row(**expected)]
+    assert got["error"] is None
+    assert got["meta"]["complete"] is True
+    assert "LATEST_BY_SELECTION" in str(got["meta"])
+    assert "IDENTITY_CONTENT_CONFLICT" not in str(got["meta"])
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_latest_versions_refresh_offline_keep_counts_and_complete_values(
+    installed, strict
+):
+    cli, browser, _ = installed
+    flags = [*FLAGS, *(["--require-complete"] if strict else [])]
+    first = row(closeBalance="9999")
+    winner = row(updateTime="2026-09-19 09:00:00", unknown={"nested": ["new", False]})
+    other = row(bankId="SECOND", closeBalance="2.00000000000000000001")
+    browser.business_script.append(page([first, other, winner, winner], total=2))
+    saved = cli("refresh", *flags)
+    before = len(browser.business_requests)
+    offline = cli("list", "--limit", "0", *(["--require-complete"] if strict else []))
+    assert offline["data"] == [winner, other]
+    assert offline["error"] is None
+    assert offline["meta"]["complete"] is True
+    assert "LATEST_BY_SELECTION" in str(offline["meta"])
+    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+    account = next(
+        x["acquisition"]
+        for x in offline["meta"]["acquisition"]["attempts"]
+        if "alias" in x
+    )
+    assert account["reported_total"] == 2
+    assert account["arrivals"] == 4
+    assert account["collected_total"] == 2
+    assert account["selection"]["resolved_version_count"] == 1
+    assert account["selection"]["identical_duplicate_count"] == 1
+    assert len(browser.business_requests) == before
 
 
 def seed_accounts(config, records, *, complete=True):
@@ -473,7 +512,7 @@ def test_live_directory_auth_failure_stays_auth_failure(installed):
     assert got["error"]["code"] == "AUTH_REQUIRED"
 
 
-@pytest.mark.parametrize("failure", ["empty", "error", "conflict", "strict"])
+@pytest.mark.parametrize("failure", ["empty", "error", "invalid_order", "strict"])
 def test_rejected_and_empty_refresh_preserve_prior_snapshot(installed, failure):
     cli, browser, config = installed
     browser.business_script.append(page([row()]))
@@ -484,8 +523,8 @@ def test_rejected_and_empty_refresh_preserve_prior_snapshot(installed, failure):
     elif failure == "error":
         browser.business_script.append({"status": 200, "body": {"success": False}})
         cli("refresh", *FLAGS, code=1)
-    elif failure == "conflict":
-        browser.business_script.append(page([row(), row(closeBalance="1")]))
+    elif failure == "invalid_order":
+        browser.business_script.append(page([row(), row(updateTime=None)]))
         cli("refresh", *FLAGS, code=1)
     else:
         seed_accounts(config, [roster()], complete=False)
@@ -523,68 +562,6 @@ def test_failed_account_keeps_frozen_plan_success_failure_and_unqueried_counts(
     assert selected["successful_empty_accounts"] == 0
     assert selected["query_execution_complete"] is False
     assert len(browser.business_requests) == 2
-
-
-@pytest.mark.parametrize(
-    "first, second, expected",
-    [
-        (
-            {"updateTime": "2026-09-19 08:00:00", "closeBalance": "9999"},
-            {"updateTime": "2026-09-19 09:00:00", "closeBalance": "1"},
-            "1",
-        ),
-        (
-            {"updateTime": "2026-09-19 09:00:00", "closeBalance": "1"},
-            {"updateTime": "2026-09-19 08:00:00", "closeBalance": "9999"},
-            "1",
-        ),
-        ({"closeBalance": "9999"}, {"closeBalance": "1"}, "1"),
-    ],
-)
-def test_public_sdk_candidate_selection_cleans_sort_field_preserves_conflicts(
-    installed, first, second, expected
-):
-    from dogopencli.jsonutil import canonical
-    from dogopencli.leaves.query import QueryTools, query_capabilities
-    from dogopencli.leaves.registry import Registry
-    from dogopencli.transport import OriginMetadata, TransportResponse
-
-    _, _, config = installed
-    leaf = Registry(config / "config.toml").scan().get("liquidity", LEAF)
-    parameters = {
-        "account_alias": ["ACCOUNT"],
-        "from_date": "20260918",
-        "to_date": "20260918",
-    }
-
-    class Native:
-        def execute(self, request, *, timeout):
-            return TransportResponse(
-                200,
-                canonical(page([row(**first), row(**second)])["body"]).encode(),
-                OriginMetadata("fixture", True, None, None, None, None, None),
-            )
-
-        def close(self):
-            pass
-
-    with QueryTools(
-        leaf,
-        "list",
-        parameters,
-        query_capabilities(leaf, "list", parameters),
-        lambda _: Native(),
-    ) as tools:
-        candidate = leaf.adapter.query_list(parameters, tools)
-        assert candidate.records == [
-            row(**(second if first["closeBalance"] == "9999" else first))
-        ]
-        assert candidate.records[0]["closeBalance"] == expected
-        assert not any(k.startswith("__dogopencli") for k in candidate.records[0])
-        assert "IDENTITY_CONTENT_CONFLICT" in str(candidate.evidence.record())
-        collected = tools.finish_list(candidate)
-        assert collected.records == candidate.records
-        assert collected.evidence.scope_complete is False
 
 
 def test_entity_any_frozen_selection_live_and_offline(installed):
@@ -708,3 +685,104 @@ def test_account_outcomes_distinguish_incomplete_from_successful_empty(
     assert account["acquisition"]["scope_complete"] is (incomplete == 0)
     if incomplete:
         assert "COUNT_SHORTFALL" in str(account["acquisition"])
+
+
+def test_identical_duplicates_keep_qualified_unique_coverage_and_diagnostic(installed):
+    cli, browser, _ = installed
+    browser.business_script.append(page([row(), row()], total=1))
+    got = cli("list", "--live", *FLAGS, "--require-complete")
+    assert got["data"] == [row()]
+    assert got["meta"]["complete"] is True
+    assert got["meta"]["warnings"][0]["code"] == "DUPLICATE_ROWS"
+    assert "LATEST_BY_SELECTION" not in str(got["meta"])
+
+
+def test_cash_named_selection_survives_exact_workflow_import(installed, run_cli):
+    _, browser, _ = installed
+
+    def workflow(*args):
+        code, output, error = run_cli(["workflow", *args])
+        assert code == 0, output + error
+        return parse(output)["data"]
+
+    plan = workflow(
+        "plan",
+        "create",
+        "--leaf",
+        "liquidity.cash.balances",
+        "--mode",
+        "history",
+        "--parameters",
+        '{"account-alias":"ACCOUNT","from-date":"2026-09-18","to-date":"20260918"}',
+    )
+    winner = row(updateTime="2026-09-19 09:00:00", closeBalance="0.000000000000000001")
+    browser.business_script.append(page([row(), winner], total=1))
+    run = workflow("export", "create", "--plan", plan["id"])
+    result = workflow("export", "run", "--run", run["id"])
+    export_id = result["packages"][0]["export_id"]
+    exported = workflow("export", "show", "--export", export_id)
+    assert exported["records"] == [winner]
+    assert "LATEST_BY_SELECTION" in str(exported["metadata"])
+    prepared = workflow("import", "plan", "--export", export_id, "--action", "preserve")
+    before = len(browser.business_requests)
+    workflow("import", "apply", "--plan", prepared["id"])
+    retained = workflow("observation", "show", "--export", export_id)
+    assert retained["records"] == exported["records"]
+    assert retained["metadata"] == exported["metadata"]
+    assert len(browser.business_requests) == before
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_latest_versions_cannot_repair_partial_directory(installed, strict):
+    cli, browser, config = installed
+    seed_accounts(config, [roster()], complete=False)
+    old = row(entity="ALIPAYGM")
+    winner = row(entity="ALIPAYGM", updateTime="2026-09-19 09:00:00")
+    browser.business_script.append(page([old, winner], total=1))
+    got = cli(
+        "list",
+        "--live",
+        *ENTITY_FLAGS,
+        *(["--require-complete"] if strict else []),
+        code=int(strict),
+    )
+    assert got["meta"]["complete"] is False
+    assert "ACCOUNT_DIRECTORY_INCOMPLETE" in str(got["meta"])
+    assert "LATEST_BY_SELECTION" in str(got["meta"])
+    assert got["data"] == (None if strict else [winner])
+
+
+def test_strict_offline_rejects_missing_named_selection_witness(installed):
+    import sqlite3
+
+    from dogopencli.cache import Cache
+    from dogopencli.jsonutil import canonical
+
+    cli, browser, config = installed
+    winner = row(updateTime="2026-09-19 09:00:00")
+    browser.business_script.append(page([row(), winner], total=1))
+    cli("refresh", *FLAGS, "--require-complete")
+    cache = Cache(config / "leaf-cache.sqlite3")
+    snapshot, _ = cache.read("leaf:liquidity.cash.balances")
+    acquisition = snapshot.acquisition
+
+    def remove_witness(value):
+        if isinstance(value, dict):
+            value.pop("selection", None)
+            for child in value.values():
+                remove_witness(child)
+        elif isinstance(value, list):
+            for child in value:
+                remove_witness(child)
+
+    remove_witness(acquisition)
+    with sqlite3.connect(config / "leaf-cache.sqlite3") as database:
+        database.execute(
+            "UPDATE snapshots SET acquisition=? WHERE namespace=?",
+            [canonical(acquisition), "leaf:liquidity.cash.balances"],
+        )
+    before = len(browser.business_requests)
+    got = cli("list", "--require-complete", code=1)
+    assert got["error"]["code"] == "INVALID_RESPONSE"
+    assert "selection evidence" in got["error"]["message"]
+    assert len(browser.business_requests) == before
