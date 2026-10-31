@@ -1,11 +1,8 @@
 """Payment channels: host-owned collection and hard native-ID conflict failure."""
 
-from typing import Any
-
 from dogopencli.contracts import EndpointContract, ParsedPage
 from dogopencli.errors import CliError
 from dogopencli.jsonutil import parse
-from dogopencli.leaves.query import CustomListResult
 
 SCOPES = ("EXTERNAL", "LIQUIDITY", "MANUAL", "SETTLEMENT")
 PAGE_SIZE = 100
@@ -136,21 +133,13 @@ CAPABILITY = Inquiry()
 
 
 class Adapter:
-    def query_capability(self, operation: str, name: str, parameters: dict) -> Inquiry:
+    def capability(self, parameters: dict) -> Inquiry:
         validate(parameters)
-        if operation != "list" or name != "channels":
-            fail("undeclared channel inquiry", "REQUEST_NOT_ALLOWED")
         return CAPABILITY
 
     def scope(self, parameters: dict) -> str:
         validate(parameters)
         return parameters.get("payout_type", "EXTERNAL")
-
-    def query_list(self, parameters: dict, tools: Any) -> CustomListResult:
-        source = tools.collect("channels", self.scope(parameters))
-        if "IDENTITY_CONTENT_CONFLICT" in source.evidence.reasons:
-            fail("same abilityId has conflicting native channel contents")
-        return CustomListResult(source.records, source.evidence)
 
     def filter(self, records: list[dict], parameters: dict) -> list[dict]:
         validate(parameters)

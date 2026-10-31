@@ -5,8 +5,6 @@ from typing import Any
 from dogopencli.contracts import EndpointContract
 from dogopencli.errors import CliError
 from dogopencli.jsonutil import canonical, parse
-from dogopencli.leaves.query import CustomListResult
-from dogopencli.result_policy import AcquisitionEvidence
 
 TENANT = "GUAPW3SG"
 LINEAGE = ("reportId", "groupId", "tntInstId")
@@ -39,7 +37,9 @@ def envelope(body: bytes) -> Any:
 class Inquiry:
     page_url = "https://iliquidity.alipay.com/GUAPW3SG/menu/PortfolioMgmt"
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, selected: int):
+        self.source = name
+        self.selected = selected
         self.name = "liquidity.operations.decisions.history." + name
         self.contract = EndpointContract(
             method="POST",
@@ -52,79 +52,60 @@ class Inquiry:
             fixed_body_values=(("tntInstId", TENANT),),
         )
 
-    def request_body(self, parameters: dict, identity: str | None = None) -> dict:
-        selected = report_id(parameters)
-        if identity is not None and identity != str(selected):
-            fail("detail lookup differs from selected report", "REQUEST_NOT_ALLOWED")
+    def page_body(self, scope: str, position: int, page_size: int) -> dict:
+        selected = report_id(parse(scope))
+        if selected != self.selected or position != 0 or page_size != 0:
+            fail("source scope differs from selected report", "REQUEST_NOT_ALLOWED")
         return {"tntInstId": TENANT, "id": selected}
 
-    def parse_detail(self, body: bytes, parameters: dict, identity: str) -> dict:
-        self.request_body(parameters, identity)
-        current = envelope(body)
-        if (
-            not isinstance(current, dict)
-            or type(current.get("id")) is not int
-            or current["id"] != report_id(parameters)
-        ):
-            fail("current detail identity does not match request")
-        if any(
-            not isinstance(current.get(field), str) or not current[field].strip()
-            for field in LINEAGE
-        ):
-            fail("current detail lineage is missing")
-        if current["tntInstId"] != TENANT:
-            fail("current detail tenant differs from request")
-        return current
-
-    def parse_inquiry(self, body: bytes, parameters: dict) -> list[dict]:
-        self.request_body(parameters)
-        rows = envelope(body)
-        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+    def parse_rows(self, body: bytes) -> tuple[list[dict], None]:
+        data = envelope(body)
+        if self.source == "root":
+            if (
+                not isinstance(data, dict)
+                or type(data.get("id")) is not int
+                or data["id"] != self.selected
+            ):
+                fail("current detail identity does not match request")
+            if any(
+                not isinstance(data.get(field), str) or not data[field].strip()
+                for field in LINEAGE
+            ):
+                fail("current detail lineage is missing")
+            if data["tntInstId"] != TENANT:
+                fail("current detail tenant differs from request")
+            return [data], None
+        if not isinstance(data, list) or any(not isinstance(row, dict) for row in data):
             fail("history must be a native array of objects")
-        return rows
+        for row in data:
+            if type(row.get("id")) is not int or type(row.get("version")) is not int:
+                fail("history id and version must be native integers")
+        return data, None
 
 
 class Adapter:
-    def query_capability(self, operation: str, name: str, parameters: dict) -> Inquiry:
-        report_id(parameters)
-        if operation != "list" or name not in {"root", "history"}:
+    def source_capability(self, name: str, parameters: dict) -> Inquiry:
+        selected = report_id(parameters)
+        if name not in {"root", "history"}:
             fail("undeclared inquiry", "REQUEST_NOT_ALLOWED")
-        return Inquiry(name)
+        return Inquiry(name, selected)
+
+    def source_scope(self, name: str, parameters: dict) -> str:
+        self.source_capability(name, parameters)
+        return self.scope(parameters)
 
     def scope(self, parameters: dict) -> str:
         return canonical({"id": report_id(parameters)})
 
-    def query_list(self, parameters: dict, tools: Any) -> CustomListResult:
-        current = tools.detail("root", str(report_id(parameters)))
-        rows = tools.inquire("history")
-        seen = set()
+    def assemble(
+        self, records_by_source: dict[str, list[dict]], parameters: dict
+    ) -> list[dict]:
+        current = records_by_source["root"][0]
+        rows = records_by_source["history"]
         for row in rows:
             if any(row.get(field) != current[field] for field in LINEAGE):
                 fail("history lineage differs from current detail")
-            if type(row.get("id")) is not int or type(row.get("version")) is not int:
-                fail("history id and version must be native integers")
-            if row["id"] in seen:
-                fail("duplicate history identity")
-            seen.add(row["id"])
-        evidence = AcquisitionEvidence.for_collection(
-            complete=True,
-            reported_total=None,
-            collected_total=len(rows),
-            arrivals=len(rows),
-            total_semantics="unknown",
-            coverage_basis="qualified_single_response",
-            attempts=(
-                {
-                    "composition": "native-report-lineage",
-                    "current_detail_verified": True,
-                    "history_lineage_verified": True,
-                    "history_returned_count": len(rows),
-                    "completion_boundary": "native-history-array",
-                    "snapshot_consistency": "sequential inquiries",
-                },
-            ),
-        )
-        return CustomListResult(rows, evidence)
+        return rows
 
     def filter(self, records: list[dict], parameters: dict) -> list[dict]:
         return records

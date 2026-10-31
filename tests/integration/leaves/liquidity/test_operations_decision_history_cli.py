@@ -99,7 +99,17 @@ def test_native_versions_order_refresh_offline_and_exact_binding(installed):
     assert all(r["id"] != 123 for r in live["data"])
     assert live["meta"]["complete"] is True
     assert live["meta"]["acquisition"]["reported_total"] is None
-    assert live["meta"]["acquisition"]["coverage_basis"] == "qualified_single_response"
+    acquisition = live["meta"]["acquisition"]
+    assert acquisition["coverage_basis"] == "validated_sources"
+    assert acquisition["total_semantics"] == "assembled_roots"
+    assert set(acquisition["sources"]) == {"root", "history"}
+    for name, arrivals in (("root", 1), ("history", 2)):
+        source = acquisition["sources"][name]
+        assert source["scope"] == '{"id":123}'
+        assert source["acquisition"]["reported_total"] is None
+        assert source["acquisition"]["total_semantics"] == "unknown"
+        assert source["acquisition"]["coverage_basis"] == "qualified_single_response"
+        assert source["acquisition"]["arrivals"] == arrivals
     assert not (config / "leaf-cache.sqlite3").exists()
     assert browser.business_requests == [{"id": 123, "tntInstId": "GUAPW3SG"}] * 2
     expressions = [
@@ -118,6 +128,10 @@ def test_native_versions_order_refresh_offline_and_exact_binding(installed):
     offline = cli("list", "--require-complete", "--limit", "0")
     assert offline["data"] == versions
     assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+    assert (
+        offline["meta"]["acquisition"]["sources"]
+        == saved["meta"]["acquisition"]["sources"]
+    )
     assert len(browser.business_requests) == count
 
 
@@ -171,6 +185,7 @@ def test_context_and_native_failures_keep_previous_snapshot(installed, failure):
         history["body"]["data"][0][field] = "OTHER"
     elif failure == "duplicate":
         history["body"]["data"] = [row(2), row(2)]
+        expected = "INCOMPLETE_RESULT"
     elif failure == "business":
         history["body"]["success"] = False
         expected = "BUSINESS_QUERY_FAILED"
@@ -232,3 +247,16 @@ def test_undeclared_request_field_rejected_before_business_fetch(
     result = cli("list", "--live", *FLAGS, code=1)
     assert result["error"]["code"] == "REQUEST_NOT_ALLOWED"
     assert not browser.business_requests
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_required_source_duplicate_is_rejected_in_default_and_strict_modes(
+    installed, strict
+):
+    cli, browser, config = installed
+    browser.business_script.extend([response(root()), response([row(2), row(2)])])
+    flags = ["--require-complete"] if strict else []
+    failed = cli("list", "--live", *FLAGS, *flags, code=1)
+    assert failed["error"]["code"] == "INCOMPLETE_RESULT"
+    assert failed["data"] is None
+    assert not (config / "leaf-cache.sqlite3").exists()

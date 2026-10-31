@@ -184,11 +184,11 @@ def test_duplicate_primary_keys_deduplicate_or_hard_fail(installed, conflict):
     scripted(browser, [*original, repeated])
     if conflict:
         rejected = cli("list", "--live", "--limit", "0", code=1)
-        assert rejected["error"]["code"] == "INVALID_RESPONSE"
+        assert rejected["error"]["code"] == "INCOMPLETE_RESULT"
         assert rejected.get("data") in (None, [])
         failed = cli("refresh", "--require-complete", code=1)
         assert failed["meta"]["published"] is False
-        assert failed["error"]["code"] == "INVALID_RESPONSE"
+        assert failed["error"]["code"] == "INCOMPLETE_RESULT"
         offline = cli("list")
         assert offline["data"] == [row(999)]
         assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
@@ -312,7 +312,7 @@ def test_each_exact_local_filter_and_repeated_value_or(installed, flag, field):
 def test_native_request_default_deny(installed, change):
     _, _, config = installed
     adapter = Registry(config / "config.toml").scan().get("payment", "channel").adapter
-    capability = adapter.query_capability("list", "channels", {})
+    capability = adapter.capability({})
     body = capability.page_body("EXTERNAL", 1, 100)
     contract = capability.contract
     request = QueryRequest(
@@ -482,4 +482,49 @@ def test_unqualified_last_page_repetition_preserves_previous_capture(
     assert got["error"]["code"] == "INVALID_RESPONSE"
     assert got["meta"]["published"] is False
     assert cli("list")["data"] == [row(999)]
+    assert cli("list")["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+def test_total_deadline_exhaustion_preserves_previous_capture(installed, monkeypatch):
+    from dogopencli import collect
+
+    cli, browser, _ = installed
+    scripted(browser, [row(999)])
+    saved = cli("refresh", "--require-complete")
+    clock = [0.0]
+    monkeypatch.setattr(collect, "_monotonic", lambda: clock[0])
+    calls = []
+
+    def handler(body, _):
+        calls.append(deepcopy(body))
+        clock[0] += 451
+        records = [row(i) for i in range(100)] if len(calls) == 1 else []
+        return page(records, body["pageNum"], size=body["pageSize"])
+
+    browser.business_handler = handler
+    failed = cli("refresh", "--require-complete", code=1)
+    assert failed["error"]["code"] == "TIMEOUT"
+    assert failed["meta"]["published"] is False
+    assert len(calls) == 2
+    offline = cli("list", "--limit", "0")
+    assert offline["data"] == [row(999)]
+    assert offline["meta"]["fetched_at"] == saved["meta"]["fetched_at"]
+
+
+def test_retry_exhaustion_is_bounded_and_preserves_capture(installed, monkeypatch):
+    from dogopencli import collect
+
+    cli, browser, _ = installed
+    scripted(browser, [row(999)])
+    saved = cli("refresh", "--require-complete")
+    waits = []
+    monkeypatch.setattr(collect, "_sleep", waits.append)
+    browser.business_handler = None
+    before = len(browser.business_requests)
+    browser.business_script.extend([{"status": 503, "body": {}}] * 3)
+    failed = cli("refresh", code=1)
+    assert failed["error"]["code"] == "BUSINESS_QUERY_FAILED"
+    assert failed["meta"]["published"] is False
+    assert len(browser.business_requests) - before == 3
+    assert waits == [1.0, 2.0]
     assert cli("list")["meta"]["fetched_at"] == saved["meta"]["fetched_at"]

@@ -4,11 +4,11 @@ import re
 from datetime import datetime
 from typing import Any
 
-from dogopencli.contracts import EndpointContract
+from dogopencli.contracts import EndpointContract, ParsedPage
 from dogopencli.errors import CliError
 from dogopencli.jsonutil import canonical, parse
 from dogopencli.leaves.query import CustomListResult
-from dogopencli.result_policy import AcquisitionEvidence
+from dogopencli.result_policy import AcquisitionEvidence, check_complete
 
 TENANT = "GUAPW3SG"
 BASE_VO = "bankCashForecastRecordQueryVo"
@@ -157,7 +157,7 @@ class Inquiry:
             else "/cashFlowDetail.json"
             if self.occurrences
             else "/bankCashForecastRecordAccuracyQuery.json",
-            page_size=0,
+            page_size=0 if self.metric or self.occurrences else 5000,
             one_based=False,
             allowed_body_keys=frozenset({"tntInstId", self.vo}),
             fixed_body_values=(("tntInstId", TENANT),),
@@ -206,6 +206,24 @@ class Inquiry:
                 "valueEndDay": day,
             }
         return {"tntInstId": TENANT, self.vo: canonical(inner)}
+
+    def page_body(self, scope: str, position: int, size: int) -> dict:
+        if self.metric or self.occurrences or position != 0 or size != 5000:
+            fail("unsupported base List request", "REQUEST_NOT_ALLOWED")
+        return self.request_body(parse(scope))
+
+    def parse_page(self, body: bytes) -> ParsedPage:
+        result = self.parse_inquiry(body, {})
+        rows, total = result["dataValue"], result["count"]
+        for row in rows:
+            if {"accuracy", "cashflow_details"} & row.keys():
+                fail("reserved composition namespace already exists in native base")
+            identity = row.get("id")
+            if not isinstance(identity, str) or not identity.strip():
+                fail("base id must be a nonempty native string")
+            if "tntInstId" in row and row["tntInstId"] != TENANT:
+                fail("base tenant differs from the requested tenant")
+        return ParsedPage(rows, 0, 5000, total, -(-total // 5000))
 
     def parse_inquiry(self, body: bytes, parameters: dict) -> dict:
         document = parse(body)
@@ -271,23 +289,11 @@ class Adapter:
 
     def query_list(self, parameters: dict, tools: Any) -> CustomListResult:
         scope = values(parameters)
-        base = tools.inquire("base")
-        rows, total = base["dataValue"], base["count"]
-        identities = []
-        for row in rows:
-            if {"accuracy", "cashflow_details"} & row.keys():
-                fail("reserved composition namespace already exists in native base")
-            identity = row.get("id")
-            if not isinstance(identity, str) or not identity.strip():
-                fail("base id must be a nonempty native string")
-            if "tntInstId" in row and row["tntInstId"] != TENANT:
-                fail("base tenant differs from the requested tenant")
-            identities.append(identity)
-        if len(rows) != len(set(identities)) or len(rows) != total or len(rows) > 100:
-            fail(
-                "base coverage or 100-record client budget is unproven",
-                "INCOMPLETE_RESULT",
-            )
+        base = tools.collect("base", canonical(scope))
+        check_complete(base.evidence, require_complete=True)
+        rows, total = base.records, base.evidence.reported_total
+        if len(rows) > 100:
+            fail("100-record client budget is unproven", "INCOMPLETE_RESULT")
         contexts = [metric_context(row, scope["account_alias"]) for row in rows]
         occurrence_contexts = [
             occurrence_context(row, scope["account_alias"]) for row in rows
@@ -359,7 +365,7 @@ class Adapter:
                 {
                     "composition": "native-request-binding",
                     "base_arrivals": len(rows),
-                    "base_unique": len(identities),
+                    "base_unique": base.evidence.collected_total,
                     "base_reported_total": total,
                     "metric_succeeded": len(records),
                     "metric_required": len(rows),

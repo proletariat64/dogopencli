@@ -102,30 +102,7 @@
           "local_field": "creditorAccountAliasName",
           "description": "Exact case-sensitive local whole-string selection after two complete stable reads; repeated values OR, different fields AND; commas and * literal."
         }
-      ],
-      "execution": "custom",
-      "queries": {
-        "cases": {
-          "kind": "list",
-          "collection": {
-            "provider": "general",
-            "paging": {
-              "mode": "single",
-              "page_sizes": [
-                5000
-              ]
-            },
-            "primary_id": {
-              "type": "field",
-              "fields": [
-                "id"
-              ]
-            }
-          }
-        }
-      },
-      "max_requests": 20,
-      "budget_seconds": 120
+      ]
     }
   },
   "summary": "Outflow PTR case library.",
@@ -240,7 +217,7 @@
     "Only inquiry GET /api/ptr/case/query.json with fixed pageNo=0/pageSize=5000. No backend filtering, Get, trial, execute or update.",
     "Two successful complete acquisitions of the same full outflow library must have equal totals and equal sorted retained-field contents; a failed read is not a stability retry.",
     "Preserves the pinned case, baseline and monetary field whitelist. Other native fields are deliberately omitted, and changes to omitted fields do not establish retained-content instability.",
-    "Both complete scopes remain in custom query evidence. Empty, failed, duplicate, truncated or unstable refresh cannot replace the saved nonempty capture.",
+    "Both complete scopes remain in standard named-source evidence. Empty, failed, duplicate, truncated or unstable refresh cannot replace the saved nonempty capture.",
     "Exact local whole-string filters OR within a field and AND across fields; no wildcard, substring, comma splitting or coercion.",
     "The verified native contract is a fixed page0/5000 full-library inquiry with top-level boolean success, resultDataList, exact page echoes, integer totalCount and unique native id. Two complete retained-content reads are required before output."
   ],
@@ -256,5 +233,46 @@
   ],
   "dataset": {
     "relation": "payment_ptr_cases"
+  },
+  "collection": {
+    "provider": "general",
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    },
+    "sources": {
+      "first": {
+        "paging": {
+          "mode": "single",
+          "page_sizes": [
+            5000
+          ]
+        },
+        "primary_id": {
+          "type": "field",
+          "fields": [
+            "id"
+          ]
+        }
+      },
+      "second": {
+        "paging": {
+          "mode": "single",
+          "page_sizes": [
+            5000
+          ]
+        },
+        "primary_id": {
+          "type": "field",
+          "fields": [
+            "id"
+          ]
+        }
+      }
+    },
+    "max_pages": 2,
+    "budget_seconds": 120
   }
 }
