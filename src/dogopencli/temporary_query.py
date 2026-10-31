@@ -1,4 +1,4 @@
-"""Generic output window and freshness helpers for installed leaf queries."""
+"""Query presentation and freshness policy for installed leaf queries."""
 
 from datetime import datetime, timedelta
 from typing import Any
@@ -66,3 +66,53 @@ def list_preview_metadata(
             ),
         )
     return meta
+
+
+def project_rows(rows: list[dict], fields: list[str] | None) -> list[dict]:
+    if fields is None:
+        return rows
+    if any(field not in row for row in rows for field in fields):
+        raise CliError(
+            "INVALID_ARGUMENT",
+            "requested field is absent from a returned record",
+            exit_code=2,
+        )
+    return [{field: row[field] for field in fields} for row in rows]
+
+
+def present_result(
+    rows: list[dict],
+    fields: list[str] | None,
+    *,
+    shape: str = "list",
+    limit: int = 0,
+    offset: int = 0,
+    custom_detail: bool | None = None,
+    selected: bool = False,
+    matched_total: int | None = None,
+) -> tuple[Any, dict]:
+    """Present acquired records without changing their source coverage.
+
+    Detail acquisition may already have selected its display window; its caller
+    supplies the original matched total while retaining the requested window.
+    Get results keep their declared shape and ignore List window options.
+    """
+    if shape != "list":
+        projected = project_rows(rows, fields)
+        return (projected if shape == "array" else projected[0]), {}
+    window = rows if selected else window_rows(rows, limit, offset)
+    displayed = (
+        [
+            {**item, "record": project_rows([item["record"]], fields)[0]}
+            for item in window
+        ]
+        if custom_detail is not None
+        else project_rows(window, fields)
+    )
+    return displayed, list_preview_metadata(
+        len(rows) if matched_total is None else matched_total,
+        len(displayed),
+        limit,
+        offset,
+        custom_detail=custom_detail,
+    )

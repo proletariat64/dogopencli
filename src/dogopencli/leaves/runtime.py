@@ -33,7 +33,8 @@ from dogopencli.result_policy import (
 from dogopencli.temporary_query import (
     display_options,
     is_stale,
-    list_preview_metadata,
+    present_result,
+    project_rows,
     window_rows,
 )
 
@@ -78,18 +79,6 @@ def _validate_records(
                 raise CliError("INVALID_RESPONSE", "record identity is duplicated")
             seen.add(key)
     return rows
-
-
-def _project(rows: list[dict], fields: list[str] | None) -> list[dict]:
-    if fields is None:
-        return rows
-    if any(field not in row for row in rows for field in fields):
-        raise CliError(
-            "INVALID_ARGUMENT",
-            "requested field is absent from a returned record",
-            exit_code=2,
-        )
-    return [{field: row[field] for field in fields} for row in rows]
 
 
 def _contract_id(leaf: Leaf, capability: Any) -> str:
@@ -251,7 +240,6 @@ def _compose_details(
     leaf: Leaf,
     session: Any,
     rows: list[dict],
-    fields: list[str] | None,
     deadline: float,
     offset: int,
 ) -> tuple[list[dict], list[AcquisitionEvidence]]:
@@ -335,9 +323,7 @@ def _compose_details(
                 detail_rows_completed=len(acquisitions),
                 detail_rows_expected=len(rows),
             )
-            combined.append(
-                {"record": _project([row], fields)[0], "detail": record.data}
-            )
+            combined.append({"record": row, "detail": record.data})
         except CliError as error:
             raise CliError(
                 error.code,
@@ -552,8 +538,7 @@ def execute(
         )
         is_array = leaf.manifest["operations"]["get"].get("result_shape") == "array"
         rows = record.data if is_array else [record.data]
-        projected = _project(rows, fields)
-        data = projected if is_array else projected[0]
+        project_rows(rows, fields)
         metadata = {
             "source": "live",
             "leaf": leaf.id,
@@ -576,6 +561,7 @@ def execute(
         }
         if capture is not None:
             capture(rows, {**metadata, "scope": metadata["query"]})
+        data, _ = present_result(rows, fields, shape="array" if is_array else "object")
         return data, metadata
     definitions = leaf.manifest["operations"]["list"].get("parameters", [])
     local_parameters = {
@@ -697,14 +683,13 @@ def execute(
                     else rows
                 )
                 window = window_rows(selected, limit, offset)
-                _project(window, fields)
+                project_rows(window, fields)
                 if args.with_detail:
                     source_list_acquisition = evidence.record()
                     details, detail_acquisitions = _compose_details(
                         leaf,
                         session,
                         selected if capture is not None else window,
-                        None if capture is not None else fields,
                         collected.deadline,
                         0 if capture is not None else offset,
                     )
@@ -831,11 +816,6 @@ def execute(
                             ],
                         )
                     capture(details if args.with_detail else selected, saved_metadata)
-                    if args.with_detail:
-                        details = [
-                            {**item, "record": _project([item["record"]], fields)[0]}
-                            for item in window_rows(details, limit, offset)
-                        ]
 
             published = decision.publishable
             if published:
@@ -937,10 +917,18 @@ def execute(
                 },
             )
         matched = len(rows)
-        displayed = (
-            details
-            if args.with_detail
-            else _project(window_rows(rows, limit, offset), fields)
+        displayed, preview = present_result(
+            details if args.with_detail else rows,
+            fields,
+            limit=limit,
+            offset=offset,
+            custom_detail=(
+                leaf.manifest["operations"]["get"].get("execution") == "custom"
+                if args.with_detail
+                else None
+            ),
+            selected=args.with_detail and capture is None,
+            matched_total=matched,
         )
         source_acquisition = evidence.record()
         requested_coverage = True
@@ -1000,19 +988,7 @@ def execute(
                 source_acquisition=source_list_acquisition,
                 detail_acquisition=[item.record() for item in detail_acquisitions],
             )
-        meta.update(
-            list_preview_metadata(
-                matched,
-                len(displayed),
-                limit,
-                offset,
-                custom_detail=(
-                    leaf.manifest["operations"]["get"].get("execution") == "custom"
-                    if args.with_detail
-                    else None
-                ),
-            )
-        )
+        meta.update(preview)
         if not live:
             meta["source_acquisition"] = source_acquisition
             meta["requested_coverage"] = requested_coverage

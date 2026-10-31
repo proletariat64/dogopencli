@@ -5,9 +5,7 @@ from typing import Any
 
 from .errors import CliError
 from .jsonutil import canonical, parse
-from .leaves.lifecycle import lifecycle_lock
-from .leaves.registry import Registry
-from .workflow_storage import connection, header, metadata_match
+from .workflow_storage import connection, publication, save_observation
 
 
 def namespace(artifact: dict) -> str:
@@ -145,145 +143,83 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
         raise CliError(
             "WORKFLOW_ERROR", "Replacement namespace differs from exact export"
         )
-    with lifecycle_lock(Registry(config_file)):
-        with connection(binding, write=True) as db:
-            from .workflow_storage import publication_progress, stage_rows
-
-            stage_rows(db, artifact)
-            db.execute("BEGIN TRANSACTION")
-            guard(db, binding)
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS _dogopencli_current_publications "
-                "(relation_name VARCHAR NOT NULL, namespace VARCHAR NOT NULL,"
-                " export_id VARCHAR NOT NULL, PRIMARY KEY(relation_name, "
-                "namespace))"
+    with publication(config_file, artifact) as publishing:
+        db = publishing.db
+        guard(db, binding)
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS _dogopencli_current_publications "
+            "(relation_name VARCHAR NOT NULL, namespace VARCHAR NOT NULL,"
+            " export_id VARCHAR NOT NULL, PRIMARY KEY(relation_name, "
+            "namespace))"
+        )
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS _dogopencli_publication_receipts "
+            "(export_id VARCHAR PRIMARY KEY, receipt VARCHAR NOT NULL)"
+        )
+        replay = publishing.replay(
+            "_dogopencli_publication_receipts",
+            "Exact export differs from committed publication",
+        )
+        if replay is not None:
+            return replay
+        previous = pointer(db, binding, key)
+        if previous != plan["expected_current"]:
+            raise CliError(
+                "WORKFLOW_ERROR",
+                "Stale replacement plan: current publication changed; "
+                "compile a new import plan",
             )
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS _dogopencli_publication_receipts "
-                "(export_id VARCHAR PRIMARY KEY, receipt VARCHAR NOT NULL)"
-            )
-            replay = db.execute(
-                "SELECT receipt FROM _dogopencli_publication_receipts WHERE "
-                "export_id=?",
-                [artifact["id"]],
+        receipt = {
+            "export_id": artifact["id"],
+            "current_export_id": artifact["id"],
+            "previous_current": previous,
+            "plan_id": plan["id"],
+            "action": "replace-full",
+            "binding": binding,
+            "record_count": artifact["record_count"],
+            "committed_at": committed_at,
+            "current_effect": "replace_exact_scope",
+            "scope": artifact["metadata"]["scope"],
+            "environment": artifact["environment"],
+            "namespace": parse(key),
+        }
+        save_observation(db, artifact, receipt)
+        relation = '"' + binding["relation"].replace('"', '""') + '"'
+        if previous:
+            # Multiset subtraction preserves unrelated occurrences, including
+            # identical rows published in other query namespaces.
+            missing = db.execute(
+                "SELECT _record FROM _dogopencli_observation_rows WHERE "
+                f"export_id=? EXCEPT ALL SELECT _record FROM {relation}",
+                [previous],
             ).fetchone()
-            if replay:
-                saved = db.execute(
-                    "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
-                    [artifact["id"]],
-                ).fetchone()
-                if not saved or not metadata_match(saved[0], artifact):
-                    raise CliError(
-                        "WORKFLOW_ERROR",
-                        "Exact export differs from committed publication",
-                    )
-                db.execute("ROLLBACK")
-                publication_progress(artifact, replayed=True, inserted_count=0)
-                return {**parse(replay[0]), "replayed": True, "inserted_count": 0}
-            previous = pointer(db, binding, key)
-            if previous != plan["expected_current"]:
+            if missing:
                 raise CliError(
                     "WORKFLOW_ERROR",
-                    "Stale replacement plan: current publication changed; "
-                    "compile a new import plan",
+                    "Current rows differ from committed publication",
                 )
             db.execute(
-                "CREATE TABLE IF NOT EXISTS _dogopencli_observations "
-                "(export_id VARCHAR PRIMARY KEY, leaf_id VARCHAR NOT NULL, "
-                "relation_name VARCHAR NOT NULL, action VARCHAR NOT NULL, "
-                "committed_at VARCHAR NOT NULL, artifact VARCHAR NOT NULL, "
-                "receipt VARCHAR NOT NULL)"
+                "CREATE TEMP TABLE retained_current AS SELECT _record "
+                f"FROM {relation} EXCEPT ALL SELECT _record FROM "
+                "_dogopencli_observation_rows WHERE export_id=?",
+                [previous],
             )
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS _dogopencli_observation_rows "
-                "(export_id VARCHAR NOT NULL, ordinal BIGINT NOT NULL, "
-                "_record VARCHAR NOT NULL, PRIMARY KEY(export_id, ordinal))"
-            )
-            receipt = {
-                "export_id": artifact["id"],
-                "current_export_id": artifact["id"],
-                "previous_current": previous,
-                "plan_id": plan["id"],
-                "action": "replace-full",
-                "binding": binding,
-                "record_count": artifact["record_count"],
-                "committed_at": committed_at,
-                "current_effect": "replace_exact_scope",
-                "scope": artifact["metadata"]["scope"],
-                "environment": artifact["environment"],
-                "namespace": parse(key),
-            }
-            saved = db.execute(
-                "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
-                [artifact["id"]],
-            ).fetchone()
-            if saved and not metadata_match(saved[0], artifact):
-                raise CliError(
-                    "WORKFLOW_ERROR", "Exact export differs from committed observation"
-                )
-            if not saved:
-                db.execute(
-                    "INSERT INTO _dogopencli_observations VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    [
-                        artifact["id"],
-                        binding["leaf"],
-                        binding["relation"],
-                        "replace-full",
-                        committed_at,
-                        canonical(header(artifact)),
-                        canonical(receipt),
-                    ],
-                )
-            relation = '"' + binding["relation"].replace('"', '""') + '"'
-            if previous:
-                # Multiset subtraction preserves unrelated occurrences, including
-                # identical rows published in other query namespaces.
-                missing = db.execute(
-                    "SELECT _record FROM _dogopencli_observation_rows WHERE "
-                    f"export_id=? EXCEPT ALL SELECT _record FROM {relation}",
-                    [previous],
-                ).fetchone()
-                if missing:
-                    raise CliError(
-                        "WORKFLOW_ERROR",
-                        "Current rows differ from committed publication",
-                    )
-                db.execute(
-                    "CREATE TEMP TABLE retained_current AS SELECT _record "
-                    f"FROM {relation} EXCEPT ALL SELECT _record FROM "
-                    "_dogopencli_observation_rows WHERE export_id=?",
-                    [previous],
-                )
-                db.execute(f"DELETE FROM {relation}")
-                db.execute(
-                    f"INSERT INTO {relation} SELECT _record FROM retained_current"
-                )
-            db.execute(
-                f"INSERT INTO {relation} SELECT _record FROM "
-                "_dogopencli_observation_rows WHERE export_id=? ORDER BY "
-                "ordinal",
-                [artifact["id"]],
-            )
-            db.execute(
-                "INSERT INTO _dogopencli_publication_receipts VALUES (?, ?)",
-                [artifact["id"], canonical(receipt)],
-            )
-            db.execute(
-                "INSERT INTO _dogopencli_current_publications VALUES (?, ?, "
-                "?) ON CONFLICT (relation_name, namespace) DO UPDATE SET "
-                "export_id=excluded.export_id",
-                [binding["relation"], key, artifact["id"]],
-            )
-            from .workflow_storage import stage_checkpoint
-
-            stage_checkpoint("before_publication_commit", artifact["record_count"])
-            db.execute("COMMIT")
-            publication_progress(
-                artifact, replayed=False, inserted_count=artifact["record_count"]
-            )
-            stage_checkpoint("after_publication_commit", artifact["record_count"])
-            return {
-                **receipt,
-                "replayed": False,
-                "inserted_count": artifact["record_count"],
-            }
+            db.execute(f"DELETE FROM {relation}")
+            db.execute(f"INSERT INTO {relation} SELECT _record FROM retained_current")
+        db.execute(
+            f"INSERT INTO {relation} SELECT _record FROM "
+            "_dogopencli_observation_rows WHERE export_id=? ORDER BY "
+            "ordinal",
+            [artifact["id"]],
+        )
+        db.execute(
+            "INSERT INTO _dogopencli_publication_receipts VALUES (?, ?)",
+            [artifact["id"], canonical(receipt)],
+        )
+        db.execute(
+            "INSERT INTO _dogopencli_current_publications VALUES (?, ?, "
+            "?) ON CONFLICT (relation_name, namespace) DO UPDATE SET "
+            "export_id=excluded.export_id",
+            [binding["relation"], key, artifact["id"]],
+        )
+        return publishing.commit(receipt, inserted_count=artifact["record_count"])

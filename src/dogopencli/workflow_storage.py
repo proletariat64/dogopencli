@@ -256,77 +256,117 @@ def stage_rows(db: Any, artifact: dict) -> None:
             stage_checkpoint("after_batch_commit", end)
 
 
-def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> dict:
-    binding = plan["binding"]
+class Publication:
+    """Own one staged observation's replay and atomic publication lifecycle."""
+
+    def __init__(self, db: Any, artifact: dict):
+        self.db = db
+        self.artifact = artifact
+
+    def replay(self, table: str, message: str, **overrides: Any) -> dict | None:
+        # Table names are host constants, never supplied by a CLI or leaf.
+        previous = self.db.execute(
+            f"SELECT receipt FROM {table} WHERE export_id=?",
+            [self.artifact["id"]],
+        ).fetchone()
+        if previous is None:
+            return None
+        saved = self.db.execute(
+            "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
+            [self.artifact["id"]],
+        ).fetchone()
+        if not saved or not metadata_match(saved[0], self.artifact):
+            raise CliError("WORKFLOW_ERROR", message)
+        self.db.execute("ROLLBACK")
+        publication_progress(self.artifact, replayed=True, inserted_count=0)
+        return {
+            **parse(previous[0]),
+            "replayed": True,
+            "inserted_count": 0,
+            **overrides,
+        }
+
+    def commit(self, receipt: dict, *, inserted_count: int) -> dict:
+        stage_checkpoint("before_publication_commit", self.artifact["record_count"])
+        self.db.execute("COMMIT")
+        publication_progress(
+            self.artifact, replayed=False, inserted_count=inserted_count
+        )
+        stage_checkpoint("after_publication_commit", self.artifact["record_count"])
+        return {**receipt, "replayed": False, "inserted_count": inserted_count}
+
+
+@contextmanager
+def publication(config_file: Path, artifact: dict) -> Iterator[Publication]:
+    """Serialize writers, resume exact staging, then open an atomic publication.
+
+    Action modules own their receipt tables and current-row semantics. Closing
+    the connection rolls back any interrupted transaction; durable staging stays.
+    """
     with lifecycle_lock(Registry(config_file)):
-        with connection(binding, write=True) as db:
+        with connection(artifact["binding"], write=True) as db:
             stage_rows(db, artifact)
             db.execute("BEGIN TRANSACTION")
             db.execute(
                 "CREATE TABLE IF NOT EXISTS _dogopencli_observations (export_id "
-                "VARCHAR PRIMARY KEY, leaf_id VARCHAR NOT NULL, relation_name "
-                "VARCHAR NOT NULL, action VARCHAR NOT NULL, committed_at VARCHAR "
-                "NOT NULL, artifact VARCHAR NOT NULL, receipt VARCHAR NOT NULL)"
+                "VARCHAR PRIMARY KEY, leaf_id VARCHAR NOT NULL, relation_name VARCHAR"
+                " NOT NULL, action VARCHAR NOT NULL, committed_at VARCHAR NOT NULL, "
+                "artifact VARCHAR NOT NULL, receipt VARCHAR NOT NULL)"
             )
-            db.execute(
-                "CREATE TABLE IF NOT EXISTS _dogopencli_observation_rows "
-                "(export_id VARCHAR NOT NULL, ordinal BIGINT NOT NULL, _record "
-                "VARCHAR NOT NULL, PRIMARY KEY(export_id, ordinal))"
+            yield Publication(db, artifact)
+
+
+def save_observation(db: Any, artifact: dict, receipt: dict) -> None:
+    saved = db.execute(
+        "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
+        [artifact["id"]],
+    ).fetchone()
+    if saved:
+        if not metadata_match(saved[0], artifact):
+            raise CliError(
+                "WORKFLOW_ERROR", "Exact export differs from committed observation"
             )
-            previous = db.execute(
-                "SELECT artifact, receipt FROM _dogopencli_observations WHERE "
-                "export_id=?",
-                [artifact["id"]],
-            ).fetchone()
-            if previous:
-                if not metadata_match(previous[0], artifact):
-                    raise CliError(
-                        "WORKFLOW_ERROR",
-                        "Exact export differs from committed observation",
-                    )
-                db.execute("ROLLBACK")
-                publication_progress(artifact, replayed=True, inserted_count=0)
-                return {
-                    **parse(previous[1]),
-                    "action": "preserve",
-                    "current_effect": "unchanged",
-                    "replayed": True,
-                    "inserted_count": 0,
-                }
-            receipt = {
-                "export_id": artifact["id"],
-                "plan_id": plan["id"],
-                "action": "preserve",
-                "binding": binding,
-                "record_count": artifact["record_count"],
-                "committed_at": committed_at,
-                "current_effect": "unchanged",
-                "scope": artifact["metadata"]["scope"],
-                "environment": artifact["environment"],
-            }
-            db.execute(
-                "INSERT INTO _dogopencli_observations VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    artifact["id"],
-                    binding["leaf"],
-                    binding["relation"],
-                    "preserve",
-                    committed_at,
-                    canonical(header(artifact)),
-                    canonical(receipt),
-                ],
-            )
-            stage_checkpoint("before_publication_commit", artifact["record_count"])
-            db.execute("COMMIT")
-            publication_progress(
-                artifact, replayed=False, inserted_count=artifact["record_count"]
-            )
-            stage_checkpoint("after_publication_commit", artifact["record_count"])
-            return {
-                **receipt,
-                "replayed": False,
-                "inserted_count": artifact["record_count"],
-            }
+        return
+    binding = artifact["binding"]
+    db.execute(
+        "INSERT INTO _dogopencli_observations VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            artifact["id"],
+            binding["leaf"],
+            binding["relation"],
+            receipt["action"],
+            receipt["committed_at"],
+            canonical(header(artifact)),
+            canonical(receipt),
+        ],
+    )
+
+
+def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> dict:
+    binding = plan["binding"]
+    with publication(config_file, artifact) as publishing:
+        db = publishing.db
+        replay = publishing.replay(
+            "_dogopencli_observations",
+            "Exact export differs from committed observation",
+            action="preserve",
+            current_effect="unchanged",
+        )
+        if replay is not None:
+            return replay
+        receipt = {
+            "export_id": artifact["id"],
+            "plan_id": plan["id"],
+            "action": "preserve",
+            "binding": binding,
+            "record_count": artifact["record_count"],
+            "committed_at": committed_at,
+            "current_effect": "unchanged",
+            "scope": artifact["metadata"]["scope"],
+            "environment": artifact["environment"],
+        }
+        save_observation(db, artifact, receipt)
+        return publishing.commit(receipt, inserted_count=artifact["record_count"])
 
 
 def current_count(binding: dict) -> int:

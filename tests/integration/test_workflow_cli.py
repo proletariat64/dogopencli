@@ -593,15 +593,32 @@ def test_durable_get_preserves_declared_root_before_projection(run_cli, pilots):
     pilots.business_script.append(
         {"status": 200, "body": {"success": True, "resultData": root}}
     )
+    run = call(run_cli, "export", "create", "--plan", plan["id"])
     exported = call(
         run_cli,
         "export",
         "run",
         "--run",
-        call(run_cli, "export", "create", "--plan", plan["id"])["id"],
+        run["id"],
         "--fields",
         "id",
     )
+    requests = len(pilots.business_requests)
+    replay = call(
+        run_cli,
+        "export",
+        "run",
+        "--run",
+        run["id"],
+        "--fields",
+        "id",
+        "--offset",
+        "9",
+        "--limit",
+        "1",
+    )
+    assert exported["records"] == replay["records"] == {"id": "one"}
+    assert len(pilots.business_requests) == requests
     saved = call(run_cli, "export", "show", "--export", exported["id"])
     assert saved["records"] == [root]
     assert saved["operation"] == "get"
