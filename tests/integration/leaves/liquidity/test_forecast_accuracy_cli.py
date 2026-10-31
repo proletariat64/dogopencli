@@ -679,3 +679,46 @@ def test_success_evidence_retains_exact_normalized_metric_request(installed):
     }
     assert binding["request_binding"][METRIC_VO]["forecastBalance"] == "0"
     assert result["data"][0]["forecastBalance"] == "0.00"
+
+
+def test_named_base_collection_evidence_survives_refresh_and_offline(installed):
+    cli, browser, _ = installed
+    browser.business_script.extend([base([row()]), metric(), details([])])
+    saved = cli("refresh", *FLAGS, "--require-complete")
+    acquisition = saved["meta"]["acquisition"]
+    query = acquisition["attempts"][-1]["queries"]["base"]
+    assert query["kind"] == "list"
+    source = query["collections"][0]
+    assert parse(source["scope"]) == {
+        "account_alias": "ACCOUNT",
+        "record_date": "2026-03-08",
+    }
+    assert source["acquisition"]["reported_total"] == 1
+    assert source["acquisition"]["arrivals"] == 1
+    assert source["acquisition"]["collected_total"] == 1
+    assert source["acquisition"]["scope_complete"] is True
+    assert source["acquisition"]["dataset_complete"] is True
+    browser.running = False
+    offline = cli("list", "--require-complete", "--limit", "0")
+    assert offline["meta"]["acquisition"] == acquisition
+    assert offline["data"][0]["id"] == "0"
+    assert offline["data"][0]["forecastBalance"] == "0.00"
+
+
+@pytest.mark.parametrize(
+    "rows,total,expected",
+    [
+        ([row(1)], 0, "INVALID_RESPONSE"),
+        ([row(1)], 5001, "INCOMPLETE_RESULT"),
+        ([row(1), row(1, forecastBalance="1.00")], 2, "INCOMPLETE_RESULT"),
+    ],
+)
+def test_incomplete_base_collection_stops_before_dependent_requests(
+    installed, rows, total, expected
+):
+    cli, browser, _ = installed
+    browser.business_script.append(base(rows, total))
+    result = cli("list", "--live", *FLAGS, code=1)
+    assert result["error"]["code"] == expected
+    assert result["data"] is None
+    assert len(browser.business_requests) == 1

@@ -25,8 +25,22 @@
       "execution": "custom",
       "queries": {
         "base": {
-          "kind": "inquiry",
-          "result_shape": "object"
+          "kind": "list",
+          "collection": {
+            "provider": "general",
+            "paging": {
+              "mode": "single",
+              "page_sizes": [
+                5000
+              ]
+            },
+            "primary_id": {
+              "type": "field",
+              "fields": [
+                "id"
+              ]
+            }
+          }
         },
         "metric": {
           "kind": "inquiry",
@@ -71,7 +85,7 @@
   },
   "limitations": [
     "One explicit account and one native creation-query day. Full creation-time range 000000 through 235959; source timezone remains unknown.",
-    "GET /bankCashForecastRecordAccuracyQuery.json once with fixed width 5000; require arrivals = unique native id = result.count and at most 100 base rows before dependent calls. The 100 limit is a client budget, not a backend capacity statement.",
+    "GET /bankCashForecastRecordAccuracyQuery.json once through the standard named List collector with fixed width 5000 and native result.count/id coverage; require complete base acquisition and at most 100 base rows before dependent calls. The 100 limit is a client budget, not a backend capacity statement.",
     "GET /cashFlowDetailDay.json once per base row, bound to native id/valueDate/accountNo/instId/currency/bankId/forecastBalance and selected alias. Existing 12 base and 11 scalar accuracy fields remain unchanged; absent projected values remain null.",
     "GET /cashFlowDetail.json once per raw parent with native valueDate/accountNo/instId/tntInstId/currency/bankId/id and selected alias. gmtCreate retains a native integer or explicit null when present, and is omitted when absent, matching the frontend JSON serialization.",
     "Cashflow occurrence arrays preserve order, identical repeated rows, unknown fields, Money components and amount strings. No invented identity, matching, rescaling, paging, total or 5000-row UI truncation is applied.",
