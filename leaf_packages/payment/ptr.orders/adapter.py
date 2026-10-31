@@ -341,26 +341,32 @@ class Adapter:
     def scope(self, parameters: dict[str, Any]) -> str:
         return window(parameters).scope
 
-    def assemble(
+    def validate_sources(
         self, records_by_source: dict[str, list[dict]], parameters: dict[str, Any]
-    ) -> list[dict]:
-        selected_window = window(parameters)
+    ) -> None:
+        window(parameters)
         first_rows = sorted(
             records_by_source["first"], key=lambda row: row["ptrOrderId"]
         )
         second_rows = sorted(
             records_by_source["second"], key=lambda row: row["ptrOrderId"]
         )
-        # Both sources have already proved total/unique-identity coverage. Thus
-        # retained projection equality also proves their native counts agree.
+        # Compare all retained versions and padding, not only SDK-selected winners.
         if canonical(first_rows) != canonical(second_rows):
             raise CliError(
                 INCOMPLETE_RESULT,
                 "PTR order padded scope changed between complete reads",
             )
+
+    def assemble(
+        self, records_by_source: dict[str, list[dict]], parameters: dict[str, Any]
+    ) -> list[dict]:
+        selected_window = window(parameters)
         return [
             row
-            for row in first_rows
+            for row in sorted(
+                records_by_source["first"], key=lambda row: row["ptrOrderId"]
+            )
             if selected_window.start_ms <= row["gmtModified"] < selected_window.end_ms
         ]
 

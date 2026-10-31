@@ -8,7 +8,12 @@ most 31 days, with a nonfuture upper bound; the public interval is half-open.
 Two declared SDK sources each call the same fixed-500 List query. Both responses
 must completely cover their one-second-padded native scope and have identical
 retained projections when sorted by native `ptrOrderId`. Stability includes
-padding rows. Only then does the leaf trim to `start <= gmtModified < end`.
+padding rows and every observed version, before acceptance of SDK-selected
+winners. Equal winners do not conceal changes in older versions. The standard SDK
+selects the greatest native integer `gmtModified` per `ptrOrderId`, retaining the
+entire chosen projection; equal-order differing versions use last arrival with a
+warning. Valid version selection returns exit 0 in default and strict modes when
+coverage is complete. Only then does the leaf trim to `start <= gmtModified < end`.
 Each native padded total and acquisition remains separate from the output count.
 The host owns request restrictions, retries, shared budgets and publication.
 The two single-page sources share a 900-second deadline and two logical pages;

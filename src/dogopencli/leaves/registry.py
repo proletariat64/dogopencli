@@ -123,7 +123,11 @@ SOURCE_SCHEMA = {
     "type": "object",
     "required": ["paging", "primary_id"],
     "additionalProperties": False,
-    "properties": {"paging": PAGING_SCHEMA, "primary_id": PRIMARY_ID_SCHEMA},
+    "properties": {
+        "paging": PAGING_SCHEMA,
+        "primary_id": PRIMARY_ID_SCHEMA,
+        "latest_by": {"type": "string"},
+    },
 }
 RESULT_IDENTITY_SCHEMA = {
     "type": "object",
@@ -295,6 +299,7 @@ MANIFEST_SCHEMA = {
                     "minProperties": 1,
                     "additionalProperties": SOURCE_SCHEMA,
                 },
+                "validate_sources": {"type": "boolean"},
                 "latest_by": {"type": "string"},
                 "max_pages": {"type": "integer", "minimum": 1, "maximum": 1000},
                 "budget_seconds": {"type": "integer", "minimum": 1, "maximum": 900},
@@ -690,13 +695,24 @@ def validate_manifest(value: Any) -> None:
             raise _invalid(error.message) from error
         if ("paging" in collection) == ("sources" in collection):
             raise _invalid("List collection requires exactly one of paging or sources")
+        if collection.get("validate_sources") and "sources" not in collection:
+            raise _invalid("source validation requires named sources")
         if "sources" in collection:
+            if "latest_by" in collection:
+                raise _invalid("named sources require source-level latest_by")
             _validate_primary(collection, verified=True)
             for name, source in collection["sources"].items():
                 if re.fullmatch(r"[a-z][a-z0-9_]*", name) is None:
                     raise _invalid("List source name has invalid spelling")
                 _validate_paging(source)
                 _validate_primary(source, verified=True)
+                if (
+                    collection.get("validate_sources")
+                    and source["paging"]["mode"] != "single"
+                ):
+                    raise _invalid(
+                        "source validation requires bounded single-page sources"
+                    )
         else:
             _validate_paging(collection)
             if collection["primary_id"]["type"] == "unproven" and value["identity"]:
@@ -892,6 +908,8 @@ class Registry:
                     required.add("detail_capability")
                 elif "sources" in value.get("collection", {}):
                     required |= {"source_capability", "source_scope", "assemble"}
+                    if value["collection"].get("validate_sources"):
+                        required.add("validate_sources")
                 else:
                     required.add("capability")
             arguments = {
@@ -905,6 +923,7 @@ class Registry:
                 "source_capability": ("source", {}),
                 "source_scope": ("source", {}),
                 "assemble": ({}, {}),
+                "validate_sources": ({}, {}),
                 "query_capability": ("list", "query", {}),
                 "query_list": ({}, None),
                 "query_get": ({}, "identity", None),
