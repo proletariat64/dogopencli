@@ -27,6 +27,13 @@ All native fields, types, unknown values, nesting and arrival order are retained
 after the creation window is valid. Decision, operation and completion statuses
 remain distinct, as do successful decision and operation amounts.
 
+The standard SDK selects the complete latest row per `taskId` using strictly
+validated `lastModifiedTime`. Its offset-free local clock becomes an internal
+calendar/clock ordinal only; no timezone or Unix instant is inferred. Raw values
+are preserved. Resolved versions and equal-order last-arrival ties warn and pass
+default/strict acceptance when coverage is complete. Missing or invalid ordering
+fails; genuine count or traversal gaps remain independent.
+
 Live reads do not replace the saved capture. Complete nonempty explicit refresh
 can publish a capture for offline replay. Empty, failed or incomplete refresh
 preserves the previous rows and capture time. No automatic Duckdog import, Get,

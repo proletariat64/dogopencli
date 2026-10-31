@@ -91,6 +91,7 @@ def record(case, index=0):
             sourceId="SOURCE",
             amount="0.123456789012345678901",
             executeTime="2026-04-01 00:00:00",
+            gmtModified="2026-04-02 00:00:00",
             status="UNRECOGNIZED_NATIVE",
         )
     elif case == "transfers":
@@ -457,7 +458,7 @@ def test_conflict_rejects_inconsistent_rows(installed):
     rows = [record(case, i) for i in range(2)]
     last = {**rows[0], "unknown": "CHANGED"}
     browser.business_script.append(page(case, [rows[0], last, rows[1]], 3))
-    if case == "transfers":
+    if case in {"transfers", "demands"}:
         result = cli("list", "--live", "--limit", "0")
         assert result["data"] == [last, rows[1]]
         assert result["error"] is None
