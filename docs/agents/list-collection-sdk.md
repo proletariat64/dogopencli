@@ -235,7 +235,9 @@ that source does not deliver its separate baseline/detail composition.
 
 For an accepted relationship, declare `collection.sources` instead of top-level
 `paging`. Keep the provider and aggregate `primary_id`; each named source declares
-only `paging` and its own `primary_id`. Source names exactly match the leaf hooks;
+`paging`, its own `primary_id`, and optional `latest_by`. Selection stays inside
+the standard collector and its proof remains in each source acquisition. Do not
+put `latest_by` on the aggregate collection. Source names exactly match the leaf hooks;
 sources cannot nest. The [sources sample](../../tools/leaf-dev/example-sources/)
 shows the complete declaration and native mapping.
 
@@ -245,6 +247,15 @@ plus aggregate `scope` and `filter`. Source capabilities use the same request an
 parser hooks as ordinary Lists. The host's `collect_sources` reuses `collect_list`
 for all required sources under one global deadline and logical-page budget,
 including fallback attempts. It calls assembly only after all sources are complete.
+
+For bounded single-page sources only, `collection.validate_sources: true` requires
+pure `validate_sources(retained_records_by_source, parameters) -> None`. The host
+retains full parsed source records transiently, including duplicate versions and
+padding, with internal ordering fields removed. After complete acquisition it calls
+this validation before assembly, independently of selected winner records. A raised
+error rejects the aggregate. This supports full double-read stability without a
+hash witness or durable history store; it cannot weaken source completeness.
+Sources without this declaration retain no extra raw-version collection.
 Any failed/incomplete source fails the aggregate atomically and preserves prior
 cache. An empty child array can follow a successful complete source with no match;
 it cannot stand for a failed or unqueried source.

@@ -16,6 +16,12 @@ class LeafAdapter(Protocol):
 
     def source_scope(self, name: str, parameters: dict[str, Any]) -> str: ...
 
+    def validate_sources(
+        self,
+        retained_records_by_source: dict[str, list[dict[str, Any]]],
+        parameters: dict[str, Any],
+    ) -> None: ...
+
     def assemble(
         self,
         records_by_source: dict[str, list[dict[str, Any]]],

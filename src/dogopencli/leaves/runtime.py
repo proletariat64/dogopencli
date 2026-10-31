@@ -652,6 +652,9 @@ def execute(
                         domain=leaf.domain,
                         leaf_id=leaf.id,
                         state_file=config_file.parent / "collection-state.json",
+                        validate_sources=leaf.adapter.validate_sources
+                        if collection.get("validate_sources")
+                        else None,
                     )
                 else:
                     transport = session.transport(capability)
