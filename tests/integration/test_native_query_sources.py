@@ -324,7 +324,7 @@ def test_invalid_source_and_qualified_response_declarations_fail_static_install(
     elif fault == "source_budget":
         source["budget_seconds"] = 60
     elif fault == "source_extra_key":
-        source["latest_by"] = "version"
+        source["unexpected_policy"] = "version"
     elif fault == "source_missing_identity":
         source.pop("primary_id")
     elif fault in {"source_unproven", "aggregate_unproven"}:
