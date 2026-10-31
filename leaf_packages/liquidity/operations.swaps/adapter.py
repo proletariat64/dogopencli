@@ -93,7 +93,9 @@ def validate_record(row: Any) -> None:
             raise CliError(
                 INVALID_RESPONSE, f"swap {field} must be valid native YYYYMMDD"
             ) from error
-    for field in ("gmtCreate", "gmtModified", "gmtSend", "gmtReturn", "nodeNum"):
+    if type(row.get("gmtModified")) is not int:
+        raise CliError(INVALID_RESPONSE, "swap gmtModified must be a native integer")
+    for field in ("gmtCreate", "gmtSend", "gmtReturn", "nodeNum"):
         if row.get(field) is not None and type(row[field]) is not int:
             raise CliError(
                 INVALID_RESPONSE, f"swap {field} must be a native integer or null"

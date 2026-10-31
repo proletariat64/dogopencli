@@ -287,12 +287,13 @@
     "GET /api/ptr/manage/query.json on iglobalfundcontrol.alipay.com, pageNo=0/pageSize=500 and only bound modifiedTimeBegin/modifiedTimeEnd. Application entry: https://ifundcontrol.alipay.com/productOperation/paymentProductManagement/productPTRManagement/orderInquiry.",
     "Explicit second-precision numeric offsets only; normalize instants to Shanghai +08:00. Reject unknown -00:00, fractional seconds, missing offsets, nonordered spans, spans exceeding 31 days and future upper bounds.",
     "Each native query expands both boundaries by one second. Each padded read must prove native total/unique identity coverage within fixed width 500; 500 is the scoped fixed policy, not a measured backend maximum.",
-    "Read the same padded scope twice under one shared request/deadline budget. Compare retained projections sorted by native ptrOrderId before trimming; changed padding records fail too.",
+    "Read the same padded scope twice under one shared request/deadline budget. Pure validation compares every retained version sorted by native ptrOrderId before selected-winner trimming; changes in discarded versions or padding fail too.",
     "After full padded stability, retain start <= gmtModified < end, sorted lexically by ptrOrderId. Padded native totals and both acquisition records remain in evidence; public output count is separate.",
     "Preserve the assigned PTR field allowlist, retained debtorAmount/returnAmount money keys and productionTrialRunFundOutAbilityVO baseline keys. Unknown fields are omitted; no money normalization or derived verification interpretation.",
     "Exact local scalar/nested whole-string filters only. Live never publishes; complete nonempty refresh publishes, and failed/incomplete/empty refresh preserves the saved snapshot. Offline uses the saved window; explicit acquisition bounds require a fresh live query.",
     "List only; no Get, execution, trial, withdrawal, approval or update action. No automatic Duckdog import; exact workflow observations require explicit preserve import.",
-    "History uses inclusive UTC-millisecond gmtModified bounds [start, end-1ms], with lossless whole-second public conversion and explicit windows only. No cross-range equivalence is claimed."
+    "History uses inclusive UTC-millisecond gmtModified bounds [start, end-1ms], with lossless whole-second public conversion and explicit windows only. No cross-range equivalence is claimed.",
+    "Each standard source declares latest_by=gmtModified: greatest validated native integer order selects a whole retained projection; equal-order differing versions use last arrival with a warning. Legitimate selection is exit 0 in default and strict modes when traversal is complete; native unique-object totals and real gaps remain independent."
   ],
   "examples": [
     {
@@ -325,7 +326,8 @@
           "fields": [
             "ptrOrderId"
           ]
-        }
+        },
+        "latest_by": "gmtModified"
       },
       "second": {
         "paging": {
@@ -339,10 +341,12 @@
           "fields": [
             "ptrOrderId"
           ]
-        }
+        },
+        "latest_by": "gmtModified"
       }
     },
     "max_pages": 2,
-    "budget_seconds": 900
+    "budget_seconds": 900,
+    "validate_sources": true
   }
 }

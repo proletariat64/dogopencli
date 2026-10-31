@@ -79,10 +79,13 @@ fields; offset parsers may return `(rows, None)`. Evidence keeps null total and
 and [VA capacity package](../../leaf_packages/collection/va.capacity/).
 
 For an accepted multi-source model, replace top-level `paging` with a nonempty
-`sources` map. Each source declares only its own `paging` and `primary_id`;
+`sources` map. Each source declares its own `paging`, `primary_id` and optional `latest_by`;
 the provider and overall execution bounds are shared. Keep top-level
 `primary_id` for the assembled root. No nested source sets or inferred join:
 see [the executable sources sample](example-sources/).
+For bounded `single` sources, `collection.validate_sources: true` opts into the
+pure full-retained-source validation hook before selected-record assembly. The
+SDK holds these full rows transiently only; it does not persist historical versions.
 
 [The SDK contract](../../docs/agents/list-collection-sdk.md) owns provider isolation,
 identity rules, unknown semantics, fallback and quality evidence.
@@ -133,6 +136,7 @@ The [runtime](../../src/dogopencli/leaves/runtime.py) invokes these methods:
 | `capability(parameters)` | Single-source List: validate inputs and return a native transport capability. No inquiry. |
 | `source_capability(name, parameters)` | Declared multi-source List: return that source's independent restricted capability. No inquiry. |
 | `source_scope(name, parameters)` | Declared multi-source List: exact stable native scope for that source. |
+| `validate_sources(retained_records_by_source, parameters)` | With the explicit collection declaration and bounded single-page sources: pure validation of full parsed source contents before assembly; return None or raise, no queries. |
 | `assemble(records_by_source, parameters)` | Pure leaf-owned mapping of all complete sources to reviewed aggregate roots; no queries. |
 | `freeze_parameters(parameters)` | With explicit List opt-in: return the full parameter dictionary with dynamic defaults materialized before planning. Preserve every explicit input; no inquiry or side effects. |
 | `scope(parameters)` | Stable string describing the native acquisition scope; canonical JSON suits structured inputs. |

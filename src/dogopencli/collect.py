@@ -525,6 +525,7 @@ def _list_candidate(
     progress: Callable[[int, int], None] | None,
     previous_holes: list[dict] | None = None,
     observations: list[dict] | None = None,
+    retained_records: list[dict[str, Any]] | None = None,
 ) -> CollectedScope:
     """One independent native scope; positional pages are never cross-mixed."""
     mode = collection["paging"]["mode"]
@@ -639,6 +640,15 @@ def _list_candidate(
                 problems.append(reason)
         pages += 1
         arrivals += len(rows)
+        if retained_records is not None:
+            retained_records.extend(
+                {
+                    key: value
+                    for key, value in row.items()
+                    if key not in capability.contract.internal_fields
+                }
+                for row in rows
+            )
         for row in rows:
             if not has_identity:
                 content = canonical(row)
@@ -792,6 +802,7 @@ def collect_list(
     progress: Callable[[int, int], None] | None = None,
     _deadline: float | None = None,
     _page_budget: _PageBudget | None = None,
+    _retained_records: list[dict[str, Any]] | None = None,
 ) -> CollectedScope:
     """General List API for trusted, manifest-validated native Leaf contracts.
 
@@ -823,6 +834,11 @@ def collect_list(
         or set(internal) & set(collection["primary_id"].get("fields", ()))
     ):
         raise CliError(INVALID_RESPONSE, "invalid internal collection fields")
+    if _retained_records is not None and collection["paging"]["mode"] != "single":
+        raise CliError(
+            INVALID_RESPONSE,
+            "source validation requires bounded single-page collection",
+        )
     sizes = tuple(collection["paging"]["page_sizes"])
     single_response = collection["paging"]["mode"] == "single_response"
     short_page = collection["paging"].get("termination") == "short_page"
@@ -924,6 +940,8 @@ def collect_list(
                 source_total_rows=None,
                 request_attempts=0,
             ):
+                if _retained_records is not None:
+                    _retained_records.clear()
                 result = _list_candidate(
                     capability,
                     transport,
@@ -935,6 +953,7 @@ def collect_list(
                     progress,
                     previous_holes,
                     observations,
+                    _retained_records,
                 )
                 report(source_rows_selected=len(result.records))
         except CliError as error:
@@ -989,6 +1008,8 @@ def collect_sources(
     state_file: Any = None,
     budget_seconds: float | None = None,
     max_pages: int | None = None,
+    validate_sources: Callable[[dict[str, list[dict[str, Any]]], dict[str, Any]], None]
+    | None = None,
 ) -> CollectedScope:
     """Acquire flat required sources before invoking a pure leaf-owned assembly.
 
@@ -1021,6 +1042,13 @@ def collect_sources(
     if type(page_limit) is not int or page_limit < 1:
         raise CliError(INVALID_RESPONSE, "invalid List acquisition limits")
     page_budget = _PageBudget(page_limit)
+    if (
+        bool(collection.get("validate_sources")) != (validate_sources is not None)
+        or validate_sources is not None
+        and not callable(validate_sources)
+    ):
+        raise CliError(INVALID_RESPONSE, "source validation must match its declaration")
+    retained_sources: dict[str, list[dict[str, Any]]] = {}
     records: dict[str, list[dict[str, Any]]] = {}
     source_evidence: dict[str, dict[str, Any]] = {}
     rebuilt = False
@@ -1028,7 +1056,15 @@ def collect_sources(
         capability, scope = sources[name]
         if (
             not isinstance(policy, dict)
-            or set(policy) != {"paging", "primary_id"}
+            or not {"paging", "primary_id"} <= set(policy)
+            or set(policy) - {"paging", "primary_id", "latest_by"}
+            or (
+                "latest_by" in policy
+                and (
+                    not isinstance(policy["latest_by"], str)
+                    or not policy["latest_by"].strip()
+                )
+            )
             or policy["primary_id"]["type"] == "unproven"
             or not isinstance(scope, str)
         ):
@@ -1039,6 +1075,7 @@ def collect_sources(
                 raise CliError(
                     TIMEOUT, "List global page budget exhausted", retryable=True
                 )
+            retained = [] if validate_sources is not None else None
             transport = transport_factory(capability)
             try:
                 result = collect_list(
@@ -1051,6 +1088,7 @@ def collect_sources(
                     state_file=state_file,
                     _deadline=deadline,
                     _page_budget=page_budget,
+                    _retained_records=retained,
                 )
             finally:
                 transport.close()
@@ -1061,6 +1099,8 @@ def collect_sources(
             }
             check_complete(result.evidence, require_complete=True)
             records[name] = result.records
+            if retained is not None:
+                retained_sources[name] = retained
             rebuilt = rebuilt or result.rebuilt
         except CliError as error:
             failures = dict(source_evidence)
@@ -1077,6 +1117,21 @@ def collect_sources(
             ) from error
 
     remaining_seconds(deadline)
+    if validate_sources is not None:
+        try:
+            if validate_sources(retained_sources, parameters) is not None:
+                raise CliError(
+                    INVALID_RESPONSE, "source validation must return no value"
+                )
+            remaining_seconds(deadline)
+        except CliError as error:
+            raise CliError(
+                error.code,
+                error.message,
+                retryable=error.retryable,
+                exit_code=error.exit_code,
+                meta={**(error.meta or {}), "sources": source_evidence},
+            ) from error
     assembled = assemble(records, parameters)
     remaining_seconds(deadline)
     if not isinstance(assembled, list) or any(

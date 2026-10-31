@@ -599,3 +599,188 @@ def test_replaced_updated_options_are_rejected(installed):
     )
     assert failure["error"]["code"] == "INVALID_ARGUMENT"
     assert not browser.transports
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("strict", [False, True])
+def test_stable_versions_select_latest_with_source_proof(installed, reverse, strict):
+    cli, browser, _ = installed
+    older = row(modified=START_MS, verifyStatus="INIT")
+    newer = row(modified=START_MS + 1000, verifyStatus="VERIFIED")
+    rows = [newer, older] if reverse else [older, newer]
+    browser.business_script.extend([page(rows, 1), page(deepcopy(rows), 1)])
+    flags = ["--require-complete"] if strict else []
+    result = cli("list", "--live", *BOUNDS, "--limit", "0", *flags)
+    assert result["data"][0]["verifyStatus"] == "VERIFIED"
+    assert result["error"] is None
+    assert result["meta"]["complete"] is True
+    assert any(w["code"] == "LATEST_BY_SELECTION" for w in result["meta"]["warnings"])
+    for source in result["meta"]["acquisition"]["sources"].values():
+        evidence = source["acquisition"]
+        assert evidence["arrivals"] == 2
+        assert evidence["reported_total"] == 1
+        assert evidence["collected_total"] == 1
+        assert evidence["selection"]["latest_by"] == "gmtModified"
+        assert evidence["selection"]["resolved_version_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "mutation", ["older_content", "missing_version", "padding", "version_order"]
+)
+def test_selected_winners_cannot_hide_unstable_full_sources(installed, mutation):
+    cli, browser, _ = installed
+    modified = START_MS - 500 if mutation == "padding" else START_MS
+    first = [
+        row(modified=modified),
+        row(modified=START_MS + 1000, verifyStatus="VERIFIED"),
+    ]
+    second = deepcopy(first)
+    if mutation in {"older_content", "padding"}:
+        second[0]["verifyStatus"] = "CHANGED"
+    elif mutation == "missing_version":
+        second.pop(0)
+    else:
+        second.reverse()
+    browser.business_script.extend([page(first, 1), page(second, 1)])
+    result = cli("list", "--live", *BOUNDS, "--require-complete", code=1)
+    assert result["error"]["code"] == "INCOMPLETE_RESULT"
+    assert "padded scope changed" in result["error"]["message"]
+    assert result["data"] is None
+    assert len(browser.business_requests) == 2
+    assert cli("list", code=1)["error"]["code"] == "CACHE_MISS"
+
+
+def test_stable_equal_order_ties_keep_last_complete_row(installed):
+    cli, browser, _ = installed
+    first = row(verifyStatus="INIT")
+    last = row(verifyStatus="VERIFIED", unknownNested={"items": [None, False, "1.000"]})
+    rows = [first, last]
+    browser.business_script.extend([page(rows, 1), page(deepcopy(rows), 1)])
+    result = cli("list", "--live", *BOUNDS, "--require-complete", "--limit", "0")
+    assert result["data"][0]["verifyStatus"] == "VERIFIED"
+    assert result["data"][0]["gmtModified"] == START_MS
+    # PTR preserves its existing projection, not arbitrary unqualified fields.
+    assert result["meta"]["complete"] is True
+    for source in result["meta"]["acquisition"]["sources"].values():
+        assert source["acquisition"]["selection"]["equal_order_count"] == 1
+
+
+def test_selected_source_proof_survives_refresh_and_offline(installed):
+    cli, browser, _ = installed
+    rows = [row(), row(modified=START_MS + 1000, verifyStatus="VERIFIED")]
+    browser.business_script.extend([page(rows, 1), page(deepcopy(rows), 1)])
+    refreshed = cli("refresh", *BOUNDS, "--require-complete")
+    assert refreshed["meta"]["published"] is True
+    request_count = len(browser.business_requests)
+    offline = cli("list", "--require-complete", "--limit", "0")
+    assert len(offline["data"]) == 1
+    assert offline["data"][0]["verifyStatus"] == "VERIFIED"
+    assert offline["meta"]["acquisition"] == refreshed["meta"]["acquisition"]
+    assert offline["meta"]["warnings"]
+    assert len(browser.business_requests) == request_count
+    assert set(offline["meta"]["acquisition"]["sources"]["first"]) == {
+        "scope",
+        "acquisition",
+    }
+
+
+def test_cached_source_selection_requires_its_witness(installed):
+    import sqlite3
+
+    from dogopencli.jsonutil import canonical
+
+    cli, browser, config = installed
+    rows = [row(), row(modified=START_MS + 1000, verifyStatus="VERIFIED")]
+    browser.business_script.extend([page(rows, 1), page(deepcopy(rows), 1)])
+    cli("refresh", *BOUNDS, "--require-complete")
+    with sqlite3.connect(config / "leaf-cache.sqlite3") as database:
+        saved = database.execute("SELECT acquisition FROM snapshots").fetchone()[0]
+        evidence = parse(saved)
+        evidence["sources"]["first"]["acquisition"].pop("selection")
+        database.execute("UPDATE snapshots SET acquisition=?", [canonical(evidence)])
+    result = cli("list", "--require-complete", code=1)
+    assert result["data"] is None
+    assert result["error"]["code"] == "INVALID_RESPONSE"
+
+
+def test_selected_source_proof_survives_exact_workflow_import(installed, run_cli):
+    _, browser, _ = installed
+
+    def command(*args):
+        status, output, error = run_cli(list(args))
+        assert status == 0, output + error
+        return parse(output)["data"]
+
+    plan = command(
+        "workflow",
+        "plan",
+        "create",
+        "--leaf",
+        "payment.ptr.orders",
+        "--parameters",
+        json.dumps({"from-time": START, "to-time": END}),
+    )
+    rows = [row(), row(modified=START_MS + 1000, verifyStatus="VERIFIED")]
+    browser.business_script.extend([page(rows, 1), page(deepcopy(rows), 1)])
+    run = command("workflow", "export", "create", "--plan", plan["id"])
+    exported = command("workflow", "export", "run", "--run", run["id"], "--limit", "0")
+    artifact = command("workflow", "export", "show", "--export", exported["id"])
+    acquisition = artifact["metadata"]["acquisition"]
+    assert (
+        acquisition["sources"]["first"]["acquisition"]["selection"][
+            "resolved_version_count"
+        ]
+        == 1
+    )
+    assert len(artifact["records"]) == 1
+    assert artifact["records"][0]["verifyStatus"] == "VERIFIED"
+    prepared = command(
+        "workflow", "import", "plan", "--export", artifact["id"], "--action", "preserve"
+    )
+    request_count = len(browser.business_requests)
+    command("workflow", "import", "apply", "--plan", prepared["id"])
+    observed = command("workflow", "observation", "show", "--export", artifact["id"])
+    assert observed["records"] == artifact["records"]
+    assert observed["metadata"]["acquisition"] == acquisition
+    assert len(browser.business_requests) == request_count
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["aggregate_order", "blank_order", "paged_validation", "unnamed_validation"],
+)
+def test_source_selection_policy_rejects_invalid_declarations(run_cli, tmp_path, fault):
+    source = tmp_path / "source"
+    shutil.copytree(SOURCE, source)
+    manifest_path = source / "leaf.json"
+    manifest = parse(manifest_path.read_text())
+    policy = manifest["collection"]
+    if fault == "aggregate_order":
+        policy["latest_by"] = "gmtModified"
+    elif fault == "blank_order":
+        policy["sources"]["first"]["latest_by"] = " "
+    elif fault == "paged_validation":
+        policy["sources"]["first"]["paging"]["mode"] = "offset"
+    else:
+        policy.pop("sources")
+        policy["paging"] = {"mode": "single", "page_sizes": [500]}
+    manifest_path.write_text(json.dumps(manifest))
+    status, output, error = run_cli(["plugins", "install", str(source)])
+    assert status == 1, output + error
+    assert parse(output)["error"]["code"] == "INVALID_LEAF"
+
+
+def test_winner_in_padding_does_not_fall_back_to_older_public_version(installed):
+    cli, browser, _ = installed
+    rows = [row(), row(modified=END_MS, verifyStatus="VERIFIED")]
+    browser.business_script.extend([page(rows, 1), page(deepcopy(rows), 1)])
+    result = cli("list", "--live", *BOUNDS, "--require-complete", "--limit", "0")
+    assert result["data"] == []
+    assert result["error"] is None
+    assert result["meta"]["complete"] is True
+    assert (
+        result["meta"]["acquisition"]["sources"]["first"]["acquisition"][
+            "collected_total"
+        ]
+        == 1
+    )
