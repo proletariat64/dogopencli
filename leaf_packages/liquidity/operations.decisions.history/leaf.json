@@ -14,25 +14,7 @@
           "required": true,
           "description": "Native integer id of the current decision report; distinct from historical version ids."
         }
-      ],
-      "execution": "custom",
-      "queries": {
-        "root": {
-          "kind": "detail",
-          "result_identity": {
-            "fields": [
-              "id"
-            ],
-            "description": "Native integer current report id, independently matched to the selected request."
-          }
-        },
-        "history": {
-          "kind": "inquiry",
-          "result_shape": "array"
-        }
-      },
-      "max_requests": 6,
-      "budget_seconds": 300
+      ]
     }
   },
   "identity": [
@@ -70,17 +52,58 @@
     "relation": "liquidity_operations_decisions_history"
   },
   "limitations": [
-    "POST /api/ai/decision/report/getDetail.json and then /api/ai/decision/report/getHistory.json with exactly tntInstId=GUAPW3SG and the selected integer id. Both inquiries share the host request allowance and deadline.",
+    "POST /api/ai/decision/report/getDetail.json and then /api/ai/decision/report/getHistory.json with exactly tntInstId=GUAPW3SG and the selected integer id. Two independent standard single-response sources share a 300-second deadline and two logical pages, with existing bounded retries.",
     "Current native detail must echo the requested integer id and provide nonblank reportId/groupId/tntInstId. Every historical row must match all three fields and have integer id/version. Duplicate history ids fail; no winner is selected.",
-    "The accepted completion boundary is the entire native history response array. Native total remains unknown; no claim is made about backend versions absent from that array or atomic consistency between the two inquiries.",
+    "Each source is qualified as one entire native response with unknown native total. The host retains separate root/history acquisition evidence and a validated_sources aggregate; no claim is made about backend versions absent from the returned array or atomic consistency between the sequential inquiries.",
     "Return only native historical records in response order, preserving all fields, nested values, numeric precision and nulls. Never append the current detail. An empty history array is valid and remains empty.",
     "Live does not publish. Complete nonempty refresh publishes and offline replays its own saved scope; failed or empty refresh preserves the previous capture. Auth, business, schema, identity and lineage failures abort the entire inquiry.",
-    "No public Get, arbitrary report query, legacy runtime dependency, native value conversion or new Duckdog import."
+    "No public Get, arbitrary report query, latest-version selection, legacy runtime dependency or native value conversion. Workflow preserve import retains independent observations without replacing current data."
   ],
   "examples": [
     {
       "title": "Read one decision report history",
       "command": "dogopencli liquidity list operations.decisions.history --live --id 123 --require-complete --limit 0"
     }
-  ]
+  ],
+  "collection": {
+    "provider": "general",
+    "primary_id": {
+      "type": "field",
+      "fields": [
+        "id"
+      ]
+    },
+    "sources": {
+      "root": {
+        "paging": {
+          "mode": "single_response",
+          "page_sizes": [
+            0
+          ]
+        },
+        "primary_id": {
+          "type": "field",
+          "fields": [
+            "id"
+          ]
+        }
+      },
+      "history": {
+        "paging": {
+          "mode": "single_response",
+          "page_sizes": [
+            0
+          ]
+        },
+        "primary_id": {
+          "type": "field",
+          "fields": [
+            "id"
+          ]
+        }
+      }
+    },
+    "max_pages": 2,
+    "budget_seconds": 300
+  }
 }
