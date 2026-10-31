@@ -1,3 +1,3 @@
 """dogopencli: inquiry-only CLI for payment and collection product operations."""
 
-__version__ = "0.6.2"
+__version__ = "0.6.3"
