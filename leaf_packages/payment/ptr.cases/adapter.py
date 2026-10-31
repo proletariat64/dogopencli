@@ -14,7 +14,6 @@ from dogopencli.errors import (
     CliError,
 )
 from dogopencli.jsonutil import canonical, parse
-from dogopencli.leaves.query import CustomListResult
 
 STRINGS = frozenset(
     {
@@ -207,36 +206,33 @@ CAPABILITY = Cases()
 
 
 class Adapter:
-    def query_capability(
-        self, operation: str, name: str, parameters: dict[str, Any]
-    ) -> Cases:
+    def source_capability(self, name: str, parameters: dict[str, Any]) -> Cases:
         validate_filters(parameters)
-        if operation != "list" or name != "cases":
+        if name not in {"first", "second"}:
             raise CliError(REQUEST_NOT_ALLOWED, "undeclared PTR inquiry")
         return CAPABILITY
+
+    def source_scope(self, name: str, parameters: dict[str, Any]) -> str:
+        self.source_capability(name, parameters)
+        return SCOPE
 
     def scope(self, parameters: dict[str, Any]) -> str:
         validate_filters(parameters)
         return SCOPE
 
-    def query_list(self, parameters: dict[str, Any], tools: Any) -> CustomListResult:
-        scope = self.scope(parameters)
-        first = tools.collect("cases", scope)
-        second = tools.collect("cases", scope)
-        first_rows = sorted(first.records, key=lambda row: row["id"])
-        second_rows = sorted(second.records, key=lambda row: row["id"])
-        if (
-            not first.evidence.scope_complete
-            or not first.evidence.dataset_complete
-            or not second.evidence.scope_complete
-            or not second.evidence.dataset_complete
-            or first.evidence.reported_total != second.evidence.reported_total
-            or canonical(first_rows) != canonical(second_rows)
-        ):
+    def assemble(
+        self, records_by_source: dict[str, list[dict]], parameters: dict[str, Any]
+    ) -> list[dict]:
+        validate_filters(parameters)
+        first_rows = sorted(records_by_source["first"], key=lambda row: row["id"])
+        second_rows = sorted(records_by_source["second"], key=lambda row: row["id"])
+        # Each complete source proves native total equals retained unique rows.
+        # Equal full projections therefore also establish equal native totals.
+        if canonical(first_rows) != canonical(second_rows):
             raise CliError(
                 INCOMPLETE_RESULT, "PTR library changed between complete reads"
             )
-        return CustomListResult(first_rows, first.evidence)
+        return first_rows
 
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]
