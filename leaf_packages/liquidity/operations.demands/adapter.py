@@ -27,6 +27,7 @@ PAGE_SIZE = 5000
 PUBLIC_TIME = "%Y-%m-%dT%H:%M:%S"
 NATIVE_TIME = "%Y-%m-%d %H:%M:%S"
 SOURCE_ZONE = timezone(timedelta(hours=8))
+ORDER = "__dogopencli_demand_order"
 STRING_FIELDS = (
     "taskId",
     "tntInstId",
@@ -52,6 +53,25 @@ def timestamp(value: Any, format_string: str) -> datetime:
     if parsed.strftime(format_string) != value:
         raise ValueError
     return parsed
+
+
+def modification_order(row: dict[str, Any]) -> int:
+    try:
+        if ORDER in row:
+            raise ValueError
+        parsed = timestamp(row.get("gmtModified"), NATIVE_TIME)
+    except ValueError as error:
+        raise CliError(
+            INVALID_RESPONSE,
+            "funding demand gmtModified must be a valid native local second clock "
+            "without reserved ordering fields",
+        ) from error
+    return (
+        parsed.toordinal() * 86400
+        + parsed.hour * 3600
+        + parsed.minute * 60
+        + parsed.second
+    )
 
 
 def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
@@ -114,6 +134,7 @@ class Inquiry:
             path="/riskActionTaskQuery.json",
             page_size=PAGE_SIZE,
             one_based=False,
+            internal_fields=(ORDER,),
             allowed_body_keys=frozenset({"tntInstId", "riskActionTaskQueryVO"}),
             fixed_body_values=(("tntInstId", TENANT),),
             json_body_contracts=(
@@ -166,9 +187,11 @@ class Inquiry:
             raise CliError(
                 INVALID_RESPONSE, "demand scope exceeds 5000; narrow execution bounds"
             )
+        selected = []
         for row in rows:
             validate_record(row)
-        return ParsedPage(rows, 0, PAGE_SIZE, total, -(-total // PAGE_SIZE))
+            selected.append({**row, ORDER: modification_order(row)})
+        return ParsedPage(selected, 0, PAGE_SIZE, total, -(-total // PAGE_SIZE))
 
     def validate_rows_scope(self, rows: list[dict[str, Any]], scope: str) -> None:
         if scope != canonical(self.values):

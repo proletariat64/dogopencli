@@ -30,7 +30,8 @@
         "from_parameter": "from-time",
         "to_parameter": "to-time",
         "splitting": "explicit_windows",
-        "cross_range_equivalence": false
+        "cross_range_equivalence": false,
+        "modification_time": "lastModifiedTime (native offset-free local clock; timezone not inferred)"
       }
     }
   },
@@ -104,7 +105,8 @@
     "Inquiry only: no Get, per-task detail, execution, confirmation, edit, history or joined strategy records.",
     "The frontend date picker rejects a truncated elapsed-day difference greater than 30; ordered second-precision bounds therefore must be fewer than 31 elapsed days apart.",
     "Large scopes can exhaust the shared request or time budget; narrow created-time bounds. No automatic date partitioning or alternate endpoint.",
-    "Live inquiry does not publish. Only complete nonempty explicit refresh replaces the saved capture; empty/error/incomplete refresh preserves prior rows and capture time. No Duckdog import."
+    "Live inquiry does not publish. Only complete nonempty explicit refresh replaces the saved capture; empty/error/incomplete refresh preserves prior rows and capture time. No Duckdog import.",
+    "Standard latest_by selects the complete latest row per taskId by strictly validated lastModifiedTime; the raw offset-free local clock is preserved and compared through an internal calendar/clock ordinal, without inventing a timezone or Unix instant. Missing or invalid modification clocks are rejected; resolved versions/ties warn and remain complete when native acquisition coverage is complete."
   ],
   "examples": [
     {
@@ -128,6 +130,7 @@
       "fields": [
         "taskId"
       ]
-    }
+    },
+    "latest_by": "__dogopencli_automatic_task_order"
   }
 }

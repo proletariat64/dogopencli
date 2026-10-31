@@ -23,6 +23,7 @@ PAGE_SIZE = 10
 PUBLIC_TIME = "%Y-%m-%dT%H:%M:%S"
 NATIVE_TIME = "%Y-%m-%d %H:%M:%S"
 SOURCE_ZONE = timezone(timedelta(hours=8))
+ORDER = "__dogopencli_automatic_task_order"
 
 
 def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
@@ -54,6 +55,33 @@ def native_scope(parameters: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def modification_order(row: dict[str, Any]) -> int:
+    value = row.get("lastModifiedTime")
+    try:
+        if (
+            ORDER in row
+            or not isinstance(value, str)
+            or len(value) != 19
+            or not value.isascii()
+        ):
+            raise ValueError
+        parsed = datetime.strptime(value, NATIVE_TIME)
+        if parsed.strftime(NATIVE_TIME) != value:
+            raise ValueError
+    except ValueError as error:
+        raise CliError(
+            INVALID_RESPONSE,
+            "automatic-operation lastModifiedTime must be a valid native local "
+            "second clock without reserved ordering fields",
+        ) from error
+    return (
+        parsed.toordinal() * 86400
+        + parsed.hour * 3600
+        + parsed.minute * 60
+        + parsed.second
+    )
+
+
 class Inquiry:
     name = "liquidity.operations.automatic_tasks.list"
     page_url = LIQUIDITY_STARTUP_URL
@@ -67,6 +95,7 @@ class Inquiry:
             page_size=PAGE_SIZE,
             allowed_page_sizes=(PAGE_SIZE,),
             one_based=False,
+            internal_fields=(ORDER,),
             allowed_body_keys=frozenset({*values, "rowStart", "pageSize"}),
             fixed_body_values=tuple(values.items()),
             encoding="json",
@@ -112,6 +141,7 @@ class Inquiry:
             raise CliError(
                 INVALID_RESPONSE, "invalid automatic-operation rows or native total"
             )
+        selected = []
         for row in rows:
             if (
                 not isinstance(row, dict)
@@ -147,7 +177,8 @@ class Inquiry:
                     "automatic-operation gmtCreate is malformed "
                     "or outside created-time scope",
                 ) from error
-        return rows, total
+            selected.append({**row, ORDER: modification_order(row)})
+        return selected, total
 
 
 class Adapter:

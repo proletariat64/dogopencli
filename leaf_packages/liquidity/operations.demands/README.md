@@ -18,7 +18,7 @@ Native result.dataValue records and result.count describe the queried task scope
 
 All native fields, types, nesting and unknown values are retained. No detail lookup, source join or status interpretation.
 
-The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima.
+The host SDK owns retries, completeness and publication. Its declared `latest_by` selects a complete row per `taskId` by strictly validated `gmtModified`, using an internal local calendar/clock ordinal without inferring a timezone or Unix instant. Raw modification values remain unchanged and independent of the execution-time query axis. Resolved versions and equal-order last-arrival ties warn and pass default/strict acceptance when coverage is complete. Missing or invalid ordering fails; genuine count/traversal gaps remain independent. Widths are qualified request sizes, not measured backend maxima.
 
 Ordinary List reads are offline. Live acquisition does not publish; refresh saves only a complete nonempty capture. Native fields already in the response remain intact; Get runs only when explicitly requested; ordinary Lists perform no additional inquiry.
 
