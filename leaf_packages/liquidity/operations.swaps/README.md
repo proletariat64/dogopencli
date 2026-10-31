@@ -18,6 +18,8 @@ Absolute rowStart offsets use pageSize=1000; records are result.swapOrderVOList 
 
 Preserve complete native JSON, nested values, unknown fields, nullable/grouped decimal strings, native integers and boolean flags. No leg join, rate conversion or detail enrichment.
 
-The host SDK owns retries, completeness and publication. Duplicate/conflicting identities and count gaps remain incomplete; strict refresh preserves the prior capture on rejection. Widths are historical successful request sizes, not measured backend maxima.
+The host SDK owns retries, completeness and publication. Declared latest_by selects the complete native row with greatest required integer gmtModified for each dealId; equal-order differing rows use last arrival with a warning. Valid selection is accepted in default and strict modes when traversal is complete. Native counts and actual coverage gaps remain separate; rejected refresh preserves the prior capture. Widths are historical successful request sizes, not measured backend maxima.
+
+`gmtModified` is required on every row and compared numerically without epoch-unit or timezone inference. Missing, null, boolean, fractional or string ordering values fail. Native timestamps and complete selected rows remain unchanged.
 
 Ordinary List reads are offline. Live acquisition does not publish; refresh saves only a complete nonempty capture. Native fields already in the response remain intact; no Get or additional inquiry is performed.

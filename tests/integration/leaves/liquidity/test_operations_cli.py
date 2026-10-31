@@ -117,6 +117,7 @@ def record(case, index=0):
             nearLegFxRate="1.0000",
             farLegFxRate="0",
             gmtCreate=0,
+            gmtModified=0,
             nodeNum=0,
             needReview=False,
         )
@@ -457,7 +458,7 @@ def test_conflict_rejects_inconsistent_rows(installed):
     rows = [record(case, i) for i in range(2)]
     last = {**rows[0], "unknown": "CHANGED"}
     browser.business_script.append(page(case, [rows[0], last, rows[1]], 3))
-    if case == "transfers":
+    if case in {"transfers", "swaps"}:
         result = cli("list", "--live", "--limit", "0")
         assert result["data"] == [last, rows[1]]
         assert result["error"] is None
