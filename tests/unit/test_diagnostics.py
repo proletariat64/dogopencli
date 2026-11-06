@@ -26,6 +26,7 @@ def test_diagnostic_keeps_safe_cause_and_marks_unknown_facts():
         "The detail query was refused",
         native_code="NATIVE_099",
         component="history",
+        retention="failed",
         consequence="The requested detail cannot be returned",
     )
     assert error == {
@@ -35,6 +36,7 @@ def test_diagnostic_keeps_safe_cause_and_marks_unknown_facts():
         "origin": "backend",
         "stage": "query",
         "component": "history",
+        "retention": "failed",
         "scope": None,
         "retryable": None,
         "native_code": "NATIVE_099",
@@ -120,3 +122,38 @@ def test_shared_warning_normalization_groups_repeated_component_failures():
     assert warnings[0]["native_code"] == "099"
     assert warnings[1]["component"] == "route"
     assert warnings[1]["count"] == 1
+
+
+def test_warning_normalization_preserves_and_separates_retention_categories() -> None:
+    warnings = normalize_warnings(
+        [
+            {
+                "code": "BUSINESS_QUERY_FAILED",
+                "message": "Detail unavailable",
+                "component": "detail",
+                "native_code": 999,
+                "retention": retention,
+            }
+            for retention in ("failed", "refused")
+        ]
+    )
+    assert [(item["retention"], item["native_code"]) for item in warnings] == [
+        ("failed", 999),
+        ("refused", 999),
+    ]
+
+
+@pytest.mark.parametrize("retention", ["", "*", "other", 1, None, ["failed"], {}])
+def test_warning_normalization_rejects_invalid_retention(
+    retention: object,
+) -> None:
+    with pytest.raises(CliError):
+        normalize_warnings(
+            [
+                {
+                    "code": "BUSINESS_QUERY_FAILED",
+                    "message": "Detail unavailable",
+                    "retention": retention,
+                }
+            ]
+        )

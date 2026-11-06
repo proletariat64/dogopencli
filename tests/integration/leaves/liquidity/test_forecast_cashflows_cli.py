@@ -9,7 +9,7 @@ import pytest
 from fake_cdp import FakeBrowser
 
 from dogopencli.browser import cdp
-from dogopencli.jsonutil import parse
+from dogopencli.jsonutil import canonical, parse
 
 ROOT = Path(__file__).resolve().parents[4]
 SOURCE = ROOT / "leaf_packages/liquidity/forecast.cashflows"
@@ -215,4 +215,68 @@ def test_failed_point_acquisition_keeps_previous_snapshot(installed, failure):
 def test_required_ordered_scope_before_browser(installed, flags):
     cli, browser, _ = installed
     assert cli("list", "--live", *flags, code=2)["error"]["code"] == "INVALID_ARGUMENT"
+    assert not browser.transports
+
+
+@pytest.mark.parametrize("action", ["list", "refresh"])
+@pytest.mark.parametrize("option", FLAGS[::2])
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_required_explicit_business_scope_before_browser(
+    installed, action, option, value
+):
+    cli, browser, config = installed
+    flags = [
+        part
+        for index in range(0, len(FLAGS), 2)
+        if FLAGS[index] != option
+        for part in FLAGS[index : index + 2]
+    ]
+    if value is not None:
+        flags.extend([option, value])
+    if action == "list":
+        flags.append("--live")
+    browser.business_script.append(page([row(entity="Z21")]))
+    result = cli(action, *flags, code=2)
+    assert result["error"]["code"] == "INVALID_ARGUMENT"
+    assert not browser.transports
+    assert not browser.business_requests
+    assert not (config / "leaf-cache.sqlite3").exists()
+
+
+def test_help_requires_explicit_acquisition_scope_without_business_defaults(installed):
+    cli, browser, _ = installed
+    help_result = cli("list", "--help")["data"]
+    options = {option["name"]: option for option in help_result["options"]}
+    for name in ("inst_id", "account_alias", "currency", "from_date", "to_date"):
+        option = options[name]
+        assert option["default"] is None
+        modes = option["argument_contract"]["modes"]
+        assert modes["live"]["required"] is True
+        assert modes["cache"]["required"] is False
+    assert not browser.transports
+
+
+@pytest.mark.parametrize("mode", ["full", "history"])
+def test_planning_rejects_missing_entity_before_browser(installed, run_cli, mode):
+    _, browser, _ = installed
+    parameters = {
+        FLAGS[index][2:]: FLAGS[index + 1]
+        for index in range(0, len(FLAGS), 2)
+        if FLAGS[index] != "--inst-id"
+    }
+    code, output, _ = run_cli(
+        [
+            "workflow",
+            "plan",
+            "create",
+            "--leaf",
+            "liquidity.forecast.cashflows",
+            "--mode",
+            mode,
+            "--parameters",
+            canonical(parameters),
+        ]
+    )
+    assert code == 2, output
+    assert parse(output)["error"]["code"] == "INVALID_ARGUMENT"
     assert not browser.transports

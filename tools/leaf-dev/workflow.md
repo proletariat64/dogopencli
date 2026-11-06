@@ -4,7 +4,7 @@ Use [the batch index](batches.md) to find the assigned ticket. Validate the
 current scope map with `tools/leaf-dev/leaf.py batches --plan tools/leaf-dev/batches.json`.
 
 The assigned batch ticket defines the exact leaves and list/get actions. Read
-[the package/adapter handbook](handbook.md) and [CONTEXT.md](../../CONTEXT.md)
+[the package/adapter handbook](handbook.md) and [GLOSSARY.md](../../GLOSSARY.md)
 for current contracts. This document owns the execution sequence; tickets contain
 only their specific business scope, evidence pointers and blockers.
 

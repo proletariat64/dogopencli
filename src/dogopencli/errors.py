@@ -68,6 +68,7 @@ def diagnostic(
     origin: str | None = None,
     stage: str | None = None,
     component: str | None = None,
+    retention: Literal["failed", "refused"] | None = None,
     scope: str | None = None,
     native_code: str | int | None = None,
     consequence: str | None = None,
@@ -108,6 +109,8 @@ def diagnostic(
         "consequence": consequence,
         "action": action if action is not None else default_action,
     }
+    if retention is not None:
+        result["retention"] = retention
     if reason_codes is not None:
         result["reason_codes"] = list(dict.fromkeys(reason_codes))
     if count is not None:
@@ -141,6 +144,7 @@ def normalize_warnings(warnings: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "origin",
                 "stage",
                 "component",
+                "retention",
                 "scope",
                 "native_code",
                 "consequence",
@@ -153,6 +157,8 @@ def normalize_warnings(warnings: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 continue
             if field == "retryable":
                 valid = value is None or isinstance(value, bool)
+            elif field == "retention":
+                valid = isinstance(value, str) and value in {"failed", "refused"}
             else:
                 valid = value is None or isinstance(value, str)
             if not valid:
@@ -170,6 +176,7 @@ def normalize_warnings(warnings: list[dict[str, Any]]) -> list[dict[str, Any]]:
             value["origin"],
             value["stage"],
             value["component"],
+            value.get("retention"),
             value["scope"],
             value["native_code"],
             tuple(value.get("reason_codes", ())),

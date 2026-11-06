@@ -1,10 +1,12 @@
 """custom three-source directory through installation and the public CLI."""
 
 import json
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from zipfile import ZipFile
 
 import pytest
@@ -637,6 +639,73 @@ def test_ambiguous_baseline_alias_aborts_before_detail(installed):
     result = cli("liquidity", "list", LEAF, "--live", code=1)
     assert result["error"]["code"] == "INVALID_RESPONSE"
     assert not any("aliasName" in body for body in browser.business_requests)
+
+
+def test_two_detail_999_failures_preserve_as_qualified_incomplete_observation(
+    installed: tuple[Callable[..., dict[str, Any]], FakeBrowser, Path],
+) -> None:
+    cli, browser, _ = installed
+    rows = [account("SYNTHETIC-A"), account("SYNTHETIC-B")]
+    scripted(
+        browser,
+        rows,
+        rows,
+        failures={row["aliasName"]: failed_detail("999") for row in rows},
+    )
+    plan = cli("workflow", "plan", "create", "--leaf", "liquidity.cash.accounts")[
+        "data"
+    ]
+    assert plan["import_qualification"]["rules"][0]["id"] == "detail-999"
+    run = cli("workflow", "export", "create", "--plan", plan["id"])["data"]
+    exported = cli("workflow", "export", "run", "--run", run["id"])["data"]
+    assert exported["state"] == "incomplete"
+    assert exported["metadata"]["acquisition"]["reasons"] == [
+        "DETAIL_COVERAGE_INCOMPLETE"
+    ]
+    prepared = cli(
+        "workflow",
+        "import",
+        "plan",
+        "--export",
+        exported["id"],
+        "--action",
+        "preserve",
+    )["data"]
+    assert prepared["input_quality"] == "incomplete"
+    assert prepared["qualification"]["rule_id"] == "detail-999"
+    assert prepared["qualification"]["retained_diagnostics"] == [
+        {
+            "component": "detail",
+            "retention": "failed",
+            "diagnostic_code": "BUSINESS_QUERY_FAILED",
+            "native_code": "999",
+            "count": 2,
+        }
+    ]
+    request_count = len(browser.business_requests)
+    applied = cli("workflow", "import", "apply", "--plan", prepared["id"])["data"]
+    assert applied["input_quality"] == "incomplete"
+    assert len(browser.business_requests) == request_count
+    observation = cli("workflow", "observation", "show", "--export", exported["id"])[
+        "data"
+    ]
+    assert observation["records"] == exported["records"]
+    assert observation["metadata"] == exported["metadata"]
+    assert [row["detail_state"] for row in observation["records"]] == [
+        "failed",
+        "failed",
+    ]
+    assert [
+        row["source_metadata"]["detail_error"]["native_code"]
+        for row in observation["records"]
+    ] == ["999", "999"]
+    assert observation["receipt"]["qualification"] == prepared["qualification"]
+    replayed = cli("workflow", "import", "apply", "--plan", prepared["id"])["data"]
+    assert replayed["replayed"] is True
+    status = cli("workflow", "status")["data"]
+    assert status["last_successful_export"] is None
+    assert status["current_publications"] == []
+    assert len(status["committed_observations"]) == 1
 
 
 @pytest.mark.parametrize("source", ["cash", "baseline", "detail"])

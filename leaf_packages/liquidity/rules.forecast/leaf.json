@@ -4,11 +4,18 @@
   "adapter": "adapter.py:adapter",
   "operations": {
     "list": {
-      "description": "List cash forecast rule configurations in the verified fixed Z21 scope.",
-      "parameters": []
+      "description": "List cash forecast rule configurations for an explicit institution.",
+      "parameters": [
+        {
+          "name": "inst-id",
+          "type": "string",
+          "required": true,
+          "description": "Explicit native institution identifier; no business default."
+        }
+      ]
     }
   },
-  "summary": "Cash forecast rule configurations for Z21.",
+  "summary": "Cash forecast rule configurations by explicit institution.",
   "purpose": "Inspect existing bank cash forecast configuration without executing a forecast or changing rules.",
   "fields": [
     {
@@ -27,19 +34,20 @@
   ],
   "identity_description": "Native ruleId identifies each forecast rule.",
   "limitations": [
-    "Fixed tenant GUAPW3SG and instId=[\"Z21\"]; no arbitrary entity or user filter.",
+    "Fixed tenant GUAPW3SG; instId is a singleton containing the explicit inst-id. No entity expansion or user filter.",
     "Native rowStart pagination uses pageSize=1000; result.count is the reported total.",
     "List configuration only; no getter or forecast execution.",
-    "Current production qualification is tracked separately in issue #257."
+    "Current production qualification is tracked separately in issue #257.",
+    "Explicit institution parameterization still requires current production qualification; historical reference evidence does not establish access to other institutions."
   ],
   "examples": [
     {
       "title": "Read live rules",
-      "command": "dogopencli liquidity list rules.forecast --live"
+      "command": "dogopencli liquidity list rules.forecast --live --inst-id ENTITY"
     },
     {
       "title": "Refresh temporary cache",
-      "command": "dogopencli liquidity refresh rules.forecast"
+      "command": "dogopencli liquidity refresh rules.forecast --inst-id ENTITY"
     }
   ],
   "dataset": {

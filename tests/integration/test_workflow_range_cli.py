@@ -288,7 +288,9 @@ def test_failed_and_incomplete_refresh_cannot_clear_owned_history(run_cli, range
             ]
         )
         assert code == 1
-        assert "complete export" in json.loads(output)["error"]["message"]
+        error = json.loads(output)["error"]
+    assert error["code"] == "WORKFLOW_IMPORT_NOT_QUALIFIED"
+    assert "UNSUPPORTED_ACTION" in error["reason_codes"]
     assert current(run_cli, first)["records"] == [row()]
 
 

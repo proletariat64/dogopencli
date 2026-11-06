@@ -48,7 +48,7 @@ def compact_date(value: Any) -> str:
 def request_scope(parameters: dict[str, Any]) -> dict[str, Any]:
     values: dict[str, Any] = {}
     for parameter, field, default in (
-        ("inst_id", "instIds", "Z21"),
+        ("inst_id", "instIds", None),
         ("account_alias", "bankAccountAliasName", None),
     ):
         value = parameters.get(parameter, default)

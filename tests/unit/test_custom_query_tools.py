@@ -285,6 +285,7 @@ def test_retained_detail_failure_allows_later_queries_but_never_complete_output(
     assert trace["queries"]["detail"]["failed"] == 1
     assert trace["queries"]["detail"]["diagnostics"][0]["native_code"] == "999"
     assert trace["queries"]["detail"]["diagnostics"][0]["component"] == "detail"
+    assert trace["queries"]["detail"]["diagnostics"][0]["retention"] == "failed"
     assert trace["queries"]["detail"]["succeeded"] == 1
     assert "refused" not in trace["queries"]["detail"]
     assert "private-lookup" not in canonical(trace)

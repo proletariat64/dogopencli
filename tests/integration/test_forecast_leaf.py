@@ -80,11 +80,20 @@ def queue_full(browser):
 
 def test_forecast_native_scope_pages_and_snapshot(forecast):
     cli, browser, _ = forecast
-    cli("liquidity", "list", "rules.forecast", "-h")
+    cli("liquidity", "list", "rules.forecast", "--inst-id", "Z21", "-h")
     cli("liquidity", "describe", "rules.forecast")
     assert browser.business_requests == []
     queue_full(browser)
-    live = cli("liquidity", "list", "rules.forecast", "--live", "--limit", "0")
+    live = cli(
+        "liquidity",
+        "list",
+        "rules.forecast",
+        "--inst-id",
+        "Z21",
+        "--live",
+        "--limit",
+        "0",
+    )
     assert live["data"] == ROWS
     assert live["meta"]["complete"] is True
     assert len(browser.business_requests) == 2
@@ -105,7 +114,9 @@ def test_forecast_native_scope_pages_and_snapshot(forecast):
         == "CACHE_MISS"
     )
     queue_full(browser)
-    refreshed = cli("liquidity", "refresh", "rules.forecast", "--limit", "1")
+    refreshed = cli(
+        "liquidity", "refresh", "rules.forecast", "--inst-id", "Z21", "--limit", "1"
+    )
     assert refreshed["data"]["row_count"] == 1001
     before = len(browser.business_requests)
     assert cli("liquidity", "list", "rules.forecast", "--limit", "0")["data"] == ROWS
@@ -135,7 +146,7 @@ def test_forecast_native_scope_pages_and_snapshot(forecast):
 def test_forecast_refresh_failure_preserves_cache(forecast, failure):
     cli, browser, _ = forecast
     queue_full(browser)
-    cli("liquidity", "refresh", "rules.forecast")
+    cli("liquidity", "refresh", "rules.forecast", "--inst-id", "Z21")
     old = cli("liquidity", "list", "rules.forecast", "--limit", "0")
     expected, flags = "INVALID_RESPONSE", []
     if failure == "empty":
@@ -189,7 +200,13 @@ def test_forecast_refresh_failure_preserves_cache(forecast, failure):
         flags = ["--require-complete"]
     browser.business_script.extend(responses)
     result = cli(
-        "liquidity", "refresh", "rules.forecast", *flags, code=1 if expected else 0
+        "liquidity",
+        "refresh",
+        "rules.forecast",
+        "--inst-id",
+        "Z21",
+        *flags,
+        code=1 if expected else 0,
     )
     if expected:
         assert result["error"]["code"] == expected
@@ -203,7 +220,9 @@ def test_forecast_refresh_failure_preserves_cache(forecast, failure):
 def test_forecast_rejects_unqualified_scope_and_get(forecast):
     cli, browser, _ = forecast
     for args in (
-        ("list", "rules.forecast", "--inst-id", "OTHER", "--live"),
+        ("list", "rules.forecast", "--live"),
+        ("list", "rules.forecast", "--inst-id", "", "--live"),
+        ("list", "rules.forecast", "--inst-id", "ANY", "--live"),
         ("get", "rules.forecast", "--id", "one"),
     ):
         cli("liquidity", *args, code=2)
@@ -213,7 +232,16 @@ def test_forecast_rejects_unqualified_scope_and_get(forecast):
 def test_forecast_duplicate_evidence_remains_incomplete(forecast):
     cli, browser, _ = forecast
     browser.business_script.append(page([ROWS[0], ROWS[0]], 2))
-    result = cli("liquidity", "list", "rules.forecast", "--live", "--limit", "0")
+    result = cli(
+        "liquidity",
+        "list",
+        "rules.forecast",
+        "--inst-id",
+        "Z21",
+        "--live",
+        "--limit",
+        "0",
+    )
     assert result["data"] == [ROWS[0]]
     assert result["meta"]["complete"] is False
 
@@ -231,7 +259,7 @@ def test_forecast_nested_request_boundary(forecast, tmp_path, mutation):
             '"unverified": True, "rowStart": row_start,',
         ),
         "tenant": ('"tntInstId": TENANT,', '"tntInstId": "OTHER",'),
-        "scope": ('"instId": ["Z21"],', '"instId": ["OTHER"],'),
+        "scope": ('"instId": [self.inst_id],', '"instId": ["OTHER"],'),
         "width": ('"pageSize": PAGE_SIZE,', '"pageSize": 5000,'),
     }[mutation]
     code = path.read_text()
@@ -241,7 +269,9 @@ def test_forecast_nested_request_boundary(forecast, tmp_path, mutation):
         code = code.replace(old, new)
     path.write_text(code)
     cli("plugins", "install", str(source))
-    result = cli("liquidity", "list", "rules.forecast", "--live", code=1)
+    result = cli(
+        "liquidity", "list", "rules.forecast", "--inst-id", "Z21", "--live", code=1
+    )
     assert result["error"]["code"] == "REQUEST_NOT_ALLOWED"
     assert not browser.business_requests
 
@@ -254,7 +284,7 @@ def test_sdk_cross_page_conflict_rejects_inconsistent_rows_and_preserves_cache(
     original = dict(first[0])
     changed = {**original, "value": "changed"}
     browser.business_script.append(page([original]))
-    cli("liquidity", "refresh", "rules.forecast")
+    cli("liquidity", "refresh", "rules.forecast", "--inst-id", "Z21")
     before = cli("liquidity", "list", "rules.forecast", "--limit", "0")
 
     def queue_conflict():
@@ -262,7 +292,15 @@ def test_sdk_cross_page_conflict_rejects_inconsistent_rows_and_preserves_cache(
 
     queue_conflict()
     result = cli(
-        "liquidity", "list", "rules.forecast", "--live", "--limit", "0", code=1
+        "liquidity",
+        "list",
+        "rules.forecast",
+        "--inst-id",
+        "Z21",
+        "--live",
+        "--limit",
+        "0",
+        code=1,
     )
     assert result["data"] is None
     assert result["error"]["code"] == "INCOMPLETE_RESULT"
@@ -277,8 +315,28 @@ def test_sdk_cross_page_conflict_rejects_inconsistent_rows_and_preserves_cache(
         for request in browser.business_requests[-2:]
     ] == [0, 1000]
     queue_conflict()
-    refused = cli("liquidity", "refresh", "rules.forecast", code=1)
+    refused = cli("liquidity", "refresh", "rules.forecast", "--inst-id", "Z21", code=1)
     assert refused["error"]["code"] == "INCOMPLETE_RESULT"
     after = cli("liquidity", "list", "rules.forecast", "--limit", "0")
     assert after["data"] == before["data"] == [original]
     assert after["meta"]["fetched_at"] == before["meta"]["fetched_at"]
+
+
+def test_forecast_explicit_nondefault_institution_is_preserved(forecast):
+    cli, browser, _ = forecast
+    records = [{"ruleId": "other-rule", "instId": "OTHER"}]
+    browser.business_script.append(page(records))
+    result = cli("liquidity", "list", "rules.forecast", "--inst-id", "OTHER", "--live")
+    assert result["data"] == records
+    assert json.loads(browser.business_requests[0]["bankCashForecastRuleQueryVO"])[
+        "instId"
+    ] == ["OTHER"]
+
+
+def test_forecast_rejects_response_outside_explicit_institution(forecast):
+    cli, browser, _ = forecast
+    browser.business_script.append(page([{"ruleId": "outside", "instId": "Z21"}]))
+    result = cli(
+        "liquidity", "list", "rules.forecast", "--inst-id", "OTHER", "--live", code=1
+    )
+    assert result["error"]["code"] == "INVALID_RESPONSE"

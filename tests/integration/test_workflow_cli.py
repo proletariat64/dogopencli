@@ -279,7 +279,9 @@ def test_incomplete_and_failed_attempts_do_not_hide_last_success_or_import(
             "preserve",
         ]
     )
-    assert code == 1 and json.loads(out)["error"]["code"] == "WORKFLOW_ERROR"
+    error = json.loads(out)["error"]
+    assert code == 1 and error["code"] == "WORKFLOW_IMPORT_NOT_QUALIFIED"
+    assert "MISSING_IMPORT_CONTRACT" in error["reason_codes"]
     pilots.business_script.append({"status": 401, "body": {}})
     code, out, _ = run_cli(
         [

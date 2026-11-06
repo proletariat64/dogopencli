@@ -37,7 +37,11 @@ CASES = [
         "compact",
     ),
     ("forecast.account_t3", {"account_alias": "ACCOUNT"}, "compact"),
-    ("forecast.cashflows", {"account_alias": "ACCOUNT", "currency": "USD"}, "compact"),
+    (
+        "forecast.cashflows",
+        {"inst_id": "ENTITY", "account_alias": "ACCOUNT", "currency": "USD"},
+        "compact",
+    ),
     ("investment.benchmark_values", {}, "iso"),
     ("investment.interest_rates", {"source": "market"}, "compact"),
     ("investment.quotes", {}, "compact"),

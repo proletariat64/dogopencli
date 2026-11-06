@@ -241,7 +241,9 @@ def test_incomplete_and_failed_refresh_cannot_replace_committed_current(
         ]
     )
     assert code == 1
-    assert "complete export" in json.loads(output)["error"]["message"]
+    error = json.loads(output)["error"]
+    assert error["code"] == "WORKFLOW_IMPORT_NOT_QUALIFIED"
+    assert "UNSUPPORTED_ACTION" in error["reason_codes"]
     pilots.business_script.append({"status": 401, "body": {}})
     code, _, _ = run_cli(
         [

@@ -80,7 +80,9 @@ its declared native response/components, not an unconditional business-wide data
 
 `dogopencli.errors.diagnostic(...)` supplies one schema for errors and warnings:
 `code`, `message`, `severity`, `origin`, `stage`, `component`, `scope`, `retryable`,
-`native_code`, `consequence`, `action`, with optional `reason_codes` and `count`.
+`native_code`, `consequence`, `action`, with optional `retention`, `reason_codes` and
+`count`. Retained supplementary detail diagnostics set `retention` to `failed` or
+`refused`; grouping keeps those categories distinct.
 Unknown causes, retryability or actions stay null. Native reason codes are distinct
 from stable diagnostic codes and process statuses. Retain only safe qualified native
 codes; credentials, private identities and raw native messages/responses stay out of

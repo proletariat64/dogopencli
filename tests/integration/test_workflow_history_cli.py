@@ -1,8 +1,12 @@
 """Bounded native history through installed leaves and the public CLI."""
 
 import json
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 import pytest
+from fake_cdp import FakeBrowser
 from test_workflow_cli import call
 
 pytest_plugins = ["integration.leaves.liquidity.test_cash_balances_cli"]
@@ -469,3 +473,42 @@ def test_history_enforces_declared_range_and_source_before_requests(
     )
     assert code == 2, output
     assert not browser.business_requests
+
+
+def test_incomplete_history_package_remains_ineligible_for_preservation(
+    run_cli: Callable[[list[str]], tuple[int, str, str]],
+    installed: tuple[Callable[..., dict[str, Any]], FakeBrowser, Path],
+) -> None:
+    from leaves.liquidity.test_cash_balances_cli import page, row
+
+    _, browser, config = installed
+    plan = create(run_cli)
+    browser.business_script.append(page([row()]))
+    run = call(run_cli, "export", "create", "--plan", plan["id"])
+    exported = call(run_cli, "export", "run", "--run", run["id"])
+    identity = exported["packages"][0]["export_id"]
+    path = config / "workflow/exports" / identity / "metadata.json"
+    artifact = json.loads(path.read_text())
+    artifact["state"] = "incomplete"
+    artifact["metadata"]["complete"] = False
+    artifact["metadata"]["dataset_complete"] = False
+    path.write_text(json.dumps(artifact))
+    before = {item: item.read_bytes() for item in config.rglob("*") if item.is_file()}
+    code, output, _ = run_cli(
+        [
+            "workflow",
+            "import",
+            "plan",
+            "--export",
+            identity,
+            "--action",
+            "preserve",
+        ]
+    )
+    error = json.loads(output)["error"]
+    assert code == 1
+    assert error["code"] == "WORKFLOW_IMPORT_NOT_QUALIFIED"
+    assert "UNSUPPORTED_OPERATION" in error["reason_codes"]
+    after = {item: item.read_bytes() for item in config.rglob("*") if item.is_file()}
+    assert after == before
+    assert call(run_cli, "status")["committed_observations"] == []

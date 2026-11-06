@@ -177,6 +177,8 @@ def test_entity_enumerates_live_without_status_filters_and_freezes_aliases(insta
     result = cli(
         "list",
         "--live",
+        "--entity",
+        "ALIPAYGM",
         "--from-date",
         "20260918",
         "--to-date",
@@ -429,7 +431,14 @@ def seed_duckdog(config, rows=None, *, missing_alias=False):
         )
 
 
-ENTITY_FLAGS = ["--from-date", "20260918", "--to-date", "20260918"]
+ENTITY_FLAGS = [
+    "--entity",
+    "ALIPAYGM",
+    "--from-date",
+    "20260918",
+    "--to-date",
+    "20260918",
+]
 
 
 @pytest.mark.parametrize(
@@ -786,3 +795,14 @@ def test_strict_offline_rejects_missing_named_selection_witness(installed):
     assert got["error"]["code"] == "INVALID_RESPONSE"
     assert "selection evidence" in got["error"]["message"]
     assert len(browser.business_requests) == before
+
+
+@pytest.mark.parametrize("action", ["list", "refresh"])
+def test_balance_acquisition_requires_explicit_scope(installed, action):
+    cli, browser, _ = installed
+    flags = ["--live"] if action == "list" else []
+    result = cli(
+        action, *flags, "--from-date", "20260918", "--to-date", "20260918", code=2
+    )
+    assert result["error"]["code"] == "INVALID_ARGUMENT"
+    assert not browser.business_requests

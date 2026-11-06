@@ -67,11 +67,9 @@ def time_bound(value: str, *, end: bool) -> int:
 def query_request(args: Any) -> dict[str, Any]:
     query: dict[str, Any] = {}
     if not args.trade_id and args.from_time is None and args.to_time is None:
-        yesterday = (datetime.now(UTC8) - timedelta(days=1)).date().isoformat()
-        query["transactTimeRange"] = {
-            "start": time_bound(yesterday, end=False),
-            "end": time_bound(yesterday, end=True),
-        }
+        raise argument_error(
+            "explicit trade-id or paired from-time and to-time are required"
+        )
     for flag, field in ARRAY_FILTERS:
         values = getattr(args, flag)
         if "ANY" in values:
@@ -159,7 +157,7 @@ class TradeInquiry:
             raise CliError(INVALID_RESPONSE, "missing FX page value")
         for key in ("totalCount", "currentPage", "pageSize"):
             item = value.get(key)
-            if type(item) is not int or item < (1 if key == "pageSize" else 0):
+            if type(item) is not int or item < 0:
                 raise CliError(INVALID_RESPONSE, "invalid FX pagination metadata")
         rows = value.get("items")
         if not isinstance(rows, list) or any(
@@ -174,6 +172,12 @@ class TradeInquiry:
                 INVALID_RESPONSE, "FX record is missing transaction number uniqueId"
             )
         size, total = value["pageSize"], value["totalCount"]
+        if size == 0:
+            if rows or total != 0 or value["currentPage"] != 0:
+                raise CliError(INVALID_RESPONSE, "invalid FX empty page metadata")
+            # The native empty-result sentinel has no page capacity. The SDK
+            # still validates the one qualified request width, with no records.
+            return ParsedPage([], 0, self.contract.page_size, 0, 0)
         if len(rows) > size or len(rows) > total:
             raise CliError(INVALID_RESPONSE, "FX page exceeds reported capacity")
         return ParsedPage(rows, value["currentPage"], size, total, -(-total // size))
@@ -183,22 +187,6 @@ FX_TRADE = TradeInquiry()
 
 
 class Adapter:
-    def freeze_parameters(self, parameters: dict) -> dict:
-        frozen = dict(parameters)
-        if not frozen.get("trade_id") and all(
-            frozen.get(key) is None for key in ("from_time", "to_time")
-        ):
-            native = parse(self.scope(frozen))["transactTimeRange"]
-            frozen.update(
-                {
-                    key: normalize_utc_milliseconds(
-                        EPOCH + timedelta(milliseconds=native[bound])
-                    )
-                    for key, bound in (("from_time", "start"), ("to_time", "end"))
-                }
-            )
-        return frozen
-
     def history_bounds(self, parameters: dict) -> dict:
         native = parse(self.scope(parameters)).get("transactTimeRange")
         if native is None:

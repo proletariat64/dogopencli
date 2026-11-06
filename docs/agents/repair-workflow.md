@@ -26,8 +26,9 @@ Without a safe range contract, retry the unchanged full query. A failed or
 incomplete full observation is repaired as a new full capture; records from
 different incomplete captures are never stitched into a complete observation.
 
-The import plan selects exact compatible complete baseline and repair exports and
-freezes their values. Repair reconciliation preserves separate observations; it
+The repair import plan selects exact compatible complete baseline and repair exports
+and freezes their values; full-List incomplete qualification does not apply to repair
+selections. Repair reconciliation preserves separate observations; it
 does not infer keyed identity or replacement coverage. Choose an individual exact
 export for a separately supported current-data action. Applying the repair import
 plan is fully offline. Every observation and receipt commit together, independent

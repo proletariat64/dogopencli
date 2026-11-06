@@ -3,11 +3,12 @@
 `liquidity.rules.forecast` reads existing bank cash forecast rule configuration,
 not forecast observations, forecast accuracy or an execution task. It exposes only
 `dogopencli liquidity list rules.forecast`; refresh, prune and describe use the host
-lifecycle. No getter, user scope, entity expansion or date filter is registered.
+lifecycle. Live List and Refresh require an explicit `--inst-id`; no default institution
+is selected. No getter, user scope, entity expansion or date filter is registered.
 
 The inquiry is GET `/bankCashForecastRuleQuery.json` on `iliquidity.alipay.com`.
 The top-level `tntInstId` is `GUAPW3SG`. `bankCashForecastRuleQueryVO` is a JSON
-string containing that tenant, fixed `instId=["Z21"]`, zero-based `rowStart` and
+string containing that tenant, `instId=[<explicit inst-id>]`, zero-based `rowStart` and
 `pageSize=1000`. Collection reads every native offset independently of display limit.
 Boolean `resultFlag` establishes envelope success; records are `result.dataValue`
 and the nonnegative integer total is `result.count`. `ruleId` is the native identity.
@@ -15,9 +16,9 @@ All native fields and JSON types are preserved, including null, empty strings,
 zero, decimal precision and timestamp text. `ruleName`, `ruleType`, `accountNo`,
 `currency` and `ruleStatus` remain source fields rather than projected columns.
 
-The manifest selects the host List SDK with offset paging, width 10 and native
-`ruleId`. The leaf owns the fixed Z21 request and native parser. Changed totals,
-malformed identities and oversized pages fail collection. Duplicate/conflicting
+The manifest selects the host List SDK with offset paging, width 1000 and native
+`ruleId`. The leaf owns the explicit institution request and native parser.
+Changed totals, malformed identities and oversized pages fail collection. Duplicate/conflicting
 rows and short or empty interior pages retain incomplete evidence. Conflicts use
 the last arrival without claiming it is newest. Strict queries and refresh reject
 incomplete acquisitions.
@@ -35,6 +36,8 @@ configuration; it does not establish current API availability or permission.
 local production qualification and isolated historical comparison. cn.ant hosts
 HTTP artifacts only; it does not execute this inquiry.
 Controlled CDP tests establish request, parser, paging and lifecycle behavior only.
+The explicit institution selector requires current production qualification;
+historical reference evidence does not establish access to other institutions.
 
 Install this directory or pack its root contents as one ZIP with the existing
 plugin-helper. Install using `dogopencli plugins install <package>` and uninstall

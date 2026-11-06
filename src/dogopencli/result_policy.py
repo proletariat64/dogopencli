@@ -643,7 +643,7 @@ class ResultDecision:
         }
 
 
-def _has_identity_conflict(record: dict[str, Any]) -> bool:
+def has_identity_conflict(record: dict[str, Any]) -> bool:
     """Inspect SDK provenance only; native metadata is not coverage evidence."""
     if "IDENTITY_CONTENT_CONFLICT" in record.get("reasons", ()) or (
         type(record.get("conflict_count")) is int and record["conflict_count"] > 0
@@ -661,7 +661,7 @@ def _has_identity_conflict(record: dict[str, Any]) -> bool:
             if isinstance(query, dict):
                 children.extend(query.get("collections", ()))
     return any(
-        _has_identity_conflict(child) for child in children if isinstance(child, dict)
+        has_identity_conflict(child) for child in children if isinstance(child, dict)
     )
 
 
@@ -686,7 +686,7 @@ def _selection_reasons(record: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(reasons))
 
 
-def _has_unrecovered_timeout(record: dict[str, Any]) -> bool:
+def has_unrecovered_timeout(record: dict[str, Any]) -> bool:
     """Completed fallback acquisitions may retain earlier timeout provenance."""
     if record.get("scope_complete") is True and record.get("dataset_complete") is True:
         return False
@@ -706,7 +706,7 @@ def _has_unrecovered_timeout(record: dict[str, Any]) -> bool:
             if isinstance(query, dict):
                 children.extend(query.get("collections", ()))
     return any(
-        _has_unrecovered_timeout(child) for child in children if isinstance(child, dict)
+        has_unrecovered_timeout(child) for child in children if isinstance(child, dict)
     )
 
 
@@ -716,7 +716,7 @@ def evaluate_result(
     mode: str,
     require_complete: bool = False,
 ) -> ResultDecision:
-    if _has_unrecovered_timeout(evidence.record()):
+    if has_unrecovered_timeout(evidence.record()):
         return ResultDecision(
             expose_data=False,
             publishable=False,
@@ -733,7 +733,7 @@ def evaluate_result(
             data_quality="unusable",
             empty=evidence.collected_total == 0,
         )
-    identity_conflict = _has_identity_conflict(evidence.record())
+    identity_conflict = has_identity_conflict(evidence.record())
     incomplete = identity_conflict or not (
         evidence.scope_complete and evidence.dataset_complete
     )
