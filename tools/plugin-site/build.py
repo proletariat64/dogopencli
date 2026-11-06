@@ -1,6 +1,9 @@
 """Build a self-contained Python 3.11+ registry bundle for poolab sync."""
 
 import argparse
+import hashlib
+import json
+import re
 import shutil
 import subprocess
 import sys
@@ -16,13 +19,21 @@ from server import publish  # noqa: E402
 
 
 def build(output: Path, version: str) -> int:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", version):
+        raise ValueError("Invalid site version")
     if output.exists():
         raise ValueError("Output already exists; choose a new bundle directory")
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".plugin-site-", dir=output.parent) as temp:
         bundle = Path(temp) / "bundle"
         bundle.mkdir()
-        for name in ("server.py", "README.md", "nginx.conf", "plugin-site.service"):
+        for name in (
+            "server.py",
+            "deploy.py",
+            "README.md",
+            "nginx.conf",
+            "plugin-site.service",
+        ):
             shutil.copy2(ROOT / name, bundle / name)
         shutil.copytree(ROOT / "web", bundle / "web")
         # Ship the authoritative host code unchanged. No adapter is imported.
@@ -62,6 +73,14 @@ def build(output: Path, version: str) -> int:
         archives = sorted((Path(temp) / "packed").glob("*.zip"))
         for archive in archives:
             publish(archive, bundle / "seed", version)
+        files = {
+            p.relative_to(bundle).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(bundle.rglob("*"))
+            if p.is_file()
+        }
+        (bundle / "bundle.json").write_text(
+            json.dumps({"version": version, "files": files}, indent=2) + "\n"
+        )
         bundle.rename(output)
     return len(archives)
 

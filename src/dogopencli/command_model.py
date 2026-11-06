@@ -172,6 +172,7 @@ def leaf_options(leaf: Leaf, operation: str) -> tuple[OptionSpec, ...]:
 def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
     from .auth.spec import COMMANDS, EXIT_CODES, GLOBALS
     from .domain_contracts import domain_declarations
+    from .lifecycle import DECLARATIONS as LIFECYCLE
     from .management import DECLARATIONS
 
     nodes = {
@@ -213,7 +214,7 @@ def current_nodes(registry: Registry) -> dict[tuple[str, ...], BizNode]:
         )
     from .workflow import declarations
 
-    for node in (*DECLARATIONS, *declarations()):
+    for node in (*DECLARATIONS, *LIFECYCLE, *declarations()):
         options = (
             *node.options,
             *(o for o in COMMON if o.name not in {x.name for x in node.options}),

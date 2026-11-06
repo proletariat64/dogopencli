@@ -64,6 +64,8 @@ def test_standalone_bundle_catalog_downloads_and_documentation(tmp_path):
         line = process.stdout.readline()
         assert line.startswith("Plugin site: "), line
         base = line.removeprefix("Plugin site: ").strip()
+        with urlopen(base + "api/health", timeout=5) as response:
+            assert json.load(response) == {"status": "ok", "version": "acceptance-1"}
         with urlopen(base + "api/catalog", timeout=5) as response:
             records = json.load(response)["releases"]
         expected = list((ROOT / "leaf_packages").glob("*/*/leaf.json"))
