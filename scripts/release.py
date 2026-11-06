@@ -32,6 +32,9 @@ def run(arguments: list[str], root: Path) -> str:
         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
     )
     if result.returncode:
+        if arguments in (["make", "check"], ["make", "smoke"]):
+            print(result.stdout, end="", file=sys.stdout)
+            print(result.stderr, end="", file=sys.stderr)
         # Provider output may contain credentials.
         raise RuntimeError(
             f"command failed: {' '.join(arguments[:3])} (exit {result.returncode})"

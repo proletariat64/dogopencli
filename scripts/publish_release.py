@@ -405,6 +405,10 @@ def publish(tag, dist, project, require_token=False, target="antcode"):
                     raise PublishError(f"Existing {name} differs; refusing overwrite")
             else:
                 upload(generated)
+                downloaded = temporary / f"uploaded-{name}"
+                download(name, downloaded)
+                if generated.read_bytes() != downloaded.read_bytes():
+                    raise PublishError(f"Uploaded {name} differs from server bytes")
         current = validate(decode(show()))
         if current["revision"] != carrier or not current["is_draft"]:
             raise PublishError("Draft changed during publication")

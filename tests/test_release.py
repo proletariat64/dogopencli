@@ -210,3 +210,24 @@ def test_github_target_skips_antcode_homepage(repository, commands):
     commands.clear()
     assert tool.release(repository[0], provider="github", retry=True) == "v0.1.0"
     assert not any("push" in args for args in commands)
+
+
+@pytest.mark.parametrize("gate", ["check", "smoke", "publish-release"])
+def test_local_gate_diagnostics_keep_provider_output_private(
+    tmp_path, monkeypatch, capsys, gate
+):
+    monkeypatch.setattr(
+        tool.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 1, stdout="stdout detail\n", stderr="stderr detail\n"
+        ),
+    )
+    with pytest.raises(RuntimeError, match="exit 1"):
+        tool.run(["make", gate], tmp_path)
+    captured = capsys.readouterr()
+    if gate == "publish-release":
+        assert captured.out == captured.err == ""
+    else:
+        assert captured.out == "stdout detail\n"
+        assert captured.err == "stderr detail\n"

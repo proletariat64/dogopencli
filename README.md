@@ -53,7 +53,7 @@ CLI Release targets, plugin-site deployment and plugin publication commands.
 
 ### Develop from source
 
-Python 3.10+ is required. Live inquiries also require Google Chrome and access to
+Python 3.12+ is required. Live inquiries also require Google Chrome and access to
 the relevant platform application. From a checkout:
 
 ```bash

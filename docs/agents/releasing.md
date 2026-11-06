@@ -23,12 +23,14 @@ AntCode project existence and publishing permissions must be provisioned on the
 release host; the script does not create repositories or credentials.
 
 The command checks source identity, runs `make check`, builds wheel/source archives,
-and runs an isolated install/update/uninstall smoke test before creating and
+and runs an isolated install/update/uninstall smoke test that asserts the installed
+CLI reports the planned release version before creating and
 pushing an annotated source tag. Only a tag is pushed, never a source branch.
 Each provider receives a draft Release with the wheel, sdist, version-bound
 `install.sh`, `SHA256SUMS` and `RELEASE_NOTES.md`. Publication finalizes only after
-asset verification. AntCode's `main` revision is an artifact-host carrier; the
-notes record the actual GitHub source commit and tag.
+downloading and comparing every newly uploaded asset. AntCode's `main` revision
+is an artifact-host carrier; the notes record the actual GitHub source commit
+and tag.
 
 For retry or publication of the same source version to the second provider:
 
@@ -46,7 +48,8 @@ make publish-release TARGET=github TAG=v0.6.4 DIST_DIR=dist
 ```
 
 Use a clean `DIST_DIR` for a new version. Release tools do not increment versions.
-`DEV_PYTHON` defaults to `.venv/bin/python`; `uv sync --extra dev` prepares it.
+`DEV_PYTHON` defaults to `.venv/bin/python` and requires Python 3.12+;
+`uv sync --extra dev --inexact` prepares it while retaining extra local packages.
 No publishing is added to CI. CI checks the source change only.
 
 ## Install and manage a released CLI

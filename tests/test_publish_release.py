@@ -653,3 +653,22 @@ def test_github_metadata_is_never_replaced(github):
     assert run_github() == 1
     assert fake.release["draft"] is True
     assert fake.files["install.sh"] == b"conflicting installer"
+
+
+@pytest.mark.parametrize("provider", ["antcode", "github"])
+@pytest.mark.parametrize("filename", ["install.sh", "SHA256SUMS", "RELEASE_NOTES.md"])
+def test_corrupt_uploaded_metadata_prevents_finalization(
+    setup, github, monkeypatch, provider, filename
+):
+    fake, _ = github if provider == "github" else setup
+
+    def corrupt(args, **kwargs):
+        result = fake(args, **kwargs)
+        if args[1:3] == ("release", "upload") and Path(args[4]).name == filename:
+            fake.files[filename] = b"corrupt server bytes"
+        return result
+
+    monkeypatch.setattr(publisher.subprocess, "run", corrupt)
+    assert (run_github() if provider == "github" else run()) == 1
+    draft_key = "draft" if provider == "github" else "is_draft"
+    assert fake.release[draft_key] is True
