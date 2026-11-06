@@ -129,7 +129,12 @@ def make_server(host: str, port: int, data: Path, token: str = ""):
                 self.json(200, {"releases": catalog(data), "publishing": bool(token)})
                 return
             if local == "api/health":
-                self.json(200, {"status": "ok"})
+                status = {"status": "ok"}
+                if (ROOT / "bundle.json").is_file():
+                    status["version"] = json.loads((ROOT / "bundle.json").read_text())[
+                        "version"
+                    ]
+                self.json(200, status)
                 return
             if local.startswith("downloads/"):
                 parts = local.split("/")

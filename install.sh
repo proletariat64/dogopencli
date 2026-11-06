@@ -12,7 +12,7 @@ The default source is the checkout containing this script.
 Requires uv; Python 3.12 is selected (downloaded by uv if necessary).
 
 install    Overwrite the single installed program, including the same version.
-update     Uninstall the program, then install SOURCE. No rollback copy is kept.
+update     Resolve SOURCE, then replace the program. No rollback copy is kept.
 uninstall  Remove the program and command; keep settings, login, plugins and data.
 
 Uses uv's standard tool directories (UV_TOOL_DIR / UV_TOOL_BIN_DIR can override).
@@ -51,7 +51,7 @@ if [[ "$action" != uninstall ]]; then
     esac
 fi
 
-if [[ "$action" == uninstall || "$action" == update ]]; then
+if [[ "$action" == uninstall ]]; then
     tool_dir=$(uv tool dir)
     if [[ -e "$tool_dir/dogopencli" || -L "$tool_dir/dogopencli" ]]; then
         uv tool uninstall --no-cache dogopencli
@@ -60,6 +60,8 @@ fi
 
 if [[ "$action" != uninstall ]]; then
     uv tool install --force --reinstall --no-cache --python 3.12 "dogopencli @ $source"
+    tool_dir=$(uv tool dir)
+    rm -f -- "$tool_dir/dogopencli/.dogopencli-release"
     bin_dir=$(uv tool dir --bin)
     "$bin_dir/dogopencli" --version
     echo "Installed: $bin_dir/dogopencli"

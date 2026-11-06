@@ -54,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
     ):
         return emit_help(invocation)
     path = invocation.node.path
+    if path in (("update",), ("uninstall",)):
+        from .lifecycle import execute
+
+        return execute(path[0], invocation.args)
     if path[:1] in (("domain",), ("gui",)):
         from .domain_cli import main as domain_main
         from .gui import main as gui_main

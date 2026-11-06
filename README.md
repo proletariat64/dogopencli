@@ -23,8 +23,8 @@ the installer from a checkout (Linux/macOS, Bash):
 ```
 
 `install` always overwrites the single installed program, even at the same version.
-`update` is uninstall followed by install; if installation then fails, the
-program stays uninstalled. No old program versions or rollback copies are kept.
+`update` resolves/prepares the replacement through uv before replacing the
+program; it no longer pre-uninstalls. No old versions or rollback copies are kept.
 Uninstall preserves configuration, browser login, installed business leaves,
 cache and Duckdog data. The installer does not install Chrome or log in.
 
@@ -44,9 +44,16 @@ To install a delivered wheel or another checkout, pass its source explicitly:
 ./install.sh install https://example.com/dogopencli-VERSION-py3-none-any.whl
 ```
 
+Installed uv tools also support `dogopencli uninstall` and
+`dogopencli update --source /path/to/wheel-or-checkout`. Release-installer users
+can use `dogopencli update --to VERSION` to download a checksummed version from
+the recorded AntCode/GitHub origin without keeping a checkout or installer.
+See [release and publication](docs/agents/releasing.md) for curl installation,
+CLI Release targets, plugin-site deployment and plugin publication commands.
+
 ### Develop from source
 
-Python 3.10+ is required. Live inquiries also require Google Chrome and access to
+Python 3.12+ is required. Live inquiries also require Google Chrome and access to
 the relevant platform application. From a checkout:
 
 ```bash

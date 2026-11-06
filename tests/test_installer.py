@@ -108,15 +108,15 @@ def test_install_overwrites_same_version_update_and_uninstall(installation):
     assert not (root / "cache/uv").exists()
 
 
-def test_update_failure_keeps_no_old_installation(installation):
+def test_update_invalid_wheel_preserves_installation(installation):
     root, env = installation
     first = wheel(root / "first", "1.0.0", "first")
     succeeded(run(env, "install", first))
     bad = root / "dogopencli-2.0.0-py3-none-any.whl"
     bad.write_bytes(b"invalid wheel")
     assert run(env, "update", bad).returncode != 0
-    assert not (root / "tools/dogopencli").exists()
-    assert not (root / "bin/dogopencli").exists()
+    assert (root / "tools/dogopencli").exists()
+    assert (root / "bin/dogopencli").exists()
 
 
 def test_update_without_existing_installation(installation):
@@ -140,3 +140,44 @@ def test_missing_source_is_rejected_before_uninstall(installation):
     succeeded(run(env, "install", first))
     assert run(env, "update", root / "missing.whl").returncode != 0
     assert (root / "bin/dogopencli").exists()
+
+
+def test_release_installer_pins_origin_and_checks_before_replacement(installation):
+    import hashlib
+
+    root, env = installation
+    first = wheel(root / "wheel", "1.0.0", "release")
+    fake_bin = root / "fake-bin"
+    fake_bin.mkdir()
+    curl = fake_bin / "curl"
+    curl.write_text(
+        '#!/bin/bash\nwhile [[ "$1" != -o ]]; do shift; done\n'
+        'cp "$FAKE_DOWNLOAD" "$2"\n'
+    )
+    curl.chmod(0o755)
+    env.update(PATH=str(fake_bin) + os.pathsep + env["PATH"], FAKE_DOWNLOAD=str(first))
+    template = (INSTALLER.parent / "scripts/install-release.sh").read_text()
+    rendered = (
+        template.replace("@VERSION@", "1.0.0")
+        .replace(
+            "@RELEASE_BASE_URL@",
+            "https://github.com/proletariat64/dogopencli/releases/download/v1.0.0",
+        )
+        .replace("@WHEEL@", first.name)
+        .replace("@WHEEL_SHA256@", hashlib.sha256(first.read_bytes()).hexdigest())
+    )
+    script = root / "release.sh"
+    script.write_text(rendered)
+    result = subprocess.run(
+        ["bash", str(script)], env=env, capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 0, result.stderr
+    marker = root / "tools/dogopencli/.dogopencli-release"
+    assert marker.read_text().strip().endswith("/v1.0.0")
+    first.write_bytes(b"corrupt")
+    result = subprocess.run(
+        ["bash", str(script)], env=env, capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode != 0
+    assert "checksum mismatch" in result.stderr
+    assert marker.exists() and (root / "bin/dogopencli").exists()

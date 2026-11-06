@@ -28,27 +28,52 @@ browser storage. The server binds loopback by default. HTTP sends credentials in
 cleartext; publish only within a trusted company network or protected tunnel, or
 put HTTPS in front of nginx. Registry access does not need domain login.
 
-## Deploy later with poolab
+## Build and deploy commands
 
-This repository task prepares deployment only. No remote files are changed.
-After authorization, first inspect the actual server's nginx configuration, Python
+```bash
+make release-site SITE_VERSION=site-20261106
+```
+
+This produces `dist/plugin-site/site-20261106` with a `bundle.json` checksum
+manifest. Transfer the complete bundle to a staging directory on the target
+host, then execute its `deploy.py` with Python 3.11+:
+
+```bash
+python3 -B /path/to/staged-bundle/deploy.py --bundle /path/to/staged-bundle --root /home/admin/workspace/plugin-site
+```
+
+On a host with a checkout, `make deploy-site SITE_BUNDLE=/path/to/staged-bundle`
+is equivalent. The helper needs a working systemd user session; it installs and
+enables `plugin-site.service`, switches `current`, checks the exact bundle version
+at `/plugins/api/health`, and restores the previous release on health failure.
+It seeds `data` only on first deployment. Later updates leave all plugin publications
+and `publish.env` untouched; publish new plugin versions separately.
+
+`make release-plugin` and `make publish-plugin` wrap the existing packer and the
+new authenticated publisher. See [release and publication](../../docs/agents/releasing.md)
+for arguments, retry behavior, curl CLI installation and provider selection.
+
+## Host setup and transfer with poolab
+
+The deployment helper runs locally on the target host. Before first deployment, inspect the actual server's nginx configuration, Python
 path, available port and user service support. The provided paths assume the
 `admin` user and must be confirmed at deployment time.
 
-1. Sync the complete generated bundle to a NEW remote release directory:
+1. Sync the complete bundle to a NEW staging directory outside the deployment root:
 
    ```bash
-   rtk proxy poolab sync tmp/plugin-site-bundle :/home/admin/workspace/plugin-site/releases/source-634005c --instance default
+   rtk proxy poolab sync tmp/plugin-site-bundle :/home/admin/workspace/plugin-site-staging/source-634005c --instance default
    ```
 
-2. On first deployment only, copy the release's `seed` directory to
-   `/home/admin/workspace/plugin-site/data`. On updates, merge only absent
-   identity/version directories with the server stopped; never replace live
-   publications. Keep `data` and `publish.env` outside synchronized release trees.
-3. Point `/home/admin/workspace/plugin-site/current` to the new release. Set the
-   publisher token in a mode-0600 `publish.env` file outside the release directory.
-4. Install `plugin-site.service` as an admin user service (or use the environment's
-   existing supervisor). Start/restart it and check `/plugins/api/health` locally.
+2. Run the helper from a staging directory outside the deployment root. It seeds
+   `/home/admin/workspace/plugin-site/data` only if absent. On updates, publish
+   new plugins explicitly; never replace live publications. Keep `data` and
+   `publish.env` outside synchronized release trees.
+3. Before running the helper, set the publisher token in a mode-0600
+   `/home/admin/workspace/plugin-site/publish.env` file if publication is needed.
+   Keep this file outside the release directory; the helper never writes it.
+4. The helper switches `current`, installs the admin user service and checks health.
+   Configure user-service lingering once if the service must survive logout.
 5. Include `nginx.conf` inside the existing port-80 server block. Test nginx config
    before reload. Preserve existing routes. Add `<a href="/plugins/">Dogopencli
    插件广场</a>` to the existing homepage.

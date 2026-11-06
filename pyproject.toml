@@ -7,9 +7,8 @@ name = "dogopencli"
 version = "0.6.4"
 description = "Inquiry-only CLI for payment, collection, liquidity and FX operations"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
-    "tomli>=2.0; python_version < '3.11'",
     "websocket-client>=1.7",
     "duckdb>=1.1",
     "tzdata",
@@ -34,11 +33,13 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 extend-exclude = [".qoder"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+# Keep existing UTC spelling and explicit interpreter guards without style churn.
+ignore = ["UP017", "UP036"]
 
 [tool.ruff.lint.per-file-ignores]
 # Documentation guard fixtures contain long literal examples.
