@@ -30,17 +30,46 @@ The application uses the following layout:
 
 Keep native business queries in independent leaf packages; centralize authentication, request restrictions, pagination conventions, and error reporting.
 
+## CLI and Data Contracts
+
+- For result or error changes, read `docs/agents/result-policy.md`. Preserve the
+  `data`, `meta`, `error` envelope and use `src/dogopencli/errors.py` for shared
+  diagnostics. Public error codes, native codes and process exits are distinct.
+- The host owns acceptance, rendering and exits: success/warning **0**,
+  operational/data failure **1**, invalid invocation **2**, interruption **130**.
+  Leaves must not print diagnostics, choose exits or disguise hard failures as
+  incomplete success.
+- For command/help changes, use `command_model.py` and `helpspec.py`. Parser and
+  help share declarations; JSON and text share `helpspec.document()`, with text
+  through `render_text()`. Preserve `help_version=1` and progressive `-h`/`--help`;
+  use `describe` for business and field documentation.
+- Help reads declarations only: no adapter activation, storage/cache mutation,
+  browser or network access. Check `tests/test_current_help.py` and
+  `tests/test_help_entry.py` when changing these boundaries.
+- For export/import, repair or saved-target changes, read
+  `docs/agents/export-import-workflow.md` and its relevant linked guides. Export
+  acquires native data online; import writes exact saved artifacts into local
+  Duckdog offline. Cache, export and committed import are separate proof layers.
+  Preserve explicit scope, quality and gap evidence; incomplete import requires
+  the declared qualification contract and does not authorize current replacement.
+
 ## Browser and Configuration
 Use headed Chrome for interactive OAuth/SSO login and headless Chrome for routine CDP queries. Reuse a dedicated profile with only one Chrome process owning it.
 
 Never use CDP ports **9330–9340**, including tests and verification. Before browser or authentication work, read `~/dev/di/docs/spec/browser-cdp-v1.1.md` and its referenced implementation; adapt its defaults. Keep cookies, tokens, profiles, and sensitive responses out of Git and logs.
 
 ## Development and Testing
-Prefix shell commands with `rtk`; use `rtk proxy <command>` for unsupported commands. Use the pytest and Ruff configuration in `pyproject.toml`:
+Use Python 3.12 for the development environment and CI. Prepare it with
+`rtk proxy uv venv --python 3.12` and
+`rtk proxy uv sync --extra dev --inexact`; verify an existing environment's
+interpreter before reusing it. Prefix shell commands with `rtk`; use
+`rtk proxy <command>` for unsupported commands. Use repository dependencies and
+the pytest/Ruff configuration in `pyproject.toml`:
 
-- `rtk pytest -q`: run tests.
-- `rtk proxy ruff check .`: lint Python.
-- `rtk proxy ruff format --check .`: check formatting.
+- `rtk proxy make test`: run tests with `.venv/bin/python`.
+- `rtk proxy make lint`: check Python lint and formatting.
+- `rtk proxy make doc-guard`: check documentation.
+- `rtk proxy make check`: run all three gates.
 
 Use four-space indentation, type hints, `snake_case` functions/modules, and `PascalCase` classes. Name tests `test_*.py`. Cover request rejection, authentication expiry, pagination, and parsing with fake CDP responses; production validation must remain inquiry-only. No coverage threshold is established.
 
@@ -51,6 +80,21 @@ Use code-review-graph first for code relationships and before nontrivial code ed
 
 Use conventional commit and PR prefixes such as `feat:`, `fix:`, and `docs:`. PRs should explain behavior, link relevant issues, report validation, and identify unverified production assumptions.
 
+## Release and Cleanup
+
+- Before installer, release, site-deployment or plugin-publication work, read
+  `docs/agents/releasing.md`. These are independent delivery operations with
+  separate validation; package validation is not production business UAT.
+- Keep package metadata, runtime version and the root `uv.lock` package version
+  aligned. `make release` requires clean attached `master` matching freshly
+  fetched GitHub `origin/master`; it neither bumps versions nor pushes source
+  commits. `DRY_RUN=1` does not run checks or publish.
+- Verify cwd, branch, destination and staged diff before commits or pushes.
+  Preserve unrelated edits and untracked files; use an exact named stash or
+  separate checkout when a clean release tree is needed.
+- Before deleting a worktree, verify merge ancestry and inspect ignored files.
+  Preserve browser profiles, UAT records and valuable artifacts outside the
+  deletion target. Delete only the explicitly scoped local/remote branches.
 
 ## Agent skills
 

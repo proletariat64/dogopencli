@@ -3,8 +3,9 @@
 An inquiry-only CLI for payment, collection, liquidity and FX operations, intended
 for one person on one machine. Install the leaves you need, discover their commands
 with progressive help, and query live data or replay a local snapshot.
-Use the [durable workflow](docs/agents/export-import-workflow.md) to plan an exact export and explicitly
-preserve it as an offline Duckdog observation.
+Use the [durable workflow](docs/agents/export-import-workflow.md) to export an
+exact native scope online and explicitly import it into local Duckdog offline.
+Query cache, saved exports and committed imports are separate outcomes.
 
 **Developing or migrating a leaf?** Start with [tools/leaf-dev](tools/leaf-dev/README.md)
 for the handbook, interfaces, workflow, runnable example and helpers.
@@ -57,6 +58,7 @@ Python 3.12+ is required. Live inquiries also require Google Chrome and access t
 the relevant platform application. From a checkout:
 
 ```bash
+uv venv --python 3.12
 uv sync --extra dev
 uv run dogopencli -h --format text
 uv run dogopencli plugins list --format text
@@ -116,8 +118,8 @@ manifest edits. To reinstall deliberately, uninstall then install. Uninstall is
 noninteractive and idempotent for an absent leaf; it also works for broken or
 disabled leaves. It removes the installed files and owned temporary query cache,
 preserving Duckdog data, binding history, credentials and original source packages.
-There is no update, replace or plugin-version command. The former
-`plugins install-pilots` entry point has been removed.
+There is no plugin update, replace or plugin-version command. CLI updates use
+the separate installed-host lifecycle commands described above.
 
 `plugins list` reports bundled availability, installed declarations and diagnostics.
 List and help read declarations without loading adapters, initializing storage,
@@ -175,6 +177,66 @@ launch or repair Chrome. Domain enable/disable controls access and preserves cac
 and observations. Browser settings live under `[auth]`; never use CDP ports
 9330–9340 in this repository.
 
+## Export and import
+
+Prepare one exact inquiry, execute its Export Run, then inspect the saved export
+before preparing an offline import:
+
+```bash
+dogopencli workflow plan create --leaf payment.sla.baselines --parameters '{}'
+dogopencli workflow plan show --plan PLAN_ID
+dogopencli workflow export create --plan PLAN_ID
+dogopencli workflow export run --run RUN_ID
+dogopencli workflow export show --export EXPORT_ID
+dogopencli workflow import plan --export EXPORT_ID --action preserve
+dogopencli workflow import apply --plan IMPORT_PLAN_ID
+dogopencli workflow observation show --export EXPORT_ID
+```
+
+Replace each placeholder with the ID returned by the corresponding command.
+Parameter keys use CLI spelling without `--`; repeatable values use arrays.
+Completed exports retain records and acquisition evidence before display limits
+or field projection. `export show` proves acquisition; `observation show` reads
+the imported rows and receipt from Duckdog.
+
+`preserve` adds a scoped observation without changing current dataset rows.
+Reapplying the same export/action/destination is idempotent. `replace-full`
+publishes a complete exact query as current data; inspect its import preview
+before applying it. Complete-empty replacement clears that namespace.
+
+Incomplete exports remain inspectable. Importing one requires an explicit
+leaf-declared full-List `preserve` qualification covering the entire artifact;
+it does not permit current-data replacement. Get, detail-composed and historical
+exports do not use this exception. See the
+[workflow guide](docs/agents/export-import-workflow.md) for the full contract.
+
+Historical coverage, [keyed reconciliation](docs/agents/keyed-history.md),
+[range replacement](docs/agents/range-replacement.md) and
+[repair](docs/agents/repair-workflow.md) require their own declared scope and
+evidence. A date filter does not establish daily or all-time coverage. Get-only
+exports without a registered dataset binding cannot be imported into Duckdog.
+
+### Observe and repeat work
+
+In a second terminal, inspect or watch one exact task:
+
+```bash
+dogopencli workflow export status --run RUN_ID
+dogopencli workflow export watch --run RUN_ID
+dogopencli workflow import status --plan IMPORT_PLAN_ID
+dogopencli workflow import watch --plan IMPORT_PLAN_ID
+dogopencli workflow status
+```
+
+Status and watch read saved metadata offline. Watch supports `--snapshot` for
+one frame and `--until-settled` to stop after settlement; Ctrl+C stops the observer.
+These commands do not execute an export or import.
+
+Saved targets retain inquiry intent through `workflow target create`, `plan`
+and `run`. A `following` policy freezes a new cutoff at each explicit planning
+call; it is not an automatic scheduler. Target execution exports data, while
+import remains a separate explicit action.
+
 ## Configuration and local storage
 
 Configuration precedence is `--config-dir`, `DOGOPENCLI_CONFIG_DIR`,
@@ -196,6 +258,7 @@ Locations relative to the effective configuration directory:
 | `plugins/<domain>/<dotted-leaf>/` | Installed manifest, adapter and resources. |
 | `leaf-registry.sqlite3` | Persistent storage bindings and ownership history. |
 | `leaf-cache.sqlite3` | Temporary query snapshots, one slot per list leaf. |
+| `workflow/` | Plans, execution metadata and immutable export artifacts. |
 | `duckdog.duckdb` | Default retained dataset database; configurable via `[duckdog].path`. |
 
 Each list leaf initializes one empty `_record VARCHAR` table on first installation.
@@ -251,6 +314,34 @@ with `source tmp/bootstrap-browser/env.sh`. For explicit login use
 `make bootstrap BOOTSTRAP_DOMAIN=payment` (or `liquidity` / `fx`). Read repository
 browser instructions before browser/authentication work. Local tests, review,
 production business UAT, merge and release are separate evidence.
+
+## Release and publication
+
+CLI releases require a clean, attached `master` matching freshly fetched
+GitHub `origin/master`. Commit and push the intended source changes first;
+include matching versions in `pyproject.toml`, `src/dogopencli/__init__.py` and
+the root package entry in `uv.lock`. Preserve unrelated local work in a stash
+or a separate checkout before releasing. Untracked files also block release.
+
+```bash
+make release DRY_RUN=1
+make release TARGET=antcode
+# Or select GitHub as the artifact host:
+make release TARGET=github
+```
+
+AntCode is the default artifact host; GitHub remains the source and tag origin.
+Dry run reports the plan only. A real release runs checks and an isolated
+install/update/uninstall smoke test, pushes the source tag, then publishes and
+verifies release assets. The command never increments the version or pushes
+source commits. Use `RETRY=1` when retrying the same tag or publishing it to a
+second provider.
+
+CLI release, plugin-site deployment and plugin ZIP publication are independent.
+For provider login, version-pinned curl installation, `release-site`,
+`deploy-site`, `release-plugin` and `publish-plugin`, read
+[release and publication](docs/agents/releasing.md). Site deployment runs on the
+target host and has its own service and routing prerequisites.
 
 Further reading: [documentation index](docs/README.md), [domain vocabulary](GLOSSARY.md),
 [plugin lifecycle spec](https://github.com/proletariat64/dogopencli/issues/239),
