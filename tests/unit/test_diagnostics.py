@@ -143,9 +143,9 @@ def test_warning_normalization_preserves_and_separates_retention_categories() ->
     ]
 
 
-@pytest.mark.parametrize("retention", ["", "*", "other", 1, None])
+@pytest.mark.parametrize("retention", ["", "*", "other", 1, None, ["failed"], {}])
 def test_warning_normalization_rejects_invalid_retention(
-    retention: str | int | None,
+    retention: object,
 ) -> None:
     with pytest.raises(CliError):
         normalize_warnings(

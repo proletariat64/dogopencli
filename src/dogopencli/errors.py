@@ -158,7 +158,7 @@ def normalize_warnings(warnings: list[dict[str, Any]]) -> list[dict[str, Any]]:
             if field == "retryable":
                 valid = value is None or isinstance(value, bool)
             elif field == "retention":
-                valid = value in {"failed", "refused"}
+                valid = isinstance(value, str) and value in {"failed", "refused"}
             else:
                 valid = value is None or isinstance(value, str)
             if not valid:

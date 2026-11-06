@@ -61,9 +61,10 @@ def validate_import_qualification(contract: Any) -> list[dict[str, Any]]:
                 not isinstance(matcher, dict)
                 or set(matcher)
                 - {"component", "retention", "diagnostic_code", "native_code"}
-                or set(matcher) < {"component", "retention", "diagnostic_code"}
+                or not {"component", "retention", "diagnostic_code"} <= set(matcher)
                 or not isinstance(matcher["component"], str)
                 or re.fullmatch(r"[a-z][a-z0-9_]{0,79}", matcher["component"]) is None
+                or not isinstance(matcher["retention"], str)
                 or matcher["retention"] not in {"failed", "refused"}
                 or not isinstance(matcher["diagnostic_code"], str)
                 or re.fullmatch(r"[A-Z][A-Z0-9_]{0,79}", matcher["diagnostic_code"])
