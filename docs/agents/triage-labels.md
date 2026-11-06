@@ -1,6 +1,6 @@
 # Triage Labels
 
-| Role | AntCode label | Meaning |
+| Role | GitHub label | Meaning |
 | --- | --- | --- |
 | needs-triage | needs-triage | Awaiting maintainer evaluation |
 | needs-info | needs-info | Awaiting additional information |

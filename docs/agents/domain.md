@@ -19,6 +19,6 @@ Maintain business terms in `GLOSSARY.md`. Keep current behavior in the single
 guide responsible for it, and use the glossary's defined vocabulary in issues,
 specs, design proposals and tests. Surface any conflict with an existing ADR.
 
-Requirements, acceptance scope and task status belong to the assigned AntCode
+Requirements, acceptance scope and task status belong to the assigned GitHub
 issue. Current documents do not accumulate execution logs, version history,
 old UAT journals or historical specification copies.

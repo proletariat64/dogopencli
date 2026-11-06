@@ -20,7 +20,7 @@ Python 使用四空格缩进、类型注解、`snake_case` 模块/函数和 `Pas
 | `docs/agents/<slug>.md` | 当前契约和操作方法，每项规则有一个维护位置 |
 | `tools/leaf-dev/` | Leaf 开发手册、接口、流程、样例、批次清单和 helper |
 | Leaf `README.md` / `leaf.json` | 包内说明 / 机器声明及 CLI、GUI 文档 |
-| AntCode Issue | 需求、规格、范围、验收与执行状态 |
+| GitHub Issue | 需求、规格、范围、验收与执行状态 |
 
 直接更新当前指南。删除失效规则、重复副本和失去用途的文档，并修复引用；
 不在仓库维护旧设计、决策过程、版本过程或验收日记的归档副本。
