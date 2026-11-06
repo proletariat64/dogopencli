@@ -58,8 +58,6 @@ def values(parameters: dict, *, required: bool = True) -> dict:
         value = parameters.get(option)
         if value is None and not required:
             continue
-        if value is None and option == "inst_id":
-            value = "Z21"
         if not isinstance(value, str) or not value.strip():
             fail(
                 "account, currency, entity and date bounds are required",

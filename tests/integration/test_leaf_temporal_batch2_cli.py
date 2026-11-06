@@ -200,9 +200,7 @@ def test_fx_freeze_does_not_make_invalid_original_scope_valid(run_cli, params):
 
 
 @pytest.mark.parametrize("params", [{}, {"bcode": ["B1"]}])
-def test_fx_yesterday_defaults_materialize_before_full_plan_persistence(
-    run_cli, params
-):
+def test_fx_missing_explicit_id_and_dates_rejects_plan_creation(run_cli, params):
     install(run_cli, "trade", "fx")
     code, out, error = run_cli(
         [
@@ -215,15 +213,8 @@ def test_fx_yesterday_defaults_materialize_before_full_plan_persistence(
             json.dumps(params),
         ]
     )
-    assert code == 0, out + error
-    plan = json.loads(out)["data"]
-    assert plan["parameters"]["from_time"].endswith("T16:00:00.000Z")
-    assert plan["parameters"]["to_time"].endswith("T15:59:59.999Z")
-    native = plan["native_scope"]["transactTimeRange"]
-    assert native["end"] - native["start"] == 86399999
-    code, out, error = run_cli(["workflow", "plan", "show", "--plan", plan["id"]])
-    assert code == 0, out + error
-    assert json.loads(out)["data"]["parameters"] == plan["parameters"]
+    assert code == 2, out + error
+    assert json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
 
 
 def test_fx_id_only_full_inquiry_remains_without_time_range(run_cli):

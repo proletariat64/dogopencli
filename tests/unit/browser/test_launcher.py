@@ -1,5 +1,7 @@
 """Unit tests for profile-level locks and the launcher argument construction."""
 
+import json
+
 import pytest
 
 from dogopencli.browser import launcher
@@ -72,6 +74,66 @@ def test_lock_names_are_dogopencli_specific():
     assert "di-" not in LOGIN_LOCK_NAME + CONTROL_LOCK_NAME
 
 
+def test_session_restore_preserves_existing_profile_preferences(tmp_path):
+    profile = tmp_path / "chrome"
+    default = profile / "Default"
+    default.mkdir(parents=True)
+    (default / "Preferences").write_text(
+        json.dumps(
+            {
+                "session": {
+                    "restore_on_startup": 5,
+                    "startup_urls": ["https://example.test"],
+                },
+                "homepage": "https://example.test/北斗星",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    launcher._ensure_session_restore(profile)
+
+    preferences = json.loads((default / "Preferences").read_text(encoding="utf-8"))
+    assert preferences["session"] == {
+        "restore_on_startup": 1,
+        "startup_urls": ["https://example.test"],
+    }
+    assert preferences["homepage"] == "https://example.test/北斗星"
+
+
+@pytest.mark.parametrize("raw", ["{truncated", "[]", "null"])
+def test_unusable_preferences_are_rebuilt(tmp_path, raw):
+    profile = tmp_path / "chrome"
+    default = profile / "Default"
+    default.mkdir(parents=True)
+    preferences_path = default / "Preferences"
+    preferences_path.write_text(raw, encoding="utf-8")
+
+    launcher._ensure_session_restore(profile)
+
+    preferences = json.loads(preferences_path.read_text(encoding="utf-8"))
+    assert preferences == {"session": {"restore_on_startup": 1}}
+
+
+def test_non_object_session_is_reset_without_dropping_other_preferences(tmp_path):
+    profile = tmp_path / "chrome"
+    default = profile / "Default"
+    default.mkdir(parents=True)
+    preferences_path = default / "Preferences"
+    preferences_path.write_text(
+        json.dumps({"session": [], "homepage": "https://example.test"}),
+        encoding="utf-8",
+    )
+
+    launcher._ensure_session_restore(profile)
+
+    preferences = json.loads(preferences_path.read_text(encoding="utf-8"))
+    assert preferences == {
+        "session": {"restore_on_startup": 1},
+        "homepage": "https://example.test",
+    }
+
+
 def test_chrome_args_use_dedicated_profile_and_port(tmp_path):
     env = _environment(tmp_path)
     args = launcher._chrome_args(env, "headless")
@@ -133,16 +195,20 @@ def test_same_mode_foreign_browser_is_not_reused(tmp_path, monkeypatch, mode):
 
 
 @pytest.mark.parametrize("separator", ["\0", " "])
+@pytest.mark.parametrize("tcp6_content", [None, "header\n"])
 @pytest.mark.parametrize(
     "profile_name", ["dedicated", "dedicated profile", "it's mine"]
 )
-def test_endpoint_process_args_uses_actual_listener(tmp_path, separator, profile_name):
+def test_endpoint_process_args_uses_actual_listener(
+    tmp_path, separator, profile_name, tcp6_content
+):
     net = tmp_path / "net"
     net.mkdir()
     (net / "tcp").write_text(
         "header\n0: 0100007F:2406 00000000:0000 0A 0 0 0 1000 0 42\n"
     )
-    (net / "tcp6").write_text("header\n")
+    if tcp6_content is not None:
+        (net / "tcp6").write_text(tcp6_content)
     for pid, inode, profile in [(100, 42, f"/{profile_name}"), (101, 43, "/foreign")]:
         process = tmp_path / str(pid)
         (process / "fd").mkdir(parents=True)
@@ -318,6 +384,8 @@ def test_spawn_opens_one_entry_only_after_profile_verification(
     monkeypatch.setattr(launcher, "HttpCdpTransport", Transport, raising=False)
     owner = launcher._Owner(env.profile / launcher.OWNER_FILE_NAME)
     launcher._spawn(env, mode, owner)
+    preferences = json.loads((env.profile / "Default" / "Preferences").read_text())
+    assert preferences["session"]["restore_on_startup"] == 1
     assert env.startup_url not in commands[0]
     assert "--no-startup-window" not in commands[0]
     assert events == ["verified", "created-entry", "entry"]

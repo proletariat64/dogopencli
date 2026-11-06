@@ -48,7 +48,7 @@ def date(value: Any) -> str:
 
 def resolve(parameters: dict, *, acquisition: bool = True) -> dict:
     aliases = parameters.get("account_alias") or []
-    entities = parameters.get("entity") or ([] if aliases else ["ALIPAYGM"])
+    entities = parameters.get("entity") or []
     for values in (aliases, entities):
         if not isinstance(values, list) or any(
             not isinstance(v, str) or not v.strip() for v in values
@@ -56,6 +56,12 @@ def resolve(parameters: dict, *, acquisition: bool = True) -> dict:
             raise CliError(INVALID_ARGUMENT, "invalid balance selector", exit_code=2)
     if "ANY" in aliases or ("ANY" in entities and entities != ["ANY"]):
         raise CliError(INVALID_ARGUMENT, "invalid ANY selection", exit_code=2)
+    if acquisition and not aliases and not entities:
+        raise CliError(
+            INVALID_ARGUMENT,
+            "an explicit entity or account-alias is required",
+            exit_code=2,
+        )
     mode = "ANY" if entities == ["ANY"] else "explicit"
     if mode == "ANY" and (acquisition or "_resolved_entities" in parameters):
         entities = parameters.get("_resolved_entities", entities)

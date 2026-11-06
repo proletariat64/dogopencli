@@ -17,6 +17,7 @@ fields. Start from [leaf.json](example/leaf.json), then run `leaf.py verify`.
 | `operations.<action>.execution` | `standard` (also the omission convention) or explicit `custom`; chosen independently for List/Get. |
 | `operations.list.freeze_parameters` | Optional explicit opt-in to a pure List default-freezing hook before persisted planning; the hook cannot overwrite supplied values. |
 | `operations.list.history` | Optional verified inclusive single calendar or instant axis; independent of standard/custom execution. Declaration and conversion boundary: [bounded history](../../docs/agents/bounded-history.md#native-declaration-and-temporal-boundary). |
+| `operations.list.import_qualification` | Optional strict version-1 rules allowing a qualified incomplete full List export to be preserved as an observation. Rules match host acquisition reason codes and retained diagnostic component/retention/code/native-code facts; no wildcards, callbacks, row inspection, or current-publication actions. See [export/import qualification](../../docs/agents/export-import-workflow.md). |
 | Custom operation `queries`, `max_requests`, `budget_seconds` | Named List/detail inquiries and shared execution bounds; see [Custom query SDK](../../docs/agents/custom-query-sdk.md). |
 | `summary`, `purpose`, `fields` | Discovery and business field meanings; preserve unknown native fields in output. |
 | `identity`, `identity_description` | Native List identity and its meaning; Get-only may use an empty List identity. |

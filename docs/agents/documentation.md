@@ -15,12 +15,12 @@ Python 使用四空格缩进、类型注解、`snake_case` 模块/函数和 `Pas
 | --- | --- |
 | `README.md` | 安装和可运行命令入口 |
 | `AGENTS.md` | 任务规则与有条件读取的指南指针 |
-| `CONTEXT.md` | 业务术语，不记录实现过程 |
+| `GLOSSARY.md` | 业务术语，不记录实现过程 |
 | `docs/README.md` | 当前指南导航 |
 | `docs/agents/<slug>.md` | 当前契约和操作方法，每项规则有一个维护位置 |
 | `tools/leaf-dev/` | Leaf 开发手册、接口、流程、样例、批次清单和 helper |
 | Leaf `README.md` / `leaf.json` | 包内说明 / 机器声明及 CLI、GUI 文档 |
-| GitHub Issue | 需求、规格、范围、验收与执行状态 |
+| AntCode Issue | 需求、规格、范围、验收与执行状态 |
 
 直接更新当前指南。删除失效规则、重复副本和失去用途的文档，并修复引用；
 不在仓库维护旧设计、决策过程、版本过程或验收日记的归档副本。
@@ -36,7 +36,7 @@ Python 使用四空格缩进、类型注解、`snake_case` 模块/函数和 `Pas
 不补造历史记录缺失的元数据，也不保留旧查询格式的读取回退。
 
 Markdown 使用 UTF-8、一个 H1、末尾换行，文件名使用小写英文、数字、连字符；
-README/AGENTS/CONTEXT 等入口名和现有 leaf identity 目录为例外。
+README/AGENTS/GLOSSARY 等入口名和现有 leaf identity 目录为例外。
 仓库文件使用相对 Markdown 链接；外部资料使用 HTTPS；本机私有资料只写路径和必要定位。
 
 提交文档前运行 `rtk proxy make doc-guard` 和 `rtk proxy git diff --check`。

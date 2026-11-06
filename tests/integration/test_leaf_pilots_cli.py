@@ -445,7 +445,19 @@ def test_each_pilot_native_types_and_cache_publication(run_cli, pilots, domain, 
         }
     ]
     pilots.business_script.append(native_page(domain, rows))
-    code, out, _ = run_cli([domain, "list", leaf, "--live"])
+    code, out, _ = run_cli(
+        [
+            domain,
+            "list",
+            leaf,
+            *(
+                ["--from-time", "2026-10-03", "--to-time", "2026-10-03"]
+                if domain == "fx"
+                else []
+            ),
+            "--live",
+        ]
+    )
     assert code == 0, out
     assert json.loads(out, parse_float=Decimal)["data"] == rows
     code, out, _ = run_cli([domain, "list", leaf])
@@ -456,6 +468,11 @@ def test_each_pilot_native_types_and_cache_publication(run_cli, pilots, domain, 
             domain,
             "refresh",
             leaf,
+            *(
+                ["--from-time", "2026-10-03", "--to-time", "2026-10-03"]
+                if domain == "fx"
+                else []
+            ),
             "--fields",
             next(iter(native_row(domain))),
             "--limit",
@@ -471,7 +488,18 @@ def test_each_pilot_native_types_and_cache_publication(run_cli, pilots, domain, 
     assert pilots.business_requests == requests
     # Successful empty acquisition never replaces the previous nonempty capture.
     pilots.business_script.append(native_page(domain, []))
-    code, out, _ = run_cli([domain, "refresh", leaf])
+    code, out, _ = run_cli(
+        [
+            domain,
+            "refresh",
+            leaf,
+            *(
+                ["--from-time", "2026-10-03", "--to-time", "2026-10-03"]
+                if domain == "fx"
+                else []
+            ),
+        ]
+    )
     assert code == 0 and json.loads(out)["meta"]["published"] is False
     failures = [
         ({"status": 401, "body": {}}, "AUTH_REQUIRED"),
@@ -490,7 +518,18 @@ def test_each_pilot_native_types_and_cache_publication(run_cli, pilots, domain, 
     ]
     for response, expected in failures:
         pilots.business_script.append(response)
-        code, out, err = run_cli([domain, "refresh", leaf])
+        code, out, err = run_cli(
+            [
+                domain,
+                "refresh",
+                leaf,
+                *(
+                    ["--from-time", "2026-10-03", "--to-time", "2026-10-03"]
+                    if domain == "fx"
+                    else []
+                ),
+            ]
+        )
         value = json.loads(out)
         assert code == 1 and value["error"]["code"] == expected, out
         assert value["data"] is None and value["meta"]["published"] is False
@@ -647,7 +686,19 @@ def test_invalid_native_response_never_becomes_success(
 ):
     select_application(pilots, domain)
     pilots.business_script.append({"status": 200, "body": body})
-    code, out, _ = run_cli([domain, "list", leaf, "--live"])
+    code, out, _ = run_cli(
+        [
+            domain,
+            "list",
+            leaf,
+            *(
+                ["--from-time", "2026-10-03", "--to-time", "2026-10-03"]
+                if domain == "fx"
+                else []
+            ),
+            "--live",
+        ]
+    )
     value = json.loads(out)
     assert code == 1 and value["error"]["code"] == "INVALID_RESPONSE", out
     assert value["data"] is None
@@ -708,7 +759,19 @@ def test_native_identity_conflicts_are_rejected_with_evidence(
         fallback = native_page(domain, [first, {**first, "different": True}])
         fallback["body"]["pageSize"] = 5000
         pilots.business_script.append(fallback)
-    code, out, _ = run_cli([domain, "list", leaf, "--live"])
+    code, out, _ = run_cli(
+        [
+            domain,
+            "list",
+            leaf,
+            *(
+                ["--from-time", "2026-10-03", "--to-time", "2026-10-03"]
+                if domain == "fx"
+                else []
+            ),
+            "--live",
+        ]
+    )
     value = json.loads(out)
     assert code == 1 and value["data"] is None, out
     assert value["error"]["code"] == "INCOMPLETE_RESULT"
@@ -857,7 +920,19 @@ def test_sdk_rejects_changed_native_total(run_cli, pilots, domain, leaf):
             },
         }
     pilots.business_script.extend([first, second])
-    code, out, _ = run_cli([domain, "list", leaf, "--live"])
+    code, out, _ = run_cli(
+        [
+            domain,
+            "list",
+            leaf,
+            *(
+                ["--from-time", "2026-10-03", "--to-time", "2026-10-03"]
+                if domain == "fx"
+                else []
+            ),
+            "--live",
+        ]
+    )
     assert code == 1 and json.loads(out)["error"]["code"] == "INVALID_RESPONSE", out
     assert json.loads(out)["data"] is None
     assert len(pilots.business_requests) == 2
@@ -903,7 +978,18 @@ def test_liquidity_overlap_retains_safe_incomplete_evidence(run_cli, pilots):
 def test_fx_rejects_invalid_native_transaction_number(run_cli, pilots, row):
     select_application(pilots, "fx")
     pilots.business_script.append(fx_page([row]))
-    code, out, _ = run_cli(["fx", "list", "trade", "--live"])
+    code, out, _ = run_cli(
+        [
+            "fx",
+            "list",
+            "trade",
+            "--live",
+            "--from-time",
+            "2026-10-03",
+            "--to-time",
+            "2026-10-03",
+        ]
+    )
     value = json.loads(out)
     assert code == 1 and value["error"]["code"] == "INVALID_RESPONSE", out
     assert value["data"] is None
@@ -913,7 +999,17 @@ def test_fx_conflicting_transaction_number_preserves_complete_cache(run_cli, pil
     select_application(pilots, "fx")
     saved_rows = [{"uniqueId": "SAVED", "amount": "0.1000"}]
     pilots.business_script.append(fx_page(saved_rows))
-    code, out, _ = run_cli(["fx", "refresh", "trade"])
+    code, out, _ = run_cli(
+        [
+            "fx",
+            "refresh",
+            "trade",
+            "--from-time",
+            "2026-10-03",
+            "--to-time",
+            "2026-10-03",
+        ]
+    )
     assert code == 0 and json.loads(out)["meta"]["published"] is True, out
     code, out, _ = run_cli(["fx", "list", "trade"])
     saved = json.loads(out)
@@ -929,7 +1025,9 @@ def test_fx_conflicting_transaction_number_preserves_complete_cache(run_cli, pil
         pilots.business_script.extend(
             [fx_page(first, total=1001), fx_page([changed], number=1, total=1001)]
         )
-        code, out, _ = run_cli(["fx", *command])
+        code, out, _ = run_cli(
+            ["fx", *command, "--from-time", "2026-10-03", "--to-time", "2026-10-03"]
+        )
         value = json.loads(out)
         if command == ["list", "trade", "--live", "--limit", "0"]:
             assert code == 1 and value["data"] is None, out
@@ -968,3 +1066,57 @@ def test_entity_empty_hole_is_partial_live_and_rejected_by_refresh(run_cli, pilo
         ["liquidity", "refresh", "reference.entities", "--require-complete"]
     )
     assert code == 1 and json.loads(out)["error"]["code"] == "INCOMPLETE_RESULT"
+
+
+@pytest.mark.parametrize("action", ["list", "refresh"])
+def test_fx_acquisition_requires_explicit_id_or_dates(run_cli, pilots, action):
+    select_application(pilots, "fx")
+    code, out, _ = run_cli(
+        ["fx", action, "trade", *(["--live"] if action == "list" else [])]
+    )
+    assert code == 2 and json.loads(out)["error"]["code"] == "INVALID_ARGUMENT"
+    assert pilots.business_requests == []
+
+
+def test_fx_native_zero_width_empty_result_preserves_saved_snapshot(run_cli, pilots):
+    select_application(pilots, "fx")
+    saved = [{"uniqueId": "SAVED", "amount": "0.1000"}]
+    pilots.business_script.append(fx_page(saved))
+    code, out, _ = run_cli(["fx", "refresh", "trade", "--trade-id", "SAVED"])
+    assert code == 0, out
+    code, before, _ = run_cli(["fx", "list", "trade"])
+    assert code == 0, before
+    empty = fx_page([])
+    empty["body"]["result"]["value"]["pageSize"] = 0
+    for command in (["list", "trade", "--live"], ["refresh", "trade"]):
+        pilots.business_script.append(empty)
+        code, out, _ = run_cli(
+            ["fx", *command, "--trade-id", "ABSENT", "--require-complete"]
+        )
+        value = json.loads(out)
+        assert code == 0 and value["meta"]["complete"] is True, out
+        if command[0] == "list":
+            assert value["data"] == []
+        else:
+            assert value["meta"]["published"] is False
+    code, after, _ = run_cli(["fx", "list", "trade"])
+    assert code == 0, after
+    assert json.loads(after)["data"] == json.loads(before)["data"] == saved
+    assert (
+        json.loads(after)["meta"]["fetched_at"]
+        == json.loads(before)["meta"]["fetched_at"]
+    )
+
+
+@pytest.mark.parametrize(
+    "rows,total,number", [([{"uniqueId": "ID"}], 1, 0), ([], 1, 0), ([], 0, 1)]
+)
+def test_fx_rejects_zero_width_outside_native_empty_sentinel(
+    run_cli, pilots, rows, total, number
+):
+    select_application(pilots, "fx")
+    response = fx_page(rows, total=total, number=number)
+    response["body"]["result"]["value"]["pageSize"] = 0
+    pilots.business_script.append(response)
+    code, out, _ = run_cli(["fx", "list", "trade", "--live", "--trade-id", "ID"])
+    assert code == 1 and json.loads(out)["error"]["code"] == "INVALID_RESPONSE", out

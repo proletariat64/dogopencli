@@ -68,18 +68,17 @@
           "name": "from-time",
           "type": "string",
           "required": false,
-          "description": "Inclusive ISO calendar date (UTC+08 full-day expansion) or explicit-offset/Z instant with seconds and 1–3 fractional digits; unknown offsets and higher precision are rejected. Paired bounds required; omitted ID and bounds freezes yesterday before persistence.",
+          "description": "Inclusive ISO calendar date (UTC+08 full-day expansion) or explicit-offset/Z instant with seconds and 1–3 fractional digits; unknown offsets and higher precision are rejected. Paired bounds required unless querying explicit trade IDs; no implicit date range.",
           "temporal_role": "history_from"
         },
         {
           "name": "to-time",
           "type": "string",
           "required": false,
-          "description": "Inclusive ISO calendar date (UTC+08 full-day expansion) or explicit-offset/Z instant with seconds and 1–3 fractional digits; unknown offsets and higher precision are rejected. Paired bounds required; omitted ID and bounds freezes yesterday before persistence.",
+          "description": "Inclusive ISO calendar date (UTC+08 full-day expansion) or explicit-offset/Z instant with seconds and 1–3 fractional digits; unknown offsets and higher precision are rejected. Paired bounds required unless querying explicit trade IDs; no implicit date range.",
           "temporal_role": "history_to"
         }
       ],
-      "freeze_parameters": true,
       "history": {
         "interpretation": "instant",
         "time_basis": "transactTime",
@@ -246,7 +245,8 @@
     "Field types describe verified native representations; fields may be absent or null, unknown fields are preserved, and documentation never coerces records.",
     "Native totalCount counts transaction-number records in the requested scope. Duplicate identities, content conflicts or count gaps leave the result incomplete and prevent refresh publication.",
     "Use a narrow qualified scope with BCode, scene, symbol, transaction type, fulfilled status and paired dates. Broad date-only or BCode-only inquiries may fail in the backend.",
-    "Repeated acquisitions cannot prove an immutable backend snapshot or stable ordering for every scope."
+    "Repeated acquisitions cannot prove an immutable backend snapshot or stable ordering for every scope.",
+    "The successful native empty-result sentinel has totalCount=0, currentPage=0, pageSize=0 and items=[]; it maps to an empty SDK page at the qualified request width. Zero width with records, a positive total or another page number is rejected."
   ],
   "examples": [
     {

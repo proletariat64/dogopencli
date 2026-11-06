@@ -51,12 +51,14 @@ Use code-review-graph first for code relationships and before nontrivial code ed
 
 Use conventional commit and PR prefixes such as `feat:`, `fix:`, and `docs:`. PRs should explain behavior, link relevant issues, report validation, and identify unverified production assumptions.
 
+Create AntCode PRs without reviewers by default: `rtk antcode pr create <source> <target> "<title>" --no-review-required`. Decide whether to merge separately and manually; use `rtk antcode pr merge <iid>` when merging.
+
 ## Agent skills
 
 ### Issue tracker
 
-Track issues and specs in GitHub Issues for
-`proletariat64/dogopencli`. See `docs/agents/issue-tracker.md`.
+Track issues and specs in AntCode `pd.pt/dogopencli` using `rtk antcode`.
+See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
@@ -65,9 +67,9 @@ See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Maintain business terms in `CONTEXT.md` and current contracts in the responsible
-guide. See `docs/agents/domain.md`; keep execution and version history out of
-current development documents.
+Single-context: maintain business terms in `GLOSSARY.md` and current contracts
+in the responsible guide. See `docs/agents/domain.md`; keep execution and
+version history out of current development documents.
 
 ### Leaf development
 

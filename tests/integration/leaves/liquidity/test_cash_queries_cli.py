@@ -1009,3 +1009,22 @@ def test_intraday_native_key_does_not_relax_scope_validation(installed, field, b
     browser.business_script.append(page(leaf, [{**native_row(leaf), field: bad}]))
     result = cli("liquidity", "list", leaf, "--live", *scope_flags(leaf), code=1)
     assert result["error"]["code"] == "INVALID_RESPONSE"
+
+
+@pytest.mark.parametrize("action", ["list", "refresh"])
+def test_intraday_requires_explicit_institution(installed, action):
+    leaf = "cash.statements.intraday"
+    cli, browser = installed(leaf)
+    flags = scope_flags(leaf)
+    i = flags.index("--inst-id")
+    del flags[i : i + 2]
+    result = cli(
+        "liquidity",
+        action,
+        leaf,
+        *(["--live"] if action == "list" else []),
+        *flags,
+        code=2,
+    )
+    assert result["error"]["code"] == "INVALID_ARGUMENT"
+    assert not browser.business_requests

@@ -23,6 +23,7 @@ from typing import Any
 from ..cache import Cache
 from ..config import tomllib
 from ..errors import CONFIG_ERROR, LOCKED, CliError
+from ..import_qualification import validate_import_qualification
 
 _NAME = r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*"
 _PARAMETER = r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
@@ -171,6 +172,45 @@ QUERY_SCHEMA = {
         "result_shape": {"enum": ["object", "array"]},
     },
 }
+IMPORT_QUALIFICATION_SCHEMA = {
+    "type": "object",
+    "required": ["version", "rules"],
+    "additionalProperties": False,
+    "properties": {
+        "version": {"type": "integer", "enum": [1]},
+        "rules": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["id", "action", "reason_codes", "retained_errors"],
+                "additionalProperties": False,
+                "properties": {
+                    "id": {"type": "string"},
+                    "action": {"enum": ["preserve"]},
+                    "reason_codes": {"type": "array", "items": {"type": "string"}},
+                    "retained_errors": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": [
+                                "component",
+                                "retention",
+                                "diagnostic_code",
+                            ],
+                            "additionalProperties": False,
+                            "properties": {
+                                "component": {"type": "string"},
+                                "retention": {"enum": ["failed", "refused"]},
+                                "diagnostic_code": {"type": "string"},
+                                "native_code": {},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
 MANIFEST_SCHEMA = {
     "type": "object",
     "required": [
@@ -206,6 +246,7 @@ MANIFEST_SCHEMA = {
                             {
                                 "history": HISTORY_SCHEMA,
                                 "freeze_parameters": {"type": "boolean"},
+                                "import_qualification": IMPORT_QUALIFICATION_SCHEMA,
                             }
                             if op == "list"
                             else {}
@@ -532,9 +573,25 @@ def _validate_temporal_roles(operation: dict) -> None:
             )
 
 
+def _validate_import_qualification(operation: dict) -> None:
+    contract = operation.get("import_qualification")
+    if contract is None:
+        return
+    try:
+        validate_import_qualification(contract)
+    except ValueError as error:
+        raise _invalid(str(error)) from error
+
+
 def validate_manifest(value: Any) -> None:
     _validate(value, MANIFEST_SCHEMA, "leaf")
+    if "import_qualification" in value:
+        raise _invalid("import_qualification is supported only for List")
     for action, operation in value["operations"].items():
+        if action == "list":
+            _validate_import_qualification(operation)
+        elif "import_qualification" in operation:
+            raise _invalid("import_qualification is supported only for List")
         if operation.get("execution", "standard") == "custom":
             supported = MANIFEST_SCHEMA["properties"]["operations"]["properties"][
                 action

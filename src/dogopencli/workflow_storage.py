@@ -317,6 +317,11 @@ def publication(config_file: Path, artifact: dict) -> Iterator[Publication]:
 
 
 def save_observation(db: Any, artifact: dict, receipt: dict) -> None:
+    receipt.setdefault(
+        "input_quality",
+        "incomplete" if artifact["state"] == "incomplete" else "complete",
+    )
+    receipt.setdefault("qualification", None)
     saved = db.execute(
         "SELECT artifact FROM _dogopencli_observations WHERE export_id=?",
         [artifact["id"]],
@@ -362,6 +367,8 @@ def apply(config_file: Path, plan: dict, artifact: dict, committed_at: str) -> d
             "record_count": artifact["record_count"],
             "committed_at": committed_at,
             "current_effect": "unchanged",
+            "input_quality": plan.get("input_quality", "complete"),
+            "qualification": plan.get("qualification"),
             "scope": artifact["metadata"]["scope"],
             "environment": artifact["environment"],
         }

@@ -1,4 +1,4 @@
-"""Cash forecast rule configuration: fixed Z21 scope and 1000-row native pages."""
+"""Cash forecast rules with explicit institution scope and native paging."""
 
 import json
 from dataclasses import dataclass
@@ -8,11 +8,24 @@ from dogopencli.contracts import EndpointContract
 from dogopencli.domain_contracts import LIQUIDITY_STARTUP_URL
 from dogopencli.errors import (
     BUSINESS_QUERY_FAILED,
+    INVALID_ARGUMENT,
     INVALID_RESPONSE,
     REQUEST_NOT_ALLOWED,
     CliError,
 )
 from dogopencli.jsonutil import parse
+
+
+def institution(parameters: dict[str, Any]) -> str:
+    value = parameters.get("inst_id")
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or value.strip().upper() == "ANY"
+    ):
+        raise CliError(INVALID_ARGUMENT, "an explicit inst-id is required", exit_code=2)
+    return value
+
 
 PAGE_SIZE = 1000
 TENANT = "GUAPW3SG"
@@ -20,29 +33,33 @@ TENANT = "GUAPW3SG"
 
 @dataclass(frozen=True)
 class ForecastInquiry:
+    inst_id: str
     name: str = "liquidity.rules.forecast.list"
     page_url: str = LIQUIDITY_STARTUP_URL
-    contract: EndpointContract = EndpointContract(
-        method="GET",
-        host="iliquidity.alipay.com",
-        path="/bankCashForecastRuleQuery.json",
-        page_size=PAGE_SIZE,
-        one_based=False,
-        allowed_body_keys=frozenset({"tntInstId", "bankCashForecastRuleQueryVO"}),
-        fixed_body_values=(("tntInstId", TENANT),),
-        json_body_contracts=(
-            (
-                "bankCashForecastRuleQueryVO",
-                frozenset({"tntInstId", "instId", "rowStart", "pageSize"}),
-                (("tntInstId", TENANT), ("instId", ["Z21"])),
-                frozenset({PAGE_SIZE}),
+
+    @property
+    def contract(self) -> EndpointContract:
+        return EndpointContract(
+            method="GET",
+            host="iliquidity.alipay.com",
+            path="/bankCashForecastRuleQuery.json",
+            page_size=PAGE_SIZE,
+            one_based=False,
+            allowed_body_keys=frozenset({"tntInstId", "bankCashForecastRuleQueryVO"}),
+            fixed_body_values=(("tntInstId", TENANT),),
+            json_body_contracts=(
+                (
+                    "bankCashForecastRuleQueryVO",
+                    frozenset({"tntInstId", "instId", "rowStart", "pageSize"}),
+                    (("tntInstId", TENANT), ("instId", [self.inst_id])),
+                    frozenset({PAGE_SIZE}),
+                ),
             ),
-        ),
-    )
+        )
 
     def page_body(self, scope: str, row_start: int, page_size: int) -> dict[str, Any]:
         if (
-            scope
+            scope != self.inst_id
             or type(page_size) is not int
             or page_size != PAGE_SIZE
             or type(row_start) is not int
@@ -55,7 +72,7 @@ class ForecastInquiry:
             "bankCashForecastRuleQueryVO": json.dumps(
                 {
                     "tntInstId": TENANT,
-                    "instId": ["Z21"],
+                    "instId": [self.inst_id],
                     "rowStart": row_start,
                     "pageSize": PAGE_SIZE,
                 }
@@ -88,6 +105,10 @@ class ForecastInquiry:
                 INVALID_RESPONSE, "reported total is not a nonnegative integer"
             )
         for row in rows:
+            if "instId" in row and row["instId"] != self.inst_id:
+                raise CliError(
+                    INVALID_RESPONSE, "rule institution differs from request"
+                )
             value = row.get("ruleId")
             if (
                 not isinstance(value, (str, int))
@@ -100,15 +121,12 @@ class ForecastInquiry:
         return rows, total
 
 
-CAPABILITY = ForecastInquiry()
-
-
 class Adapter:
     def capability(self, parameters: dict[str, Any]) -> Any:
-        return CAPABILITY
+        return ForecastInquiry(institution(parameters))
 
     def scope(self, parameters: dict[str, Any]) -> str:
-        return ""
+        return institution(parameters)
 
     def filter(
         self, records: list[dict[str, Any]], parameters: dict[str, Any]

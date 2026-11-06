@@ -417,6 +417,7 @@ class QueryTools:
                             error.message,
                             severity="warning",
                             component=name,
+                            retention=status,
                             retryable=error.retryable,
                             native_code=(error.meta or {}).get("native_code"),
                             consequence="promised detail coverage is incomplete",

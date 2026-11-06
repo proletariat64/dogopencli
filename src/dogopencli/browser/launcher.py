@@ -11,6 +11,7 @@ under that hold instead of taking the lock itself (flocks conflict across
 fds, even within one process tree).
 """
 
+import json
 import os
 import re
 import signal
@@ -43,6 +44,27 @@ _COMMON_ARGS = (
 
 class LauncherError(Exception):
     """A bounded launcher failure; the login layer maps it to browser_unavailable."""
+
+
+def _ensure_session_restore(profile: Path) -> None:
+    default = profile / "Default"
+    default.mkdir(parents=True, exist_ok=True)
+    preferences_path = default / "Preferences"
+    try:
+        preferences = json.loads(preferences_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        preferences = {}
+    if not isinstance(preferences, dict):
+        preferences = {}
+    session = preferences.setdefault("session", {})
+    if not isinstance(session, dict):
+        session = preferences["session"] = {}
+    if session.get("restore_on_startup") == 1:
+        return
+    session["restore_on_startup"] = 1
+    tmp = preferences_path.with_name(f".Preferences.dogopencli.tmp.{os.getpid()}")
+    tmp.write_text(json.dumps(preferences) + "\n", encoding="utf-8")
+    tmp.replace(preferences_path)
 
 
 def _chrome_args(environment: BrowserEnvironment, mode: str) -> list[str]:
@@ -236,7 +258,12 @@ def _endpoint_process_args(
     """Resolve local listening sockets to their owning processes, fail closed."""
     inodes = set()
     for table in ("tcp", "tcp6"):
-        for line in (proc_root / "net" / table).read_text().splitlines()[1:]:
+        try:
+            socket_lines = (proc_root / "net" / table).read_text().splitlines()[1:]
+        except FileNotFoundError:
+            # A kernel with IPv6 disabled may not expose /proc/net/tcp6.
+            continue
+        for line in socket_lines:
             fields = line.split()
             if fields[3] == "0A" and int(fields[1].rsplit(":", 1)[1], 16) == port:
                 inodes.add(f"socket:[{fields[9]}]")
@@ -356,6 +383,7 @@ def launch(
 
 def _spawn(environment: BrowserEnvironment, mode: str, owner: _Owner) -> str:
     profile = environment.profile
+    _ensure_session_restore(profile)
     environment.log_path.parent.mkdir(parents=True, exist_ok=True)
     env_vars = dict(os.environ)
     if Path("/mnt/wslg/runtime-dir").is_dir():

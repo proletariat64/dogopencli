@@ -104,7 +104,28 @@
         }
       },
       "max_requests": 10000,
-      "budget_seconds": 1800
+      "budget_seconds": 1800,
+      "import_qualification": {
+        "version": 1,
+        "rules": [
+          {
+            "id": "detail-999",
+            "action": "preserve",
+            "reason_codes": [
+              "DETAIL_COVERAGE_INCOMPLETE",
+              "PAGINATION_HOLES_BYPASSED"
+            ],
+            "retained_errors": [
+              {
+                "component": "detail",
+                "retention": "failed",
+                "diagnostic_code": "BUSINESS_QUERY_FAILED",
+                "native_code": "999"
+              }
+            ]
+          }
+        ]
+      }
     }
   },
   "summary": "Cash account directory with baseline configuration and native detail.",

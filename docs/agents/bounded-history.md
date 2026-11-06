@@ -51,7 +51,8 @@ establish equivalence to one wider query or a merged historical publication.
 Every package export uses the [exact export/import contract](export-import-workflow.md).
 Pass the selected package's `export_id` to `workflow import plan --action preserve`
 and apply that import plan offline. Complete-empty observations remain identifiable;
-incomplete/failed artifacts cannot be normal import inputs. Each exact query is a
+incomplete/failed history artifacts cannot be import inputs; the full-List
+incomplete-preservation contract explicitly excludes history. Each exact query is a
 separate observation and does not update the registered current table. Equal or
 overlapping records from different exports therefore do not become a double-counted
 current history view. Historical merge, range replacement and separate frozen

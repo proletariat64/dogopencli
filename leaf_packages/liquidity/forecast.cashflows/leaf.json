@@ -24,10 +24,10 @@
         },
         {
           "name": "inst-id",
-          "required": false,
+          "required": true,
           "type": "string",
           "local_field": "entity",
-          "description": "Native owning entity; acquisition default Z21."
+          "description": "Explicit native owning entity; no business default."
         },
         {
           "name": "from-date",
@@ -191,7 +191,7 @@
     }
   },
   "limitations": [
-    "GET /queryCashFlowData.json once with exact JSON-string cashFlowDataQueryVO. Required account/currency/date range; entity defaults to Z21, explicit entity is preserved. No amount filters, timezone conversion or pagination invented.",
+    "GET /queryCashFlowData.json once with exact JSON-string cashFlowDataQueryVO. Entity, account alias, currency and both date bounds must be explicit; no business scope defaults. Explicit values are preserved. No amount filters, timezone conversion or pagination invented.",
     "Both native actutalRecordNum and currentRecordNum must equal response arrivals before accepting this unpaged response. Unknown reported total remains null in SDK evidence; failed or mismatched count witnesses reject the candidate.",
     "Internal typed-tuple SHA-256 includes all13 approved dimensions, including gmtCreate. Empty strings and explicit null are meaningful components; missing fields remain errors. No synthetic business ID is added.",
     "Amounts and gmtModified are mutable values, excluded from identity. Same-key duplicates retain diagnostics and conservative publication policy; conflicting values are not silently declared complete.",

@@ -12,7 +12,7 @@
           "name": "entity",
           "type": "string",
           "required": false,
-          "description": "Optional native entity scope; default ALIPAYGM only when no explicit alias; ANY freezes local entities.",
+          "description": "Explicit native entity scope, required when no account-alias is supplied; ANY freezes local entities.",
           "multiple": true,
           "local_field": "entity"
         },

@@ -5,7 +5,7 @@
 - [Custom query SDK](agents/custom-query-sdk.md)：依赖查询、Python 编排、共享请求预算及业务覆盖责任。
 - [Domain 与认证](agents/domain-components.md)：领域声明、配置、操作观察、认证和本地 GUI。
 - [测试组织](agents/testing.md)：当前契约分层、离线隔离、参数矩阵和八 worker 运行方式。
-- [领域术语](../CONTEXT.md)：业务对象和身份含义。
+- [领域术语](../GLOSSARY.md)：业务对象和身份含义。
 - [文档与目录规范](agents/documentation.md)：当前指导的归属、命名和检查。
 - [领域文档维护](agents/domain.md)：术语与当前契约的维护方式。
 - [Issue 跟踪](agents/issue-tracker.md) 与 [分诊标签](agents/triage-labels.md)：任务范围、规格和执行状态。

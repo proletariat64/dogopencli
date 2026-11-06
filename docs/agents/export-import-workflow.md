@@ -69,15 +69,48 @@ interval, conclusions, warnings and gap evidence. Each deliberate acquisition
 creates a new Export Run. Retrying that Run retains its identity and starts a new
 attempt; each saved export has its own immutable identity.
 Complete-empty, complete-nonempty, usable incomplete, failed and unqueried plans are
-distinct. Incomplete records remain inspectable; normal import accepts only complete
-exports. A failed refresh does not hide the last complete export or committed data.
+distinct. Incomplete records remain inspectable. Complete exports retain their existing
+import behavior; an incomplete export can be imported only through the qualified
+full-List `preserve` contract below. A failed refresh does not hide the last complete
+export or committed data.
+
+A full List operation may declare `import_qualification` with `version: 1` and a
+nonempty `rules` list. Every rule explicitly contains a unique nonempty `id`,
+`action: "preserve"`, a `reason_codes` allowlist and a `retained_errors` matcher list;
+at least one of those lists must be nonempty. A retained matcher names `component`,
+`retention` (`failed` or `refused`), `diagnostic_code`, and optionally one safe scalar
+`native_code`. Empty rules, unknown fields, wildcards, implicit defaults, duplicate IDs
+or matchers, and unsafe native values are invalid. String and integer native codes
+compare equal only after safe string normalization; stored evidence is not rewritten.
+
+Inquiry planning deep-copies this declaration before acquisition. Export verifies that
+the installed declaration is unchanged and saves the same snapshot. A changed
+declaration requires a new Inquiry Plan and Export Run. Older artifacts without the
+snapshot are not reinterpreted. Get, List-with-detail, history, repair, local-filter
+artifacts, and current-publication actions do not qualify.
+
+For an incomplete candidate, the host requires usable-incomplete acquisition evidence,
+a nonempty actual reason set, and a single rule covering the whole artifact. Actual
+reasons must be a subset of that rule's allowlist. Every host-standard custom-query
+retained diagnostic group must match the same rule; declared diagnostic matchers need
+at least one actual match, while a reason-only rule requires no diagnostic groups.
+Zero or multiple covering rules reject the import. Failed artifacts, unusable
+incomplete evidence, missing or malformed evidence, and uncovered reasons or
+diagnostics fail closed with `WORKFLOW_IMPORT_NOT_QUALIFIED` and structured reason
+codes. Qualification never reads business rows or leaf-private evidence.
 
 `preserve` adds one scoped observation with provenance. It leaves the registered
 `_record VARCHAR` current table unchanged, including existing rows. Import plans show
 `existing_count` for preserved rows in the exact scope/environment, `new_count`
-(zero for replay), `current_count`, and `current_effect: unchanged`. Counts preserve
-multiplicity; a new equal-valued export is another observation. No business key,
-version, date, or merge rule is invented.
+(zero for replay), `current_count`, and `current_effect: unchanged`. They also freeze
+`input_quality` and a bounded `qualification` summary containing the contract version,
+matched rule, action, actual reasons, and diagnostic groups/counts without messages or
+business rows. Apply independently recomputes and compares this summary before exact
+input checks, replay, or any write. Receipts and observation readback retain the same
+quality and qualification evidence; complete observations use `input_quality:
+"complete"` and no matched rule. Counts preserve multiplicity; a new equal-valued
+export is another observation. No business key, version, date, or merge rule is
+invented.
 
 Import reads the frozen artifact and registered binding without loading adapters,
 consulting later export configuration, or accessing networking. Input format,

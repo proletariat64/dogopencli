@@ -9,9 +9,8 @@
         {
           "name": "inst-id",
           "type": "string",
-          "required": false,
-          "default": "Z21",
-          "description": "Institution identifier; Z21 is the qualified reference scope."
+          "required": true,
+          "description": "Explicit native institution identifier; no business default."
         },
         {
           "name": "account-alias",
@@ -118,7 +117,7 @@
   "identity_description": "Native end2EndId primary key, retaining its source value and type. Account/currency/date scope is checked independently; repeated bank transaction numbers do not merge distinct statements.",
   "limitations": [
     "Fixed tenant GUAPW3SG, POST /bankAccountDetailQuery.json, rowStart offsets and pageSize=1000; timezone GMT+08.",
-    "Explicit account alias, currency and inclusive date bounds are required for acquisition. Z21 is the default institution; no scope inference from alias.",
+    "Explicit account alias, currency and inclusive date bounds are required for acquisition. An explicit institution is required; no scope inference from alias.",
     "Native amounts, dates, timezones and unknown fields retain their values and types. Capture time does not replace transaction or value date.",
     "Total is data.totalCount and must remain fixed; duplicate native statement identities and contradictory scope fail.",
     "fund-direction is a local exact filter. Refresh saves the entire acquired scope; cached replay needs no acquisition parameters."
@@ -126,7 +125,7 @@
   "examples": [
     {
       "title": "Read scoped native intraday statements",
-      "command": "dogopencli liquidity list cash.statements.intraday --live --account-alias ACCOUNT_ALIAS --currency USD --from-date 2026-10-01 --to-date 2026-10-01 --limit 0"
+      "command": "dogopencli liquidity list cash.statements.intraday --live --inst-id INSTITUTION_ID --account-alias ACCOUNT_ALIAS --currency USD --from-date 2026-10-01 --to-date 2026-10-01 --limit 0"
     }
   ],
   "dataset": {

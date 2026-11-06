@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-ROOT_DOCS = {"README.md", "AGENTS.md", "CONTEXT.md", "LICENSE.md"}
+ROOT_DOCS = {"README.md", "AGENTS.md", "GLOSSARY.md", "LICENSE.md", "LEGAL.md"}
 SKIP_DIRS = {
     "node_modules",
     "__pycache__",

@@ -2,6 +2,7 @@
 
 import copy
 import json
+from typing import Any
 
 import pytest
 
@@ -72,6 +73,144 @@ def write_leaf(tmp_path, value=None, source=ADAPTER):
     (folder / "leaf.json").write_text(json.dumps(value or manifest()))
     (folder / "adapter.py").write_text(source)
     return folder
+
+
+def import_qualification() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "rules": [
+            {
+                "id": "retain-detail-999",
+                "action": "preserve",
+                "reason_codes": ["DETAIL_COVERAGE_INCOMPLETE"],
+                "retained_errors": [
+                    {
+                        "component": "detail",
+                        "retention": "failed",
+                        "diagnostic_code": "BUSINESS_QUERY_FAILED",
+                        "native_code": "999",
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def test_list_import_qualification_is_explicit_and_versioned() -> None:
+    value = manifest()
+    value["operations"]["list"]["import_qualification"] = import_qualification()
+    validate_manifest(value)
+    contract = import_qualification()
+    contract["rules"][0]["retained_errors"] = []
+    validate_manifest(value)
+    value["operations"]["list"]["import_qualification"] = contract
+    validate_manifest(value)
+    contract["rules"][0]["reason_codes"] = []
+    contract["rules"][0]["retained_errors"] = import_qualification()["rules"][0][
+        "retained_errors"
+    ]
+    validate_manifest(value)
+
+
+@pytest.mark.parametrize(
+    ("location", "replacement"),
+    [
+        (("version",), 2),
+        (("rules",), []),
+        (("rules", 0, "id"), ""),
+        (("rules", 0, "id"), "*"),
+        (("rules", 0, "action"), "replace-full"),
+        (("rules", 0, "reason_codes"), ["DETAIL_COVERAGE_INCOMPLETE"] * 2),
+        (("rules", 0, "reason_codes"), ["*"]),
+        (("rules", 0, "reason_codes"), [""]),
+        (("rules", 0, "reason_codes"), ["lowercase"]),
+        (("rules", 0, "retained_errors", 0, "component"), ""),
+        (("rules", 0, "retained_errors", 0, "component"), "*"),
+        (("rules", 0, "retained_errors", 0, "retention"), "*"),
+        (("rules", 0, "retained_errors", 0, "diagnostic_code"), ""),
+        (("rules", 0, "retained_errors", 0, "diagnostic_code"), "*"),
+        (("rules", 0, "retained_errors", 0, "native_code"), True),
+        (("rules", 0, "retained_errors", 0, "native_code"), None),
+        (("rules", 0, "retained_errors", 0, "native_code"), 1.5),
+        (("rules", 0, "retained_errors", 0, "native_code"), []),
+        (("rules", 0, "retained_errors", 0, "native_code"), "*"),
+        (("rules", 0, "retained_errors", 0, "native_code"), "bad code"),
+        (("rules", 0, "allow_all"), True),
+        (("rules", 0, "retained_errors", 0, "unknown"), "value"),
+        (("unknown",), True),
+    ],
+)
+def test_import_qualification_rejects_broad_or_invalid_constructs(
+    location: tuple[str | int, ...], replacement: Any
+) -> None:
+    value = manifest()
+    contract = import_qualification()
+    target = contract
+    for key in location[:-1]:
+        target = target[key]
+    target[location[-1]] = replacement
+    value["operations"]["list"]["import_qualification"] = contract
+    with pytest.raises(CliError) as raised:
+        validate_manifest(value)
+    assert raised.value.code == "INVALID_LEAF"
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        {"id": "empty", "action": "preserve"},
+        {
+            "id": "empty",
+            "action": "preserve",
+            "reason_codes": [],
+            "retained_errors": [],
+        },
+        {
+            "id": "implicit",
+            "action": "preserve",
+            "reason_codes": ["COUNT_SHORTFALL"],
+        },
+    ],
+)
+def test_import_qualification_requires_explicit_concrete_matchers(
+    rule: dict[str, Any],
+) -> None:
+    value = manifest()
+    value["operations"]["list"]["import_qualification"] = {
+        "version": 1,
+        "rules": [rule],
+    }
+    with pytest.raises(CliError):
+        validate_manifest(value)
+
+
+def test_import_qualification_rejects_duplicate_rule_ids_and_matchers() -> None:
+    value = manifest()
+    contract = import_qualification()
+    contract["rules"].append(copy.deepcopy(contract["rules"][0]))
+    value["operations"]["list"]["import_qualification"] = contract
+    with pytest.raises(CliError):
+        validate_manifest(value)
+    contract["rules"][1]["id"] = "another-rule"
+    validate_manifest(value)
+    contract["rules"][0]["retained_errors"].append(
+        copy.deepcopy(contract["rules"][0]["retained_errors"][0])
+    )
+    with pytest.raises(CliError):
+        validate_manifest(value)
+
+
+def test_import_qualification_is_list_only() -> None:
+    value = manifest()
+    detail = custom_operation()
+    detail.update(
+        lookup={"name": "alias", "description": "Native alias"},
+        result_identity={"fields": ["alias"], "description": "Native alias"},
+        import_qualification=import_qualification(),
+    )
+    value["operations"]["get"] = detail
+    with pytest.raises(CliError):
+        validate_manifest(value)
 
 
 def test_static_verification_does_not_import_custom_adapter(tmp_path):

@@ -25,9 +25,10 @@ Repeated explicit `--account-alias` values are deduplicated and queried directly
 without requiring a current directory entry. An explicit entity scope is still
 validated against native returned records.
 
-Without explicit aliases, the existing entity selector determines the scope:
-default ALIPAYGM, repeated explicit entities, or `--entity ANY` frozen from the
-registered local Duckdog entity selector. ANY is never sent to the balance
+Acquisition requires explicit account aliases or an explicit entity selector.
+No business entity is selected by default. Without explicit aliases, the entity
+selector determines the scope: repeated explicit entities, or `--entity ANY`
+frozen from the registered local Duckdog entity selector. ANY is never sent to the balance
 endpoint. Account aliases are enumerated in this order:
 
 1. Configured Duckdog account directory.

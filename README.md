@@ -11,6 +11,41 @@ for the handbook, interfaces, workflow, runnable example and helpers.
 
 ## Get started
 
+### Install the CLI
+
+With [uv](https://docs.astral.sh/uv/getting-started/installation/) available, run
+the installer from a checkout (Linux/macOS, Bash):
+
+```bash
+./install.sh install
+./install.sh update
+./install.sh uninstall
+```
+
+`install` always overwrites the single installed program, even at the same version.
+`update` is uninstall followed by install; if installation then fails, the
+program stays uninstalled. No old program versions or rollback copies are kept.
+Uninstall preserves configuration, browser login, installed business leaves,
+cache and Duckdog data. The installer does not install Chrome or log in.
+
+The installer selects Python 3.12 through uv and installs runtime dependencies
+without development extras or a persistent download cache. It installs a snapshot,
+so later checkout edits require another install. The default uv tool directory on
+Linux is `~/.local/share/uv/tools/dogopencli`, with the command in `~/.local/bin`.
+Use `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` to change these locations; use the same
+settings for all three actions. The script prints the command path and any PATH
+setup needed.
+
+To install a delivered wheel or another checkout, pass its source explicitly:
+
+```bash
+./install.sh install /path/to/dogopencli-VERSION-py3-none-any.whl
+./install.sh update /path/to/checkout
+./install.sh install https://example.com/dogopencli-VERSION-py3-none-any.whl
+```
+
+### Develop from source
+
 Python 3.10+ is required. Live inquiries also require Google Chrome and access to
 the relevant platform application. From a checkout:
 
@@ -21,7 +56,7 @@ uv run dogopencli plugins list --format text
 uv run dogopencli domain list --format text
 ```
 
-Examples below use `dogopencli`; prefix it with `uv run` when using the checkout's
+The examples below use `dogopencli`; prefix it with `uv run` when using the checkout's
 environment. An editable pip installation is also supported:
 `python -m pip install -e '.[dev]'`.
 
@@ -210,7 +245,7 @@ with `source tmp/bootstrap-browser/env.sh`. For explicit login use
 browser instructions before browser/authentication work. Local tests, review,
 production business UAT, merge and release are separate evidence.
 
-Further reading: [documentation index](docs/README.md), [domain vocabulary](CONTEXT.md),
+Further reading: [documentation index](docs/README.md), [domain vocabulary](GLOSSARY.md),
 [plugin lifecycle spec](https://github.com/proletariat64/dogopencli/issues/239),
 [domain component guide](docs/agents/domain-components.md) and
 [leaf development tool](tools/leaf-dev/README.md).

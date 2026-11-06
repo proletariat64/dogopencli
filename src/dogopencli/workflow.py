@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 import uuid
 from argparse import Namespace
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 
 from .errors import CliError
 from .helpspec import NO_EFFECTS, BizNode, opt
+from .import_qualification import eligible_full_list
 from .jsonutil import canonical, parse
 
 
@@ -141,7 +143,7 @@ def declarations() -> tuple[BizNode, ...]:
             ("workflow", "import", "plan"),
             "Preview exact scope, counts and expected current publication.",
             (
-                opt("export", "Exact complete export ID."),
+                opt("export", "Exact export ID."),
                 opt("repair", "Exact completed repair selection; preserve only."),
                 opt(
                     "action",
@@ -475,6 +477,22 @@ def native_plan(invocation: "Invocation") -> dict:
             else {}
         ),
         **({"identity": args.identity} if operation == "get" else {}),
+        **(
+            {
+                "import_qualification": deepcopy(
+                    leaf.manifest["operations"]["list"]["import_qualification"]
+                )
+            }
+            if eligible_full_list(
+                {
+                    "operation": operation,
+                    "mode": args.mode,
+                    "with_detail": args.with_detail,
+                }
+            )
+            and "import_qualification" in leaf.manifest["operations"]["list"]
+            else {}
+        ),
         "mode": "full",
         "parameters": {
             key: value for key, value in effective.items() if value is not None
@@ -571,7 +589,7 @@ def _dispatch(invocation: "Invocation") -> tuple[Any, dict | None]:
     if path == ("observation", "show"):
         from .workflow_storage import read
 
-        artifact = exact_export(store, invocation.args.export)
+        artifact = import_candidate(store, invocation.args.export)
         verify_binding(invocation.config_file, artifact)
         return read(artifact["binding"], artifact["id"]), None
     if path == ("status",):
@@ -701,11 +719,18 @@ def run_export(invocation: "Invocation", store: Store, plan: dict) -> tuple[dict
         **({"run_id": plan["run_id"]} if "run_id" in plan else {}),
         "leaf": plan["leaf"],
         "operation": plan["operation"],
+        "mode": plan.get("mode", "full"),
+        "with_detail": plan.get("with_detail", False),
         "binding": plan["binding"],
         "environment": plan["environment"],
         "parameters": plan["parameters"],
         "started_at": now(),
         "state": "unqueried",
+        **(
+            {"import_qualification": deepcopy(plan["import_qualification"])}
+            if eligible_full_list(plan) and "import_qualification" in plan
+            else {}
+        ),
         **(
             {"repair_plan": plan["repair_plan"], "baseline_plan": plan["baseline_plan"]}
             if "repair_plan" in plan
@@ -741,6 +766,13 @@ def run_export(invocation: "Invocation", store: Store, plan: dict) -> tuple[dict
         if current_binding != plan["binding"]:
             raise CliError(
                 "WORKFLOW_ERROR", "Registered destination differs from saved plan"
+            )
+        if eligible_full_list(plan) and leaf.manifest["operations"]["list"].get(
+            "import_qualification"
+        ) != plan.get("import_qualification"):
+            raise CliError(
+                "WORKFLOW_ERROR",
+                "Import qualification contract changed; create a new plan",
             )
         if plan["operation"] == "get":
             scope, environment = planned_get_scope(
@@ -840,13 +872,20 @@ def run_export(invocation: "Invocation", store: Store, plan: dict) -> tuple[dict
     return {**result, "records": displayed}, meta
 
 
-def exact_export(store: Store, identity: str) -> dict:
+def _exact_export(store: Store, identity: str, *, import_candidate: bool) -> dict:
     value = store.read("exports", identity)
-    try:
-        if value["state"] not in {"complete_empty", "complete_nonempty"}:
+    complete = value.get("state") in {"complete_empty", "complete_nonempty"}
+    if not complete and not (import_candidate and value.get("state") == "incomplete"):
+        if import_candidate:
             raise CliError(
-                "WORKFLOW_ERROR", "Normal import requires an exact complete export"
+                "WORKFLOW_IMPORT_NOT_QUALIFIED",
+                "Only a complete or usable incomplete export can be imported",
+                meta={"diagnostic": {"reason_codes": ["EXPORT_NOT_USABLE"]}},
             )
+        raise CliError(
+            "WORKFLOW_ERROR", "Normal import requires an exact complete export"
+        )
+    try:
         rows = value["records"]
         metadata = value["metadata"]
         if (
@@ -854,9 +893,20 @@ def exact_export(store: Store, identity: str) -> dict:
             or not all(isinstance(row, dict) for row in rows)
             or type(value["record_count"]) is not int
             or len(rows) != value["record_count"]
-            or bool(rows) != (value["state"] == "complete_nonempty")
-            or metadata["complete"] is not True
-            or metadata["dataset_complete"] is not True
+            or complete
+            and bool(rows) != (value["state"] == "complete_nonempty")
+            or complete
+            and (
+                metadata["complete"] is not True
+                or metadata["dataset_complete"] is not True
+            )
+            or not complete
+            and (
+                not isinstance(metadata["complete"], bool)
+                or not isinstance(metadata["dataset_complete"], bool)
+                or metadata["complete"]
+                and metadata["dataset_complete"]
+            )
             or canonical(metadata["query"]) != canonical(value["parameters"])
             or (
                 value["binding"] is None
@@ -872,6 +922,14 @@ def exact_export(store: Store, identity: str) -> dict:
             "WORKFLOW_ERROR", "Exact export format or integrity is invalid"
         ) from error
     return value
+
+
+def exact_export(store: Store, identity: str) -> dict:
+    return _exact_export(store, identity, import_candidate=False)
+
+
+def import_candidate(store: Store, identity: str) -> dict:
+    return _exact_export(store, identity, import_candidate=True)
 
 
 def verify_binding(config_file: Path, artifact: dict) -> None:
@@ -899,7 +957,10 @@ def import_plan(invocation: "Invocation", store: Store) -> dict:
         from .workflow_repair import import_plan as repair_import
 
         return repair_import(invocation, store)
-    artifact = exact_export(store, invocation.args.export)
+    from .workflow_import_qualification import qualify
+
+    artifact = import_candidate(store, invocation.args.export)
+    input_quality, qualification = qualify(artifact, invocation.args.action)
     verify_binding(invocation.config_file, artifact)
     existing = receipts(artifact["binding"])
     replayed = any(item["export_id"] == artifact["id"] for item in existing)
@@ -924,6 +985,8 @@ def import_plan(invocation: "Invocation", store: Store) -> dict:
             "current_effect": "unchanged",
             "current_count": current_count(artifact["binding"]),
             "count_basis": "preserved_observations_in_exact_scope",
+            "input_quality": input_quality,
+            "qualification": qualification,
             "input": artifact,
             **(
                 snapshot_preview(artifact)
@@ -946,11 +1009,16 @@ def apply_import(invocation: "Invocation", store: Store) -> dict:
         from .workflow_repair import apply as apply_repair
 
         return apply_repair(invocation.config_file, store, plan)
-    artifact = exact_export(store, plan["export_id"])
+    from .workflow_import_qualification import qualify
+
+    artifact = import_candidate(store, plan["export_id"])
+    input_quality, qualification = qualify(artifact, plan.get("action"))
     # Direct comparison binds exact values and numeric representations to
     # the reviewed plan without an adapter/configuration fingerprint.
     if (
         plan.get("action") not in {"preserve", "replace-full", "replace-range", "keyed"}
+        or plan.get("input_quality") != input_quality
+        or canonical(plan.get("qualification")) != canonical(qualification)
         or not exact_match(plan.get("input"), artifact)
         or plan.get("binding") != artifact["binding"]
     ):
