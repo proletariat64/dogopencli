@@ -37,6 +37,7 @@ class FakeCLI:
         self.local_tag_commit = HEAD
         self.origin = publisher.SOURCE_REMOTE
         self.carrier = CARRIER
+        self.default_branch = "main"
         self.dirty = False
         self.show_status = 404
         self.fail_upload = None
@@ -88,8 +89,11 @@ class FakeCLI:
             assert args[0] == "antcode"
             assert args[-2:] == ("--project", "pd.pt/dogopencli")
             group, operation = args[1:3]
-            if group == "branch":
-                assert operation == "show" and args[3] == "main"
+            if group == "project":
+                assert operation == "show"
+                output = json.dumps({"default_branch": self.default_branch})
+            elif group == "branch":
+                assert operation == "show" and args[3] == self.default_branch
                 output = json.dumps({"commit": {"id": self.carrier}})
             elif operation == "show":
                 if self.release is None:
@@ -459,17 +463,36 @@ def test_unrelated_release_is_not_resumed_or_accepted(setup, draft, description)
     assert fake.mutations == []
 
 
-def test_retry_reuses_carrier_and_notes_when_antcode_main_changes(setup):
+@pytest.mark.parametrize("branch", ["main", "master", "release/artifacts"])
+def test_new_release_uses_antcode_project_default_branch(setup, branch):
+    fake, _ = setup
+    fake.default_branch = branch
+    assert run() == 0
+    assert any(args[1:4] == ("branch", "show", branch) for args in fake.calls)
+    assert fake.release["revision"] == CARRIER
+
+
+@pytest.mark.parametrize("branch", [None, "", 123, "--help"])
+def test_invalid_default_branch_prevents_release_creation(setup, branch):
+    fake, _ = setup
+    fake.default_branch = branch
+    assert run() == 1
+    assert fake.mutations == []
+
+
+def test_retry_reuses_carrier_and_notes_when_antcode_default_branch_changes(setup):
     fake, _ = setup
     assert run() == 0
     notes = fake.files["RELEASE_NOTES.md"]
     fake.release["is_draft"] = True
     fake.carrier = "d" * 40
+    fake.default_branch = "other"
     fake.calls.clear()
     assert run() == 0
     assert fake.release["revision"] == CARRIER
     assert fake.files["RELEASE_NOTES.md"] == notes
     assert not any(args[1:3] == ("branch", "show") for args in fake.calls)
+    assert not any(args[1:3] == ("project", "show") for args in fake.calls)
 
 
 @pytest.mark.parametrize("carrier", [None, "main", "short", 123])

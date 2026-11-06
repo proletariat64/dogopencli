@@ -289,14 +289,22 @@ def publish(tag, dist, project, require_token=False, target="antcode"):
         )
         release = validate(decode(show()))
     if release is None:
-        branch = decode(api("branch", "show", "main", "--json"))
+        project_info = decode(api("project", "show", "--json"))
+        default_branch = project_info.get("default_branch")
+        if (
+            not isinstance(default_branch, str)
+            or not default_branch
+            or default_branch.startswith("-")
+        ):
+            raise PublishError("Invalid AntCode default branch")
+        branch = decode(api("branch", "show", default_branch, "--json"))
         carrier = (
             branch.get("commit", {}).get("id")
             if isinstance(branch.get("commit"), dict)
             else None
         )
         if not isinstance(carrier, str) or not re.fullmatch(r"[0-9a-f]{40}", carrier):
-            raise PublishError("Invalid AntCode main carrier commit")
+            raise PublishError("Invalid AntCode default-branch carrier commit")
         release = validate(
             decode(
                 api(
@@ -316,7 +324,9 @@ def publish(tag, dist, project, require_token=False, target="antcode"):
             )
         )
         if release["revision"] != carrier:
-            raise PublishError("Created release carrier does not match AntCode main")
+            raise PublishError(
+                "Created release carrier does not match AntCode default branch"
+            )
     carrier = release["revision"]
     if not release["is_draft"]:
         raise PublishError("Release must be a draft")

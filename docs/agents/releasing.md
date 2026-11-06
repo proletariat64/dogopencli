@@ -28,9 +28,9 @@ CLI reports the planned release version before creating and
 pushing an annotated source tag. Only a tag is pushed, never a source branch.
 Each provider receives a draft Release with the wheel, sdist, version-bound
 `install.sh`, `SHA256SUMS` and `RELEASE_NOTES.md`. Publication finalizes only after
-downloading and comparing every newly uploaded asset. AntCode's `main` revision
-is an artifact-host carrier; the notes record the actual GitHub source commit
-and tag.
+downloading and comparing every newly uploaded asset. AntCode's declared default
+branch revision is an artifact-host carrier; the notes record the actual GitHub
+source commit and tag.
 
 For retry or publication of the same source version to the second provider:
 
