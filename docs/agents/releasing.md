@@ -26,6 +26,9 @@ The command checks source identity, runs `make check`, builds wheel/source archi
 and runs an isolated install/update/uninstall smoke test that asserts the installed
 CLI reports the planned release version before creating and
 pushing an annotated source tag. Only a tag is pushed, never a source branch.
+Local checks and smoke tests stream their output and each have a 30-minute
+timeout. Git and provider output stays captured to keep authentication details
+out of logs.
 Each provider receives a draft Release with the wheel, sdist, version-bound
 `install.sh`, `SHA256SUMS` and `RELEASE_NOTES.md`. Publication finalizes only after
 downloading and comparing every newly uploaded asset. AntCode's declared default

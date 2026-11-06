@@ -212,10 +212,31 @@ def test_github_target_skips_antcode_homepage(repository, commands):
     assert not any("push" in args for args in commands)
 
 
-@pytest.mark.parametrize("gate", ["check", "smoke", "publish-release"])
-def test_local_gate_diagnostics_keep_provider_output_private(
-    tmp_path, monkeypatch, capsys, gate
-):
+@pytest.mark.parametrize("gate", ["check", "smoke"])
+def test_local_gate_streams_output(tmp_path, capfd, gate):
+    (tmp_path / "Makefile").write_text(
+        f"{gate}:\n\t@echo 'stdout detail'\n\t@echo 'stderr detail' >&2\n\t@exit 1\n"
+    )
+    with pytest.raises(RuntimeError, match="exit 2"):
+        tool.run(["make", gate], tmp_path)
+    captured = capfd.readouterr()
+    assert "stdout detail" in captured.out
+    assert "stderr detail" in captured.err
+
+
+@pytest.mark.parametrize("gate", ["check", "smoke"])
+def test_local_gate_can_run_longer_than_ten_minutes(tmp_path, monkeypatch, gate):
+    def run(args, **kwargs):
+        if kwargs["timeout"] <= 600:
+            raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+        assert kwargs["capture_output"] is False
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(tool.subprocess, "run", run)
+    assert tool.run(["make", gate], tmp_path) == ""
+
+
+def test_provider_output_stays_private(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
         tool.subprocess,
         "run",
@@ -224,10 +245,6 @@ def test_local_gate_diagnostics_keep_provider_output_private(
         ),
     )
     with pytest.raises(RuntimeError, match="exit 1"):
-        tool.run(["make", gate], tmp_path)
+        tool.run(["make", "publish-release"], tmp_path)
     captured = capsys.readouterr()
-    if gate == "publish-release":
-        assert captured.out == captured.err == ""
-    else:
-        assert captured.out == "stdout detail\n"
-        assert captured.err == "stderr detail\n"
+    assert captured.out == captured.err == ""

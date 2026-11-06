@@ -22,24 +22,24 @@ GIT = ["git"]
 
 
 def run(arguments: list[str], root: Path) -> str:
+    local_gate = arguments in (["make", "check"], ["make", "smoke"])
+    if local_gate:
+        print(f"Running {' '.join(arguments)} (timeout: 30 minutes)", flush=True)
     result = subprocess.run(
         arguments,
         cwd=root,
         text=True,
-        capture_output=True,
-        timeout=600,
+        capture_output=not local_gate,
+        timeout=1800 if local_gate else 600,
         check=False,
         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
     )
     if result.returncode:
-        if arguments in (["make", "check"], ["make", "smoke"]):
-            print(result.stdout, end="", file=sys.stdout)
-            print(result.stderr, end="", file=sys.stderr)
         # Provider output may contain credentials.
         raise RuntimeError(
             f"command failed: {' '.join(arguments[:3])} (exit {result.returncode})"
         )
-    return result.stdout.strip()
+    return (result.stdout or "").strip()
 
 
 def package_version(root: Path) -> str:
@@ -100,7 +100,7 @@ def release(
             "release requires attached master after the GitHub PR is merged"
         )
     dirty = bool(run(["git", "status", "--porcelain"], root))
-    print(f"Release {tag}: GitHub source, {provider} artifacts")
+    print(f"Release {tag}: GitHub source, {provider} artifacts", flush=True)
     if dry_run:
         print("Dry run: no checks, edits, commits, tags or network writes.")
         print(
