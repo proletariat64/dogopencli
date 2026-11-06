@@ -34,7 +34,9 @@ def installation(tmp_path):
     return root, env
 
 
-def wheel(directory: Path, version: str, message: str, *, old_module=False) -> Path:
+def wheel(
+    directory: Path, version: str, message: str, *, old_module=False, dependency=False
+) -> Path:
     directory.mkdir(parents=True)
     path = directory / f"dogopencli-{version}-py3-none-any.whl"
     info = f"dogopencli-{version}.dist-info"
@@ -44,6 +46,7 @@ def wheel(directory: Path, version: str, message: str, *, old_module=False) -> P
         f"{info}/METADATA": (
             "Metadata-Version: 2.1\nName: dogopencli\n"
             f"Version: {version}\nRequires-Python: >=3.12,<3.13\n"
+            + ("Requires-Dist: cached-dependency>=1\n" if dependency else "")
         ),
         f"{info}/WHEEL": "Wheel-Version: 1.0\nTag: py3-none-any\n",
         f"{info}/entry_points.txt": (
@@ -105,7 +108,7 @@ def test_install_overwrites_same_version_update_and_uninstall(installation):
     assert not (root / "bin/dogopencli").is_symlink()
     assert not (root / "bin/dogopencli").exists()
     assert all(path.read_text() == "keep me" for path in preserved)
-    assert not (root / "cache/uv").exists()
+    assert (root / "cache/uv").exists()
 
 
 def test_update_invalid_wheel_preserves_installation(installation):
@@ -181,3 +184,30 @@ def test_release_installer_pins_origin_and_checks_before_replacement(installatio
     assert result.returncode != 0
     assert "checksum mismatch" in result.stderr
     assert marker.exists() and (root / "bin/dogopencli").exists()
+
+
+def test_update_reuses_dependency_cache_offline(installation):
+    root, env = installation
+    links = root / "links"
+    links.mkdir()
+    dependency = links / "cached_dependency-1.0-py3-none-any.whl"
+    info = "cached_dependency-1.0.dist-info"
+    with zipfile.ZipFile(dependency, "w") as archive:
+        files = {
+            "cached_dependency.py": "VALUE = 1\n",
+            f"{info}/METADATA": (
+                "Metadata-Version: 2.1\nName: cached-dependency\nVersion: 1.0\n"
+            ),
+            f"{info}/WHEEL": "Wheel-Version: 1.0\nTag: py3-none-any\n",
+        }
+        files[f"{info}/RECORD"] = "".join(f"{name},,\n" for name in files)
+        for name, body in files.items():
+            archive.writestr(name, body)
+    env.update(UV_FIND_LINKS=str(links), UV_NO_INDEX="1")
+    first = wheel(root / "first", "1.0.0", "first", dependency=True)
+    second = wheel(root / "second", "2.0.0", "updated", dependency=True)
+    succeeded(run(env, "install", first))
+    result = run(env, "update", second)
+    assert "updated" in succeeded(result)
+    assert list((root / "tools/dogopencli").rglob("cached_dependency.py"))
+    assert "Prepared 1 package" in result.stderr

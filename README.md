@@ -30,7 +30,8 @@ Uninstall preserves configuration, browser login, installed business leaves,
 cache and Duckdog data. The installer does not install Chrome or log in.
 
 The installer selects Python 3.12 through uv and installs runtime dependencies
-without development extras or a persistent download cache. It installs a snapshot,
+without development extras. It reuses the uv cache and reinstalls only the CLI,
+retaining compatible dependencies. It installs a snapshot,
 so later checkout edits require another install. The default uv tool directory on
 Linux is `~/.local/share/uv/tools/dogopencli`, with the command in `~/.local/bin`.
 Use `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` to change these locations; use the same

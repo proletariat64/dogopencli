@@ -50,6 +50,8 @@ def test_release_update_checks_bytes_and_retains_provider(
 
     def install(*args):
         assert "uninstall" not in args
+        assert "--no-cache" not in args and "--reinstall" not in args
+        assert args[args.index("--reinstall-package") + 1] == "dogopencli"
         assert Path(args[-1].removeprefix("dogopencli @ ")).read_bytes() == body
         calls.append(args)
         marker.unlink()  # uv replaces the old environment/marker

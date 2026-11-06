@@ -16,7 +16,7 @@ update     Resolve SOURCE, then replace the program. No rollback copy is kept.
 uninstall  Remove the program and command; keep settings, login, plugins and data.
 
 Uses uv's standard tool directories (UV_TOOL_DIR / UV_TOOL_BIN_DIR can override).
-No development dependencies, editable install, backups or persistent download cache.
+Reuses the uv cache; no development dependencies, editable install or backups.
 EOF
 }
 
@@ -54,12 +54,12 @@ fi
 if [[ "$action" == uninstall ]]; then
     tool_dir=$(uv tool dir)
     if [[ -e "$tool_dir/dogopencli" || -L "$tool_dir/dogopencli" ]]; then
-        uv tool uninstall --no-cache dogopencli
+        uv tool uninstall dogopencli
     fi
 fi
 
 if [[ "$action" != uninstall ]]; then
-    uv tool install --force --reinstall --no-cache --python 3.12 "dogopencli @ $source"
+    uv tool install --force --reinstall-package dogopencli --python 3.12 "dogopencli @ $source"
     tool_dir=$(uv tool dir)
     rm -f -- "$tool_dir/dogopencli/.dogopencli-release"
     bin_dir=$(uv tool dir --bin)

@@ -18,7 +18,7 @@ else
 fi
 [[ ${digest%% *} == "$WHEEL_SHA256" ]] || { echo 'Wheel checksum mismatch' >&2; exit 1; }
 # uv resolves/downloads before replacing the installed tool. Never pre-uninstall.
-uv tool install --force --reinstall --no-cache --python 3.12 "dogopencli @ $tmp/$WHEEL"
+uv tool install --force --reinstall-package dogopencli --python 3.12 "dogopencli @ $tmp/$WHEEL"
 tool_dir=$(uv tool dir)
 printf '%s\n' "$RELEASE_BASE_URL" > "$tool_dir/dogopencli/.dogopencli-release"
 bin_dir=$(uv tool dir --bin)

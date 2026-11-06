@@ -102,8 +102,8 @@ def update(environment: Path, *, to: str | None, source: str | None) -> None:
             "tool",
             "install",
             "--force",
-            "--reinstall",
-            "--no-cache",
+            "--reinstall-package",
+            "dogopencli",
             "--python",
             "3.12",
             f"dogopencli @ {selected}",
@@ -140,8 +140,8 @@ def update(environment: Path, *, to: str | None, source: str | None) -> None:
             "tool",
             "install",
             "--force",
-            "--reinstall",
-            "--no-cache",
+            "--reinstall-package",
+            "dogopencli",
             "--python",
             "3.12",
             f"dogopencli @ {package}",
@@ -156,7 +156,7 @@ def execute(action: str, args) -> int:
     try:
         environment = locate()
         if action == "uninstall":
-            uv_command("tool", "uninstall", "--no-cache", "dogopencli")
+            uv_command("tool", "uninstall", "dogopencli")
         else:
             update(environment, to=args.to, source=args.source)
         emit(
