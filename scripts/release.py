@@ -156,6 +156,8 @@ def release(
             ) from error
     try:
         run(["make", "publish-release", f"TAG={tag}", f"TARGET={provider}"], root)
+        if provider == "antcode":
+            run(["make", "publish-site-release", f"TAG={tag}"], root)
     except (RuntimeError, OSError, subprocess.TimeoutExpired) as error:
         raise RuntimeError(
             f"{tag} is pushed but publication failed; run "

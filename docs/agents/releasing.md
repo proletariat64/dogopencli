@@ -44,7 +44,33 @@ make release TARGET=antcode RETRY=1
 
 Existing tags must resolve to HEAD. Existing same-source packages remain canonical
 and are downloaded for checksums; no attachment is overwritten. Completed matching
-Releases are no-ops. For publication of already-built artifacts only:
+Releases are no-ops. After successful AntCode artifact publication, `make release`
+automatically runs `make publish-site-release TAG=vX.Y.Z`. It verifies the published,
+anonymous, stable, unblocked Release in `pd.pt/dogopencli`, its installer/wheel
+assets and version-bound installer before updating the homepage feed:
+`http://poolab-iys595a7znqgza1e.inc.alipay.net/releases/dogopencli.json`.
+GitHub releases skip this AntCode homepage update. The homepage contract is pinned
+to `pd.pt/dogopencli`; an `ANTCODE_PROJECT` override does not redirect its feed.
+
+A metadata failure fails the release workflow after artifact publication; it does
+not undo the published Release. Repair transport/permissions, then use
+`make release TARGET=antcode RETRY=1` to retry the same version, or repair only the
+homepage metadata for an already-published version:
+
+```bash
+make publish-site-release TAG=v0.6.5
+```
+
+The repair target uses the local AntCode login and `poolab` default instance. Only
+sanitized JSON metadata is transported, never credentials or raw provider output.
+It owns `/home/admin/webserver/site/releases/dogopencli.json` and its publisher
+lock, not homepage HTML, other products' metadata, knowledge data, nginx settings,
+or the independent plugin registry. A locked atomic replacement sets mode `0644`,
+checks file and HTTP readback, refuses stable downgrades, and restores the previous
+bytes/permissions if verification fails. Unique staging files are cleaned up.
+Static-site deployments must preserve this release-owned feed and lock.
+
+For publication of already-built artifacts only:
 
 ```bash
 make publish-release TARGET=github TAG=v0.6.4 DIST_DIR=dist

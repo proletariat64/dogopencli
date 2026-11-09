@@ -43,7 +43,7 @@ PLUGIN_ZIP ?=
 PLUGIN_VERSION ?=
 PLUGIN_SITE ?=
 
-.PHONY: check build smoke release publish-release release-site deploy-site release-plugin publish-plugin
+.PHONY: check build smoke release publish-release publish-site-release release-site deploy-site release-plugin publish-plugin
 check: doc-guard lint test
 
 build:
@@ -60,6 +60,9 @@ publish-release:
 	$(DEV_PYTHON) scripts/publish_release.py --target "$(TARGET)" \
 		--tag "$(TAG)" --dist "$(DIST_DIR)" \
 		$(if $(filter antcode,$(TARGET)),--project "$(ANTCODE_PROJECT)")
+
+publish-site-release:
+	$(DEV_PYTHON) scripts/publish_site_release.py --tag "$(TAG)"
 
 release-site:
 	$(DEV_PYTHON) -B tools/plugin-site/build.py --version "$(SITE_VERSION)" --output "$(SITE_BUNDLE)"

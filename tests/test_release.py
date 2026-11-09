@@ -176,10 +176,11 @@ def test_publication_order(repository, commands):
     publish = commands.index(
         ["make", "publish-release", "TAG=v0.1.0", "TARGET=antcode"]
     )
-    assert check < smoke < tag < push < publish
+    site = commands.index(["make", "publish-site-release", "TAG=v0.1.0"])
+    assert check < smoke < tag < push < publish < site
 
 
-@pytest.mark.parametrize("failure", ["push", "publish-release"])
+@pytest.mark.parametrize("failure", ["push", "publish-release", "publish-site-release"])
 def test_failures_resume_same_version(repository, monkeypatch, commands, failure):
     root, _, original = repository
 
@@ -200,6 +201,7 @@ def test_failures_resume_same_version(repository, monkeypatch, commands, failure
     commands.clear()
     assert tool.release(root, retry=True) == "v0.1.0"
     assert ["make", "publish-release", "TAG=v0.1.0", "TARGET=antcode"] in commands
+    assert ["make", "publish-site-release", "TAG=v0.1.0"] in commands
     assert any("push" in args for args in commands) is (failure == "push")
 
 
